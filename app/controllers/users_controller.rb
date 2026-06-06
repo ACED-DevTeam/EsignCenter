@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 class UsersController < ApplicationController
+  before_action :authorize_account_management!
+
   load_and_authorize_resource :user, only: %i[index edit update destroy]
 
   before_action :build_user, only: %i[new create]
@@ -77,7 +79,9 @@ class UsersController < ApplicationController
       @user.account = account
     end
 
-    if @user.update(attrs.except(*(current_user == @user ? %i[password otp_required_for_login role] : %i[password])))
+    self_excluded = %i[password otp_required_for_login role archived_at]
+
+    if @user.update(attrs.except(*(current_user == @user ? self_excluded : %i[password])))
       if @user.try(:pending_reconfirmation?) && @user.previous_changes.key?(:unconfirmed_email)
         SendConfirmationInstructionsJob.perform_async('user_id' => @user.id)
 
@@ -102,6 +106,12 @@ class UsersController < ApplicationController
   end
 
   private
+
+  # User management (listing, inviting, editing, removing users) is admin-only.
+  # Editors/viewers manage their own profile via ProfileController instead.
+  def authorize_account_management!
+    authorize!(:manage, current_account)
+  end
 
   def role_valid?(role)
     User::ROLES.include?(role)
