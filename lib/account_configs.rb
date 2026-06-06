@@ -20,7 +20,22 @@ module AccountConfigs
     'thirty_days' => '30 days'
   }.freeze
 
+  DURATION_UNITS = %w[minute minutes hour hours day days].freeze
+
   module_function
+
+  # Maps a REMINDER_DURATIONS key (e.g. 'two_days') to an ActiveSupport::Duration (2.days), or nil.
+  def reminder_duration(key)
+    human = REMINDER_DURATIONS[key.to_s]
+
+    return if human.blank?
+
+    number, unit = human.split
+
+    return unless unit.in?(DURATION_UNITS)
+
+    number.to_i.public_send(unit)
+  end
 
   def find_or_initialize_for_key(account, key)
     find_for_account(account, key) ||

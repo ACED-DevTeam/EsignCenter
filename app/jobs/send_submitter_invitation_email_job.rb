@@ -17,6 +17,10 @@ class SendSubmitterInvitationEmailJob
       return
     end
 
+    # "First send" is the absence of a prior send_email event, NOT sent_at.blank? —
+    # sent_at is pre-set at submission creation in the main flows, so it can't signal this.
+    first_send = !SubmissionEvent.exists?(submitter_id: submitter.id, event_type: 'send_email')
+
     mail = SubmitterMailer.invitation_email(submitter)
 
     Submitters::ValidateSending.call(submitter, mail)
@@ -27,5 +31,8 @@ class SendSubmitterInvitationEmailJob
 
     submitter.sent_at ||= Time.current
     submitter.save!
+
+    # Schedule reminders only on the first invitation send, not on manual re-sends.
+    Submitters::ScheduleReminders.call(submitter) if first_send
   end
 end
