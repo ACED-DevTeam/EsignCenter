@@ -19,7 +19,8 @@ class ApplicationController < ActionController::Base
                 :current_account,
                 :true_ability,
                 :form_link_host,
-                :svg_icon
+                :svg_icon,
+                :account_logo_url
 
   impersonates :user, with: ->(uuid) { User.find_by(uuid:) }
 
@@ -97,6 +98,13 @@ class ApplicationController < ActionController::Base
 
   def current_account
     current_user&.account
+  end
+
+  # Signed, non-expiring proxy URL for an account's custom logo, or nil when none is set.
+  def account_logo_url(account)
+    return unless account&.logo&.attached?
+
+    ActiveStorage::Blob.proxy_url(account.logo.blob)
   end
 
   def true_ability

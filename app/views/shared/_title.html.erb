@@ -1,2 +1,9 @@
-<%= render 'shared/logo' %>
-<span>DocuSeal</span>
+<% if (logo_url = account_logo_url(current_account)) %>
+  <%= image_tag logo_url,
+                alt: current_account.name,
+                class: 'object-contain',
+                style: 'max-height: 37px; max-width: 160px;' %>
+<% else %>
+  <%= render 'shared/logo' %>
+  <span>DocuSeal</span>
+<% end %>

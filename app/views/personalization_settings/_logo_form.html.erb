@@ -1,1 +1,23 @@
-<%= render 'logo_placeholder' %>
+<div class="my-4">
+  <% if current_account.logo.attached? %>
+    <div class="flex items-center space-x-4 mb-4">
+      <%= image_tag account_logo_url(current_account),
+                    alt: current_account.name,
+                    class: 'object-contain bg-base-200 rounded p-2',
+                    style: 'max-height: 64px; max-width: 220px;' %>
+      <%= button_to t('remove'), settings_personalization_logo_path,
+                    method: :delete,
+                    class: 'btn btn-ghost',
+                    data: { turbo_confirm: 'Remove the company logo?' } %>
+    </div>
+  <% end %>
+
+  <%= form_with url: settings_personalization_logo_path, method: :post, multipart: true do %>
+    <input type="file" name="logo" accept="image/png,image/jpeg,image/webp,image/gif"
+           class="file-input file-input-bordered w-full max-w-xs" required>
+    <p class="text-sm text-base-content/60 mt-2">
+      <%= t('your_company_logo') %> — PNG, JPG, WEBP or GIF, up to 2MB. Shown to signers on the signing pages.
+    </p>
+    <button type="submit" class="btn btn-primary mt-3"><%= t('submit') %></button>
+  <% end %>
+</div>

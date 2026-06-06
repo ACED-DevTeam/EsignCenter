@@ -1,6 +1,16 @@
-<a href="/" class="flex justify-center items-center">
-  <span class="mr-3">
-    <%= render 'shared/logo', width: '50px', height: '50px' %>
-  </span>
-  <h1 class="text-5xl font-bold text-center">DocuSeal</h1>
-</a>
+<% logo_account = @template&.account || @submitter&.account %>
+<% if (logo_url = account_logo_url(logo_account)) %>
+  <a href="/" class="flex justify-center items-center">
+    <%= image_tag logo_url,
+                  alt: logo_account.name,
+                  class: 'object-contain',
+                  style: 'max-height: 60px; max-width: 280px;' %>
+  </a>
+<% else %>
+  <a href="/" class="flex justify-center items-center">
+    <span class="mr-3">
+      <%= render 'shared/logo', width: '50px', height: '50px' %>
+    </span>
+    <h1 class="text-5xl font-bold text-center">DocuSeal</h1>
+  </a>
+<% end %>
