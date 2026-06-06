@@ -179,6 +179,266 @@ describe 'Templates API' do
     end
   end
 
+  describe 'POST /api/templates' do
+    let(:pdf_base64) { Base64.encode64(Rails.root.join('spec/fixtures/sample-document.pdf').read) }
+    let(:unsupported_format_message) { 'Unsupported document format. Only PDF and image files are supported.' }
+
+    it 'creates a template from a base64-encoded PDF' do
+      expect do
+        post '/api/templates', headers: { 'x-auth-token': author.access_token.token }, params: {
+          name: 'Generated Disclosure',
+          external_id: 'va-claim-123',
+          documents: [{ name: 'disclosure', file: pdf_base64 }]
+        }.to_json
+      end.to change(Template, :count).by(1)
+
+      expect(response).to have_http_status(:ok)
+
+      template = Template.last
+      expect(template.account_id).to eq(account.id)
+      expect(template.author_id).to eq(author.id)
+      expect(template.source).to eq('api')
+      expect(template.name).to eq('Generated Disclosure')
+      expect(template.external_id).to eq('va-claim-123')
+      expect(template.schema.size).to eq(1)
+
+      expect(response.parsed_body['name']).to eq('Generated Disclosure')
+      expect(response.parsed_body['documents'].size).to eq(1)
+      expect(response.parsed_body['documents'].first['uuid']).to be_present
+    end
+
+    it 'creates a template with explicit submitters and placed fields' do
+      post '/api/templates', headers: { 'x-auth-token': author.access_token.token }, params: {
+        name: 'Veteran Authorization',
+        documents: [{ name: 'auth', file: pdf_base64 }],
+        submitters: [{ name: 'Veteran' }, { name: 'Witness' }],
+        fields: [
+          { name: 'Veteran Signature', type: 'signature', role: 'Veteran', required: true,
+            areas: [{ x: 0.1, y: 0.8, w: 0.3, h: 0.05, page: 0, document: 0 }] }
+        ]
+      }.to_json
+
+      expect(response).to have_http_status(:ok)
+
+      template = Template.last
+      veteran_uuid = template.submitters.find { |submitter| submitter['name'] == 'Veteran' }['uuid']
+      document_uuid = template.schema.first['attachment_uuid']
+      field = template.fields.first
+
+      expect(template.submitters.pluck('name')).to eq(%w[Veteran Witness])
+      expect(template.fields.size).to eq(1)
+      expect(field['name']).to eq('Veteran Signature')
+      expect(field['type']).to eq('signature')
+      expect(field['required']).to be(true)
+      expect(field['submitter_uuid']).to eq(veteran_uuid)
+      expect(field['areas'].first['attachment_uuid']).to eq(document_uuid)
+      expect(field['areas'].first).to include('x' => 0.1, 'y' => 0.8, 'w' => 0.3, 'h' => 0.05, 'page' => 0)
+    end
+
+    it 'wires option_uuid for radio fields so selections render on the signed PDF' do
+      post '/api/templates', headers: { 'x-auth-token': author.access_token.token }, params: {
+        documents: [{ name: 'form', file: pdf_base64 }],
+        submitters: [{ name: 'Veteran' }],
+        fields: [
+          { name: 'Gender', type: 'radio', role: 'Veteran',
+            options: [{ value: 'Male' }, { value: 'Female' }],
+            areas: [
+              { x: 0.1, y: 0.1, w: 0.05, h: 0.03, page: 0, document: 0, option: 'Male' },
+              { x: 0.1, y: 0.2, w: 0.05, h: 0.03, page: 0, document: 0, option: 'Female' }
+            ] }
+        ]
+      }.to_json
+
+      expect(response).to have_http_status(:ok)
+
+      field = Template.last.fields.first
+      male_uuid = field['options'].find { |option| option['value'] == 'Male' }['uuid']
+      female_uuid = field['options'].find { |option| option['value'] == 'Female' }['uuid']
+
+      expect(field['type']).to eq('radio')
+      expect(field['options'].pluck('value')).to eq(%w[Male Female])
+      expect(field['areas'][0]['option_uuid']).to eq(male_uuid)
+      expect(field['areas'][1]['option_uuid']).to eq(female_uuid)
+    end
+
+    it 'resolves radio option areas referenced by integer index' do
+      post '/api/templates', headers: { 'x-auth-token': author.access_token.token }, params: {
+        documents: [{ file: pdf_base64 }],
+        submitters: [{ name: 'Veteran' }],
+        fields: [
+          { name: 'Choice', type: 'radio', role: 'Veteran',
+            options: [{ value: 'A' }, { value: 'B' }],
+            areas: [
+              { x: 0.1, y: 0.1, w: 0.03, h: 0.03, page: 0, option: 0 },
+              { x: 0.1, y: 0.2, w: 0.03, h: 0.03, page: 0, option: 1 }
+            ] }
+        ]
+      }.to_json
+
+      expect(response).to have_http_status(:ok)
+
+      field = Template.last.fields.first
+      expect(field['areas'][0]['option_uuid']).to eq(field['options'][0]['uuid'])
+      expect(field['areas'][1]['option_uuid']).to eq(field['options'][1]['uuid'])
+    end
+
+    it 'rejects fields with blank option values' do
+      post '/api/templates', headers: { 'x-auth-token': author.access_token.token }, params: {
+        documents: [{ file: pdf_base64 }],
+        submitters: [{ name: 'Veteran' }],
+        fields: [
+          { name: 'Choice', type: 'radio', role: 'Veteran',
+            options: [{ value: '' }, { value: 'B' }],
+            areas: [{ x: 0.1, y: 0.1, w: 0.03, h: 0.03, page: 0, option: 'B' }] }
+        ]
+      }.to_json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body['error']).to match(/option value is required/)
+    end
+
+    it 'rejects a non-integer page number' do
+      post '/api/templates', headers: { 'x-auth-token': author.access_token.token }, params: {
+        documents: [{ file: pdf_base64 }],
+        submitters: [{ name: 'Veteran' }],
+        fields: [
+          { name: 'Signature', type: 'signature', role: 'Veteran',
+            areas: [{ x: 0.1, y: 0.1, w: 0.1, h: 0.05, page: 1.5, document: 0 }] }
+        ]
+      }.to_json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body['error']).to match(/page must be a non-negative integer/)
+    end
+
+    it 'rejects field coordinates outside the 0..1 range' do
+      post '/api/templates', headers: { 'x-auth-token': author.access_token.token }, params: {
+        documents: [{ file: pdf_base64 }],
+        submitters: [{ name: 'Veteran' }],
+        fields: [
+          { name: 'Signature', type: 'signature', role: 'Veteran',
+            areas: [{ x: 1.5, y: 0.1, w: 0.1, h: 0.05, page: 0, document: 0 }] }
+        ]
+      }.to_json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body['error']).to match(/must be a number between 0 and 1/)
+    end
+
+    it 'maps each field area to the correct document by index' do
+      post '/api/templates', headers: { 'x-auth-token': author.access_token.token }, params: {
+        documents: [{ name: 'first', file: pdf_base64 }, { name: 'second', file: pdf_base64 }],
+        submitters: [{ name: 'Veteran' }],
+        fields: [
+          { name: 'Signature', type: 'signature', role: 'Veteran',
+            areas: [{ x: 0.1, y: 0.8, w: 0.2, h: 0.05, page: 0, document: 1 }] }
+        ]
+      }.to_json
+
+      expect(response).to have_http_status(:ok)
+
+      template = Template.last
+      expect(template.schema.size).to eq(2)
+      expect(template.fields.first['areas'].first['attachment_uuid']).to eq(template.schema[1]['attachment_uuid'])
+    end
+
+    it 'creates a template from an image and leaves fields empty when none are detected' do
+      png_base64 = Base64.encode64(Rails.root.join('spec/fixtures/sample-image.png').read)
+
+      post '/api/templates', headers: { 'x-auth-token': author.access_token.token }, params: {
+        documents: [{ name: 'scan', file: png_base64 }]
+      }.to_json
+
+      expect(response).to have_http_status(:ok)
+      expect(Template.last.fields).to eq([])
+    end
+
+    it 'rejects a field whose role does not match any submitter' do
+      expect do
+        post '/api/templates', headers: { 'x-auth-token': author.access_token.token }, params: {
+          documents: [{ file: pdf_base64 }],
+          submitters: [{ name: 'Veteran' }],
+          fields: [
+            { name: 'Signature', type: 'signature', role: 'Ghost',
+              areas: [{ x: 0.1, y: 0.1, w: 0.1, h: 0.05, page: 0, document: 0 }] }
+          ]
+        }.to_json
+      end.not_to change(Template, :count)
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body['error']).to match(/does not match any submitter/)
+    end
+
+    it 'rejects duplicate submitter names' do
+      post '/api/templates', headers: { 'x-auth-token': author.access_token.token }, params: {
+        documents: [{ file: pdf_base64 }],
+        submitters: [{ name: 'Signer' }, { name: 'Signer' }]
+      }.to_json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body['error']).to match(/unique/)
+    end
+
+    it 'rejects zip uploads without creating a template' do
+      zip = Zip::OutputStream.write_buffer do |out|
+        out.put_next_entry('a.pdf')
+        out.write(Rails.root.join('spec/fixtures/sample-document.pdf').read)
+      end
+
+      expect do
+        post '/api/templates', headers: { 'x-auth-token': author.access_token.token }, params: {
+          documents: [{ name: 'bundle.zip', file: Base64.encode64(zip.string) }]
+        }.to_json
+      end.not_to change(Template, :count)
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body['error']).to eq(unsupported_format_message)
+    end
+
+    it 'requires authentication' do
+      post '/api/templates', params: { documents: [{ file: pdf_base64 }] }.to_json
+
+      expect(response).to have_http_status(:unauthorized)
+      expect(response.parsed_body).to eq('error' => 'Not authenticated')
+    end
+
+    it 'returns a validation error when no documents are provided' do
+      expect do
+        post '/api/templates', headers: { 'x-auth-token': author.access_token.token }, params: {
+          name: 'No documents'
+        }.to_json
+      end.not_to change(Template, :count)
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body['error']).to be_present
+    end
+
+    it 'rejects unsupported document formats without creating a template' do
+      docx_base64 = Base64.encode64(Rails.root.join('spec/fixtures/fieldtags.docx').read)
+
+      expect do
+        post '/api/templates', headers: { 'x-auth-token': author.access_token.token }, params: {
+          documents: [{ name: 'contract.docx', file: docx_base64 }]
+        }.to_json
+      end.not_to change(Template, :count)
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body['error']).to eq(unsupported_format_message)
+    end
+
+    it 'rejects documents that exceed the size limit' do
+      stub_const('Api::TemplatesController::MAX_DOCUMENT_SIZE', 8)
+      stub_const('Api::TemplatesController::MAX_ENCODED_DOCUMENT_SIZE', 64)
+
+      post '/api/templates', headers: { 'x-auth-token': author.access_token.token }, params: {
+        documents: [{ file: Base64.encode64('this is definitely more than eight bytes') }]
+      }.to_json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body['error']).to match(/exceeds the/)
+    end
+  end
+
   private
 
   def template_body(template)
