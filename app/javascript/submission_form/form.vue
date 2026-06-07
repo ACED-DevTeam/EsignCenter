@@ -1745,13 +1745,17 @@ export default {
       this.isCompleted = true
       this.isFormVisible = true
 
-      if (resp?.text) {
-        const respData = await resp.text()
+      let respData = {}
 
-        if (respData) {
-          this.onComplete(JSON.parse(respData))
+      if (resp?.text) {
+        const text = await resp.text()
+
+        if (text) {
+          respData = JSON.parse(text)
         }
       }
+
+      this.onComplete(respData)
 
       if (this.completedRedirectUrl) {
         window.location.href = sanitizeUrl(this.completedRedirectUrl)

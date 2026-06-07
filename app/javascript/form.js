@@ -22,6 +22,16 @@ safeRegisterElement('submission-form', class extends HTMLElement {
   connectedCallback () {
     this.appElem = document.createElement('div')
 
+    const notifyEmbedParent = (eventName, detail = {}) => {
+      if (!this.dataset.embedOrigin || window.parent === window) return
+
+      window.parent.postMessage({
+        source: 'docuseal-form',
+        event: eventName,
+        detail
+      }, this.dataset.embedOrigin)
+    }
+
     this.app = createApp(Form, {
       submitter: JSON.parse(this.dataset.submitter),
       inviteSubmitters: JSON.parse(this.dataset.inviteSubmitters),
@@ -54,7 +64,12 @@ safeRegisterElement('submission-form', class extends HTMLElement {
       attachments: reactive(JSON.parse(this.dataset.attachments)),
       fields: JSON.parse(this.dataset.fields),
       completeButtonContainer: document.getElementById('complete_button_container'),
-      completeButtonScrollContainer: document.getElementById('complete_button_container_scroll')
+      completeButtonScrollContainer: document.getElementById('complete_button_container_scroll'),
+      onComplete: (data = {}) => notifyEmbedParent('completed', {
+        submitter: data.submitter || JSON.parse(this.dataset.submitter),
+        signing_session: data.signing_session,
+        response: data
+      })
     })
 
     this.app.mount(this.appElem)

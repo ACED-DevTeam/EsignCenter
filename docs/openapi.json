@@ -35,6 +35,10 @@
       "description": "Signature requests can be initiated with Submissions API. Submissions can contain one submitter if signed by a single party or multiple submitters if the document template form contains signatures and fields to be collected and filled by multiple parties. Initiate new submissions to request signatures for specified submitters via email or phone number."
     },
     {
+      "name": "Signing Sessions",
+      "description": "Signing Sessions create embeddable signing flows for another application while keeping API tokens on the server side."
+    },
+    {
       "name": "Submitters",
       "description": "Submitters API allows you to load all details provided by the signer of the document."
     },
@@ -2930,6 +2934,499 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/signing_sessions": {
+      "post": {
+        "security": [
+          {
+            "AuthToken": []
+          }
+        ],
+        "tags": [
+          "Signing Sessions"
+        ],
+        "summary": "Create an embeddable signing session",
+        "description": "Creates an embedded signing session from an existing template or from generated PDF/image documents with fixed fields. Keep the X-Auth-Token on your backend and pass the returned embed_src to the frontend.",
+        "operationId": "createSigningSession",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "embed_origin",
+                  "submitters"
+                ],
+                "properties": {
+                  "template_id": {
+                    "type": "integer",
+                    "description": "Existing template ID. Send either template_id or documents, not both."
+                  },
+                  "name": {
+                    "type": "string",
+                    "description": "Name for a generated signing-session template."
+                  },
+                  "external_id": {
+                    "type": "string",
+                    "description": "Application-specific ID for this signing session."
+                  },
+                  "application_key": {
+                    "type": "string",
+                    "description": "Alternative application-specific key."
+                  },
+                  "embed_origin": {
+                    "type": "string",
+                    "description": "HTTPS origin allowed to iframe the signer. Local development may use http://localhost, http://127.0.0.1, or http://[::1].",
+                    "example": "https://app-a.example.com"
+                  },
+                  "send_email": {
+                    "type": "boolean",
+                    "description": "Set true to send DocuSeal signature request emails. Defaults to false for signing sessions.",
+                    "default": false
+                  },
+                  "send_sms": {
+                    "type": "boolean",
+                    "description": "Set true to send signature requests by SMS. Defaults to false.",
+                    "default": false
+                  },
+                  "completed_redirect_url": {
+                    "type": "string",
+                    "description": "Optional URL to redirect the signer after completion."
+                  },
+                  "folder_name": {
+                    "type": "string",
+                    "description": "Folder name for generated templates."
+                  },
+                  "metadata": {
+                    "type": "object",
+                    "description": "Metadata copied onto the signing session submitters."
+                  },
+                  "variables": {
+                    "type": "object",
+                    "description": "Variables used to populate template values."
+                  },
+                  "documents": {
+                    "type": "array",
+                    "description": "Documents for a generated signing-session template. Required when template_id is not supplied.",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "file"
+                      ],
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "description": "Document filename."
+                        },
+                        "file": {
+                          "type": "string",
+                          "description": "Base64-encoded PDF or image file."
+                        }
+                      }
+                    }
+                  },
+                  "submitters": {
+                    "type": "array",
+                    "description": "Submitters who will sign the embedded session.",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "role": {
+                          "type": "string"
+                        },
+                        "email": {
+                          "type": "string",
+                          "format": "email"
+                        },
+                        "phone": {
+                          "type": "string"
+                        },
+                        "external_id": {
+                          "type": "string"
+                        },
+                        "metadata": {
+                          "type": "object"
+                        },
+                        "values": {
+                          "type": "object"
+                        },
+                        "send_email": {
+                          "type": "boolean",
+                          "default": false
+                        },
+                        "send_sms": {
+                          "type": "boolean",
+                          "default": false
+                        }
+                      }
+                    }
+                  },
+                  "fields": {
+                    "type": "array",
+                    "description": "Fixed fields to place on generated documents.",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "areas"
+                      ],
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string",
+                          "enum": [
+                            "text",
+                            "date",
+                            "checkbox",
+                            "radio",
+                            "signature",
+                            "number",
+                            "multiple",
+                            "select",
+                            "initials",
+                            "image",
+                            "file",
+                            "stamp",
+                            "cells",
+                            "phone",
+                            "payment"
+                          ]
+                        },
+                        "role": {
+                          "type": "string"
+                        },
+                        "required": {
+                          "type": "boolean"
+                        },
+                        "readonly": {
+                          "type": "boolean"
+                        },
+                        "default_value": {},
+                        "areas": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "x",
+                              "y",
+                              "w",
+                              "h"
+                            ],
+                            "properties": {
+                              "x": {
+                                "type": "number",
+                                "minimum": 0,
+                                "maximum": 1
+                              },
+                              "y": {
+                                "type": "number",
+                                "minimum": 0,
+                                "maximum": 1
+                              },
+                              "w": {
+                                "type": "number",
+                                "minimum": 0,
+                                "maximum": 1
+                              },
+                              "h": {
+                                "type": "number",
+                                "minimum": 0,
+                                "maximum": 1
+                              },
+                              "page": {
+                                "type": "integer",
+                                "minimum": 0
+                              },
+                              "document": {
+                                "type": "integer",
+                                "minimum": 0
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "submission_id",
+                    "template_id",
+                    "status",
+                    "embed_src",
+                    "submitters",
+                    "documents_url",
+                    "status_url",
+                    "created_at",
+                    "updated_at"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "integer",
+                      "description": "Signing session ID. This is the underlying submission ID."
+                    },
+                    "submission_id": {
+                      "type": "integer",
+                      "description": "Submission ID for the signing session."
+                    },
+                    "template_id": {
+                      "type": "integer",
+                      "description": "Template ID used by the signing session."
+                    },
+                    "external_id": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Application-specific external ID supplied when creating the signing session."
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "pending",
+                        "completed",
+                        "declined",
+                        "expired"
+                      ],
+                      "description": "Current signing session status."
+                    },
+                    "completed_at": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Date and time when all submitters completed the signing session."
+                    },
+                    "embed_src": {
+                      "type": "string",
+                      "description": "Signer URL to load in an embedded signing iframe."
+                    },
+                    "submitter_id": {
+                      "type": "integer",
+                      "description": "First submitter ID for single-signer sessions."
+                    },
+                    "submitters": {
+                      "type": "array",
+                      "description": "Submitters created for this signing session.",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "integer"
+                          },
+                          "submission_id": {
+                            "type": "integer"
+                          },
+                          "uuid": {
+                            "type": "string"
+                          },
+                          "email": {
+                            "type": "string"
+                          },
+                          "slug": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "completed_at": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "role": {
+                            "type": "string"
+                          },
+                          "embed_src": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "documents_url": {
+                      "type": "string",
+                      "description": "API URL to download completed signing-session documents."
+                    },
+                    "status_url": {
+                      "type": "string",
+                      "description": "API URL to poll this signing session status."
+                    },
+                    "created_at": {
+                      "type": "string"
+                    },
+                    "updated_at": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "description": "Too Many Requests"
+          }
+        }
+      }
+    },
+    "/signing_sessions/{id}": {
+      "get": {
+        "security": [
+          {
+            "AuthToken": []
+          }
+        ],
+        "tags": [
+          "Signing Sessions"
+        ],
+        "summary": "Get signing session status",
+        "description": "Returns current status and embed/document URLs for an embedded signing session.",
+        "operationId": "getSigningSession",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Signing session ID returned by createSigningSession."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "submission_id",
+                    "template_id",
+                    "status",
+                    "embed_src",
+                    "submitters",
+                    "documents_url",
+                    "status_url",
+                    "created_at",
+                    "updated_at"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "integer",
+                      "description": "Signing session ID. This is the underlying submission ID."
+                    },
+                    "submission_id": {
+                      "type": "integer",
+                      "description": "Submission ID for the signing session."
+                    },
+                    "template_id": {
+                      "type": "integer",
+                      "description": "Template ID used by the signing session."
+                    },
+                    "external_id": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Application-specific external ID supplied when creating the signing session."
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "pending",
+                        "completed",
+                        "declined",
+                        "expired"
+                      ],
+                      "description": "Current signing session status."
+                    },
+                    "completed_at": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Date and time when all submitters completed the signing session."
+                    },
+                    "embed_src": {
+                      "type": "string",
+                      "description": "Signer URL to load in an embedded signing iframe."
+                    },
+                    "submitter_id": {
+                      "type": "integer",
+                      "description": "First submitter ID for single-signer sessions."
+                    },
+                    "submitters": {
+                      "type": "array",
+                      "description": "Submitters created for this signing session.",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "integer"
+                          },
+                          "submission_id": {
+                            "type": "integer"
+                          },
+                          "uuid": {
+                            "type": "string"
+                          },
+                          "email": {
+                            "type": "string"
+                          },
+                          "slug": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "completed_at": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "role": {
+                            "type": "string"
+                          },
+                          "embed_src": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "documents_url": {
+                      "type": "string",
+                      "description": "API URL to download completed signing-session documents."
+                    },
+                    "status_url": {
+                      "type": "string",
+                      "description": "API URL to poll this signing session status."
+                    },
+                    "created_at": {
+                      "type": "string"
+                    },
+                    "updated_at": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
           }
         }
       }

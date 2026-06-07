@@ -8,6 +8,7 @@ class SubmitFormController < ApplicationController
   skip_authorization_check
 
   before_action :load_submitter, only: %i[show update completed]
+  before_action :set_embed_frame_headers, only: %i[show completed]
   before_action :maybe_redirect_delegated, only: %i[show completed]
   before_action :maybe_render_locked_page, only: :show
   before_action :maybe_require_link_2fa, only: %i[show]
@@ -73,6 +74,10 @@ class SubmitFormController < ApplicationController
 
     Submitters::SubmitValues.call(@submitter, params, request)
 
+    if params[:completed] == 'true' && @submitter.submission.source_embed?
+      return render json: embed_completion_response(@submitter.reload)
+    end
+
     head :ok
   rescue Submitters::SubmitValues::RequiredFieldError => e
     Rollbar.warning("Required field #{@submitter.id}: #{e.message}") if defined?(Rollbar)
@@ -131,8 +136,28 @@ class SubmitFormController < ApplicationController
     @submitter = Submitter.find_by(slug: params[:slug] || params[:submit_form_slug])
   end
 
+  def set_embed_frame_headers
+    return unless @submitter&.submission&.source_embed?
+
+    origin = @submitter.submission.preferences['embed_origin'].presence
+
+    return if origin.blank?
+
+    response.headers.delete('X-Frame-Options')
+    request.content_security_policy&.frame_ancestors(:self, origin)
+  end
+
   def build_attachments_index(submission)
     ActiveStorage::Attachment.where(record: submission.submitters, name: :attachments)
                              .preload(:blob).index_by(&:uuid)
+  end
+
+  def embed_completion_response(submitter)
+    submission = submitter.submission
+
+    {
+      submitter: Submitters::SerializeForApi.call(submitter, with_documents: false, with_urls: true, params:),
+      signing_session: SigningSessions::SerializeForApi.call(submission, params:)
+    }
   end
 end

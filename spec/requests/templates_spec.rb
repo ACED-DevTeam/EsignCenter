@@ -427,8 +427,8 @@ describe 'Templates API' do
     end
 
     it 'rejects documents that exceed the size limit' do
-      stub_const('Api::TemplatesController::MAX_DOCUMENT_SIZE', 8)
-      stub_const('Api::TemplatesController::MAX_ENCODED_DOCUMENT_SIZE', 64)
+      stub_const('Templates::CreateFromApi::MAX_DOCUMENT_SIZE', 8)
+      stub_const('Templates::CreateFromApi::MAX_ENCODED_DOCUMENT_SIZE', 64)
 
       post '/api/templates', headers: { 'x-auth-token': author.access_token.token }, params: {
         documents: [{ file: Base64.encode64('this is definitely more than eight bytes') }]
