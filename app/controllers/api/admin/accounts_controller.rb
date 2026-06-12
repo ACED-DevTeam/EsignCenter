@@ -1,0 +1,103 @@
+# frozen_string_literal: true
+
+module Api
+  module Admin
+    # Provisioning endpoint for trusted upstream applications (e.g. a CRM that
+    # manages firm workspaces). Creates an isolated account with an admin user,
+    # API access token, per-account e-sign certificates and an optional webhook
+    # subscription in a single call.
+    #
+    # Guarded by ADMIN_PROVISION_TOKEN: requests must send the exact token in
+    # the X-Admin-Token header. The endpoint is disabled unless the env var is
+    # configured.
+    class AccountsController < ApiBaseController
+      skip_before_action :authenticate_user!
+      skip_authorization_check
+
+      before_action :authenticate_admin_token!
+
+      DEFAULT_WEBHOOK_EVENTS = %w[form.completed form.declined submission.completed submission.expired].freeze
+
+      def create
+        account = nil
+        user = nil
+        webhook_url = nil
+
+        ApplicationRecord.transaction do
+          account = Account.create!(
+            name: account_params[:name].presence || 'New Account',
+            timezone: Accounts.normalize_timezone(account_params[:timezone].presence || 'UTC'),
+            locale: account_params[:locale].presence || 'en-US'
+          )
+
+          user = account.users.create!(
+            email: account_params[:email].to_s.strip.downcase,
+            password: SecureRandom.base58(24),
+            first_name: account_params[:first_name].presence || 'Admin',
+            last_name: account_params[:last_name].presence || 'User',
+            role: User::ADMIN_ROLE
+          )
+
+          account.encrypted_configs.create!(
+            key: EncryptedConfig::ESIGN_CERTS_KEY,
+            value: GenerateCertificate.call.transform_values(&:to_pem)
+          )
+
+          webhook_url = create_webhook_url(account)
+        end
+
+        render json: {
+          account_id: account.id,
+          account_uuid: account.uuid,
+          user_id: user.id,
+          email: user.email,
+          api_token: user.access_token.token,
+          webhook_url_id: webhook_url&.id
+        }, status: :created
+      rescue ActiveRecord::RecordInvalid => e
+        render json: { error: e.record.errors.full_messages.join(', ') }, status: :unprocessable_content
+      end
+
+      private
+
+      def authenticate_admin_token!
+        configured_token = ENV.fetch('ADMIN_PROVISION_TOKEN', nil)
+
+        if configured_token.blank?
+          return render json: { error: 'Account provisioning is not enabled' }, status: :forbidden
+        end
+
+        provided_token = request.headers['X-Admin-Token'].to_s
+
+        return if provided_token.present? &&
+                  ActiveSupport::SecurityUtils.secure_compare(provided_token, configured_token)
+
+        render json: { error: 'Not authenticated' }, status: :unauthorized
+      end
+
+      def create_webhook_url(account)
+        return if webhook_params[:url].blank?
+
+        events = Array(webhook_params[:events]) & WebhookUrl::EVENTS
+
+        account.webhook_urls.create!(
+          url: webhook_params[:url],
+          events: events.presence || DEFAULT_WEBHOOK_EVENTS
+        )
+      end
+
+      def account_params
+        params.permit(:name, :email, :first_name, :last_name, :timezone, :locale)
+      end
+
+      def webhook_params
+        @webhook_params ||=
+          if params[:webhook].present?
+            params.require(:webhook).permit(:url, events: [])
+          else
+            {}
+          end
+      end
+    end
+  end
+end

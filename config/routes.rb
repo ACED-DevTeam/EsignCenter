@@ -24,11 +24,15 @@ Rails.application.routes.draw do
   end
 
   namespace :api, defaults: { format: :json } do
+    namespace :admin do
+      resources :accounts, only: %i[create]
+    end
     resource :user, only: %i[show]
     resources :attachments, only: %i[create]
     resources :submitter_email_clicks, only: %i[create]
     resources :submitter_form_views, only: %i[create]
     resources :submitters, only: %i[index show update]
+    resources :template_builder_sessions, only: %i[create show]
     resources :signing_sessions, only: %i[create show]
     resources :submissions, only: %i[index show create destroy] do
       resources :documents, only: %i[index], controller: 'submission_documents'
@@ -218,6 +222,11 @@ Rails.application.routes.draw do
   match '/mcp', to: 'mcp#call', via: %i[get post]
 
   get '/js/:filename', to: 'embed_scripts#show', as: :embed_script
+  get '/embed/template_builder/:token', to: 'embed_template_builder#show', as: :embed_template_builder
+  put '/embed/template_builder/:token/templates/:template_id', to: 'embed_template_builder#update_template'
+  get '/embed/template_builder/:token/templates/:template_id/documents', to: 'embed_template_builder#documents'
+  post '/embed/template_builder/:token/templates/:template_id/documents', to: 'embed_template_builder#create_documents'
+  post '/embed/template_builder/:token/templates/:template_id/detect_fields', to: 'embed_template_builder#detect_fields'
 
   ActiveSupport.run_load_hooks(:routes, self)
 end
