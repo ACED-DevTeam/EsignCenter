@@ -37,7 +37,7 @@ module Templates
 
       fields, annots_index = build_fields_with_pages(pdf)
 
-      fields.filter_map do |field|
+      acro_fields = fields.filter_map do |field|
         areas = Array.wrap(field[:Kids] || field).filter_map do |child_field|
           page = annots_index[child_field.hash]
 
@@ -109,12 +109,39 @@ module Templates
           **field_properties
         }
       end
+
+      deduplicate_field_names(acro_fields)
     rescue StandardError => e
       raise if Rails.env.local?
 
       Rollbar.error(e) if defined?(Rollbar)
 
       []
+    end
+
+    # Forms commonly repeat a field name across pages (mirrored SSN boxes,
+    # second email box, etc.). Keep names unique so per-name prefill values
+    # land on every box deterministically: "EMAIL ADDRESS", "EMAIL ADDRESS 2".
+    def deduplicate_field_names(acro_fields)
+      seen = Hash.new(0)
+
+      acro_fields.each do |field|
+        name = field[:name].to_s
+
+        next if name.blank?
+
+        seen[name] += 1
+        field[:name] = "#{name} #{seen[name]}" if seen[name] > 1
+      end
+
+      acro_fields
+    end
+
+    def sanitize_full_field_name(full_name)
+      segment = full_name.to_s.split('.').last.to_s
+      segment = segment.gsub(/\[\d+\]/, '').tr('_', ' ').squish
+
+      segment if segment.match?(FIELD_NAME_REGEXP)
     end
 
     def correct_coordinates(x_coord, y_coord, shift, media_box_start)
@@ -126,6 +153,11 @@ module Templates
 
     def build_field_properties(field)
       field_name = field.full_field_name if field.full_field_name.to_s.match?(FIELD_NAME_REGEXP)
+
+      # XFA-style names ("form1[0].#subform[3].Veterans_First_Name[0]") fail
+      # the plain-name check above; derive a readable name from the last
+      # segment instead of dropping it — upstream apps key prefill by name.
+      field_name ||= sanitize_full_field_name(field.full_field_name)
 
       field_name = field_name&.encode('utf-8', invalid: :replace, undef: :replace, replace: '')
 

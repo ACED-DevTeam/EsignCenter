@@ -24,19 +24,8 @@ module Api
         webhook_url = nil
 
         ApplicationRecord.transaction do
-          account = Account.create!(
-            name: account_params[:name].presence || 'New Account',
-            timezone: Accounts.normalize_timezone(account_params[:timezone].presence || 'UTC'),
-            locale: account_params[:locale].presence || 'en-US'
-          )
-
-          user = account.users.create!(
-            email: account_params[:email].to_s.strip.downcase,
-            password: SecureRandom.base58(24),
-            first_name: account_params[:first_name].presence || 'Admin',
-            last_name: account_params[:last_name].presence || 'User',
-            role: User::ADMIN_ROLE
-          )
+          account = create_account
+          user = create_admin_user(account)
 
           account.encrypted_configs.create!(
             key: EncryptedConfig::ESIGN_CERTS_KEY,
@@ -59,6 +48,24 @@ module Api
       end
 
       private
+
+      def create_account
+        Account.create!(
+          name: account_params[:name].presence || 'New Account',
+          timezone: Accounts.normalize_timezone(account_params[:timezone].presence || 'UTC'),
+          locale: account_params[:locale].presence || 'en-US'
+        )
+      end
+
+      def create_admin_user(account)
+        account.users.create!(
+          email: account_params[:email].to_s.strip.downcase,
+          password: SecureRandom.base58(24),
+          first_name: account_params[:first_name].presence || 'Admin',
+          last_name: account_params[:last_name].presence || 'User',
+          role: User::ADMIN_ROLE
+        )
+      end
 
       def authenticate_admin_token!
         configured_token = ENV.fetch('ADMIN_PROVISION_TOKEN', nil)
