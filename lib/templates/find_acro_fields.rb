@@ -123,15 +123,27 @@ module Templates
     # second email box, etc.). Keep names unique so per-name prefill values
     # land on every box deterministically: "EMAIL ADDRESS", "EMAIL ADDRESS 2".
     def deduplicate_field_names(acro_fields)
-      seen = Hash.new(0)
+      used = Hash.new(0)
 
       acro_fields.each do |field|
         name = field[:name].to_s
 
         next if name.blank?
 
-        seen[name] += 1
-        field[:name] = "#{name} #{seen[name]}" if seen[name] > 1
+        if used[name].zero?
+          used[name] += 1
+          next
+        end
+
+        # Find a free "<name> <n>" — renamed copies register in `used` too,
+        # so an original ["A", "A", "A 2"] can't collide.
+        suffix = used[name] + 1
+        suffix += 1 while used["#{name} #{suffix}"].positive?
+
+        new_name = "#{name} #{suffix}"
+        used[name] += 1
+        used[new_name] += 1
+        field[:name] = new_name
       end
 
       acro_fields
