@@ -1,0 +1,80 @@
+# Local development stack for DocuSeal — with hot reload.
+#
+#   Start:   docker compose -f docker-compose.dev.yml up
+#   Stop:    Ctrl+C   (or: docker compose -f docker-compose.dev.yml down)
+#   Open:    http://localhost:3015
+#
+# Your code in this folder is mounted live into the container, so:
+#   * Ruby changes (controllers / models / lib / views) reload on the next page load
+#   * JavaScript / Vue / CSS changes recompile automatically (just refresh the browser)
+#
+# This is SEPARATE from your production setup. Deploys still use ./Dockerfile and
+# are unaffected. This dev app also uses its own database, so it has its own
+# login/account — it will not touch your existing local container's data.
+#
+# After changing Gemfile or package.json, rebuild once:
+#   docker compose -f docker-compose.dev.yml up --build
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "3015:3000"
+    volumes:
+      - .:/app                              # your live source code
+      - /app/node_modules                   # keep the container's Linux-built JS packages
+      - docuseal_dev_data:/data/docuseal    # uploads + queue data (kept off your source tree)
+    environment:
+      RAILS_ENV: development
+      NODE_ENV: development
+      # Connect to the Postgres service below (development mode requires Postgres).
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      # Stable dev secret (also used to derive the embedded Redis password).
+      SECRET_KEY_BASE: docuseal_dev_secret_key_base_change_me_0000000000000000000000
+      # Where uploads and the embedded Redis store their files.
+      WORKDIR: /data/docuseal
+      # Used to build the correct links the app shows you.
+      HOST: localhost:3015
+      # The browser-reachable origin of THIS fork. URL helpers (embed builder
+      # src, signing-session links) are built from APP_URL — NOT from HOST — and
+      # default to :3000 (the container-internal port) when unset, which the
+      # browser can't reach. Must be the host-mapped port (3015 in this compose).
+      APP_URL: http://localhost:3015
+      # Enable upstream auto-provisioning so the CRM can silently create an
+      # isolated signing account per firm. Must match va-claims'
+      # DOCUSEAL_ADMIN_PROVISION_TOKEN. Dev-only value.
+      ADMIN_PROVISION_TOKEN: dev_prov_2d09eef10c6d683ca1236fe2f3196e7d20688552
+    # On boot: put the ML model + signature font in place (the live mount hides
+    # the image's copies), set up the database, then start the app. The app's
+    # own Puma config starts Redis + background jobs inside this same container.
+    command: >
+      sh -c "cp -n /opt/docuseal/model.onnx tmp/model.onnx 2>/dev/null || true;
+             mkdir -p public/fonts && ln -sf /fonts/DancingScript-Regular.otf public/fonts/DancingScript-Regular.otf;
+             bundle exec rails db:prepare &&
+             bundle exec rails server -b 0.0.0.0 -p 3000"
+
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: docuseal_dev
+    volumes:
+      - docuseal_dev_pg:/var/lib/postgresql/18/docker
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  docuseal_dev_data:
+  docuseal_dev_pg:
