@@ -62,6 +62,10 @@
       <% end %>
     <% end %>
   <% elsif field['type'] == 'cells' && area['cell_w'].to_f > 0.0 %>
+    <% if value == '{{date}}' && field.dig('preferences', 'format').present? %>
+      <% tz = local_assigns[:with_submitter_timezone] ? (submitter&.timezone.presence || local_assigns[:timezone]) : local_assigns[:timezone] %>
+      <% value = TimeUtils.format_date_preview(field.dig('preferences', 'format'), local_assigns[:locale], tz) %>
+    <% end %>
     <% cell_width = area['cell_w'].to_f / area['w'] * 100 %>
     <div class="w-full flex <%= valign == 'top' ? 'items-start' : (valign == 'bottom' ? 'items-end' : 'items-center') %> <%= 'justify-end' if align == 'right' %>">
       <% (0..(area['w'].to_f / area['cell_w']).ceil).each do |index| %>

@@ -252,11 +252,25 @@ module Submitters
           if v == '{{date}}'
             field = submitter.submission.fields_uuid_index[uuid]
 
-            TimeUtils.current_date_value(field&.dig('preferences', 'format'), submitter.account.timezone)
+            current_date_value_for_field(field, submitter.submission)
           else
             v
           end
       end
+    end
+
+    def current_date_value_for_field(field, submission)
+      format = field&.dig('preferences', 'format')
+      timezone = submission.account.timezone
+
+      return TimeUtils.current_date_value(format, timezone) unless field&.dig('type') == 'cells' && format.present?
+
+      TimeUtils.format_date_string(
+        TimeUtils.current_date_value(nil, timezone),
+        format,
+        submission.account.locale,
+        timezone:
+      )
     end
 
     def template_default_value_for_submitter(value, submitter, with_time: false, field: nil)
@@ -424,7 +438,7 @@ module Submitters
         when 'hour', 'minute', 'day', 'month', 'year'
           with_time ? Time.current.in_time_zone(submission.account.timezone).strftime(STRFTIME_MAP[key]) : e
         when 'date'
-          with_time ? TimeUtils.current_date_value(field&.dig('preferences', 'format'), submission.account.timezone) : e
+          with_time ? current_date_value_for_field(field, submission) : e
         when 'role', 'email', 'phone', 'name'
           attrs[key] || e
         else

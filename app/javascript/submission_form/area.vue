@@ -196,7 +196,7 @@
       :class="{ 'justify-end': field.preferences?.align === 'right', ...alignClasses, ...fontClasses }"
     >
       <div
-        v-for="(char, index) in modelValue"
+        v-for="(char, index) in formattedCellsValue"
         :key="index"
         class="text-center flex-none"
         :style="{ width: (area.cell_w / area.w * 100) + '%' }"
@@ -536,6 +536,17 @@ export default {
       } else {
         return ''
       }
+    },
+    formattedCellsValue () {
+      if (this.field.type === 'cells' && this.modelValue === '{{date}}' && this.field.preferences?.format) {
+        try {
+          return this.formatDate(new Date(), this.field.preferences.format)
+        } catch {
+          return this.modelValue
+        }
+      }
+
+      return this.modelValue || ''
     },
     attachments () {
       if (this.field.type === 'file') {
