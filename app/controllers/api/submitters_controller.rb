@@ -59,6 +59,12 @@ module Api
 
       assign_submitter_attrs(@submitter, normalized_params)
 
+      # Changing the DELIVERY EMAIL must revoke the old bearer link: the slug
+      # is the credential in the signing URL, and the whole point of fixing a
+      # typo'd address is that the wrong mailbox loses access. The response
+      # serializes with_urls, so the caller receives the fresh slug/URL.
+      @submitter.slug = SecureRandom.base58(14) if @submitter.will_save_change_to_email?
+
       ApplicationRecord.transaction do
         Submissions::NormalizeParamUtils.save_default_value_attachments!(new_attachments, [@submitter])
 

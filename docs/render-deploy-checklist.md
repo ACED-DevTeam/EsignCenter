@@ -48,6 +48,12 @@ Open `https://esign.<your-domain>/` — you should see the EsignCenter setup
 page. Create the admin account and keep the password in your password
 manager. This admin login is for YOU only; firms never see it.
 
+**Order matters when UPGRADING:** always deploy this fork's update **before**
+the app's update. An older fork can't attach the webhook auth header the
+newer app expects, which would leave newly-connected firms with silent,
+non-authenticating webhooks (statuses would ride the 10-minute re-check
+only, and the app logs an `[esign-provision]` error).
+
 ## 5. Point the app at it
 
 In the **VA Claim Net** Render environment group, fill in:
