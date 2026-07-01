@@ -182,8 +182,8 @@
             class="flex"
           >
             <button
-              class="base-button !rounded-r-none !pr-2"
-              :class="{ disabled: isSaving }"
+              class="base-button"
+              :class="[{ disabled: isSaving }, embedded ? '' : '!rounded-r-none !pr-2']"
               v-bind="isSaving ? { disabled: true } : {}"
               @click.prevent="onSaveClick"
             >
@@ -201,6 +201,7 @@
               </span>
             </button>
             <div
+              v-if="!embedded"
               class="dropdown dropdown-end"
               :class="{ 'dropdown-open': isDownloading }"
             >
@@ -743,6 +744,11 @@ export default {
       type: Object,
       required: true
     },
+    embedded: {
+      type: Boolean,
+      required: false,
+      default: false
+    },
     i18n: {
       type: Object,
       required: false,
@@ -923,6 +929,13 @@ export default {
       }
     },
     onChange: {
+      type: Function,
+      required: false,
+      default () {
+        return () => {}
+      }
+    },
+    onError: {
       type: Function,
       required: false,
       default () {
@@ -3151,7 +3164,13 @@ export default {
               this.captureRevision()
             }
 
-            window.Turbo.visit(`/templates/${this.template.id}`)
+            if (!this.embedded) {
+              window.Turbo.visit(`/templates/${this.template.id}`)
+            }
+          }).catch((error) => {
+            if (!this.embedded) {
+              alert(error.message)
+            }
           }).finally(() => {
             this.isSaving = false
           })
@@ -3416,7 +3435,16 @@ export default {
           }
         }),
         headers: { 'Content-Type': 'application/json' }
-      }).then(() => {
+      }).then(async (response) => {
+        if (!response.ok) {
+          const message = await response.text()
+          const error = new Error(message || `Save failed with status ${response.status}`)
+
+          this.onError(error, { status: response.status })
+
+          throw error
+        }
+
         if (this.onSave) {
           this.onSave(this.template)
         }

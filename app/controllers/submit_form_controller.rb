@@ -6,6 +6,7 @@ class SubmitFormController < ApplicationController
   around_action :with_browser_locale, only: %i[show completed success delegated]
   skip_before_action :authenticate_user!
   skip_authorization_check
+  skip_before_action :verify_authenticity_token, only: :update
 
   before_action :load_submitter, only: %i[show update completed]
   before_action :set_embed_frame_headers, only: %i[show completed]
@@ -139,12 +140,13 @@ class SubmitFormController < ApplicationController
   def set_embed_frame_headers
     return unless @submitter&.submission&.source_embed?
 
-    origin = @submitter.submission.preferences['embed_origin'].presence
+    prefs = @submitter.submission.preferences || {}
+    origins = (Array(prefs['embed_origins']).presence || Array(prefs['embed_origin'])).reject(&:blank?)
 
-    return if origin.blank?
+    return if origins.blank?
 
     response.headers.delete('X-Frame-Options')
-    request.content_security_policy&.frame_ancestors(:self, origin)
+    request.content_security_policy&.frame_ancestors(:self, *origins)
   end
 
   def build_attachments_index(submission)

@@ -3,16 +3,16 @@
 ### Example Code
 
 ```javascript
-<script src="https://docuseal.com/js/builder.js"></script>
+<script src="https://your-instance.example.com/js/builder.js"></script>
 
-<docuseal-builder
+<esigncenter-builder
   data-token="<%= JWT.encode({
     user_email: '{{admin_user_email}}',
     integration_email: '{{signer_email}}',
     name: 'Integration W-9 Test Form',
     document_urls: ['https://www.irs.gov/pub/irs-pdf/fw9.pdf'],
   }, '{{api_key}}') %>">
-</docuseal-builder>
+</esigncenter-builder>
 
 ```
 
@@ -74,7 +74,7 @@
   "data-host": {
     "type": "string",
     "required": false,
-    "description": "DocuSeal host domain name. Only use this attribute if you are using the on-premises DocuSeal installation or docuseal.eu Cloud.",
+    "description": "EsignCenter host domain name, e.g. your-instance.example.com.",
     "example": "yourdomain.com"
   },
   "data-roles": {
@@ -487,31 +487,31 @@
     "type": "event",
     "required": false,
     "description": "Custom event to be triggered on loading the form builder template data.",
-    "example": "document.querySelector('docuseal-builder').addEventListener('load', (e) => e.detail)"
+    "example": "document.querySelector('esigncenter-builder').addEventListener('load', (e) => e.detail)"
   },
   "upload": {
     "type": "event",
     "required": false,
     "description": "Custom event to be triggered on uploading a document to the template.",
-    "example": "document.querySelector('docuseal-builder').addEventListener('upload', (e) => e.detail)"
+    "example": "document.querySelector('esigncenter-builder').addEventListener('upload', (e) => e.detail)"
   },
   "send": {
     "type": "event",
     "required": false,
     "description": "Custom event to be triggered on sending documents for signature to recipients.",
-    "example": "document.querySelector('docuseal-builder').addEventListener('send', (e) => e.detail)"
+    "example": "document.querySelector('esigncenter-builder').addEventListener('send', (e) => e.detail)"
   },
   "change": {
     "type": "event",
     "required": false,
     "description": "Custom event to be triggered every time a change to the template is made.",
-    "example": "document.querySelector('docuseal-builder').addEventListener('change', (e) => e.detail)"
+    "example": "document.querySelector('esigncenter-builder').addEventListener('change', (e) => e.detail)"
   },
   "save": {
     "type": "event",
     "required": false,
     "description": "Custom event to be triggered on saving changes of the template form.",
-    "example": "document.querySelector('docuseal-builder').addEventListener('save', (e) => e.detail)"
+    "example": "document.querySelector('esigncenter-builder').addEventListener('save', (e) => e.detail)"
   }
 }
 ```

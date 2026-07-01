@@ -55,6 +55,7 @@ module Api
         :completed_redirect_url, :send_email, :send_sms, :reply_to, :bcc_completed,
         :expire_at, :order, :submitters_order,
         {
+          embed_origins: [],
           metadata: {},
           variables: {},
           message: %i[subject body],

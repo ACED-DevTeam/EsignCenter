@@ -32,6 +32,15 @@ module Api
             value: GenerateCertificate.call.transform_values(&:to_pem)
           )
 
+          # Audit stamping ON by default for provisioned firm accounts: every
+          # signed document gets the per-signature ID/reason stamp and the
+          # "Document ID" page footer. Upstream firms never sign in to the
+          # signing app to toggle this themselves, so it must be set here.
+          account.account_configs.create!(
+            key: AccountConfig::WITH_SIGNATURE_ID,
+            value: true
+          )
+
           webhook_url = create_webhook_url(account)
         end
 

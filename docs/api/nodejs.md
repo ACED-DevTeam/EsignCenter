@@ -5,7 +5,7 @@ The API endpoint provides the ability to retrieve a list of available submission
 ```nodejs
 const fetch = require("node-fetch");
 
-const resp = await fetch("https://api.docuseal.com/submissions", {
+const resp = await fetch("https://your-instance.example.com/api/submissions", {
   method: "GET",
   headers: {
     "X-Auth-Token": "API_KEY"
@@ -127,7 +127,7 @@ The API endpoint provides the functionality to retrieve information about a subm
 ```nodejs
 const fetch = require("node-fetch");
 
-const resp = await fetch("https://api.docuseal.com/submissions/1001", {
+const resp = await fetch("https://your-instance.example.com/api/submissions/1001", {
   method: "GET",
   headers: {
     "X-Auth-Token": "API_KEY"
@@ -171,7 +171,7 @@ This endpoint returns a list of partially filled documents for a submission. If 
 ```nodejs
 const fetch = require("node-fetch");
 
-const resp = await fetch("https://api.docuseal.com/submissions/1001/documents", {
+const resp = await fetch("https://your-instance.example.com/api/submissions/1001/documents", {
   method: "GET",
   headers: {
     "X-Auth-Token": "API_KEY"
@@ -215,7 +215,7 @@ This API endpoint allows you to create signature requests (submissions) for a do
 ```nodejs
 const fetch = require("node-fetch");
 
-const resp = await fetch("https://api.docuseal.com/submissions", {
+const resp = await fetch("https://your-instance.example.com/api/submissions", {
   method: "POST",
   headers: {
     "X-Auth-Token": "API_KEY"
@@ -643,7 +643,7 @@ The API endpoint provides the functionality to create one-off submission request
 ```nodejs
 const fetch = require("node-fetch");
 
-const resp = await fetch("https://api.docuseal.com/submissions/pdf", {
+const resp = await fetch("https://your-instance.example.com/api/submissions/pdf", {
   method: "POST",
   headers: {
     "X-Auth-Token": "API_KEY"
@@ -1233,7 +1233,7 @@ The API endpoint provides functionality to create a one-off submission request f
 ```nodejs
 const fetch = require("node-fetch");
 
-const resp = await fetch("https://api.docuseal.com/submissions/docx", {
+const resp = await fetch("https://your-instance.example.com/api/submissions/docx", {
   method: "POST",
   headers: {
     "X-Auth-Token": "API_KEY"
@@ -1710,7 +1710,7 @@ This API endpoint allows you to create a one-off submission request document usi
 ```nodejs
 const fetch = require("node-fetch");
 
-const resp = await fetch("https://api.docuseal.com/submissions/html", {
+const resp = await fetch("https://your-instance.example.com/api/submissions/html", {
   method: "POST",
   headers: {
     "X-Auth-Token": "API_KEY"
@@ -2207,7 +2207,7 @@ The API endpoint allows you to archive a submission.
 ```nodejs
 const fetch = require("node-fetch");
 
-const resp = await fetch("https://api.docuseal.com/submissions/1001", {
+const resp = await fetch("https://your-instance.example.com/api/submissions/1001", {
   method: "DELETE",
   headers: {
     "X-Auth-Token": "API_KEY"
@@ -2251,7 +2251,7 @@ The API endpoint provides the ability to retrieve a list of submitters.
 ```nodejs
 const fetch = require("node-fetch");
 
-const resp = await fetch("https://api.docuseal.com/submitters", {
+const resp = await fetch("https://your-instance.example.com/api/submitters", {
   method: "GET",
   headers: {
     "X-Auth-Token": "API_KEY"
@@ -2371,7 +2371,7 @@ The API endpoint provides functionality to retrieve information about a submitte
 ```nodejs
 const fetch = require("node-fetch");
 
-const resp = await fetch("https://api.docuseal.com/submitters/500001", {
+const resp = await fetch("https://your-instance.example.com/api/submitters/500001", {
   method: "GET",
   headers: {
     "X-Auth-Token": "API_KEY"
@@ -2415,7 +2415,7 @@ The API endpoint allows you to update submitter details, pre-fill or update fiel
 ```nodejs
 const fetch = require("node-fetch");
 
-const resp = await fetch("https://api.docuseal.com/submitters/500001", {
+const resp = await fetch("https://your-instance.example.com/api/submitters/500001", {
   method: "PUT",
   headers: {
     "X-Auth-Token": "API_KEY"
@@ -2752,7 +2752,7 @@ The API endpoint provides the ability to retrieve a list of available document t
 ```nodejs
 const fetch = require("node-fetch");
 
-const resp = await fetch("https://api.docuseal.com/templates", {
+const resp = await fetch("https://your-instance.example.com/api/templates", {
   method: "GET",
   headers: {
     "X-Auth-Token": "API_KEY"
@@ -2859,7 +2859,7 @@ The API endpoint provides the functionality to retrieve information about a docu
 ```nodejs
 const fetch = require("node-fetch");
 
-const resp = await fetch("https://api.docuseal.com/templates/1000001", {
+const resp = await fetch("https://your-instance.example.com/api/templates/1000001", {
   method: "GET",
   headers: {
     "X-Auth-Token": "API_KEY"
@@ -2904,7 +2904,7 @@ The API endpoint provides the functionality to create a fillable document templa
 ```nodejs
 const fetch = require("node-fetch");
 
-const resp = await fetch("https://api.docuseal.com/templates/pdf", {
+const resp = await fetch("https://your-instance.example.com/api/templates/pdf", {
   method: "POST",
   headers: {
     "X-Auth-Token": "API_KEY"
@@ -3279,7 +3279,7 @@ The API endpoint provides the functionality to create a fillable document templa
 ```nodejs
 const fetch = require("node-fetch");
 
-const resp = await fetch("https://api.docuseal.com/templates/docx", {
+const resp = await fetch("https://your-instance.example.com/api/templates/docx", {
   method: "POST",
   headers: {
     "X-Auth-Token": "API_KEY"
@@ -3621,7 +3621,7 @@ The API endpoint provides the functionality to seamlessly generate a PDF documen
 ```nodejs
 const fetch = require("node-fetch");
 
-const resp = await fetch("https://api.docuseal.com/templates/html", {
+const resp = await fetch("https://your-instance.example.com/api/templates/html", {
   method: "POST",
   headers: {
     "X-Auth-Token": "API_KEY"
@@ -3754,7 +3754,7 @@ The API endpoint allows you to clone existing template into a new template.
 ```nodejs
 const fetch = require("node-fetch");
 
-const resp = await fetch("https://api.docuseal.com/templates/1000001/clone", {
+const resp = await fetch("https://your-instance.example.com/api/templates/1000001/clone", {
   method: "POST",
   headers: {
     "X-Auth-Token": "API_KEY"
@@ -3826,7 +3826,7 @@ The API endpoint allows you to merge multiple templates with documents and field
 ```nodejs
 const fetch = require("node-fetch");
 
-const resp = await fetch("https://api.docuseal.com/templates/merge", {
+const resp = await fetch("https://your-instance.example.com/api/templates/merge", {
   method: "POST",
   headers: {
     "X-Auth-Token": "API_KEY"
@@ -3921,7 +3921,7 @@ The API endpoint provides the functionality to move a document template to a dif
 ```nodejs
 const fetch = require("node-fetch");
 
-const resp = await fetch("https://api.docuseal.com/templates/1000001", {
+const resp = await fetch("https://your-instance.example.com/api/templates/1000001", {
   method: "PUT",
   headers: {
     "X-Auth-Token": "API_KEY"
@@ -4006,7 +4006,7 @@ The API endpoint allows you to add, remove or replace documents in the template 
 ```nodejs
 const fetch = require("node-fetch");
 
-const resp = await fetch("https://api.docuseal.com/templates/1000001/documents", {
+const resp = await fetch("https://your-instance.example.com/api/templates/1000001/documents", {
   method: "PUT",
   headers: {
     "X-Auth-Token": "API_KEY"
@@ -4112,7 +4112,7 @@ The API endpoint allows you to archive a document template.
 ```nodejs
 const fetch = require("node-fetch");
 
-const resp = await fetch("https://api.docuseal.com/templates/1000001", {
+const resp = await fetch("https://your-instance.example.com/api/templates/1000001", {
   method: "DELETE",
   headers: {
     "X-Auth-Token": "API_KEY"

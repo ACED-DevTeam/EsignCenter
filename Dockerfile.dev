@@ -1,0 +1,91 @@
+# Development image for DocuSeal.
+#
+# Purpose: run the app in Rails "development mode" with your source code mounted
+# in live, so code changes hot-reload without rebuilding the image.
+#
+# This file is for LOCAL DEVELOPMENT ONLY. Production deploys still use the
+# regular ./Dockerfile and are completely unaffected by anything here.
+#
+# Used by docker-compose.dev.yml — see that file for how to start it.
+
+# --- Stage 1: download fonts + native PDF/ML files (same as production) --------
+FROM ruby:4.0.5-alpine AS download
+
+WORKDIR /fonts
+
+RUN apk --no-cache add wget && \
+    wget https://github.com/satbyy/go-noto-universal/releases/download/v7.0/GoNotoKurrent-Regular.ttf && \
+    wget https://github.com/satbyy/go-noto-universal/releases/download/v7.0/GoNotoKurrent-Bold.ttf && \
+    wget https://github.com/impallari/DancingScript/raw/master/fonts/DancingScript-Regular.otf && \
+    wget https://raw.githubusercontent.com/impallari/DancingScript/master/OFL.txt && \
+    wget https://raw.githubusercontent.com/notofonts/noto-fonts/refs/heads/main/LICENSE && \
+    wget -O /model.onnx "https://github.com/docusealco/fields-detection/releases/download/2.0.0/model_704_int8.onnx" && \
+    wget -O pdfium-linux.tgz "https://github.com/bblanchon/pdfium-binaries/releases/latest/download/pdfium-linux-musl-$(uname -m | sed 's/x86_64/x64/;s/aarch64/arm64/').tgz" && \
+    mkdir -p /pdfium-linux && \
+    tar -xzf pdfium-linux.tgz -C /pdfium-linux
+
+# --- Stage 2: the development app image ---------------------------------------
+FROM ruby:4.0.5-alpine AS app
+
+ENV RAILS_ENV=development
+ENV NODE_ENV=development
+ENV OPENSSL_CONF=/etc/openssl_legacy.cnf
+
+WORKDIR /app
+
+# System libraries: vips (images), pdfium (PDF), onnxruntime (field detection),
+# redis (embedded background-job queue), node/yarn (JS build). The build tools
+# are kept in place (unlike production) so gems and JS packages can be rebuilt
+# inside the container if you add dependencies later.
+RUN apk add --no-cache libpq vips redis onnxruntime nodejs yarn git build-base libpq-dev yaml-dev postgresql-client && \
+    rm -f /usr/bin/onnx_test_runner /usr/bin/onnxruntime_test
+
+# Enable OpenSSL legacy algorithms (matches the production image).
+RUN echo $'.include = /etc/ssl/openssl.cnf\n\
+\n\
+[provider_sect]\n\
+default = default_sect\n\
+legacy = legacy_sect\n\
+\n\
+[default_sect]\n\
+activate = 1\n\
+\n\
+[legacy_sect]\n\
+activate = 1' >> /etc/openssl_legacy.cnf
+
+# Install ALL Ruby gems, INCLUDING the development/test groups that dev mode
+# needs (bullet, web-console, letter_opener_web, better_html, etc.). Production
+# deliberately skips these; development requires them to boot.
+COPY ./Gemfile ./Gemfile.lock ./
+RUN bundle install && \
+    ln -sf /usr/lib/libonnxruntime.so.1 "$(ruby -e "print Dir[Gem::Specification.find_by_name('onnxruntime').gem_dir + '/vendor/*.so'].first")"
+
+# Install JavaScript dependencies as Linux-native modules baked into the image.
+# (At runtime an anonymous volume keeps these from being clobbered by the
+# host's macOS-built node_modules — see docker-compose.dev.yml.)
+COPY ./package.json ./yarn.lock ./
+RUN yarn install --network-timeout 1000000
+
+# Fonts + native PDF/ML files from the download stage.
+COPY --from=download /fonts/GoNotoKurrent-Regular.ttf /fonts/GoNotoKurrent-Bold.ttf /fonts/DancingScript-Regular.otf /fonts/OFL.txt /fonts/LICENSE /fonts/
+COPY --from=download /pdfium-linux/lib/libpdfium.so /usr/lib/libpdfium.so
+COPY --from=download /pdfium-linux/licenses/pdfium.txt /usr/lib/libpdfium-LICENSE.txt
+# Stashed outside /app because the live source mount hides /app at runtime; the
+# compose start command copies this into tmp/model.onnx on first boot.
+COPY --from=download /model.onnx /opt/docuseal/model.onnx
+
+# System fonts live outside /app, so they survive the live source mount.
+RUN mkdir -p /usr/share/fonts/noto && \
+    ln -sf /fonts/GoNotoKurrent-Regular.ttf /usr/share/fonts/noto/ && \
+    ln -sf /fonts/GoNotoKurrent-Bold.ttf /usr/share/fonts/noto/ && \
+    fc-cache -f && \
+    mkdir -p /data/docuseal
+
+ENV VIPS_MAX_COORD=17000
+ENV VIPS_BLOCK_UNTRUSTED=1
+
+EXPOSE 3000
+
+# Sensible default if run standalone; docker-compose.dev.yml overrides this with
+# database setup + the dev server.
+CMD ["bundle", "exec", "rails", "server", "-b", "0.0.0.0", "-p", "3000"]

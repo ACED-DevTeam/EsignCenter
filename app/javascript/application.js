@@ -158,6 +158,15 @@ safeRegisterElement('template-builder', class extends HTMLElement {
     this.appElem.classList.add('md:h-screen')
 
     const template = reactive(JSON.parse(this.dataset.template))
+    const notifyEmbedParent = (eventName, detail = {}) => {
+      if (!this.dataset.embedOrigin || window.parent === window) return
+
+      window.parent.postMessage({
+        source: 'esigncenter-builder',
+        event: eventName,
+        detail
+      }, this.dataset.embedOrigin)
+    }
 
     this.app = createApp(TemplateBuilder, {
       template,
@@ -172,11 +181,13 @@ safeRegisterElement('template-builder', class extends HTMLElement {
       withLogo: this.dataset.withLogo !== 'false',
       withFieldsDetection: this.dataset.withFieldsDetection === 'true',
       withDetectExistingFields: this.dataset.withDetectExistingFields === 'true',
-      withRevisions: true,
+      withRevisions: this.dataset.withRevisions !== 'false',
       withRevisionsMenu: this.dataset.withRevisionsMenu === 'true',
       editable: this.dataset.editable !== 'false',
       authenticityToken: document.querySelector('meta[name="csrf-token"]')?.content,
-      withCustomFields: true,
+      embedded: this.dataset.embedded === 'true',
+      baseUrl: this.dataset.baseUrl || '',
+      withCustomFields: this.dataset.withCustomFields !== 'false',
       withPayment: this.dataset.withPayment === 'true',
       isPaymentConnected: this.dataset.isPaymentConnected === 'true',
       withFormula: this.dataset.withFormula === 'true',
@@ -186,16 +197,42 @@ safeRegisterElement('template-builder', class extends HTMLElement {
       withDynamicDocuments: this.dataset.withDynamicDocuments === 'true',
       withGoogleDrive: this.dataset.withGoogleDrive === 'true',
       pagePreviewFormat: this.dataset.pagePreviewFormat || '.jpg',
-      withReplaceAndCloneUpload: true,
-      withDownload: true,
+      withReplaceAndCloneUpload: this.dataset.withReplaceAndCloneUpload !== 'false',
+      withDownload: this.dataset.withDownload !== 'false',
       currencies: (this.dataset.currencies || '').split(',').filter(Boolean),
       acceptFileTypes: this.dataset.acceptFileTypes,
-      showTourStartForm: this.dataset.showTourStartForm === 'true'
+      showTourStartForm: this.dataset.showTourStartForm === 'true',
+      onChange: (nextTemplate) => notifyEmbedParent('change', {
+        template: this.buildEmbedTemplateDetail(nextTemplate)
+      }),
+      onSave: (nextTemplate) => notifyEmbedParent('save', {
+        template: this.buildEmbedTemplateDetail(nextTemplate)
+      }),
+      onError: (error, detail = {}) => notifyEmbedParent('error', {
+        message: error.message,
+        ...detail
+      })
     })
 
     this.component = this.app.mount(this.appElem)
 
     this.appendChild(this.appElem)
+
+    notifyEmbedParent('load', {
+      template: this.buildEmbedTemplateDetail(template)
+    })
+  }
+
+  buildEmbedTemplateDetail (template) {
+    return JSON.parse(JSON.stringify({
+      id: template.id,
+      name: template.name,
+      external_id: template.external_id,
+      fields_count: template.fields?.length || 0,
+      submitters: template.submitters || [],
+      status: template.fields?.length ? 'ready' : 'needs_fields',
+      updated_at: template.updated_at
+    }))
   }
 
   onSubmit = (e) => {

@@ -12,16 +12,17 @@ module Templates
       documents.each_with_index do |document, index|
         replaced_document_schema = template.schema[index]
 
-        template.schema[index] = { attachment_uuid: document.uuid, name: document.filename.base }
+        replaced_attachment_uuid = replaced_document_schema&.fetch('attachment_uuid', nil) ||
+                                   replaced_document_schema&.fetch(:attachment_uuid, nil)
+
+        template.schema[index] = { 'attachment_uuid' => document.uuid, 'name' => document.filename.base }
 
         if replaced_document_schema
           template.fields.each do |field|
             next if field['areas'].blank?
 
             field['areas'].each do |area|
-              if area['attachment_uuid'] == replaced_document_schema['attachment_uuid']
-                area['attachment_uuid'] = document.uuid
-              end
+              area['attachment_uuid'] = document.uuid if area['attachment_uuid'] == replaced_attachment_uuid
             end
           end
         end
@@ -34,9 +35,10 @@ module Templates
 
         if index.positive? && pdf_fields.present?
           preview_document = template.schema[index - 1]
+          preview_attachment_uuid = preview_document['attachment_uuid'] || preview_document[:attachment_uuid]
           preview_document_last_field = template.fields.rfind do |f|
             f['areas']&.any? do |a|
-              a['attachment_uuid'] == preview_document[:attachment_uuid]
+              a['attachment_uuid'] == preview_attachment_uuid
             end
           end
 

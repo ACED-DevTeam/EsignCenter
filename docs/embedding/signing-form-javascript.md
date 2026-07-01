@@ -3,16 +3,16 @@
 ### Example Code
 
 ```javascript
-<script src="https://cdn.docuseal.com/js/form.js"></script>
+<script src="https://your-instance.example.com/js/form.js"></script>
 
-<docuseal-form
-  id="docusealForm"
-  data-src="https://docuseal.com/d/{{ template_slug }}"
+<esigncenter-form
+  id="esigncenterForm"
+  data-src="https://your-instance.example.com/d/{{ template_slug }}"
   data-email="{{ signer_email }}">
-</docuseal-form>
+</esigncenter-form>
 
 <script>
-  window.docusealForm.addEventListener('completed', (e) => {
+  window.esigncenterForm.addEventListener('completed', (e) => {
     console.log(e.detail)
   })
 </script>
@@ -240,7 +240,7 @@
     "type": "string",
     "required": false,
     "description": "URL to redirect to after the submission completion.",
-    "example": "https://docuseal.com/success"
+    "example": "https://your-app.example.com/success"
   },
   "data-completed-message-title": {
     "type": "string",
@@ -283,24 +283,24 @@
     "type": "event",
     "required": false,
     "description": "Custom event to be triggered on initializing the form component.",
-    "example": "document.querySelector('docuseal-form').addEventListener('init', () => console.log('init'))"
+    "example": "document.querySelector('esigncenter-form').addEventListener('init', () => console.log('init'))"
   },
   "load": {
     "type": "event",
     "required": false,
     "description": "Custom event to be triggered on loading the form data.",
-    "example": "document.querySelector('docuseal-form').addEventListener('load', (e) => e.detail)"
+    "example": "document.querySelector('esigncenter-form').addEventListener('load', (e) => e.detail)"
   },
   "completed": {
     "type": "event",
     "required": false,
     "description": "Custom event to be triggered after form completion.",
-    "example": "document.querySelector('docuseal-form').addEventListener('completed', (e) => e.detail)"
+    "example": "document.querySelector('esigncenter-form').addEventListener('completed', (e) => e.detail)"
   },
   "declined": {
     "type": "event",
     "description": "Custom event to be triggered after form decline.",
-    "example": "document.querySelector('docuseal-form').addEventListener('declined', (e) => e.detail)"
+    "example": "document.querySelector('esigncenter-form').addEventListener('declined', (e) => e.detail)"
   }
 }
 ```

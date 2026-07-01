@@ -170,7 +170,7 @@ export default {
   computed: {
     basePreviewUrl () {
       if (this.baseUrl) {
-        return new URL(this.baseUrl).origin
+        return new URL(this.baseUrl, window.location.href).origin
       } else {
         return ''
       }

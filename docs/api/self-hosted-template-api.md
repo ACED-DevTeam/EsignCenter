@@ -1,12 +1,12 @@
 # Self‑Hosted E‑Signing API — Integration Guide
 
 This guide explains how to add e‑signing to your own apps (e.g. a VA‑claims app and a
-mortgage app) using **your own self‑hosted DocuSeal**, with **no per‑document fees**.
+mortgage app) using **your own self‑hosted EsignCenter**, with **no per‑document fees**.
 
-> **Important context:** The DocuSeal REST API is part of the open‑source app — it is
-> **not** a paid feature. The per‑document price you may have seen applies only to
-> DocuSeal's hosted cloud at `docuseal.com`. When you run this app on your own server,
-> the API is free and unlimited.
+> **Important context:** The REST API is part of the open‑source DocuSeal code this fork
+> (EsignCenter) is built on — it is **not** a paid feature. The per‑document price you may
+> have seen applies only to DocuSeal's hosted cloud at `docuseal.com`. When you run this
+> app on your own server, the API is free and unlimited.
 >
 > This repository adds one capability the open‑source app was missing: creating a
 > signable template **from a PDF your app generates**, through the API
@@ -25,7 +25,7 @@ There are two ways your apps will get a template:
 
 | Your situation | What to do |
 | --- | --- |
-| **Standard forms** you reuse (same VA form, same disclosure, just different data) | Build the template **once** in the DocuSeal web app, then only create *submissions* from it via the API. |
+| **Standard forms** you reuse (same VA form, same disclosure, just different data) | Build the template **once** in the EsignCenter web app, then only create *submissions* from it via the API. |
 | **One‑off PDFs** your app generates on the fly | Send the generated PDF to `POST /api/templates`, get a template back, then create a submission from it. |
 
 Both paths end the same way: the signer gets a link (by email or one you embed), signs,
@@ -35,7 +35,7 @@ and you receive the finished, legally‑signed PDF.
 
 ## 2. Get your API token (one‑time)
 
-1. Open your self‑hosted DocuSeal in a browser and sign in.
+1. Open your self‑hosted EsignCenter in a browser and sign in.
 2. Go to **Settings → API**.
 3. Copy the **API token** (a long secret string). Click to regenerate if you ever need to.
 
@@ -44,24 +44,24 @@ and you receive the finished, legally‑signed PDF.
 ### Security model (read this)
 
 - Call the API **server‑to‑server**: your app's **backend** holds the token and talks to
-  DocuSeal. **Never** put the token in a browser, mobile app, or any client‑side code.
+  EsignCenter. **Never** put the token in a browser, mobile app, or any client‑side code.
 - Store the token in your app's environment variables / secret manager, e.g.
-  `DOCUSEAL_API_TOKEN` and `DOCUSEAL_BASE_URL=https://docuseal.yourdomain.com`.
+  `ESIGNCENTER_API_TOKEN` and `ESIGNCENTER_BASE_URL=https://your-instance.example.com`.
 - Always send it in the **`X-Auth-Token`** request header (never in the URL).
-- Use HTTPS for your DocuSeal server.
+- Use HTTPS for your EsignCenter server.
 
 ---
 
 ## 3. Create a template from a generated PDF — `POST /api/templates`
 
 This is the new endpoint. Your app generates a PDF, base64‑encodes it, and posts it.
-DocuSeal turns it into a reusable, signable template.
+EsignCenter turns it into a reusable, signable template.
 
 ### Request
 
 ```
-POST {DOCUSEAL_BASE_URL}/api/templates
-X-Auth-Token: {DOCUSEAL_API_TOKEN}
+POST {ESIGNCENTER_BASE_URL}/api/templates
+X-Auth-Token: {ESIGNCENTER_API_TOKEN}
 Content-Type: application/json
 ```
 
@@ -97,9 +97,9 @@ Content-Type: application/json
 ### Two ways fields get added
 
 - **Automatic (no `fields` in the request):** if your generated PDF already contains
-  fillable form fields (many official VA and mortgage PDFs do), DocuSeal detects them
+  fillable form fields (many official VA and mortgage PDFs do), EsignCenter detects them
   automatically. You don't need to send `fields` at all.
-- **Explicit (you send `fields`):** for plain PDFs with no built‑in fields, tell DocuSeal
+- **Explicit (you send `fields`):** for plain PDFs with no built‑in fields, tell EsignCenter
   exactly where each field goes using `areas` (see coordinates below). When you send
   `fields`, automatic detection is skipped and your placement is used as‑is.
 
@@ -168,19 +168,19 @@ the document for signing.
 
 ## 4. Send the document for signing — `POST /api/submissions`
 
-This endpoint already exists in DocuSeal. Once you have a template `id`, create a
+This endpoint is built in (inherited from DocuSeal). Once you have a template `id`, create a
 submission to invite signers and pre‑fill values.
 
 ```
-POST {DOCUSEAL_BASE_URL}/api/submissions
-X-Auth-Token: {DOCUSEAL_API_TOKEN}
+POST {ESIGNCENTER_BASE_URL}/api/submissions
+X-Auth-Token: {ESIGNCENTER_API_TOKEN}
 Content-Type: application/json
 ```
 
 ```jsonc
 {
   "template_id": 1042,
-  "send_email": true,                  // DocuSeal emails the signer a link
+  "send_email": true,                  // EsignCenter emails the signer a link
   "submitters": [
     {
       "role": "Veteran",
@@ -195,7 +195,7 @@ Content-Type: application/json
 ```
 
 The response includes each submitter with a `slug`; the signing link is
-`{DOCUSEAL_BASE_URL}/s/{slug}`. If you prefer to **embed** signing inside your own app
+`{ESIGNCENTER_BASE_URL}/s/{slug}`. If you prefer to **embed** signing inside your own app
 instead of emailing, set `send_email: false` and open that link in your UI.
 
 See the language‑specific examples in [`docs/api/`](.) (Ruby, Python, Node, PHP, Go,
@@ -207,7 +207,7 @@ Java, C#, JavaScript, TypeScript, Shell) for the full submissions/submitters ref
 
 Two options:
 
-- **Webhook (recommended):** in **Settings → Webhooks**, add your app's URL. DocuSeal
+- **Webhook (recommended):** in **Settings → Webhooks**, add your app's URL. EsignCenter
   POSTs a `submission.completed` event with links to the signed PDF when everyone signs.
 - **Polling:** `GET /api/submissions/{id}/documents` returns links to the signed files.
 
@@ -216,7 +216,7 @@ Two options:
 ## 6. End‑to‑end example (generated PDF → signed)
 
 ```bash
-BASE="https://docuseal.yourdomain.com"
+BASE="https://your-instance.example.com"
 TOKEN="your-secret-api-token"
 
 # 1) Create a template from a PDF your app generated
@@ -266,6 +266,8 @@ These can be added later if needed.
 | Action | Method & path | Status |
 | --- | --- | --- |
 | Create template from PDF/image | `POST /api/templates` | **New (this repo)** |
+| Create embeddable CRM template builder session | `POST /api/template_builder_sessions` | **New (this repo)** |
+| Create embeddable signing session | `POST /api/signing_sessions` | **New (this repo)** |
 | List / get / update / archive templates | `GET/PUT/DELETE /api/templates[/{id}]` | Built‑in |
 | Send a document for signing | `POST /api/submissions` | Built‑in |
 | List / get submissions | `GET /api/submissions[/{id}]` | Built‑in |

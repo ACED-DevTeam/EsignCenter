@@ -130,7 +130,7 @@ During the form filling and signing process, 3 types of events may occur and are
           },
           "combined_document_url": {
             "type": "string",
-            "description": "The URL of the combined documents with audit log. Combined documents can be enabled via <a href=\"https://docuseal.com/settings/account\" target=\"_blank\" class=\"link\">/settings/accounts</a>."
+            "description": "The URL of the combined documents with audit log. Combined documents can be enabled via <a href=\"https://your-instance.example.com/settings/account\" target=\"_blank\" class=\"link\">/settings/accounts</a>."
           },
           "status": {
             "type": "string",

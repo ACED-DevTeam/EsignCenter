@@ -6,16 +6,25 @@ describe 'Embed scripts' do
 
     expect(response).to have_http_status(:ok)
     expect(response.content_type).to include('application/javascript')
-    expect(response.body).to include("customElements.define('docuseal-form', DocusealForm)")
+    expect(response.body).to include("customElements.define('esigncenter-form', EsigncenterForm)")
     expect(response.body).to include('document.createElement')
     expect(response.body).not_to include('Upgrade to Pro')
   end
 
-  it 'keeps the builder placeholder until the embedded builder is implemented' do
+  it 'serves the self-hosted template builder element' do
     get '/js/builder.js'
 
     expect(response).to have_http_status(:ok)
-    expect(response.body).to include('docuseal-builder')
-    expect(response.body).to include('Upgrade to Pro')
+    expect(response.content_type).to include('application/javascript')
+    expect(response.body).to include("customElements.define('esigncenter-builder', EsigncenterBuilder)")
+    expect(response.body).to include('esigncenter-builder')
+    expect(response.body).to include('document.createElement')
+    expect(response.body).not_to include('Upgrade to Pro')
+  end
+
+  it 'does not serve an embed script for unknown filenames' do
+    get '/js/unknown.js'
+
+    expect(response).to have_http_status(:not_found)
   end
 end

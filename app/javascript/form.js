@@ -23,13 +23,23 @@ safeRegisterElement('submission-form', class extends HTMLElement {
     this.appElem = document.createElement('div')
 
     const notifyEmbedParent = (eventName, detail = {}) => {
-      if (!this.dataset.embedOrigin || window.parent === window) return
+      if (window.parent === window) return
 
-      window.parent.postMessage({
-        source: 'docuseal-form',
-        event: eventName,
-        detail
-      }, this.dataset.embedOrigin)
+      const origins = (this.dataset.embedOrigins || this.dataset.embedOrigin || '')
+        .split(',')
+        .map((origin) => origin.trim())
+        .filter(Boolean)
+
+      // Post to every allowed origin; the browser only delivers the message to
+      // the parent whose origin matches, so the real host page (dashboard or
+      // portal) receives it and the rest are silently dropped.
+      origins.forEach((origin) => {
+        try {
+          window.parent.postMessage({ source: 'esigncenter-form', event: eventName, detail }, origin)
+        } catch (_error) {
+          // Ignore an unparseable target origin and continue with the others.
+        }
+      })
     }
 
     this.app = createApp(Form, {

@@ -3,25 +3,38 @@
 ### Example Code
 
 ```angular
-import { Component } from '@angular/core';
-import { DocusealFormComponent } from '@docuseal/angular';
+import { Component, CUSTOM_ELEMENTS_SCHEMA, OnInit } from '@angular/core';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [DocusealFormComponent],
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
   template: `
     <div class="app">
-      <docuseal-form
-        [src]="'https://docuseal.com/d/{{template_slug}}'"
-        [email]="'{{signer_email}}'">
-      </docuseal-form>
+      <esigncenter-form
+        data-src="https://your-instance.example.com/d/{{template_slug}}"
+        data-email="{{signer_email}}"
+        (completed)="onCompleted($event)">
+      </esigncenter-form>
     </div>
   `
 })
-export class AppComponent {}
+export class AppComponent implements OnInit {
+  ngOnInit() {
+    const script = document.createElement('script');
+    script.src = 'https://your-instance.example.com/js/form.js';
+    script.async = true;
+    document.head.appendChild(script);
+  }
+
+  onCompleted(event: Event) {
+    console.log((event as CustomEvent).detail);
+  }
+}
 
 ```
+
+`<esigncenter-form>` is a web component served by your EsignCenter instance at `/js/form.js`, not an Angular component — add `CUSTOM_ELEMENTS_SCHEMA` to the component (or module) `schemas` and pass values as plain `data-*` attributes.
 
 ### Attributes
 
@@ -162,7 +175,7 @@ export class AppComponent {}
     "type": "string",
     "required": false,
     "description": "URL to redirect to after the submission completion.",
-    "example": "https://docuseal.com/success"
+    "example": "https://your-app.example.com/success"
   },
   "completedMessage": {
     "type": "object",

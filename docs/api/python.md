@@ -6,7 +6,7 @@ The API endpoint provides the ability to retrieve a list of available submission
 from docuseal import docuseal
 
 docuseal.key = "API_KEY"
-docuseal.url = "https://api.docuseal.com"
+docuseal.url = "https://your-instance.example.com/api"
 
 docuseal.list_submissions({ "limit": 10 })
 ```
@@ -124,7 +124,7 @@ The API endpoint provides the functionality to retrieve information about a subm
 from docuseal import docuseal
 
 docuseal.key = "API_KEY"
-docuseal.url = "https://api.docuseal.com"
+docuseal.url = "https://your-instance.example.com/api"
 
 docuseal.get_submission(1001)
 ```
@@ -164,7 +164,7 @@ This endpoint returns a list of partially filled documents for a submission. If 
 from docuseal import docuseal
 
 docuseal.key = "API_KEY"
-docuseal.url = "https://api.docuseal.com"
+docuseal.url = "https://your-instance.example.com/api"
 
 docuseal.get_submission_documents(1001)
 ```
@@ -204,7 +204,7 @@ This API endpoint allows you to create signature requests (submissions) for a do
 from docuseal import docuseal
 
 docuseal.key = "API_KEY"
-docuseal.url = "https://api.docuseal.com"
+docuseal.url = "https://your-instance.example.com/api"
 
 docuseal.create_submission({
   "template_id": 1000001,
@@ -627,7 +627,7 @@ The API endpoint provides the functionality to create one-off submission request
 from docuseal import docuseal
 
 docuseal.key = "API_KEY"
-docuseal.url = "https://api.docuseal.com"
+docuseal.url = "https://your-instance.example.com/api"
 
 docuseal.create_submission_from_pdf({
   "name": "Test Submission Document",
@@ -1212,7 +1212,7 @@ The API endpoint provides functionality to create a one-off submission request f
 from docuseal import docuseal
 
 docuseal.key = "API_KEY"
-docuseal.url = "https://api.docuseal.com"
+docuseal.url = "https://your-instance.example.com/api"
 
 docuseal.create_submission_from_docx({
   "name": "Test Submission Document",
@@ -1684,7 +1684,7 @@ This API endpoint allows you to create a one-off submission request document usi
 from docuseal import docuseal
 
 docuseal.key = "API_KEY"
-docuseal.url = "https://api.docuseal.com"
+docuseal.url = "https://your-instance.example.com/api"
 
 docuseal.create_submission_from_html({
   "name": "Test Submission Document",
@@ -2176,7 +2176,7 @@ The API endpoint allows you to archive a submission.
 from docuseal import docuseal
 
 docuseal.key = "API_KEY"
-docuseal.url = "https://api.docuseal.com"
+docuseal.url = "https://your-instance.example.com/api"
 
 docuseal.archive_submission(1001)
 ```
@@ -2216,7 +2216,7 @@ The API endpoint provides the ability to retrieve a list of submitters.
 from docuseal import docuseal
 
 docuseal.key = "API_KEY"
-docuseal.url = "https://api.docuseal.com"
+docuseal.url = "https://your-instance.example.com/api"
 
 docuseal.list_submissions({ "limit": 10 })
 ```
@@ -2332,7 +2332,7 @@ The API endpoint provides functionality to retrieve information about a submitte
 from docuseal import docuseal
 
 docuseal.key = "API_KEY"
-docuseal.url = "https://api.docuseal.com"
+docuseal.url = "https://your-instance.example.com/api"
 
 docuseal.get_submitter(500001)
 ```
@@ -2372,7 +2372,7 @@ The API endpoint allows you to update submitter details, pre-fill or update fiel
 from docuseal import docuseal
 
 docuseal.key = "API_KEY"
-docuseal.url = "https://api.docuseal.com"
+docuseal.url = "https://your-instance.example.com/api"
 
 docuseal.update_submitter(500001, {
   "email": "john.doe@example.com",
@@ -2704,7 +2704,7 @@ The API endpoint provides the ability to retrieve a list of available document t
 from docuseal import docuseal
 
 docuseal.key = "API_KEY"
-docuseal.url = "https://api.docuseal.com"
+docuseal.url = "https://your-instance.example.com/api"
 
 docuseal.list_submissions({ "limit": 10 })
 ```
@@ -2807,7 +2807,7 @@ The API endpoint provides the functionality to retrieve information about a docu
 from docuseal import docuseal
 
 docuseal.key = "API_KEY"
-docuseal.url = "https://api.docuseal.com"
+docuseal.url = "https://your-instance.example.com/api"
 
 docuseal.get_template(1000001)
 ```
@@ -2848,7 +2848,7 @@ The API endpoint provides the functionality to create a fillable document templa
 from docuseal import docuseal
 
 docuseal.key = "API_KEY"
-docuseal.url = "https://api.docuseal.com"
+docuseal.url = "https://your-instance.example.com/api"
 
 docuseal.create_template_from_pdf({
   "name": "Test PDF",
@@ -3218,7 +3218,7 @@ The API endpoint provides the functionality to create a fillable document templa
 from docuseal import docuseal
 
 docuseal.key = "API_KEY"
-docuseal.url = "https://api.docuseal.com"
+docuseal.url = "https://your-instance.example.com/api"
 
 docuseal.create_template_from_docx({
   "name": "Test DOCX",
@@ -3555,7 +3555,7 @@ The API endpoint provides the functionality to seamlessly generate a PDF documen
 from docuseal import docuseal
 
 docuseal.key = "API_KEY"
-docuseal.url = "https://api.docuseal.com"
+docuseal.url = "https://your-instance.example.com/api"
 
 docuseal.create_template_from_html({
   "html": """<p>Lorem Ipsum is simply dummy text of the
@@ -3683,7 +3683,7 @@ The API endpoint allows you to clone existing template into a new template.
 from docuseal import docuseal
 
 docuseal.key = "API_KEY"
-docuseal.url = "https://api.docuseal.com"
+docuseal.url = "https://your-instance.example.com/api"
 
 docuseal.clone_template(1000001, {
   "name": "Cloned Template"
@@ -3750,7 +3750,7 @@ The API endpoint allows you to merge multiple templates with documents and field
 from docuseal import docuseal
 
 docuseal.key = "API_KEY"
-docuseal.url = "https://api.docuseal.com"
+docuseal.url = "https://your-instance.example.com/api"
 
 docuseal.merge_templates({
   "template_ids": [
@@ -3840,7 +3840,7 @@ The API endpoint provides the functionality to move a document template to a dif
 from docuseal import docuseal
 
 docuseal.key = "API_KEY"
-docuseal.url = "https://api.docuseal.com"
+docuseal.url = "https://your-instance.example.com/api"
 
 docuseal.update_template(1000001, {
   "name": "New Document Name",
@@ -3920,7 +3920,7 @@ The API endpoint allows you to add, remove or replace documents in the template 
 from docuseal import docuseal
 
 docuseal.key = "API_KEY"
-docuseal.url = "https://api.docuseal.com"
+docuseal.url = "https://your-instance.example.com/api"
 
 docuseal.update_template_documents(1000001, {
   "documents": [
@@ -4021,7 +4021,7 @@ The API endpoint allows you to archive a document template.
 from docuseal import docuseal
 
 docuseal.key = "API_KEY"
-docuseal.url = "https://api.docuseal.com"
+docuseal.url = "https://your-instance.example.com/api"
 
 docuseal.archive_template(1000001)
 ```

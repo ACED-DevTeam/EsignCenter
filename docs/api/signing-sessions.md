@@ -1,8 +1,8 @@
 # App A Signing Sessions
 
-Use signing sessions when another app has already generated a final PDF and only needs DocuSeal to collect a signature and date in fixed places.
+Use signing sessions when another app has already generated a final PDF and only needs EsignCenter to collect a signature and date in fixed places.
 
-The other app should call this API from its backend. Do not put the DocuSeal `X-Auth-Token` in browser code.
+The other app should call this API from its backend. Do not put the EsignCenter `X-Auth-Token` in browser code.
 
 ## Create a signing session
 
@@ -11,7 +11,7 @@ The other app should call this API from its backend. Do not put the DocuSeal `X-
 Headers:
 
 ```http
-X-Auth-Token: DOCUSEAL_API_TOKEN
+X-Auth-Token: ESIGNCENTER_API_TOKEN
 Content-Type: application/json
 ```
 
@@ -68,23 +68,23 @@ The response includes:
   "submission_id": 123,
   "template_id": 456,
   "status": "pending",
-  "embed_src": "https://docuseal.example.com/s/submitter_slug",
-  "documents_url": "https://docuseal.example.com/api/submissions/123/documents",
-  "status_url": "https://docuseal.example.com/api/signing_sessions/123"
+  "embed_src": "https://your-instance.example.com/s/submitter_slug",
+  "documents_url": "https://your-instance.example.com/api/submissions/123/documents",
+  "status_url": "https://your-instance.example.com/api/signing_sessions/123"
 }
 ```
 
 ## Embed in React
 
-Application A can use the MIT `@docuseal/react` package and point it at this self-hosted DocuSeal app:
+Application A can use the MIT `@docuseal/react` package and point it at this self-hosted EsignCenter app:
 
 ```jsx
-import { DocusealForm } from '@docuseal/react'
+import { EsigncenterForm } from '@docuseal/react'
 
 export function SigningScreen({ signingSession }) {
   return (
-    <DocusealForm
-      host="docuseal.example.com"
+    <EsigncenterForm
+      host="your-instance.example.com"
       src={signingSession.embed_src}
       onComplete={(event) => {
         console.log('Signing completed', event.submitter.completed_at)
@@ -94,11 +94,11 @@ export function SigningScreen({ signingSession }) {
 }
 ```
 
-The completion event includes fresh `submitter` data and a `signing_session` status object. The signed document can be fetched from `documents_url` after the session status is `completed`. The existing DocuSeal webhook settings can also notify your app when `form.completed` or `submission.completed` happens.
+The completion event includes fresh `submitter` data and a `signing_session` status object. The signed document can be fetched from `documents_url` after the session status is `completed`. The existing EsignCenter webhook settings can also notify your app when `form.completed` or `submission.completed` happens.
 
 ## Existing templates
 
-If the document is already a saved DocuSeal template, send `template_id` instead of `documents` and `fields`:
+If the document is already a saved EsignCenter template, send `template_id` instead of `documents` and `fields`:
 
 ```json
 {

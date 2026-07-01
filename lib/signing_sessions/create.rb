@@ -115,23 +115,17 @@ module SigningSessions
     end
 
     def apply_embed_preferences(submission)
+      origins = EmbedOrigins.normalize_all(attrs[:embed_origin], attrs[:embed_origins])
+
       preferences = (submission.preferences || {}).merge(
-        'embed_origin' => normalized_origin(attrs[:embed_origin]),
+        'embed_origin' => origins.first,
+        'embed_origins' => origins,
         'signing_session_external_id' => attrs[:external_id].presence || attrs[:application_key]
       ).compact_blank
 
       preferences['metadata'] = attrs[:metadata] if attrs[:metadata].present?
 
       submission.update!(preferences:)
-    end
-
-    def normalized_origin(origin)
-      uri = URI.parse(origin.to_s)
-      port = uri.port if uri.port && uri.port != uri.default_port
-      host = uri.host.to_s
-      host = "[#{host}]" if host.include?(':') && !host.start_with?('[')
-
-      [uri.scheme, '://', host, (":#{port}" if port)].compact.join
     end
 
     def created_template?

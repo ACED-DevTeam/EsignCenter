@@ -38,3 +38,6 @@ yarn-debug.log*
 /ee
 dump.rdb
 *.onnx
+
+# Internal-only notes (not for the public repo)
+/docs/what-we-built-vs-docuseal.md

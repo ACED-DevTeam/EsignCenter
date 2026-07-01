@@ -8,11 +8,14 @@ module Templates
       schema_uuids_replacements = {}
 
       template.schema.each_with_index do |schema_item, index|
-        next if excluded_attachment_uuids.include?(schema_item['attachment_uuid'])
+        attachment_uuid = schema_item['attachment_uuid'] || schema_item[:attachment_uuid]
+
+        next if excluded_attachment_uuids.include?(attachment_uuid)
 
         new_schema_item_uuid = SecureRandom.uuid
 
-        schema_uuids_replacements[schema_item['attachment_uuid']] = new_schema_item_uuid
+        schema_uuids_replacements[attachment_uuid] = new_schema_item_uuid
+        schema_item.delete(:attachment_uuid)
         schema_item['attachment_uuid'] = new_schema_item_uuid
 
         new_name = documents&.dig(index, 'name')

@@ -4,29 +4,37 @@
 
 ```vue
 <template>
-  <DocusealBuilder
-    v-if="token"
-    :token="token"
+  <esigncenter-builder
+    v-if="builderSrc"
+    :data-src="builderSrc"
+    @save="onSave"
   />
 </template>
 
 <script>
-import { DocusealBuilder } from '@docuseal/vue'
-
 export default {
   name: 'App',
-  components: { DocusealBuilder },
   data () {
-    return { token: '' }
+    return { builderSrc: '' }
   },
   mounted () {
-    fetch('/api/docuseal/builder_token', {
+    const script = document.createElement('script')
+    script.src = 'https://your-instance.example.com/js/builder.js'
+    script.async = true
+    document.head.appendChild(script)
+
+    fetch('/api/esigncenter/builder_session', {
       method: 'POST'
     }).then(async (resp) => {
       const data = await resp.json()
 
-      this.token = data.token
+      this.builderSrc = data.builder_src
     })
+  },
+  methods: {
+    onSave (event) {
+      console.log('Template saved', event.detail.template)
+    }
   }
 }
 </script>
@@ -34,17 +42,32 @@ export default {
 ```
 
 ```javascript
-const jwt = require('jsonwebtoken');
+// Your backend endpoint (e.g. POST /api/esigncenter/builder_session) creates a
+// short-lived builder session. Keep the EsignCenter API key on the backend.
+const response = await fetch('https://your-instance.example.com/api/template_builder_sessions', {
+  method: 'POST',
+  headers: {
+    'X-Auth-Token': '{{api_key}}',
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    name: 'Integration W-9 Test Form',
+    external_id: 'TestForm123',
+    embed_origin: 'https://your-app.example.com',
+    documents: [
+      {
+        name: 'fw9.pdf',
+        file: 'BASE64_ENCODED_PDF'
+      }
+    ]
+  })
+});
 
-const token = jwt.sign({
-  user_email: '{{admin_user_email}}',
-  integration_email: '{{signer_email}}',
-  external_id: 'TestForm123',
-  name: 'Integration W-9 Test Form',
-  document_urls: ['https://www.irs.gov/pub/irs-pdf/fw9.pdf'],
-}, '{{api_key}}');
+const { builder_src } = await response.json();
 
 ```
+
+`<esigncenter-builder>` is a web component served by your EsignCenter instance at `/js/builder.js`, not a Vue component — tell Vue to treat it as a custom element (e.g. `app.config.compilerOptions.isCustomElement = (tag) => tag.startsWith('esigncenter-')`) and bind the `builder_src` returned by `POST /api/template_builder_sessions` to the `data-src` attribute.
 
 ### Attributes
 
@@ -104,7 +127,7 @@ const token = jwt.sign({
   "host": {
     "type": "string",
     "required": false,
-    "description": "DocuSeal host domain name. Only use this attribute if you are using the on-premises DocuSeal installation or docuseal.eu Cloud.",
+    "description": "EsignCenter host domain name, e.g. your-instance.example.com.",
     "example": "yourdomain.com"
   },
   "custom-button": {

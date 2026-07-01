@@ -4,30 +4,33 @@
 
 ```vue
 <template>
-  <DocusealForm
-    :src="'https://docuseal.com/d/{{template_slug}}'"
-    :email="'{{signer_email}}'"
-    @complete="onFormComplete"
+  <esigncenter-form
+    data-src="https://your-instance.example.com/d/{{template_slug}}"
+    data-email="{{signer_email}}"
+    @completed="onFormCompleted"
   />
 </template>
 
 <script>
-import { DocusealForm } from '@docuseal/vue'
-
 export default {
   name: 'App',
-  components: {
-    DocusealForm
+  mounted () {
+    const script = document.createElement('script')
+    script.src = 'https://your-instance.example.com/js/form.js'
+    script.async = true
+    document.head.appendChild(script)
   },
   methods: {
-    onFormComplete (data) {
-      console.log(data)
+    onFormCompleted (event) {
+      console.log(event.detail)
     }
   }
 }
 </script>
 
 ```
+
+`<esigncenter-form>` is a web component served by your EsignCenter instance at `/js/form.js`, not a Vue component — tell Vue to treat it as a custom element (e.g. `app.config.compilerOptions.isCustomElement = (tag) => tag.startsWith('esigncenter-')`) and pass values as plain `data-*` attributes.
 
 ### Attributes
 
@@ -227,7 +230,7 @@ export default {
     "type": "string",
     "required": false,
     "description": "URL to redirect to after the submission completion.",
-    "example": "https://docuseal.com/success"
+    "example": "https://your-app.example.com/success"
   },
   "completed-message": {
     "type": "object",

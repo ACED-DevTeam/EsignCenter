@@ -3,22 +3,45 @@
 ### Example Code
 
 ```react
-import React from "react"
-import { DocusealForm } from '@docuseal/react'
+import React, { useEffect, useRef } from "react"
 
 export function App() {
+  const formRef = useRef(null)
+
+  useEffect(() => {
+    const script = document.createElement('script')
+    script.src = 'https://your-instance.example.com/js/form.js'
+    script.async = true
+    document.head.appendChild(script)
+
+    return () => script.remove()
+  }, [])
+
+  useEffect(() => {
+    const element = formRef.current
+    if (!element) return
+
+    const onCompleted = (event) => console.log(event.detail)
+
+    element.addEventListener('completed', onCompleted)
+
+    return () => element.removeEventListener('completed', onCompleted)
+  }, [])
+
   return (
     <div className="app">
-      <DocusealForm
-        src="https://docuseal.com/d/{{template_slug}}"
-        email="{{signer_email}}"
-        onComplete={(data) => console.log(data)}
+      <esigncenter-form
+        ref={formRef}
+        data-src="https://your-instance.example.com/d/{{template_slug}}"
+        data-email="{{signer_email}}"
       />
     </div>
   );
 }
 
 ```
+
+`<esigncenter-form>` is a web component served by your EsignCenter instance at `/js/form.js`, so it is used as-is in JSX — pass values as plain `data-*` string attributes (e.g. `<esigncenter-form data-src={url} />`) and subscribe to its DOM events through a `ref`.
 
 ### Attributes
 
@@ -159,7 +182,7 @@ export function App() {
     "type": "string",
     "required": false,
     "description": "URL to redirect to after the submission completion.",
-    "example": "https://docuseal.com/success"
+    "example": "https://your-app.example.com/success"
   },
   "completedMessage": {
     "type": "object",

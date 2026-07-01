@@ -5,7 +5,7 @@ The API endpoint provides the ability to retrieve a list of available submission
 ```typescript
 import docuseal from "@docuseal/api";
 
-docuseal.configure({ key: "API_KEY", url: "https://api.docuseal.com" });
+docuseal.configure({ key: "API_KEY", url: "https://your-instance.example.com/api" });
 
 const { data, pagination } = await docuseal.listSubmissions({ limit: 10 });
 ```
@@ -122,7 +122,7 @@ The API endpoint provides the functionality to retrieve information about a subm
 ```typescript
 import docuseal from "@docuseal/api";
 
-docuseal.configure({ key: "API_KEY", url: "https://api.docuseal.com" });
+docuseal.configure({ key: "API_KEY", url: "https://your-instance.example.com/api" });
 
 const submission = await docuseal.getSubmission(1001);
 ```
@@ -161,7 +161,7 @@ This endpoint returns a list of partially filled documents for a submission. If 
 ```typescript
 import docuseal from "@docuseal/api";
 
-docuseal.configure({ key: "API_KEY", url: "https://api.docuseal.com" });
+docuseal.configure({ key: "API_KEY", url: "https://your-instance.example.com/api" });
 
 const submission = await docuseal.getSubmissionDocuments(1001);
 ```
@@ -200,7 +200,7 @@ This API endpoint allows you to create signature requests (submissions) for a do
 ```typescript
 import docuseal from "@docuseal/api";
 
-docuseal.configure({ key: "API_KEY", url: "https://api.docuseal.com" });
+docuseal.configure({ key: "API_KEY", url: "https://your-instance.example.com/api" });
 
 const submission = await docuseal.createSubmission({
   template_id: 1000001,
@@ -622,7 +622,7 @@ The API endpoint provides the functionality to create one-off submission request
 ```typescript
 import docuseal from "@docuseal/api";
 
-docuseal.configure({ key: "API_KEY", url: "https://api.docuseal.com" });
+docuseal.configure({ key: "API_KEY", url: "https://your-instance.example.com/api" });
 
 const submission = await docuseal.createSubmissionFromPdf({
   name: "Test Submission Document",
@@ -1206,7 +1206,7 @@ The API endpoint provides functionality to create a one-off submission request f
 ```typescript
 import docuseal from "@docuseal/api";
 
-docuseal.configure({ key: "API_KEY", url: "https://api.docuseal.com" });
+docuseal.configure({ key: "API_KEY", url: "https://your-instance.example.com/api" });
 
 const submission = await docuseal.createSubmissionFromDocx({
   name: "Test Submission Document",
@@ -1677,7 +1677,7 @@ This API endpoint allows you to create a one-off submission request document usi
 ```typescript
 import docuseal from "@docuseal/api";
 
-docuseal.configure({ key: "API_KEY", url: "https://api.docuseal.com" });
+docuseal.configure({ key: "API_KEY", url: "https://your-instance.example.com/api" });
 
 const submission = await docuseal.createSubmissionFromHtml({
   name: "Test Submission Document",
@@ -2168,7 +2168,7 @@ The API endpoint allows you to archive a submission.
 ```typescript
 import docuseal from "@docuseal/api";
 
-docuseal.configure({ key: "API_KEY", url: "https://api.docuseal.com" });
+docuseal.configure({ key: "API_KEY", url: "https://your-instance.example.com/api" });
 
 await docuseal.archiveSubmission(1001);
 ```
@@ -2207,7 +2207,7 @@ The API endpoint provides the ability to retrieve a list of submitters.
 ```typescript
 import docuseal from "@docuseal/api";
 
-docuseal.configure({ key: "API_KEY", url: "https://api.docuseal.com" });
+docuseal.configure({ key: "API_KEY", url: "https://your-instance.example.com/api" });
 
 const { data, pagination } = await docuseal.listSubmitters({ limit: 10 });
 ```
@@ -2322,7 +2322,7 @@ The API endpoint provides functionality to retrieve information about a submitte
 ```typescript
 import docuseal from "@docuseal/api";
 
-docuseal.configure({ key: "API_KEY", url: "https://api.docuseal.com" });
+docuseal.configure({ key: "API_KEY", url: "https://your-instance.example.com/api" });
 
 const submitter = await docuseal.getSubmitter(500001);
 ```
@@ -2361,7 +2361,7 @@ The API endpoint allows you to update submitter details, pre-fill or update fiel
 ```typescript
 import docuseal from "@docuseal/api";
 
-docuseal.configure({ key: "API_KEY", url: "https://api.docuseal.com" });
+docuseal.configure({ key: "API_KEY", url: "https://your-instance.example.com/api" });
 
 const submitter = await docuseal.updateSubmitter(500001, {
   email: "john.doe@example.com",
@@ -2692,7 +2692,7 @@ The API endpoint provides the ability to retrieve a list of available document t
 ```typescript
 import docuseal from "@docuseal/api";
 
-docuseal.configure({ key: "API_KEY", url: "https://api.docuseal.com" });
+docuseal.configure({ key: "API_KEY", url: "https://your-instance.example.com/api" });
 
 const { data, pagination } = await docuseal.listTemplates({ limit: 10 });
 ```
@@ -2794,7 +2794,7 @@ The API endpoint provides the functionality to retrieve information about a docu
 ```typescript
 import docuseal from "@docuseal/api";
 
-docuseal.configure({ key: "API_KEY", url: "https://api.docuseal.com" });
+docuseal.configure({ key: "API_KEY", url: "https://your-instance.example.com/api" });
 
 const template = await docuseal.getTemplate(1000001);
 ```
@@ -2834,7 +2834,7 @@ The API endpoint provides the functionality to create a fillable document templa
 ```typescript
 import docuseal from "@docuseal/api";
 
-docuseal.configure({ key: "API_KEY", url: "https://api.docuseal.com" });
+docuseal.configure({ key: "API_KEY", url: "https://your-instance.example.com/api" });
 
 const template = await docuseal.createTemplateFromPdf({
   name: "Test PDF",
@@ -3203,7 +3203,7 @@ The API endpoint provides the functionality to create a fillable document templa
 ```typescript
 import docuseal from "@docuseal/api";
 
-docuseal.configure({ key: "API_KEY", url: "https://api.docuseal.com" });
+docuseal.configure({ key: "API_KEY", url: "https://your-instance.example.com/api" });
 
 const template = await docuseal.createTemplateFromDocx({
   name: "Test DOCX",
@@ -3539,7 +3539,7 @@ The API endpoint provides the functionality to seamlessly generate a PDF documen
 ```typescript
 import docuseal from "@docuseal/api";
 
-docuseal.configure({ key: "API_KEY", url: "https://api.docuseal.com" });
+docuseal.configure({ key: "API_KEY", url: "https://your-instance.example.com/api" });
 
 const template = await docuseal.createTemplateFromHtml({
   html: `<p>Lorem Ipsum is simply dummy text of the
@@ -3666,7 +3666,7 @@ The API endpoint allows you to clone existing template into a new template.
 ```typescript
 import docuseal from "@docuseal/api";
 
-docuseal.configure({ key: "API_KEY", url: "https://api.docuseal.com" });
+docuseal.configure({ key: "API_KEY", url: "https://your-instance.example.com/api" });
 
 const template = await docuseal.cloneTemplate(1000001, {
   name: "Cloned Template"
@@ -3732,7 +3732,7 @@ The API endpoint allows you to merge multiple templates with documents and field
 ```typescript
 import docuseal from "@docuseal/api";
 
-docuseal.configure({ key: "API_KEY", url: "https://api.docuseal.com" });
+docuseal.configure({ key: "API_KEY", url: "https://your-instance.example.com/api" });
 
 const template = await docuseal.mergeTemplates({
   template_ids: [
@@ -3821,7 +3821,7 @@ The API endpoint provides the functionality to move a document template to a dif
 ```typescript
 import docuseal from "@docuseal/api";
 
-docuseal.configure({ key: "API_KEY", url: "https://api.docuseal.com" });
+docuseal.configure({ key: "API_KEY", url: "https://your-instance.example.com/api" });
 
 const template = await docuseal.updateTemplate(1000001, {
   name: "New Document Name",
@@ -3900,7 +3900,7 @@ The API endpoint allows you to add, remove or replace documents in the template 
 ```typescript
 import docuseal from "@docuseal/api";
 
-docuseal.configure({ key: "API_KEY", url: "https://api.docuseal.com" });
+docuseal.configure({ key: "API_KEY", url: "https://your-instance.example.com/api" });
 
 const template = await docuseal.updateTemplateDocuments(1000001, {
   documents: [
@@ -4000,7 +4000,7 @@ The API endpoint allows you to archive a document template.
 ```typescript
 import docuseal from "@docuseal/api";
 
-docuseal.configure({ key: "API_KEY", url: "https://api.docuseal.com" });
+docuseal.configure({ key: "API_KEY", url: "https://your-instance.example.com/api" });
 
 await docuseal.archiveTemplate(1000001);
 ```

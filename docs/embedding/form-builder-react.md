@@ -3,39 +3,74 @@
 ### Example Code
 
 ```react
-import React, { useState, useEffect } from 'react';
-import { DocusealBuilder } from '@docuseal/react'
+import React, { useState, useEffect, useRef } from 'react';
 
 const App = () => {
-  const [token, setToken] = useState();
+  const builderRef = useRef(null);
+  const [builderSrc, setBuilderSrc] = useState();
 
   useEffect(() => {
-    fetch('/api/docuseal/builder_token', {
+    const script = document.createElement('script');
+    script.src = 'https://your-instance.example.com/js/builder.js';
+    script.async = true;
+    document.head.appendChild(script);
+
+    return () => script.remove();
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/esigncenter/builder_session', {
       method: 'POST',
     })
       .then((response) => response.json())
       .then((data) => {
-        setToken(data.token);
+        setBuilderSrc(data.builder_src);
       });
   }, []);
 
-  return token && <DocusealBuilder token={token} />;
+  useEffect(() => {
+    const element = builderRef.current;
+    if (!element) return;
+
+    const onSave = (event) => console.log('Template saved', event.detail.template);
+
+    element.addEventListener('save', onSave);
+
+    return () => element.removeEventListener('save', onSave);
+  }, [builderSrc]);
+
+  return builderSrc && <esigncenter-builder ref={builderRef} data-src={builderSrc} />;
 };
 
 ```
 
 ```javascript
-const jwt = require('jsonwebtoken');
+// Your backend endpoint (e.g. POST /api/esigncenter/builder_session) creates a
+// short-lived builder session. Keep the EsignCenter API key on the backend.
+const response = await fetch('https://your-instance.example.com/api/template_builder_sessions', {
+  method: 'POST',
+  headers: {
+    'X-Auth-Token': '{{api_key}}',
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    name: 'Integration W-9 Test Form',
+    external_id: 'TestForm123',
+    embed_origin: 'https://your-app.example.com',
+    documents: [
+      {
+        name: 'fw9.pdf',
+        file: 'BASE64_ENCODED_PDF'
+      }
+    ]
+  })
+});
 
-const token = jwt.sign({
-  user_email: '{{admin_user_email}}',
-  integration_email: '{{signer_email}}',
-  external_id: 'TestForm123',
-  name: 'Integration W-9 Test Form',
-  document_urls: ['https://www.irs.gov/pub/irs-pdf/fw9.pdf'],
-}, '{{api_key}}');
+const { builder_src } = await response.json();
 
 ```
+
+`<esigncenter-builder>` is a web component served by your EsignCenter instance at `/js/builder.js`, so it is used as-is in JSX — pass the `builder_src` returned by `POST /api/template_builder_sessions` as a plain string attribute (`<esigncenter-builder data-src={url} />`).
 
 ### Attributes
 
@@ -95,7 +130,7 @@ const token = jwt.sign({
   "host": {
     "type": "string",
     "required": false,
-    "description": "DocuSeal host domain name. Only use this attribute if you are using the on-premises DocuSeal installation or docuseal.eu Cloud.",
+    "description": "EsignCenter host domain name, e.g. your-instance.example.com.",
     "example": "yourdomain.com"
   },
   "customButton": {

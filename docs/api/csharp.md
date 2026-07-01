@@ -3,7 +3,7 @@
 The API endpoint provides the ability to retrieve a list of available submissions.
 
 ```csharp
-var client = new RestClient("https://api.docuseal.com/submissions");
+var client = new RestClient("https://your-instance.example.com/api/submissions");
 var request = new RestRequest("", Method.Get);
 request.AddHeader("X-Auth-Token", "API_KEY");
 var response = client.Execute(request);
@@ -119,7 +119,7 @@ var response = client.Execute(request);
 The API endpoint provides the functionality to retrieve information about a submission.
 
 ```csharp
-var client = new RestClient("https://api.docuseal.com/submissions/1001");
+var client = new RestClient("https://your-instance.example.com/api/submissions/1001");
 var request = new RestRequest("", Method.Get);
 request.AddHeader("X-Auth-Token", "API_KEY");
 var response = client.Execute(request);
@@ -157,7 +157,7 @@ var response = client.Execute(request);
 This endpoint returns a list of partially filled documents for a submission. If the submission has been completed, the final signed documents are returned.
 
 ```csharp
-var client = new RestClient("https://api.docuseal.com/submissions/1001/documents");
+var client = new RestClient("https://your-instance.example.com/api/submissions/1001/documents");
 var request = new RestRequest("", Method.Get);
 request.AddHeader("X-Auth-Token", "API_KEY");
 var response = client.Execute(request);
@@ -195,7 +195,7 @@ var response = client.Execute(request);
 This API endpoint allows you to create signature requests (submissions) for a document template and send them to the specified submitters (signers).<br><b>Related Guides</b><br><a href="https://www.docuseal.com/guides/send-documents-for-signature-via-api" class="link">Send documents for signature via API</a><br><a href="https://www.docuseal.com/guides/pre-fill-pdf-document-form-fields-with-api" class="link">Pre-fill PDF document form fields with API</a>
 
 ```csharp
-var client = new RestClient("https://api.docuseal.com/submissions");
+var client = new RestClient("https://your-instance.example.com/api/submissions");
 var request = new RestRequest("", Method.Post);
 request.AddHeader("X-Auth-Token", "API_KEY");
 request.AddHeader("content-type", "application/json");
@@ -609,7 +609,7 @@ The API endpoint provides the functionality to create one-off submission request
 
 
 ```csharp
-var client = new RestClient("https://api.docuseal.com/submissions/pdf");
+var client = new RestClient("https://your-instance.example.com/api/submissions/pdf");
 var request = new RestRequest("", Method.Post);
 request.AddHeader("X-Auth-Token", "API_KEY");
 request.AddHeader("content-type", "application/json");
@@ -1166,7 +1166,7 @@ var response = client.Execute(request);
 The API endpoint provides functionality to create a one-off submission request from a DOCX file with dynamic content variables. Use <code>[[variable_name]]</code> text tags to define dynamic content variables in the document. See <a href="https://www.docuseal.com/examples/demo_template.docx" target="_blank" class="link font-bold">https://www.docuseal.com/examples/demo_template.docx</a> for the specific text variable syntax, including dynamic content tables and list. You can also use the <code>{{signature}}</code> field syntax to define fillable fields, as in a PDF.<br><b>Related Guides</b><br><a href="https://www.docuseal.com/guides/use-dynamic-content-variables-in-docx-to-create-personalized-documents" class="link">Use dynamic content variables in DOCX to create personalized documents</a>
 
 ```csharp
-var client = new RestClient("https://api.docuseal.com/submissions/docx");
+var client = new RestClient("https://your-instance.example.com/api/submissions/docx");
 var request = new RestRequest("", Method.Post);
 request.AddHeader("X-Auth-Token", "API_KEY");
 request.AddHeader("content-type", "application/json");
@@ -1621,7 +1621,7 @@ var response = client.Execute(request);
 This API endpoint allows you to create a one-off submission request document using the provided HTML content, with special field tags rendered as a fillable and signable form.<br><b>Related Guides</b><br><a href="https://www.docuseal.com/guides/create-pdf-document-fillable-form-with-html-api" class="link">Create PDF document fillable form with HTML</a>
 
 ```csharp
-var client = new RestClient("https://api.docuseal.com/submissions/html");
+var client = new RestClient("https://your-instance.example.com/api/submissions/html");
 var request = new RestRequest("", Method.Post);
 request.AddHeader("X-Auth-Token", "API_KEY");
 request.AddHeader("content-type", "application/json");
@@ -2091,7 +2091,7 @@ var response = client.Execute(request);
 The API endpoint allows you to archive a submission.
 
 ```csharp
-var client = new RestClient("https://api.docuseal.com/submissions/1001");
+var client = new RestClient("https://your-instance.example.com/api/submissions/1001");
 var request = new RestRequest("", Method.Delete);
 request.AddHeader("X-Auth-Token", "API_KEY");
 var response = client.Execute(request);
@@ -2129,7 +2129,7 @@ var response = client.Execute(request);
 The API endpoint provides the ability to retrieve a list of submitters.
 
 ```csharp
-var client = new RestClient("https://api.docuseal.com/submitters");
+var client = new RestClient("https://your-instance.example.com/api/submitters");
 var request = new RestRequest("", Method.Get);
 request.AddHeader("X-Auth-Token", "API_KEY");
 var response = client.Execute(request);
@@ -2243,7 +2243,7 @@ var response = client.Execute(request);
 The API endpoint provides functionality to retrieve information about a submitter, along with the submitter documents and field values.
 
 ```csharp
-var client = new RestClient("https://api.docuseal.com/submitters/500001");
+var client = new RestClient("https://your-instance.example.com/api/submitters/500001");
 var request = new RestRequest("", Method.Get);
 request.AddHeader("X-Auth-Token", "API_KEY");
 var response = client.Execute(request);
@@ -2281,7 +2281,7 @@ var response = client.Execute(request);
 The API endpoint allows you to update submitter details, pre-fill or update field values and re-send emails.<br><b>Related Guides</b><br><a href="https://www.docuseal.com/guides/pre-fill-pdf-document-form-fields-with-api#automatically_sign_documents_via_api" class="link">Automatically sign documents via API</a>
 
 ```csharp
-var client = new RestClient("https://api.docuseal.com/submitters/500001");
+var client = new RestClient("https://your-instance.example.com/api/submitters/500001");
 var request = new RestRequest("", Method.Put);
 request.AddHeader("X-Auth-Token", "API_KEY");
 request.AddHeader("content-type", "application/json");
@@ -2605,7 +2605,7 @@ var response = client.Execute(request);
 The API endpoint provides the ability to retrieve a list of available document templates.
 
 ```csharp
-var client = new RestClient("https://api.docuseal.com/templates");
+var client = new RestClient("https://your-instance.example.com/api/templates");
 var request = new RestRequest("", Method.Get);
 request.AddHeader("X-Auth-Token", "API_KEY");
 var response = client.Execute(request);
@@ -2706,7 +2706,7 @@ var response = client.Execute(request);
 The API endpoint provides the functionality to retrieve information about a document template.
 
 ```csharp
-var client = new RestClient("https://api.docuseal.com/templates/1000001");
+var client = new RestClient("https://your-instance.example.com/api/templates/1000001");
 var request = new RestRequest("", Method.Get);
 request.AddHeader("X-Auth-Token", "API_KEY");
 var response = client.Execute(request);
@@ -2745,7 +2745,7 @@ The API endpoint provides the functionality to create a fillable document templa
 
 
 ```csharp
-var client = new RestClient("https://api.docuseal.com/templates/pdf");
+var client = new RestClient("https://your-instance.example.com/api/templates/pdf");
 var request = new RestRequest("", Method.Post);
 request.AddHeader("X-Auth-Token", "API_KEY");
 request.AddHeader("content-type", "application/json");
@@ -3093,7 +3093,7 @@ The API endpoint provides the functionality to create a fillable document templa
 
 
 ```csharp
-var client = new RestClient("https://api.docuseal.com/templates/docx");
+var client = new RestClient("https://your-instance.example.com/api/templates/docx");
 var request = new RestRequest("", Method.Post);
 request.AddHeader("X-Auth-Token", "API_KEY");
 request.AddHeader("content-type", "application/json");
@@ -3422,7 +3422,7 @@ var response = client.Execute(request);
 The API endpoint provides the functionality to seamlessly generate a PDF document template by utilizing the provided HTML content while incorporating pre-defined fields.<br><b>Related Guides</b><br><a href="https://www.docuseal.com/guides/create-pdf-document-fillable-form-with-html-api" class="link">Create PDF document fillable form with HTML</a>
 
 ```csharp
-var client = new RestClient("https://api.docuseal.com/templates/html");
+var client = new RestClient("https://your-instance.example.com/api/templates/html");
 var request = new RestRequest("", Method.Post);
 request.AddHeader("X-Auth-Token", "API_KEY");
 request.AddHeader("content-type", "application/json");
@@ -3539,7 +3539,7 @@ var response = client.Execute(request);
 The API endpoint allows you to clone existing template into a new template.
 
 ```csharp
-var client = new RestClient("https://api.docuseal.com/templates/1000001/clone");
+var client = new RestClient("https://your-instance.example.com/api/templates/1000001/clone");
 var request = new RestRequest("", Method.Post);
 request.AddHeader("X-Auth-Token", "API_KEY");
 request.AddHeader("content-type", "application/json");
@@ -3604,7 +3604,7 @@ var response = client.Execute(request);
 The API endpoint allows you to merge multiple templates with documents and fields into a new combined template.
 
 ```csharp
-var client = new RestClient("https://api.docuseal.com/templates/merge");
+var client = new RestClient("https://your-instance.example.com/api/templates/merge");
 var request = new RestRequest("", Method.Post);
 request.AddHeader("X-Auth-Token", "API_KEY");
 request.AddHeader("content-type", "application/json");
@@ -3688,7 +3688,7 @@ var response = client.Execute(request);
 The API endpoint provides the functionality to move a document template to a different folder and update the name of the template.
 
 ```csharp
-var client = new RestClient("https://api.docuseal.com/templates/1000001");
+var client = new RestClient("https://your-instance.example.com/api/templates/1000001");
 var request = new RestRequest("", Method.Put);
 request.AddHeader("X-Auth-Token", "API_KEY");
 request.AddHeader("content-type", "application/json");
@@ -3765,7 +3765,7 @@ var response = client.Execute(request);
 The API endpoint allows you to add, remove or replace documents in the template with provided PDF/DOCX file or HTML content.
 
 ```csharp
-var client = new RestClient("https://api.docuseal.com/templates/1000001/documents");
+var client = new RestClient("https://your-instance.example.com/api/templates/1000001/documents");
 var request = new RestRequest("", Method.Put);
 request.AddHeader("X-Auth-Token", "API_KEY");
 request.AddHeader("content-type", "application/json");
@@ -3860,7 +3860,7 @@ var response = client.Execute(request);
 The API endpoint allows you to archive a document template.
 
 ```csharp
-var client = new RestClient("https://api.docuseal.com/templates/1000001");
+var client = new RestClient("https://your-instance.example.com/api/templates/1000001");
 var request = new RestRequest("", Method.Delete);
 request.AddHeader("X-Auth-Token", "API_KEY");
 var response = client.Execute(request);

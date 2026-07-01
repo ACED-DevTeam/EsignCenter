@@ -13,7 +13,7 @@ import (
 
 func main() {
 
-	url := "https://api.docuseal.com/submissions"
+	url := "https://your-instance.example.com/api/submissions"
 
 	req, _ := http.NewRequest("GET", url, nil)
 
@@ -150,7 +150,7 @@ import (
 
 func main() {
 
-	url := "https://api.docuseal.com/submissions/1001"
+	url := "https://your-instance.example.com/api/submissions/1001"
 
 	req, _ := http.NewRequest("GET", url, nil)
 
@@ -209,7 +209,7 @@ import (
 
 func main() {
 
-	url := "https://api.docuseal.com/submissions/1001/documents"
+	url := "https://your-instance.example.com/api/submissions/1001/documents"
 
 	req, _ := http.NewRequest("GET", url, nil)
 
@@ -269,7 +269,7 @@ import (
 
 func main() {
 
-	url := "https://api.docuseal.com/submissions"
+	url := "https://your-instance.example.com/api/submissions"
 
 	payload := strings.NewReader("{\"template_id\":1000001,\"send_email\":true,\"submitters\":[{\"role\":\"First Party\",\"email\":\"john.doe@example.com\"}]}")
 
@@ -706,7 +706,7 @@ import (
 
 func main() {
 
-	url := "https://api.docuseal.com/submissions/pdf"
+	url := "https://your-instance.example.com/api/submissions/pdf"
 
 	payload := strings.NewReader("{\"name\":\"Test Submission Document\",\"documents\":[{\"name\":\"string\",\"file\":\"base64\",\"fields\":[{\"name\":\"string\",\"areas\":[{\"x\":0,\"y\":0,\"w\":0,\"h\":0,\"page\":1}]}]}],\"submitters\":[{\"role\":\"First Party\",\"email\":\"john.doe@example.com\"}]}")
 
@@ -1286,7 +1286,7 @@ import (
 
 func main() {
 
-	url := "https://api.docuseal.com/submissions/docx"
+	url := "https://your-instance.example.com/api/submissions/docx"
 
 	payload := strings.NewReader("{\"name\":\"Test Submission Document\",\"variables\":{\"variable_name\":\"value\"},\"documents\":[{\"name\":\"string\",\"file\":\"base64\"}],\"submitters\":[{\"role\":\"First Party\",\"email\":\"john.doe@example.com\"}]}")
 
@@ -1764,7 +1764,7 @@ import (
 
 func main() {
 
-	url := "https://api.docuseal.com/submissions/html"
+	url := "https://your-instance.example.com/api/submissions/html"
 
 	payload := strings.NewReader("{\"name\":\"Test Submission Document\",\"documents\":[{\"name\":\"Test Document\",\"html\":\"<p>Lorem Ipsum is simply dummy text of the\\n<text-field\\n  name=\\\"Industry\\\"\\n  role=\\\"First Party\\\"\\n  required=\\\"false\\\"\\n  style=\\\"width: 80px; height: 16px; display: inline-block; margin-bottom: -4px\\\">\\n</text-field>\\nand typesetting industry</p>\\n\"}],\"submitters\":[{\"role\":\"First Party\",\"email\":\"john.doe@example.com\"}]}")
 
@@ -2256,7 +2256,7 @@ import (
 
 func main() {
 
-	url := "https://api.docuseal.com/submissions/1001"
+	url := "https://your-instance.example.com/api/submissions/1001"
 
 	req, _ := http.NewRequest("DELETE", url, nil)
 
@@ -2315,7 +2315,7 @@ import (
 
 func main() {
 
-	url := "https://api.docuseal.com/submitters"
+	url := "https://your-instance.example.com/api/submitters"
 
 	req, _ := http.NewRequest("GET", url, nil)
 
@@ -2450,7 +2450,7 @@ import (
 
 func main() {
 
-	url := "https://api.docuseal.com/submitters/500001"
+	url := "https://your-instance.example.com/api/submitters/500001"
 
 	req, _ := http.NewRequest("GET", url, nil)
 
@@ -2510,7 +2510,7 @@ import (
 
 func main() {
 
-	url := "https://api.docuseal.com/submitters/500001"
+	url := "https://your-instance.example.com/api/submitters/500001"
 
 	payload := strings.NewReader("{\"email\":\"john.doe@example.com\",\"fields\":[{\"name\":\"First Name\",\"default_value\":\"Acme\"}]}")
 
@@ -2856,7 +2856,7 @@ import (
 
 func main() {
 
-	url := "https://api.docuseal.com/templates"
+	url := "https://your-instance.example.com/api/templates"
 
 	req, _ := http.NewRequest("GET", url, nil)
 
@@ -2978,7 +2978,7 @@ import (
 
 func main() {
 
-	url := "https://api.docuseal.com/templates/1000001"
+	url := "https://your-instance.example.com/api/templates/1000001"
 
 	req, _ := http.NewRequest("GET", url, nil)
 
@@ -3039,7 +3039,7 @@ import (
 
 func main() {
 
-	url := "https://api.docuseal.com/templates/pdf"
+	url := "https://your-instance.example.com/api/templates/pdf"
 
 	payload := strings.NewReader("{\"name\":\"Test PDF\",\"documents\":[{\"name\":\"string\",\"file\":\"base64\",\"fields\":[{\"name\":\"string\",\"areas\":[{\"x\":0,\"y\":0,\"w\":0,\"h\":0,\"page\":1}]}]}]}")
 
@@ -3410,7 +3410,7 @@ import (
 
 func main() {
 
-	url := "https://api.docuseal.com/templates/docx"
+	url := "https://your-instance.example.com/api/templates/docx"
 
 	payload := strings.NewReader("{\"name\":\"Test DOCX\",\"documents\":[{\"name\":\"string\",\"file\":\"base64\"}]}")
 
@@ -3762,7 +3762,7 @@ import (
 
 func main() {
 
-	url := "https://api.docuseal.com/templates/html"
+	url := "https://your-instance.example.com/api/templates/html"
 
 	payload := strings.NewReader("{\"html\":\"<p>Lorem Ipsum is simply dummy text of the\\n<text-field\\n  name=\\\"Industry\\\"\\n  role=\\\"First Party\\\"\\n  required=\\\"false\\\"\\n  style=\\\"width: 80px; height: 16px; display: inline-block; margin-bottom: -4px\\\">\\n</text-field>\\nand typesetting industry</p>\\n\",\"name\":\"Test Template\"}")
 
@@ -3902,7 +3902,7 @@ import (
 
 func main() {
 
-	url := "https://api.docuseal.com/templates/1000001/clone"
+	url := "https://your-instance.example.com/api/templates/1000001/clone"
 
 	payload := strings.NewReader("{\"name\":\"Cloned Template\"}")
 
@@ -3990,7 +3990,7 @@ import (
 
 func main() {
 
-	url := "https://api.docuseal.com/templates/merge"
+	url := "https://your-instance.example.com/api/templates/merge"
 
 	payload := strings.NewReader("{\"template_ids\":[321,432],\"name\":\"Merged Template\"}")
 
@@ -4097,7 +4097,7 @@ import (
 
 func main() {
 
-	url := "https://api.docuseal.com/templates/1000001"
+	url := "https://your-instance.example.com/api/templates/1000001"
 
 	payload := strings.NewReader("{\"name\":\"New Document Name\",\"folder_name\":\"New Folder\"}")
 
@@ -4197,7 +4197,7 @@ import (
 
 func main() {
 
-	url := "https://api.docuseal.com/templates/1000001/documents"
+	url := "https://your-instance.example.com/api/templates/1000001/documents"
 
 	payload := strings.NewReader("{\"documents\":[{\"file\":\"string\"}]}")
 
@@ -4314,7 +4314,7 @@ import (
 
 func main() {
 
-	url := "https://api.docuseal.com/templates/1000001"
+	url := "https://your-instance.example.com/api/templates/1000001"
 
 	req, _ := http.NewRequest("DELETE", url, nil)
 

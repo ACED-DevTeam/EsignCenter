@@ -3,48 +3,76 @@
 ### Example Code
 
 ```angular
-import { Component, OnInit } from '@angular/core';
+import { Component, CUSTOM_ELEMENTS_SCHEMA, OnInit } from '@angular/core';
+import { NgIf } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-import { DocusealBuilderComponent } from '@docuseal/angular';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [DocusealBuilderComponent],
+  imports: [NgIf],
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
   template: `
     <div class="app">
-      <ng-container *ngIf="token">
-        <docuseal-builder [token]="token"></docuseal-builder>
+      <ng-container *ngIf="builderSrc">
+        <esigncenter-builder
+          [attr.data-src]="builderSrc"
+          (save)="onSave($event)">
+        </esigncenter-builder>
       </ng-container>
     </div>
   `
 })
 export class AppComponent implements OnInit {
-  token: string = ''
+  builderSrc: string = ''
 
   constructor(private http: HttpClient) {}
 
   ngOnInit() {
-    this.http.post('/api/docuseal/builder_token', {}).subscribe((data: any) => {
-      this.token = data.token;
+    const script = document.createElement('script');
+    script.src = 'https://your-instance.example.com/js/builder.js';
+    script.async = true;
+    document.head.appendChild(script);
+
+    this.http.post('/api/esigncenter/builder_session', {}).subscribe((data: any) => {
+      this.builderSrc = data.builder_src;
     });
+  }
+
+  onSave(event: Event) {
+    console.log('Template saved', (event as CustomEvent).detail.template);
   }
 }
 
 ```
 
 ```javascript
-const jwt = require('jsonwebtoken');
+// Your backend endpoint (e.g. POST /api/esigncenter/builder_session) creates a
+// short-lived builder session. Keep the EsignCenter API key on the backend.
+const response = await fetch('https://your-instance.example.com/api/template_builder_sessions', {
+  method: 'POST',
+  headers: {
+    'X-Auth-Token': '{{api_key}}',
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    name: 'Integration W-9 Test Form',
+    external_id: 'TestForm123',
+    embed_origin: 'https://your-app.example.com',
+    documents: [
+      {
+        name: 'fw9.pdf',
+        file: 'BASE64_ENCODED_PDF'
+      }
+    ]
+  })
+});
 
-const token = jwt.sign({
-  user_email: '{{admin_user_email}}',
-  integration_email: '{{signer_email}}',
-  external_id: 'TestForm123',
-  name: 'Integration W-9 Test Form',
-  document_urls: ['https://www.irs.gov/pub/irs-pdf/fw9.pdf'],
-}, '{{api_key}}');
+const { builder_src } = await response.json();
 
 ```
+
+`<esigncenter-builder>` is a web component served by your EsignCenter instance at `/js/builder.js`, not an Angular component — add `CUSTOM_ELEMENTS_SCHEMA` to the component (or module) `schemas` and bind the `builder_src` returned by `POST /api/template_builder_sessions` with `[attr.data-src]`.
 
 ### Attributes
 
@@ -104,7 +132,7 @@ const token = jwt.sign({
   "host": {
     "type": "string",
     "required": false,
-    "description": "DocuSeal host domain name. Only use this attribute if you are using the on-premises DocuSeal installation or docuseal.eu Cloud.",
+    "description": "EsignCenter host domain name, e.g. your-instance.example.com.",
     "example": "yourdomain.com"
   },
   "customButton": {

@@ -2,22 +2,18 @@
   "openapi": "3.0.0",
   "servers": [
     {
-      "url": "https://api.docuseal.com",
-      "description": "Global Server"
-    },
-    {
-      "url": "https://api.docuseal.eu",
-      "description": "EU Server"
+      "url": "https://your-instance.example.com/api",
+      "description": "Your self-hosted EsignCenter server"
     }
   ],
   "info": {
     "version": "1.0.0",
-    "title": "DocuSeal API",
-    "description": "DocuSeal API specs",
+    "title": "EsignCenter API",
+    "description": "EsignCenter API specs (a customized fork of DocuSeal)",
     "contact": {
-      "name": "DocuSeal",
-      "email": "admin@docuseal.com",
-      "url": "https://www.docuseal.com"
+      "name": "EsignCenter",
+      "email": "evan74dock@gmail.com",
+      "url": "https://github.com/AmishHillBilly/KoalaSign"
     }
   },
   "components": {
@@ -33,6 +29,10 @@
     {
       "name": "Submissions",
       "description": "Signature requests can be initiated with Submissions API. Submissions can contain one submitter if signed by a single party or multiple submitters if the document template form contains signatures and fields to be collected and filled by multiple parties. Initiate new submissions to request signatures for specified submitters via email or phone number."
+    },
+    {
+      "name": "Template Builder Sessions",
+      "description": "Embedded template builder sessions for CRM-style document workflows."
     },
     {
       "name": "Signing Sessions",
@@ -2985,7 +2985,7 @@
                   },
                   "send_email": {
                     "type": "boolean",
-                    "description": "Set true to send DocuSeal signature request emails. Defaults to false for signing sessions.",
+                    "description": "Set true to send EsignCenter signature request emails. Defaults to false for signing sessions.",
                     "default": false
                   },
                   "send_sms": {
@@ -11317,6 +11317,472 @@
                       "filename": "sample-document.pdf"
                     }
                   ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/template_builder_sessions": {
+      "post": {
+        "security": [
+          {
+            "AuthToken": []
+          }
+        ],
+        "tags": [
+          "Template Builder Sessions"
+        ],
+        "summary": "Create an embeddable template builder session",
+        "description": "Creates a short-lived embedded template builder URL for a CRM or another app. The session can open an existing template, clone a saved template, clone and replace documents, or create a new template from base64 PDF/image documents. Keep the X-Auth-Token on your backend and pass only builder_src to the frontend.",
+        "operationId": "createTemplateBuilderSession",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "embed_origin"
+                ],
+                "properties": {
+                  "template_id": {
+                    "type": "integer",
+                    "description": "Existing template ID to open in the embedded builder. Send this by itself, without clone_template_id or documents."
+                  },
+                  "clone_template_id": {
+                    "type": "integer",
+                    "description": "Template ID to clone before opening the embedded builder. May be combined with documents to replace the cloned document while preserving field placement."
+                  },
+                  "name": {
+                    "type": "string",
+                    "description": "Template name for cloned or newly generated templates."
+                  },
+                  "external_id": {
+                    "type": "string",
+                    "description": "Application-specific ID for this template or CRM record."
+                  },
+                  "application_key": {
+                    "type": "string",
+                    "description": "Alternative application-specific key."
+                  },
+                  "folder_name": {
+                    "type": "string",
+                    "description": "Folder name for cloned or generated templates."
+                  },
+                  "embed_origin": {
+                    "type": "string",
+                    "description": "HTTPS origin allowed to iframe the builder. Local development may use http://localhost, http://127.0.0.1, or http://[::1].",
+                    "example": "https://crm.example.com"
+                  },
+                  "expires_in_minutes": {
+                    "type": "integer",
+                    "description": "Optional builder token lifetime in minutes. The maximum is 24 hours."
+                  },
+                  "metadata": {
+                    "type": "object",
+                    "description": "Metadata stored with the builder session preferences."
+                  },
+                  "documents": {
+                    "type": "array",
+                    "description": "Documents for a new template, or replacement documents when clone_template_id is supplied.",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "file"
+                      ],
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "description": "Document filename."
+                        },
+                        "file": {
+                          "type": "string",
+                          "description": "Base64-encoded PDF or image file."
+                        }
+                      }
+                    }
+                  },
+                  "submitters": {
+                    "type": "array",
+                    "description": "Submitter roles for a newly generated template.",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "role": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "fields": {
+                    "type": "array",
+                    "description": "Optional fixed fields for newly generated templates.",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "role": {
+                          "type": "string"
+                        },
+                        "required": {
+                          "type": "boolean"
+                        },
+                        "readonly": {
+                          "type": "boolean"
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "string"
+                        },
+                        "default_value": {
+                          "oneOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            }
+                          ]
+                        },
+                        "preferences": {
+                          "type": "object"
+                        },
+                        "options": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "value": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        },
+                        "areas": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "x",
+                              "y",
+                              "w",
+                              "h"
+                            ],
+                            "properties": {
+                              "x": {
+                                "type": "number",
+                                "description": "Left coordinate from 0 to 1."
+                              },
+                              "y": {
+                                "type": "number",
+                                "description": "Top coordinate from 0 to 1."
+                              },
+                              "w": {
+                                "type": "number",
+                                "description": "Width from 0 to 1."
+                              },
+                              "h": {
+                                "type": "number",
+                                "description": "Height from 0 to 1."
+                              },
+                              "page": {
+                                "type": "integer",
+                                "description": "Zero-based page number."
+                              },
+                              "document": {
+                                "type": "integer",
+                                "description": "Zero-based document index."
+                              },
+                              "option": {
+                                "type": "string",
+                                "description": "Option value or index for radio/multiple fields."
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "oneOf": [
+                  {
+                    "title": "Edit an existing template",
+                    "required": [
+                      "template_id"
+                    ],
+                    "not": {
+                      "anyOf": [
+                        {
+                          "required": [
+                            "clone_template_id"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "documents"
+                          ]
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "title": "Clone a saved template",
+                    "required": [
+                      "clone_template_id"
+                    ],
+                    "not": {
+                      "anyOf": [
+                        {
+                          "required": [
+                            "template_id"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "documents"
+                          ]
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "title": "Create from generated documents",
+                    "required": [
+                      "documents"
+                    ],
+                    "not": {
+                      "anyOf": [
+                        {
+                          "required": [
+                            "template_id"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "clone_template_id"
+                          ]
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "title": "Clone and replace with generated documents",
+                    "required": [
+                      "clone_template_id",
+                      "documents"
+                    ],
+                    "not": {
+                      "required": [
+                        "template_id"
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "template_id",
+                    "name",
+                    "status",
+                    "builder_src",
+                    "template",
+                    "signing_session_url",
+                    "created_at",
+                    "updated_at",
+                    "expires_at"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "integer",
+                      "description": "Builder session ID. This is the underlying template ID."
+                    },
+                    "template_id": {
+                      "type": "integer",
+                      "description": "Template ID opened by the embedded builder."
+                    },
+                    "name": {
+                      "type": "string",
+                      "description": "Template name."
+                    },
+                    "external_id": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Application-specific external ID supplied when creating the builder session."
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "needs_fields",
+                        "ready"
+                      ],
+                      "description": "ready means the template currently has fields and can be used for signing."
+                    },
+                    "builder_src": {
+                      "type": "string",
+                      "description": "Short-lived URL to iframe in the CRM template builder."
+                    },
+                    "template": {
+                      "type": "object",
+                      "description": "Serialized EsignCenter template object."
+                    },
+                    "signing_session_url": {
+                      "type": "string",
+                      "description": "API URL to create an embedded signing session for this template."
+                    },
+                    "created_at": {
+                      "type": "string",
+                      "description": "Template creation timestamp."
+                    },
+                    "updated_at": {
+                      "type": "string",
+                      "description": "Template update timestamp."
+                    },
+                    "expires_at": {
+                      "type": "string",
+                      "description": "Date and time when the builder_src token expires."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/template_builder_sessions/{id}": {
+      "get": {
+        "security": [
+          {
+            "AuthToken": []
+          }
+        ],
+        "tags": [
+          "Template Builder Sessions"
+        ],
+        "summary": "Get template builder session status",
+        "description": "Returns current template builder status and a fresh short-lived builder_src for an existing builder session template.",
+        "operationId": "getTemplateBuilderSession",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Template ID returned by createTemplateBuilderSession."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "template_id",
+                    "name",
+                    "status",
+                    "builder_src",
+                    "template",
+                    "signing_session_url",
+                    "created_at",
+                    "updated_at",
+                    "expires_at"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "integer",
+                      "description": "Builder session ID. This is the underlying template ID."
+                    },
+                    "template_id": {
+                      "type": "integer",
+                      "description": "Template ID opened by the embedded builder."
+                    },
+                    "name": {
+                      "type": "string",
+                      "description": "Template name."
+                    },
+                    "external_id": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Application-specific external ID supplied when creating the builder session."
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "needs_fields",
+                        "ready"
+                      ],
+                      "description": "ready means the template currently has fields and can be used for signing."
+                    },
+                    "builder_src": {
+                      "type": "string",
+                      "description": "Short-lived URL to iframe in the CRM template builder."
+                    },
+                    "template": {
+                      "type": "object",
+                      "description": "Serialized EsignCenter template object."
+                    },
+                    "signing_session_url": {
+                      "type": "string",
+                      "description": "API URL to create an embedded signing session for this template."
+                    },
+                    "created_at": {
+                      "type": "string",
+                      "description": "Template creation timestamp."
+                    },
+                    "updated_at": {
+                      "type": "string",
+                      "description": "Template update timestamp."
+                    },
+                    "expires_at": {
+                      "type": "string",
+                      "description": "Date and time when the builder_src token expires."
+                    }
+                  }
                 }
               }
             }
