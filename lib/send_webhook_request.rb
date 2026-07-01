@@ -10,12 +10,24 @@ module SendWebhookRequest
 
   HttpsError = Class.new(StandardError)
   LocalhostError = Class.new(StandardError)
+  MetadataHostError = Class.new(StandardError)
+
+  # Cloud instance-metadata / link-local targets are never a legitimate
+  # webhook receiver — posting there is an SSRF primitive (AWS/GCP/Azure
+  # credentials live at 169.254.169.254). Blocked unconditionally, unlike the
+  # localhost rule (self-hosted dev legitimately posts to localhost).
+  METADATA_HOSTS = ['169.254.169.254', 'metadata.google.internal', 'metadata.goog'].freeze
+  LINK_LOCAL_PREFIX = '169.254.'
 
   module_function
 
   # rubocop:disable Metrics/AbcSize
   def call(webhook_url, event_uuid:, event_type:, record:, data:, attempt: 0)
     uri = parse_uri(webhook_url.url)
+
+    if uri.host.to_s.in?(METADATA_HOSTS) || uri.host.to_s.start_with?(LINK_LOCAL_PREFIX)
+      raise MetadataHostError, "Can't send to a link-local/metadata address."
+    end
 
     if Docuseal.multitenant?
       raise HttpsError, 'Only HTTPS is allowed.' if (uri.scheme != 'https' || [443, nil].exclude?(uri.port)) &&

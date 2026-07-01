@@ -98,7 +98,10 @@ module Api
 
         account.webhook_urls.create!(
           url: webhook_params[:url],
-          events: events.presence || DEFAULT_WEBHOOK_EVENTS
+          events: events.presence || DEFAULT_WEBHOOK_EVENTS,
+          # Optional delivery headers (e.g. Authorization: Bearer <secret>) so
+          # the receiver can authenticate events without a secret in the URL.
+          secret: webhook_params[:secret].presence.to_h
         )
       end
 
@@ -109,7 +112,7 @@ module Api
       def webhook_params
         @webhook_params ||=
           if params[:webhook].present?
-            params.require(:webhook).permit(:url, events: [])
+            params.require(:webhook).permit(:url, events: [], secret: {})
           else
             {}
           end

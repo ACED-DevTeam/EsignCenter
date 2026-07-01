@@ -541,11 +541,13 @@ module Submissions
     def add_logo(column, _submission = nil)
       column.image(PdfIcons.logo_io, width: 40, height: 40, position: :float)
 
+      # Width must fit the whole product name at this font size — 100pt made
+      # "EsignCenter" wrap mid-word ("EsignCen/ter") on the certificate.
       column.formatted_text([{ text: Docuseal.product_name,
                                link: Docuseal::PRODUCT_EMAIL_URL }],
                             font_size: 20,
                             font: [FONT_NAME, { variant: :bold }],
-                            width: 100,
+                            width: 180,
                             padding: [5, 0, 0, 8],
                             position: :float, text_align: :left)
     end
