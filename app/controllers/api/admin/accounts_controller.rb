@@ -50,7 +50,12 @@ module Api
           user_id: user.id,
           email: user.email,
           api_token: user.access_token.token,
-          webhook_url_id: webhook_url&.id
+          webhook_url_id: webhook_url&.id,
+          # The per-webhook HMAC key every delivery is signed with
+          # (X-Docuseal-Signature). Returned ONCE at provisioning so the
+          # receiver can actually verify the signatures — without it the
+          # signature header is unverifiable noise to the receiving app.
+          webhook_hmac_secret: webhook_url&.hmac_secret
         }, status: :created
       rescue ActiveRecord::RecordInvalid => e
         render json: { error: e.record.errors.full_messages.join(', ') }, status: :unprocessable_content

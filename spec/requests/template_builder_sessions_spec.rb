@@ -252,7 +252,7 @@ describe 'Template Builder Sessions API' do
       expect(response.headers['Content-Security-Policy']).to include("frame-ancestors 'self' https://crm.example.com")
       expect(response.body).to include('<template-builder')
       expect(response.body).to include('data-embed-origin="https://crm.example.com"')
-      expect(response.body).to include('data-with-logo="true"')
+      expect(response.body).to include('data-with-logo="false"')
       expect(response.body).to match(%r{data-base-url="http://[^"]+/embed/template_builder/})
       expect(response.body).to include(Docuseal.product_name)
       expect(response.body).to include('/embed/template_builder/')

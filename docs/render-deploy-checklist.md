@@ -13,8 +13,11 @@ VA Claim Net app. The app only needs four settings pointed at it (step 7).
   must live in real storage. Two options:
   - *Simplest:* attach a **Render Persistent Disk** to the web service,
     mounted at `/data/docuseal` (10 GB to start).
-  - *Most robust:* an S3-compatible bucket (AWS S3 or Cloudflare R2) and the
-    AWS_* environment variables from the README.
+  - *Most robust:* an S3-compatible bucket (AWS S3 or Cloudflare R2). The
+    variable that actually switches storage to S3 is `S3_ATTACHMENTS_BUCKET`
+    — without it, files silently stay on the wipeable disk. Set all of:
+    `S3_ATTACHMENTS_BUCKET`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`,
+    `AWS_REGION` (and `S3_ENDPOINT` if using Cloudflare R2).
 
 Redis is **built in** (it starts inside the web service automatically) — you
 do not need a separate Redis unless you later run more than one instance. If
@@ -30,7 +33,8 @@ you ever scale to 2+ instances, add a managed Redis and set `REDIS_URL`.
 | `FORCE_SSL` | `true` |
 | `ADMIN_PROVISION_TOKEN` | A long random string — the app uses this to create firm accounts. Must match the app's `DOCUSEAL_ADMIN_PROVISION_TOKEN`. |
 
-(If you chose S3/R2 storage, also add the AWS_* variables from the README.)
+(If you chose S3/R2 storage, also add the S3/AWS variables from step 1 —
+remember `S3_ATTACHMENTS_BUCKET` is the on/off switch.)
 
 ## 3. Custom domain + HTTPS
 
@@ -57,9 +61,11 @@ In the **VA Claim Net** Render environment group, fill in:
 
 Webhooks (the fork telling the app "someone signed") are configured
 automatically when a firm's e-sign account is provisioned: the fork calls
-`https://app.<your-domain>/api/esigncenter/webhook` with a secret header. The
-app also re-checks every document on a 10-minute schedule, so even a missed
-webhook only delays a status by a few minutes.
+`https://app.<your-domain>/api/esigncenter/webhook`, signing every delivery
+with a per-firm key the app captures at provisioning and verifies. The app
+also re-checks every document on a 10-minute schedule, so even a missed
+webhook only delays a status by a few minutes. (Firms provisioned by an older
+version authenticate with their original shared secret and keep working.)
 
 ## 6. After the FIRST deploy that includes the prefill-mapping fixes
 

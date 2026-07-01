@@ -17,7 +17,13 @@ module SendWebhookRequest
   # credentials live at 169.254.169.254). Blocked unconditionally, unlike the
   # localhost rule (self-hosted dev legitimately posts to localhost).
   METADATA_HOSTS = ['169.254.169.254', 'metadata.google.internal', 'metadata.goog'].freeze
-  LINK_LOCAL_PREFIX = '169.254.'
+  # String-prefix checks over the URL host: IPv4 link-local, IPv6 link-local
+  # (fe80::/10 — URI hosts come bracketed), and IPv4-mapped IPv6 forms of the
+  # same. Deliberately NOT a resolver-based check: in this product webhook
+  # URLs are set only by the trusted provisioning path (admin token), so this
+  # guards against configuration mistakes and the obvious literal forms, not
+  # a hostile DNS-rebinding attacker.
+  LINK_LOCAL_PREFIXES = ['169.254.', '[fe80:', 'fe80:', '[::ffff:169.254.', '::ffff:169.254.'].freeze
 
   module_function
 
@@ -25,7 +31,8 @@ module SendWebhookRequest
   def call(webhook_url, event_uuid:, event_type:, record:, data:, attempt: 0)
     uri = parse_uri(webhook_url.url)
 
-    if uri.host.to_s.in?(METADATA_HOSTS) || uri.host.to_s.start_with?(LINK_LOCAL_PREFIX)
+    host = uri.host.to_s.downcase
+    if host.in?(METADATA_HOSTS) || LINK_LOCAL_PREFIXES.any? { |prefix| host.start_with?(prefix) }
       raise MetadataHostError, "Can't send to a link-local/metadata address."
     end
 
