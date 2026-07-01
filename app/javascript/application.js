@@ -192,6 +192,7 @@ safeRegisterElement('template-builder', class extends HTMLElement {
       isPaymentConnected: this.dataset.isPaymentConnected === 'true',
       withFormula: this.dataset.withFormula === 'true',
       withSendButton: this.dataset.withSendButton !== 'false',
+      withSaveButton: this.dataset.withSaveButton !== 'false',
       withSignYourselfButton: this.dataset.withSignYourselfButton !== 'false',
       withConditions: this.dataset.withConditions === 'true',
       withDynamicDocuments: this.dataset.withDynamicDocuments === 'true',

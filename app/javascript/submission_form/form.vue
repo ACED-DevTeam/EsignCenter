@@ -1310,6 +1310,17 @@ export default {
   mounted () {
     this.submittedValues = JSON.parse(JSON.stringify(this.values))
 
+    // One-tap completion: when every required field already has a saved value
+    // (e.g. the sender pre-filled the whole form, including their stored
+    // signature), surface the Complete button right away instead of forcing
+    // the signer to re-submit a step they never touched. A required CHECKBOX is
+    // never treated as pre-satisfied — a sender pre-checking an "I agree" box
+    // must not remove the signer's own affirmation step.
+    if (!this.isCompleted && this.stepFields.length &&
+        !this.stepFields.some((fields) => fields.some((f) => f.required && (f.type === 'checkbox' || isEmpty(this.submittedValues[f.uuid]))))) {
+      this.isFormStarted = true
+    }
+
     screen?.orientation?.addEventListener('change', this.onOrientationChange)
 
     this.fields.forEach((field) => {

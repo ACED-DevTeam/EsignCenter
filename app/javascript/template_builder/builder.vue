@@ -177,7 +177,7 @@
             </span>
           </a>
           <span
-            v-if="editable"
+            v-if="editable && withSaveButton"
             id="save_button_container"
             class="flex"
           >
@@ -790,6 +790,11 @@ export default {
       default: true
     },
     withSignYourselfButton: {
+      type: Boolean,
+      required: false,
+      default: true
+    },
+    withSaveButton: {
       type: Boolean,
       required: false,
       default: true
