@@ -45,6 +45,13 @@ Rails.application.configure do
     config.action_controller.perform_caching = false
 
     config.cache_store = :null_store
+    # The packs keep stable filenames; with NO cache-control browsers fall back
+    # to heuristic caching and keep serving stale form.js/builder.js after a
+    # rebuild. Force revalidation (cheap 304s) so local testing always sees the
+    # freshly compiled bundles.
+    config.public_file_server.headers = {
+      'cache-control' => 'public, no-cache'
+    }
   end
 
   config.active_job.queue_adapter = :sidekiq

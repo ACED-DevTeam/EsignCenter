@@ -147,6 +147,13 @@
                   <% value = values[field['uuid']].presence || (field['readonly'] == true && field['default_value'].present? ? Submitters::SubmitValues.template_default_value_for_submitter(field['default_value'], @submitter.submission.submitters.find { |e| e.uuid == field['submitter_uuid'] }, with_time: false) : nil) %>
                   <% next if value.blank? %>
                   <% next if !field['readonly'] && field['submitter_uuid'] == @submitter.uuid %>
+                  <%# A signature/initials VALUE on a submitter who has not completed yet is
+                      only STAGED (pre-filled by the sender for one-tap confirmation). Rendering
+                      it here — with the "digitally signed by" caption — would show a signature
+                      that was never given. It appears once that submitter actually completes. %>
+                  <% next if %w[signature initials].include?(field['type']) &&
+                             field['submitter_uuid'] != @submitter.uuid &&
+                             submitters_index[field['submitter_uuid']]&.completed_at.blank? %>
                   <% next if value == '{{date}}' && field['submitter_uuid'] != @submitter.uuid %>
                   <% next if field['conditions'].present? && values[field['uuid']].blank? && field['submitter_uuid'] != @submitter.uuid %>
                   <% next if field['conditions'].present? && field['submitter_uuid'] == @submitter.uuid %>

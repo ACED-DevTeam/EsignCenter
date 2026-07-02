@@ -25,6 +25,18 @@ module SigningSessions
       WebhookUrls.enqueue_events(template, 'template.created') if created_template?
       WebhookUrls.enqueue_events(submission, 'submission.created')
       Submissions.send_signature_requests([submission])
+
+      # Mirror Api::SubmissionsController#create: a submitter created with
+      # `completed: true` (e.g. an auto-completed data-filler slot) still needs
+      # its completion processed — webhooks, result documents, and the handoff
+      # to the next signer.
+      submission.submitters.each do |submitter|
+        next unless submitter.completed_at?
+
+        ProcessSubmitterCompletionJob.perform_async('submitter_id' => submitter.id,
+                                                    'send_invitation_email' => false)
+      end
+
       SearchEntries.enqueue_reindex([template, submission])
 
       submission

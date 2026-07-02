@@ -84,6 +84,14 @@ pnpm refresh:builtin-mappings
 This refreshes every firm's built-in VA form mappings (and customized copies)
 so the corrected field placements take effect for already-provisioned firms.
 
+### Browser caching of the signing/builder JavaScript
+
+The compiled JavaScript bundles keep the same filenames across deploys, and
+older builds told browsers to cache them for up to 6 months — so people could
+keep seeing OLD buttons/behavior long after a deploy. That is fixed (browsers
+now re-check on every load), but anyone who used the signing screens **before**
+this deploy may need one hard refresh (Cmd+Shift+R) to pick up the fix itself.
+
 ## 7. Smoke test (10 minutes)
 
 1. In the app, open a client → Forms & signatures → send a **VA Form 21-4138**

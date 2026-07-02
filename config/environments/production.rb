@@ -11,9 +11,14 @@ Rails.application.configure do
   # Code is not reloaded between requests.
   config.enable_reloading = false
 
+  # The compiled packs (/packs/js/form.js, builder.js, application.js …) keep
+  # STABLE, un-fingerprinted filenames — embed pages hot-link them by name. A
+  # long max-age therefore pins browsers to stale bundles for months after a
+  # deploy (removed buttons keep rendering, new features never show up).
+  # `no-cache` forces a cheap revalidation (304 via Last-Modified) on each load
+  # while still letting caches store the bytes.
   config.public_file_server.headers = {
-    'cache-control' => 'public, s-maxage=31536000, max-age=15552000',
-    'Expires' => 1.year.from_now.to_fs(:rfc822)
+    'cache-control' => 'public, no-cache'
   }
 
   # Eager load code on boot. This eager loads most of Rails and
