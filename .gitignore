@@ -41,3 +41,7 @@ dump.rdb
 
 # Internal-only notes (not for the public repo)
 /docs/what-we-built-vs-docuseal.md
+
+# Created at container boot by docker-compose.dev (leaks through the live mount);
+# committing it breaks the production build (Dockerfile ln -s hits File exists).
+/public/fonts/DancingScript-Regular.otf
