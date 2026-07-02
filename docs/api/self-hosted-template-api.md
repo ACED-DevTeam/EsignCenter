@@ -68,8 +68,8 @@ Content-Type: application/json
 ```jsonc
 {
   "name": "VA Form 21-526EZ — John Doe",          // optional; defaults to the file name
-  "external_id": "va-claim-1042",                  // optional; your own reference id
-  "folder_name": "VA Claims",                      // optional; groups templates in the UI
+  "external_id": "crm-record-1042",                  // optional; your own reference id
+  "folder_name": "Contracts",                      // optional; groups templates in the UI
 
   "documents": [                                    // required; 1–20 documents
     { "name": "claim", "file": "<base64 of the PDF>" }

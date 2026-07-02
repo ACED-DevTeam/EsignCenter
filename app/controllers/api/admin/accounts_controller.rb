@@ -84,6 +84,10 @@ module Api
       def authenticate_admin_token!
         configured_token = ENV.fetch('ADMIN_PROVISION_TOKEN', nil)
 
+        # The dev compose file ships a publicly-known dev_prov_ token; production
+        # must generate its own, so a dev value counts as not configured.
+        configured_token = nil if Rails.env.production? && configured_token.to_s.start_with?('dev_prov_')
+
         if configured_token.blank?
           return render json: { error: 'Account provisioning is not enabled' }, status: :forbidden
         end

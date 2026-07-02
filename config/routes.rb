@@ -64,8 +64,6 @@ Rails.application.routes.draw do
   resources :timestamp_server, only: %i[create] unless Docuseal.multitenant?
   resources :dashboard, only: %i[index]
   resources :setup, only: %i[index create]
-  resource :newsletter, only: %i[show update]
-  resources :enquiries, only: %i[create]
   resources :users, only: %i[new create edit update destroy] do
     resource :send_reset_password, only: %i[update], controller: 'users_send_reset_password'
   end
@@ -80,9 +78,6 @@ Rails.application.routes.draw do
     resources :resend_email, only: %i[create], controller: 'submissions_resend_email'
   end
   resources :submitters, only: %i[edit update]
-  resources :console_redirect, only: %i[index]
-  resources :upgrade, only: %i[index], controller: 'console_redirect'
-  resources :manage, only: %i[index], controller: 'console_redirect'
   resource :testing_account, only: %i[create destroy]
   resources :testing_api_settings, only: %i[index]
   resources :submitters_autocomplete, only: %i[index]

@@ -319,17 +319,14 @@
       dir="auto"
       class="text-base-content/60 text-xs text-center w-full mt-1 select-none"
     >
-      {{ t('by_clicking_you_agree_to_the').replace('{button}', buttonText.charAt(0).toUpperCase() + buttonText.slice(1)) }} <a
-        href="https://www.docuseal.com/esign-disclosure"
-        target="_blank"
-      >
+      {{ t('by_clicking_you_agree_to_the').replace('{button}', buttonText.charAt(0).toUpperCase() + buttonText.slice(1)) }} <span>
         <span class="inline md:hidden">
           {{ t('esignature_disclosure') }}
         </span>
         <span class="hidden md:inline">
           {{ t('electronic_signature_disclosure') }}
         </span>
-      </a>
+      </span>
     </div>
     <div
       v-else

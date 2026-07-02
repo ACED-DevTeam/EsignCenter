@@ -48,10 +48,11 @@ services:
       # default to :3000 (the container-internal port) when unset, which the
       # browser can't reach. Must be the host-mapped port (3015 in this compose).
       APP_URL: http://localhost:3015
-      # Enable upstream auto-provisioning so the CRM can silently create an
-      # isolated signing account per firm. Must match va-claims'
-      # DOCUSEAL_ADMIN_PROVISION_TOKEN. Dev-only value.
-      ADMIN_PROVISION_TOKEN: dev_prov_2d09eef10c6d683ca1236fe2f3196e7d20688552
+      # Enable auto-provisioning so a paired app can create isolated signing
+      # accounts. Must match the paired app's provisioning token. This is a
+      # public placeholder for localhost only — the app refuses dev_prov_
+      # tokens in production; generate a real one there (openssl rand -hex 32).
+      ADMIN_PROVISION_TOKEN: dev_prov_local_only_not_a_secret
     # On boot: put the ML model + signature font in place (the live mount hides
     # the image's copies), set up the database, then start the app. The app's
     # own Puma config starts Redis + background jobs inside this same container.

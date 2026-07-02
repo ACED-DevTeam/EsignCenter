@@ -147,9 +147,9 @@
                   <%= f.check_box :value, class: 'toggle', checked: account_config.value != false %>
                 </submit-form>
               <% else %>
-                <a href="<%= console_redirect_index_path(redir: "#{Docuseal::CONSOLE_URL}/plans") %>" data-turbo="false" data-tip="<%= I18n.t('unlock_with_docuseal_pro') %>" data-on="change" class="flex tooltip">
+                <div data-tip="<%= I18n.t('unlock_with_docuseal_pro') %>" class="flex tooltip">
                   <%= f.check_box :value, class: 'toggle pointer-events-none', checked: account_config.value != false, disabled: true %>
-                </a>
+                </div>
               <% end %>
             </div>
           <% end %>
@@ -170,9 +170,9 @@
                   <%= f.check_box :value, class: 'toggle', checked: account_config.value == true %>
                 </submit-form>
               <% else %>
-                <a href="<%= console_redirect_index_path(redir: "#{Docuseal::CONSOLE_URL}/plans") %>" data-turbo="false" data-tip="<%= I18n.t('unlock_with_docuseal_pro') %>" class="flex tooltip">
+                <div data-tip="<%= I18n.t('unlock_with_docuseal_pro') %>" class="flex tooltip">
                   <%= f.check_box :value, class: 'toggle pointer-events-none', checked: account_config.value == true, disabled: true %>
-                </a>
+                </div>
               <% end %>
             </div>
           <% end %>

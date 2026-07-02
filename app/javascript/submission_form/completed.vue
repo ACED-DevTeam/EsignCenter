@@ -77,22 +77,12 @@
       <a
         v-if="isDemo"
         target="_blank"
-        href="https://github.com/docusealco/docuseal"
+        href="https://github.com/AmishHillBilly/EsignCenter"
         class="white-button flex items-center space-x-1 w-full"
       >
         <IconBrandGithub />
         <span>
           Star on Github
-        </span>
-      </a>
-      <a
-        v-if="isDemo"
-        href="https://docuseal.com/sign_up"
-        class="white-button flex items-center space-x-1 w-full"
-      >
-        <IconLogin />
-        <span>
-          {{ t('create_a_free_account') }}
         </span>
       </a>
     </div>
@@ -118,7 +108,7 @@
 </template>
 
 <script>
-import { IconCircleCheck, IconBrandGithub, IconMail, IconDownload, IconInnerShadowTop, IconLogin } from '@tabler/icons-vue'
+import { IconCircleCheck, IconBrandGithub, IconMail, IconDownload, IconInnerShadowTop } from '@tabler/icons-vue'
 import MarkdownContent from './markdown_content'
 import { sanitizeUrl } from '@braintree/sanitize-url'
 
@@ -130,7 +120,6 @@ export default {
     IconInnerShadowTop,
     IconBrandGithub,
     IconMail,
-    IconLogin,
     IconDownload
   },
   inject: ['baseUrl', 't'],

@@ -187,7 +187,7 @@ describe 'Templates API' do
       expect do
         post '/api/templates', headers: { 'x-auth-token': author.access_token.token }, params: {
           name: 'Generated Disclosure',
-          external_id: 'va-claim-123',
+          external_id: 'crm-record-123',
           documents: [{ name: 'disclosure', file: pdf_base64 }]
         }.to_json
       end.to change(Template, :count).by(1)
@@ -199,7 +199,7 @@ describe 'Templates API' do
       expect(template.author_id).to eq(author.id)
       expect(template.source).to eq('api')
       expect(template.name).to eq('Generated Disclosure')
-      expect(template.external_id).to eq('va-claim-123')
+      expect(template.external_id).to eq('crm-record-123')
       expect(template.schema.size).to eq(1)
 
       expect(response.parsed_body['name']).to eq('Generated Disclosure')
