@@ -196,6 +196,56 @@
       />
     </button>
     <div
+      v-if="!isCompleted && !isInvite && stepFields.length"
+      id="progress_complete_bar"
+      class="flex items-center justify-between gap-2 border-b border-base-200"
+      style="margin: -1rem -1rem 0.75rem; padding: 0.375rem 2.5rem 0.375rem 1rem"
+    >
+      <div
+        class="min-w-0 truncate text-sm"
+        role="status"
+      >
+        <span>{{ boxesFilledText }}</span>
+        <template v-if="hasRequiredFields">
+          <span class="opacity-50"> · </span>
+          <span :class="barBlockedStep ? 'font-medium' : ''">
+            {{ requiredStatusText }}
+          </span>
+        </template>
+      </div>
+      <span
+        v-if="barBlockedStep"
+        class="tooltip tooltip-left flex-none"
+        :data-tip="t('fill_all_required_fields_to_complete')"
+      >
+        <button
+          type="button"
+          class="btn btn-sm btn-neutral text-white px-4 btn-disabled pointer-events-auto"
+          @click="jumpToPendingRequired"
+        >
+          {{ t('complete') }}
+        </button>
+      </span>
+      <button
+        v-else
+        type="button"
+        class="btn btn-sm btn-neutral text-white px-4 flex-none"
+        :disabled="isSubmitting || isSubmittingComplete"
+        @click="onCompleteBarClick"
+      >
+        <span class="flex items-center">
+          <IconInnerShadowTop
+            v-if="isSubmittingComplete"
+            class="mr-1 animate-spin w-5 h-5"
+            aria-hidden="true"
+          />
+          <span>
+            {{ t('complete') }}
+          </span>
+        </span>
+      </button>
+    </div>
+    <div
       :class="{ 'md:px-4': isBreakpointMd }"
     >
       <form
@@ -674,6 +724,55 @@
       />
     </div>
   </div>
+  <div
+    v-if="showBlankConfirm"
+    class="fixed flex items-center justify-center p-4"
+    style="inset: 0; z-index: 60; background: rgba(0, 0, 0, 0.3)"
+    @click.self="showBlankConfirm = false"
+    @keydown.esc="showBlankConfirm = false"
+  >
+    <div
+      role="alertdialog"
+      aria-modal="true"
+      :aria-label="blankBoxesTitle"
+      class="w-full max-w-md rounded border border-base-300 bg-base-100 p-4 shadow-md"
+    >
+      <p class="text-lg font-medium">
+        {{ blankBoxesTitle }}
+      </p>
+      <p
+        v-if="blankBoxesNames"
+        class="mt-1 text-sm"
+        style="opacity: 0.75"
+      >
+        {{ blankBoxesNames }}
+      </p>
+      <p
+        class="mt-1 text-sm"
+        style="opacity: 0.75"
+      >
+        {{ t('they_will_stay_blank_on_the_finished_document') }}
+      </p>
+      <div class="mt-4 flex flex-col gap-2">
+        <button
+          ref="reviewBlankButton"
+          type="button"
+          class="base-button w-full flex justify-center"
+          @click="reviewBlankBoxes"
+        >
+          {{ t('review_empty_boxes') }}
+        </button>
+        <button
+          type="button"
+          class="btn btn-neutral text-white w-full"
+          :disabled="isSubmitting || isSubmittingComplete"
+          @click="completeNow"
+        >
+          {{ t('complete_anyway') }}
+        </button>
+      </div>
+    </div>
+  </div>
 </template>
 
 <script>
@@ -1053,7 +1152,8 @@ export default {
       submittedValues: {},
       isFormStarted: false,
       recalculateButtonDisabledKey: '',
-      isAccessibilityMode: false
+      isAccessibilityMode: false,
+      showBlankConfirm: false
     }
   },
   computed: {
@@ -1099,6 +1199,89 @@ export default {
           return f.required && isEmpty(this.values[f.uuid])
         })
       })
+    },
+    flatStepFields () {
+      return this.stepFields.flat()
+    },
+    blankStepFields () {
+      return this.flatStepFields.filter((f) => isEmpty(this.values[f.uuid]))
+    },
+    hasRequiredFields () {
+      return this.flatStepFields.some((f) => f.required)
+    },
+    barPendingRequiredFields () {
+      // Required fields the Complete bar must treat as unfinished. This
+      // mirrors what a force-complete will actually be refused for: the
+      // submitting POST carries only the CURRENT step's inputs, so other
+      // steps count only via their SAVED values (submittedValues) — a live
+      // but never-submitted value elsewhere must not light the button. Plus
+      // the mounted() one-tap honesty rule: a sender-staged required checkbox
+      // never counts until the signer has submitted a step themselves.
+      return this.flatStepFields.filter((f) => {
+        if (!f.required) return false
+        if (f.type === 'checkbox' && !this.isFormStarted) return true
+
+        const value = this.currentStepFields.includes(f) ? this.values[f.uuid] : this.submittedValues[f.uuid]
+
+        return isEmpty(value)
+      })
+    },
+    barBlockedStep () {
+      const pending = this.barPendingRequiredFields
+
+      if (!pending.length) return undefined
+
+      return this.stepFields.find((fields) => fields.some((f) => pending.includes(f)))
+    },
+    boxesFilledText () {
+      const total = this.flatStepFields.length
+      const filled = total - this.blankStepFields.length
+
+      return this.t('n_of_total_boxes_filled')
+        .replace('{filled}', filled)
+        .replace('{total}', total)
+    },
+    requiredStatusText () {
+      const pending = this.barPendingRequiredFields
+      const signatureTypes = ['signature', 'initials']
+
+      if (pending.length) {
+        return pending.every((f) => signatureTypes.includes(f.type))
+          ? this.t('signature_needed')
+          : this.t('required_boxes_left')
+      } else {
+        return this.flatStepFields.some((f) => f.required && signatureTypes.includes(f.type))
+          ? this.t('signature_done')
+          : this.t('required_boxes_done')
+      }
+    },
+    blankBoxesTitle () {
+      const count = this.blankStepFields.length
+
+      if (count === 1) {
+        return this.t('one_box_is_still_empty')
+      }
+
+      return this.t('n_boxes_are_still_empty').replace('{count}', count)
+    },
+    blankBoxesNames () {
+      // Only list box names when EVERY blank box carries a human-entered name
+      // (builder-named boxes). Imported PDF boxes keep raw machine names like
+      // "form1[0].#subform[3].SSN[0]" — listing those reads as gibberish, so
+      // the panel falls back to the count alone.
+      const names = this.blankStepFields.map((f) => f.title || f.name)
+
+      if (names.some((name) => !name || /[[\]#{}<>_]/.test(name) || name.length > 40)) {
+        return ''
+      }
+
+      const shown = names.slice(0, 3)
+      const rest = names.length - shown.length
+      const list = shown.join(', ')
+
+      return rest > 0
+        ? `${list} ${this.t('and_n_more').replace('{count}', rest)}`
+        : list
     },
     showCompleteButton () {
       return this.completeButtonContainer && !this.isCompleted && !this.isInvite && this.isFormStarted &&
@@ -1751,6 +1934,56 @@ export default {
     minimizeForm () {
       this.isFormVisible = false
       this.isShowContinue = true
+    },
+    jumpToPendingRequired () {
+      // Mirrors the header Complete button's disabled-state click: take the
+      // user to the first unfinished required box instead of doing nothing.
+      // Save the current step first so a half-typed value isn't lost.
+      this.isFormVisible = true
+
+      const step = this.barBlockedStep
+
+      if (step) {
+        this.saveStep()
+
+        this.goToStep(this.stepFields.indexOf(step), true)
+      }
+    },
+    onCompleteBarClick () {
+      if (this.isSubmitting || this.isSubmittingComplete) return
+
+      if (this.blankStepFields.length) {
+        this.showBlankConfirm = true
+
+        this.$nextTick(() => this.$refs.reviewBlankButton?.focus())
+      } else {
+        this.completeNow()
+      }
+    },
+    reviewBlankBoxes () {
+      this.showBlankConfirm = false
+      this.isFormVisible = true
+
+      const step = this.stepFields.find((fields) => fields.some((f) => isEmpty(this.values[f.uuid])))
+
+      if (step) {
+        // Persist anything typed on the current step before navigating away —
+        // otherwise a filled-but-unsaved box would silently stay blank if the
+        // user later completes from a different step.
+        this.saveStep()
+
+        this.goToStep(this.stepFields.indexOf(step), true)
+      }
+    },
+    completeNow () {
+      this.showBlankConfirm = false
+
+      if (this.isSubmitting || this.isSubmittingComplete) return
+
+      // Same path as the "Complete" submit button: submitStep() saves the
+      // current step's values and, seeing the `completed` submitter name,
+      // finalizes the whole form in one request.
+      this.submitStep({ submitter: { getAttribute: (attr) => (attr === 'name' ? 'completed' : null) } })
     },
     async performComplete (resp) {
       this.isCompleted = true
