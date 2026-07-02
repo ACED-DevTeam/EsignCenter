@@ -109,7 +109,7 @@
       >DocuSeal</a> - {{ t('open_source_documents_software') }}
       <span class="px-1">&middot;</span>
       <a
-        href="https://github.com/AmishHillBilly/KoalaSign"
+        href="https://github.com/AmishHillBilly/EsignCenter"
         target="_blank"
         class="underline"
       >Source</a>

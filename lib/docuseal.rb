@@ -4,16 +4,14 @@ module Docuseal
   # Upstream project URL — used for the AGPL-required DocuSeal attribution
   # (see LICENSE_ADDITIONAL_TERMS) and for DocuSeal cloud endpoints.
   DOCUSEAL_URL = 'https://www.docuseal.com'
-  PRODUCT_URL = 'https://github.com/AmishHillBilly/KoalaSign'
+  PRODUCT_URL = 'https://github.com/AmishHillBilly/EsignCenter'
   PRODUCT_EMAIL_URL = ENV.fetch('PRODUCT_EMAIL_URL', PRODUCT_URL)
   NEWSLETTER_URL = "#{DOCUSEAL_URL}/newsletters".freeze
   ENQUIRIES_URL = "#{DOCUSEAL_URL}/enquiries".freeze
   PRODUCT_NAME = 'EsignCenter'
   DEFAULT_APP_URL = ENV.fetch('APP_URL', 'http://localhost:3000')
-  GITHUB_URL = 'https://github.com/AmishHillBilly/KoalaSign'
+  GITHUB_URL = 'https://github.com/AmishHillBilly/EsignCenter'
   DISCORD_URL = 'https://discord.gg/qygYCDGck9'
-  TWITTER_URL = 'https://twitter.com/docusealco'
-  TWITTER_HANDLE = '@docusealco'
   CHATGPT_URL = "#{DOCUSEAL_URL}/chat".freeze
   SUPPORT_EMAIL = 'evan74dock@gmail.com'
   HOST = ENV.fetch('HOST', 'localhost')
