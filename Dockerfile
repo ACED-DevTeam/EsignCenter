@@ -92,6 +92,13 @@ RUN mkdir -p /app/public/fonts && ln -s /fonts/DancingScript-Regular.otf /app/pu
     chown -R docuseal:docuseal /app/tmp/cache
 
 WORKDIR /data/docuseal
+# The WORKDIR directive above creates this dir as root, but the embedded
+# Redis snapshots into $WORKDIR and platforms may run the container as an
+# arbitrary user (Render does — neither root nor the image's docuseal user).
+# A non-writable dir means "Permission denied" on every RDB save, which flips
+# Redis into MISCONF (all writes rejected) and 500s the whole API. Seen live
+# on Render 2026-07-03. Sticky world-writable (like /tmp) covers every uid.
+RUN chown docuseal:docuseal /data/docuseal && chmod 1777 /data/docuseal
 ENV HOME=/home/docuseal
 ENV WORKDIR=/data/docuseal
 ENV VIPS_MAX_COORD=17000
