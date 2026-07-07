@@ -160,25 +160,27 @@ module Submissions
         pdfs_index.each_value do |pdf|
           next if pdf.trailer.info[:DocumentID].present?
 
-          font = pdf.fonts.add(FONT_NAME)
-
           document_id = Digest::MD5.hexdigest(submitter.submission.slug).upcase
 
+          # Always kept: the (invisible) trailer metadata — it doubles as the
+          # idempotency guard above. The VISIBLE per-page footer is drawn only
+          # for testing accounts (sandbox watermark). Production documents keep
+          # the ID beside each signature, not stamped across every page bottom.
           pdf.trailer.info[:DocumentID] = document_id
+
+          next unless submitter.account.testing?
+
+          font = pdf.fonts.add(FONT_NAME)
+
           pdf.pages.each do |page|
             font_size = [(([page.box.width, page.box.height].min / A4_SIZE[0].to_f) * 9).to_i, 4].max
             cnv = page.canvas(type: :overlay)
 
             text =
-              if submitter.account.testing?
-                if with_signature_id
-                  "#{TESTING_FOOTER} | ID: #{document_id}"
-                else
-                  TESTING_FOOTER
-                end
+              if with_signature_id
+                "#{TESTING_FOOTER} | ID: #{document_id}"
               else
-                "#{I18n.t('document_id',
-                          locale: submitter.metadata.fetch('lang', submitter.account.locale))}: #{document_id}"
+                TESTING_FOOTER
               end
 
             text = HexaPDF::Layout::TextFragment.create(

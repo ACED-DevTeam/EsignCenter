@@ -145,21 +145,20 @@ module Submissions
           maybe_add_background(canvas, submission, page_size)
         end
 
-        if with_signature_id || submission.account.testing?
+        # The visible "Document ID" footer is drawn only for testing accounts
+        # (sandbox watermark) — production audit sheets carry no page footer,
+        # matching the result documents.
+        if submission.account.testing?
           canvas.save_graphics_state do
             document_id = Digest::MD5.hexdigest(submission.slug).upcase
 
             font = composer.document.fonts.add(FONT_NAME)
 
             text =
-              if submission.account.testing?
-                if with_signature_id
-                  "#{TESTING_FOOTER} | ID: #{document_id}"
-                else
-                  TESTING_FOOTER
-                end
+              if with_signature_id
+                "#{TESTING_FOOTER} | ID: #{document_id}"
               else
-                "#{I18n.t('document_id')}: #{document_id}"
+                TESTING_FOOTER
               end
 
             text = HexaPDF::Layout::TextFragment.create(
