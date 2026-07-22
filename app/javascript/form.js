@@ -53,6 +53,7 @@ safeRegisterElement('submission-form', class extends HTMLElement {
       isDemo: this.dataset.isDemo === 'true',
       attribution: this.dataset.attribution !== 'false',
       scrollPadding: this.dataset.scrollPadding || '-80px',
+      orderAsOnPage: this.dataset.orderAsOnPage !== 'false',
       signatureText: this.dataset.signatureText,
       language: this.dataset.language,
       dryRun: this.dataset.dryRun === 'true',

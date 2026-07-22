@@ -11,7 +11,7 @@
     @keydown.space.prevent="submittable && !isNativeInputField ? $el.click() : undefined"
   >
     <div
-      v-if="(!withFieldPlaceholder || !field.name || field.type === 'cells') && !isActive && !isValueSet && field.type !== 'checkbox' && submittable && !area.option_uuid"
+      v-if="(!withFieldPlaceholder || !field.name) && !isSplitDateCells && !isActive && !isValueSet && field.type !== 'checkbox' && submittable && !area.option_uuid"
       class="absolute top-0 bottom-0 right-0 left-0 items-center justify-center h-full w-full"
     >
       <span
@@ -412,6 +412,10 @@ export default {
     },
     isNativeInputField () {
       return ['checkbox', 'radio', 'multiple'].includes(this.field.type)
+    },
+    isSplitDateCells () {
+      // Split signing dates arrive as separate month/day/year comb fields.
+      return this.field.type === 'cells' && ['MM', 'DD', 'YYYY'].includes(this.field.preferences?.format)
     },
     fieldAreaLabel () {
       const name = this.field.name || this.fieldNames[this.field.type] || this.field.type

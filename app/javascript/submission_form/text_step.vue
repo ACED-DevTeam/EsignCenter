@@ -18,32 +18,30 @@
     </template>
   </label>
   <div
-    v-else
-    class="py-1"
-  />
-  <div
-    v-if="field.description"
+    v-if="showFieldNames && field.description"
     :id="field.uuid + '-desc'"
     dir="auto"
     class="mb-3 px-1 field-description-text"
   >
     <MarkdownContent :string="field.description" />
   </div>
-  <AppearsOn :field="field" />
-  <div class="items-center flex">
+  <AppearsOn
+    v-if="showFieldNames"
+    :field="field"
+  />
+  <div class="items-center flex gap-2">
     <input
       v-if="!isTextArea"
       :id="field.uuid"
       v-model="text"
       :maxlength="cellsMaxLegth"
       dir="auto"
-      class="base-input !text-2xl w-full"
-      :class="{ '!pr-11 -mr-10': !field.validation?.pattern }"
+      class="base-input !text-xl w-full min-w-0"
       :required="field.required"
       :pattern="field.validation?.pattern"
       :title="validationMessage"
-      :aria-describedby="field.description ? field.uuid + '-desc' : undefined"
-      :placeholder="`${t('type_here_')}${field.required ? '' : ` (${t('optional')})`}`"
+      :aria-describedby="showFieldNames && field.description ? field.uuid + '-desc' : undefined"
+      :placeholder="showFieldNames ? `${t('type_here_')}${field.required ? '' : ` (${t('optional')})`}` : ''"
       type="text"
       :name="`values[${field.uuid}]`"
       @focus="$emit('focus')"
@@ -54,9 +52,9 @@
       ref="textarea"
       v-model="text"
       dir="auto"
-      class="base-textarea !text-2xl w-full"
-      :aria-describedby="field.description ? field.uuid + '-desc' : undefined"
-      :placeholder="`${t('type_here_')}${field.required ? '' : ` (${t('optional')})`}`"
+      class="base-textarea !text-xl w-full min-w-0"
+      :aria-describedby="showFieldNames && field.description ? field.uuid + '-desc' : undefined"
+      :placeholder="showFieldNames ? `${t('type_here_')}${field.required ? '' : ` (${t('optional')})`}` : ''"
       :required="field.required"
       :name="`values[${field.uuid}]`"
       @input="resizeTextarea"
@@ -64,16 +62,17 @@
     />
     <div
       v-if="!isTextArea && field.type !== 'cells' && !field.validation?.pattern"
-      class="tooltip"
-      :data-tip="t('toggle_multiline_text')"
+      class="flex-none"
     >
       <button
         type="button"
         :aria-label="t('toggle_multiline_text')"
-        class="btn btn-ghost btn-circle btn-sm toggle-multiline-text-button"
+        :title="t('toggle_multiline_text')"
+        class="btn btn-outline btn-sm gap-1 px-2 flex-nowrap toggle-multiline-text-button"
         @click="toggleTextArea"
       >
         <IconAlignBoxLeftTop aria-hidden="true" />
+        <span class="hidden sm:inline">{{ t('multiline_short') }}</span>
       </button>
     </div>
   </div>

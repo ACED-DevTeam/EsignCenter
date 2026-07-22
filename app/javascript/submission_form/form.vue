@@ -176,7 +176,7 @@
   <div
     v-show="isFormVisible"
     id="form_container"
-    class="shadow-md bg-base-100 absolute bottom-0 w-full border-base-200 border p-4 rounded form-container overflow-hidden"
+    class="shadow-md bg-base-100 absolute bottom-0 w-full border-base-200 border p-2 rounded form-container overflow-hidden"
     :class="{ 'md:bottom-4': isBreakpointMd }"
     :style="{ backgroundColor: backgroundColor }"
   >
@@ -198,21 +198,9 @@
     <div
       v-if="!isCompleted && !isInvite && stepFields.length"
       id="progress_complete_bar"
-      class="flex items-center justify-between gap-2 border-b border-base-200"
-      style="margin: -1rem -1rem 0.75rem; padding: 0.375rem 2.5rem 0.375rem 1rem"
+      class="flex items-center justify-end border-b border-base-200"
+      style="margin: -0.5rem -0.5rem 0.5rem; padding: 0.25rem 2.5rem 0.25rem 0.5rem"
     >
-      <div
-        class="min-w-0 truncate text-sm"
-        role="status"
-      >
-        <span>{{ boxesFilledText }}</span>
-        <template v-if="hasRequiredFields">
-          <span class="opacity-50"> · </span>
-          <span :class="barBlockedStep ? 'font-medium' : ''">
-            {{ requiredStatusText }}
-          </span>
-        </template>
-      </div>
       <span
         v-if="barBlockedStep"
         class="tooltip tooltip-left flex-none"
@@ -246,7 +234,7 @@
       </button>
     </div>
     <div
-      :class="{ 'md:px-4': isBreakpointMd }"
+      :class="{ 'md:px-2': isBreakpointMd }"
     >
       <form
         v-if="!isCompleted && !isInvite"
@@ -274,12 +262,12 @@
           name="validate"
           type="hidden"
         >
-        <div class="md:mt-4">
+        <div :class="{ 'md:mt-4': !['cells', 'text'].includes(currentField.type) }">
           <div v-if="['cells', 'text'].includes(currentField.type)">
             <TextStep
               :key="currentField.uuid"
               v-model="values[currentField.uuid]"
-              :show-field-names="showFieldNames"
+              :show-field-names="false"
               :field="currentField"
               @focus="scrollIntoField(currentField)"
             />
@@ -637,7 +625,7 @@
         </div>
         <div
           v-if="(currentField.type !== 'payment' && currentField.type !== 'verification' && currentField.type !== 'kba') || submittedValues[currentField.uuid]"
-          :class="currentField.type === 'signature' ? 'mt-2' : 'mt-4 md:mt-6'"
+          :class="['signature', 'cells', 'text'].includes(currentField.type) ? 'mt-2' : 'mt-4 md:mt-6'"
         >
           <button
             id="submit_form_button"
@@ -1206,9 +1194,6 @@ export default {
     blankStepFields () {
       return this.flatStepFields.filter((f) => isEmpty(this.values[f.uuid]))
     },
-    hasRequiredFields () {
-      return this.flatStepFields.some((f) => f.required)
-    },
     barPendingRequiredFields () {
       // Required fields the Complete bar must treat as unfinished. This
       // mirrors what a force-complete will actually be refused for: the
@@ -1232,28 +1217,6 @@ export default {
       if (!pending.length) return undefined
 
       return this.stepFields.find((fields) => fields.some((f) => pending.includes(f)))
-    },
-    boxesFilledText () {
-      const total = this.flatStepFields.length
-      const filled = total - this.blankStepFields.length
-
-      return this.t('n_of_total_boxes_filled')
-        .replace('{filled}', filled)
-        .replace('{total}', total)
-    },
-    requiredStatusText () {
-      const pending = this.barPendingRequiredFields
-      const signatureTypes = ['signature', 'initials']
-
-      if (pending.length) {
-        return pending.every((f) => signatureTypes.includes(f.type))
-          ? this.t('signature_needed')
-          : this.t('required_boxes_left')
-      } else {
-        return this.flatStepFields.some((f) => f.required && signatureTypes.includes(f.type))
-          ? this.t('signature_done')
-          : this.t('required_boxes_done')
-      }
     },
     blankBoxesTitle () {
       const count = this.blankStepFields.length

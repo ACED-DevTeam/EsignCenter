@@ -76,6 +76,47 @@ describe 'Signing Sessions API' do
       expect(response.parsed_body['embed_src']).to include("/s/#{Submission.last.submitters.first.slug}")
     end
 
+    it 'accepts a PNG signature image for the embedded signer and result renderer' do
+      template = create(:template, account:, author:, only_field_types: %w[signature])
+      signature_data = Rails.root.join('spec/fixtures/sample-image.png').binread
+      signature_data_url = "data:image/png;base64,#{Base64.strict_encode64(signature_data)}"
+
+      post '/api/signing_sessions', headers: headers, params: {
+        template_id: template.id,
+        embed_origin: 'https://app-a.example.com',
+        submitters: [{
+          role: 'First Party',
+          email: 'borrower@example.com',
+          values: { Signature: signature_data_url }
+        }]
+      }.to_json
+
+      expect(response).to have_http_status(:ok)
+
+      submitter = Submission.last.submitters.first
+      signature_field = template.fields.find { |field| field['type'] == 'signature' }
+      signature_attachment = submitter.attachments.find_by!(uuid: submitter.values[signature_field['uuid']])
+
+      expect(signature_attachment.content_type).to eq('image/png')
+      expect(signature_attachment.download).to eq(signature_data)
+
+      get "/s/#{submitter.slug}"
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include(signature_attachment.uuid)
+      expect(response.body).to include(signature_attachment.url)
+
+      create(:encrypted_config, key: EncryptedConfig::ESIGN_CERTS_KEY,
+                                value: GenerateCertificate.call.transform_values(&:to_pem))
+      submitter.update!(completed_at: Time.current)
+
+      expect { Submissions::GenerateResultAttachments.call(submitter.reload) }.not_to raise_error
+
+      result_pdf = HexaPDF::Document.new(io: StringIO.new(submitter.reload.documents.first.download))
+
+      expect(result_pdf.images.count).to be_positive
+    end
+
     it 'rejects existing templates without fields' do
       template = create(:template, account:, author:)
       template.update!(fields: [])
