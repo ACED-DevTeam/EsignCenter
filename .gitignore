@@ -45,3 +45,6 @@ dump.rdb
 # Created at container boot by docker-compose.dev (leaks through the live mount);
 # committing it breaks the production build (Dockerfile ln -s hits File exists).
 /public/fonts/DancingScript-Regular.otf
+
+# Claude planning docs
+/plans
