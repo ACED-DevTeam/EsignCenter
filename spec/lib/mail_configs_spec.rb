@@ -111,6 +111,26 @@ RSpec.describe MailConfigs, type: :lib do
     end
   end
 
+  describe 'incomplete account pins' do
+    it 'falls through to the platform default when the pin lacks a host or from_email' do
+      account = create(:account)
+      create(:encrypted_config, account:, key: EncryptedConfig::EMAIL_SMTP_KEY, value: {})
+      ENV['SMTP_ADDRESS'] = 'platform.smtp.example'
+
+      result = described_class.resolve(account)
+
+      expect(result.source).to eq(:env)
+      expect(result.smtp[:address]).to eq('platform.smtp.example')
+    end
+
+    it 'reports :none for an incomplete pin with no platform default' do
+      account = create(:account)
+      create(:encrypted_config, account:, key: EncryptedConfig::EMAIL_SMTP_KEY, value: { 'host' => 'x.example' })
+
+      expect(described_class.resolve(account).source).to eq(:none)
+    end
+  end
+
   describe EmailDeliveryConfig do
     before do
       ENV['EMAIL_DELIVERY_MODE'] = 'smtp'

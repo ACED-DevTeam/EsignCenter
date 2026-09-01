@@ -14,5 +14,9 @@ class BackfillAccountKindsAndUserConfirmations < ActiveRecord::Migration[8.1]
     SQL
   end
 
-  def down; end
+  def down
+    # Re-running `up` after a rollback would promote every customer account to
+    # the privileged 'internal' kind — never allow rolling back past this.
+    raise ActiveRecord::IrreversibleMigration
+  end
 end

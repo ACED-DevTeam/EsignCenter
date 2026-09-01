@@ -11,6 +11,10 @@ module MailConfigs
   def resolve(account)
     email_config = EncryptedConfig.find_by(account:, key: EncryptedConfig::EMAIL_SMTP_KEY) if account
 
+    # An incomplete pin (the settings form can save an empty hash) must not
+    # shadow the platform default and silently kill the tenant's mail.
+    email_config = nil if email_config && !pin_usable?(email_config.value)
+
     if email_config
       Result.new(
         source: :account,
@@ -30,6 +34,10 @@ module MailConfigs
     return mode if mode.in?(%w[smtp test])
 
     Rails.env.production? ? 'smtp' : 'test'
+  end
+
+  def pin_usable?(value)
+    value.is_a?(Hash) && value['host'].present? && value['from_email'].present?
   end
 
   def build_account_smtp(value)

@@ -28,7 +28,13 @@ module EmailDeliveryConfig
       Rails.logger.warn(message)
     end
 
-    Rails.logger.warn('SMTP_FROM is not set; messages will keep their existing From address') if ENV['SMTP_FROM'].blank?
+    if ENV['SMTP_FROM'].blank? && ENV['SMTP_ADDRESS'].present?
+      message = 'SMTP_ADDRESS is set but SMTP_FROM is not; platform mail would go out under tenant From addresses'
+
+      raise message if Rails.env.production?
+
+      Rails.logger.warn(message)
+    end
 
     return unless ENV.values_at('SMTP_USERNAME', 'SMTP_PASSWORD', 'POSTMARK_API_TOKEN').all?(&:blank?)
 

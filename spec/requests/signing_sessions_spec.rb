@@ -106,7 +106,7 @@ describe 'Signing Sessions API' do
       expect(response.body).to include(signature_attachment.uuid)
       expect(response.body).to include(signature_attachment.url)
 
-      create(:encrypted_config, key: EncryptedConfig::ESIGN_CERTS_KEY,
+      create(:encrypted_config, account:, key: EncryptedConfig::ESIGN_CERTS_KEY,
                                 value: GenerateCertificate.call.transform_values(&:to_pem))
       submitter.update!(completed_at: Time.current)
 

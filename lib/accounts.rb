@@ -3,6 +3,8 @@
 module Accounts
   LINK_EXPIRES_AT = ENV.fetch('FILE_URLS_EXPIRE_MINUTES', '40').to_i.minutes
 
+  class MissingEsignCertsError < StandardError; end
+
   module_function
 
   def create_duplicate(account)
@@ -120,10 +122,13 @@ module Accounts
 
         data
       else
-        return Docuseal.default_pkcs if Docuseal::CERTS.present?
+        encrypted_config = esign_certs_config_for(account)
 
-        EncryptedConfig.find_by(account:, key: EncryptedConfig::ESIGN_CERTS_KEY)&.value ||
-          EncryptedConfig.find_by(key: EncryptedConfig::ESIGN_CERTS_KEY).value
+        return Docuseal.default_pkcs if encrypted_config.nil? && Docuseal::CERTS.present?
+
+        raise_missing_esign_certs!(account) unless encrypted_config
+
+        encrypted_config.value
       end
 
     if (default_cert = cert_data['custom']&.find { |e| e['status'] == 'default' })
@@ -138,18 +143,8 @@ module Accounts
   end
 
   def load_timeserver_url(account)
-    if Docuseal.multitenant?
-      Docuseal::TIMESERVER_URL
-    else
-      url = EncryptedConfig.find_by(account:, key: EncryptedConfig::TIMESTAMP_SERVER_URL_KEY)&.value
-
-      unless Docuseal.multitenant?
-        url ||=
-          Account.order(:id).first.encrypted_configs.find_by(key: EncryptedConfig::TIMESTAMP_SERVER_URL_KEY)&.value
-      end
-
-      url
-    end.presence
+    account.encrypted_configs.find_by(key: EncryptedConfig::TIMESTAMP_SERVER_URL_KEY)&.value.presence ||
+      Docuseal::TIMESERVER_URL.presence
   end
 
   def load_trusted_certs(account)
@@ -158,10 +153,12 @@ module Accounts
         value = EncryptedConfig.find_by(account:, key: EncryptedConfig::ESIGN_CERTS_KEY)&.value || {}
 
         Docuseal::CERTS.merge(value)
-      elsif Docuseal::CERTS.present?
-        Docuseal::CERTS
       else
-        EncryptedConfig.find_by(key: EncryptedConfig::ESIGN_CERTS_KEY)&.value || {}
+        encrypted_config = esign_certs_config_for(account)
+
+        raise_missing_esign_certs!(account) unless encrypted_config
+
+        encrypted_config.value
       end
 
     default_pkcs = GenerateCertificate.load_pkcs(cert_data)
@@ -204,5 +201,21 @@ module Accounts
                                                   key: AccountConfig::DOWNLOAD_LINKS_EXPIRE_KEY).value == false
 
     LINK_EXPIRES_AT.from_now
+  end
+
+  def esign_certs_config_for(account)
+    encrypted_config = account.encrypted_configs.find_by(key: EncryptedConfig::ESIGN_CERTS_KEY)
+
+    if encrypted_config.nil? && account.testing?
+      encrypted_config = account.linked_account_account.account.encrypted_configs.find_by(
+        key: EncryptedConfig::ESIGN_CERTS_KEY
+      )
+    end
+
+    encrypted_config
+  end
+
+  def raise_missing_esign_certs!(account)
+    raise MissingEsignCertsError, "Account #{account.id} has no e-sign certificates configured"
   end
 end

@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 RSpec.describe 'Storage Settings' do
-  let!(:account) { create(:account) }
+  let!(:account) { create(:account, :operator) }
   let!(:user) { create(:user, account:) }
 
   before do

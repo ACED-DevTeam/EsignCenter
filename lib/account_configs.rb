@@ -43,10 +43,6 @@ module AccountConfigs
   end
 
   def find_for_account(account, key)
-    configs = account.account_configs.find_by(key:)
-
-    configs ||= Account.order(:id).first.account_configs.find_by(key:) unless Docuseal.multitenant?
-
-    configs
+    account.account_configs.find_by(key:)
   end
 end

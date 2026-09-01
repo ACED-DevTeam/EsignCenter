@@ -155,6 +155,17 @@ RSpec.describe 'Account and user creation matrix', type: :request do
     expect(response.body).not_to include('testing_toggle')
   end
 
+  it 'shows the test-mode control to internal account pages' do
+    account = create(:account, :internal)
+    user = create(:user, account:)
+    sign_in(user)
+
+    get root_path
+
+    expect(response).to have_http_status(:ok)
+    expect(response.body).to include('testing_toggle')
+  end
+
   it 'does not permit platform-operator privilege through invitations' do
     account = create(:account)
     admin = create(:user, account:)

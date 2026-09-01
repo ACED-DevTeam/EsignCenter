@@ -11,7 +11,7 @@ RSpec.describe SendFormViewedWebhookRequestJob do
   let(:webhook_url) { create(:webhook_url, account:, events: ['form.viewed']) }
 
   before do
-    create(:encrypted_config, key: EncryptedConfig::ESIGN_CERTS_KEY,
+    create(:encrypted_config, account:, key: EncryptedConfig::ESIGN_CERTS_KEY,
                               value: GenerateCertificate.call.transform_values(&:to_pem))
   end
 

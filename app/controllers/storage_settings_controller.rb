@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 class StorageSettingsController < ApplicationController
+  before_action :require_operator_account
   before_action :load_encrypted_config
   authorize_resource :encrypted_config, only: :index
   authorize_resource :encrypted_config, parent: false, only: :create
@@ -18,6 +19,10 @@ class StorageSettingsController < ApplicationController
   end
 
   private
+
+  def require_operator_account
+    head :not_found unless current_account.operator?
+  end
 
   def load_encrypted_config
     @encrypted_config =
