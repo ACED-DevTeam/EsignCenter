@@ -48,3 +48,6 @@ dump.rdb
 
 # Claude planning docs
 /plans
+
+# Local secrets for the standalone build (never committed)
+/.env.standalone.local

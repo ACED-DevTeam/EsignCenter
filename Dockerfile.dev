@@ -84,6 +84,13 @@ RUN mkdir -p /usr/share/fonts/noto && \
 ENV VIPS_MAX_COORD=17000
 ENV VIPS_BLOCK_UNTRUSTED=1
 
+# Headless Chromium so the Capybara/Cuprite system specs (spec/system/*) can run
+# inside this container — required by the Golden Suite (added Session 0).
+RUN apk add --no-cache chromium nss freetype harfbuzz ca-certificates ttf-freefont && \
+    { [ -e /usr/bin/chromium-browser ] || ln -s /usr/bin/chromium /usr/bin/chromium-browser; }
+ENV BROWSER_PATH=/usr/bin/chromium-browser
+ENV CHROME_PATH=/usr/bin/chromium-browser
+
 EXPOSE 3000
 
 # Sensible default if run standalone; docker-compose.dev.yml overrides this with
