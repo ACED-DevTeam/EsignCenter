@@ -11,7 +11,7 @@ module AccountCounters
     result = AccountCounter.upsert(
       { account_id:, key:, period:, value: by },
       unique_by: %i[account_id key period],
-      on_duplicate: Arel.sql('value = account_counters.value + EXCLUDED.value'),
+      on_duplicate: Arel.sql('value = account_counters.value + EXCLUDED.value, updated_at = CURRENT_TIMESTAMP'),
       returning: [:value]
     )
 

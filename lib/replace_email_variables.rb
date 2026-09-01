@@ -163,7 +163,7 @@ module ReplaceEmailVariables
        (config = AccountConfig.find_by(account_id: submitter.account_id, key: :custom_domain))
       { host: config.value, protocol: 'https' }
     elsif is_email && EMAIL_HOST.present?
-      { host: EMAIL_HOST, protocol: ENV['FORCE_SSL'].present? ? 'https' : 'http' }
+      { host: EMAIL_HOST, protocol: Docuseal.force_ssl? ? 'https' : 'http' }
     else
       Docuseal.default_url_options
     end

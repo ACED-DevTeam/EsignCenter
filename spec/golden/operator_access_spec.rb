@@ -62,6 +62,17 @@ RSpec.describe 'Operator access', type: :request do
       expect { get '/jobs' }.to raise_error(ActionController::RoutingError)
     end
 
+    # An account admin can flip otp_required_for_login on another user; only
+    # real enrollment leaves a secret behind, so the flag alone is not 2FA.
+    it 'has no route for an operator-flagged user whose 2FA flag has no secret' do
+      flagged_only = create(:user, :admin, account: operator_account, platform_operator: true)
+      flagged_only.update!(otp_required_for_login: true, otp_secret: nil)
+
+      sign_in(flagged_only)
+
+      expect { get '/jobs' }.to raise_error(ActionController::RoutingError)
+    end
+
     it 'has no route for an admin inside a testing child of the operator account' do
       testing_child = create_testing_child(operator_account)
       testing_admin = enroll_two_factor(create(:user, :admin, account: testing_child))
@@ -105,6 +116,33 @@ RSpec.describe 'Operator access', type: :request do
       expect(AccountConfig.exists?(key: 'fulltext_search')).to be(false)
     end
 
+    it 'is a 404 for an anonymous visitor, never a redirect to sign-in' do
+      operator_account
+
+      expect { post settings_search_entries_reindex_index_path }.to raise_error(ActionController::RoutingError)
+      expect(AccountConfig.exists?(key: 'fulltext_search')).to be(false)
+      expect(ReindexAllSearchEntriesJob.jobs).to be_empty
+    end
+
+    it 'is an empty 404 for an anonymous non-HTML request' do
+      operator_account
+
+      post settings_search_entries_reindex_index_path, as: :json
+
+      expect(response).to have_http_status(:not_found)
+      expect(response.body).to be_empty
+      expect(AccountConfig.exists?(key: 'fulltext_search')).to be(false)
+    end
+
+    it 'is a 404 for an operator-flagged user whose 2FA flag has no secret' do
+      flagged_only = create(:user, :admin, account: operator_account, platform_operator: true)
+      flagged_only.update!(otp_required_for_login: true, otp_secret: nil)
+      sign_in(flagged_only)
+
+      expect { post settings_search_entries_reindex_index_path }.to raise_error(ActionController::RoutingError)
+      expect(AccountConfig.exists?(key: 'fulltext_search')).to be(false)
+    end
+
     it 'lets the operator start the reindex and lands the flag on the operator account only' do
       customer_admin
       internal_admin
@@ -125,6 +163,50 @@ RSpec.describe 'Operator access', type: :request do
       expect(Docuseal.fulltext_search?).to be(true)
     end
 
+    it 'keeps working for the operator in test mode and lands the flag on the real operator account' do
+      sign_in(operator)
+
+      post testing_account_path, headers: { 'HTTP_REFERER' => root_url }
+
+      expect(response).to have_http_status(:redirect)
+
+      testing_child = operator_account.testing_accounts.reload.sole
+
+      expect(testing_child.account_kind).to eq(Account::OPERATOR_KIND)
+      expect(testing_child.users.sole.platform_operator).to be(false)
+
+      get '/jobs'
+
+      expect(response).to have_http_status(:ok)
+
+      post settings_search_entries_reindex_index_path, headers: { 'HTTP_REFERER' => settings_account_path }
+
+      expect(response).to redirect_to(settings_account_path)
+      expect(ReindexAllSearchEntriesJob.jobs.size).to eq(1)
+
+      flag_rows = AccountConfig.where(key: 'fulltext_search')
+
+      expect(flag_rows.sole.account).to eq(operator_account)
+      expect(flag_rows.sole.value).to be(true)
+      expect(testing_child.account_configs.where(key: 'fulltext_search')).not_to exist
+      expect(Docuseal.fulltext_search?).to be(true)
+    end
+
+    it 'stays a 404 for an internal admin in test mode' do
+      operator_account
+      sign_in(internal_admin)
+
+      post testing_account_path, headers: { 'HTTP_REFERER' => root_url }
+
+      expect(response).to have_http_status(:redirect)
+      expect(internal_admin.account.testing_accounts.reload.size).to eq(1)
+
+      expect { get '/jobs' }.to raise_error(ActionController::RoutingError)
+      expect { post settings_search_entries_reindex_index_path }.to raise_error(ActionController::RoutingError)
+      expect(AccountConfig.exists?(key: 'fulltext_search')).to be(false)
+      expect(ReindexAllSearchEntriesJob.jobs).to be_empty
+    end
+
     it 'shows the reindex control only to the operator' do
       operator_account
 
@@ -135,6 +217,38 @@ RSpec.describe 'Operator access', type: :request do
       sign_in(operator)
       get settings_account_path
       expect(response.body).to include(settings_search_entries_reindex_index_path)
+    end
+  end
+
+  describe 'OperatorConfigs' do
+    # Test mode clones the operator account into a child that carries the same
+    # account_kind, so two accounts match the kind. Every read and write must
+    # still resolve to the real (non-testing) operator account.
+    it 'resolves the real operator account, never its testing child' do
+      sign_in(operator)
+
+      post testing_account_path, headers: { 'HTTP_REFERER' => root_url }
+
+      expect(response).to have_http_status(:redirect)
+
+      testing_child = operator_account.testing_accounts.reload.sole
+
+      expect(Account.where(account_kind: Account::OPERATOR_KIND).count).to eq(2)
+      expect(testing_child.testing?).to be(true)
+
+      # Rewriting the parent row puts its current version after the child's
+      # on disk, which is the order an unscoped kind lookup used to follow.
+      operator_account.update!(name: 'EsignCenter Operations (renamed)')
+
+      expect(OperatorConfigs.account).to eq(operator_account)
+      expect(OperatorConfigs.enabled?(:fulltext_search)).to be(false)
+
+      OperatorConfigs.set!(:fulltext_search, true)
+
+      expect(OperatorConfigs.enabled?(:fulltext_search)).to be(true)
+      expect(operator_account.account_configs.find_by!(key: 'fulltext_search').value).to be(true)
+      expect(testing_child.account_configs.where(key: 'fulltext_search')).not_to exist
+      expect(AccountConfig.where(key: 'fulltext_search').sole.account).to eq(operator_account)
     end
   end
 

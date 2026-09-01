@@ -14,7 +14,6 @@ import MenuActive from './elements/menu_active'
 import ClipboardCopy from './elements/clipboard_copy'
 import DynamicList from './elements/dynamic_list'
 import DownloadButton from './elements/download_button'
-import SetOriginUrl from './elements/set_origin_url'
 import SetTimezone from './elements/set_timezone'
 import AutoresizeTextarea from './elements/autoresize_textarea'
 import SubmittersAutocomplete from './elements/submitter_autocomplete'
@@ -106,7 +105,6 @@ safeRegisterElement('menu-active', MenuActive)
 safeRegisterElement('clipboard-copy', ClipboardCopy)
 safeRegisterElement('dynamic-list', DynamicList)
 safeRegisterElement('download-button', DownloadButton)
-safeRegisterElement('set-origin-url', SetOriginUrl)
 safeRegisterElement('set-timezone', SetTimezone)
 safeRegisterElement('autoresize-textarea', AutoresizeTextarea)
 safeRegisterElement('submitters-autocomplete', SubmittersAutocomplete)

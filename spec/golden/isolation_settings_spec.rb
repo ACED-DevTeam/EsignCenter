@@ -247,11 +247,28 @@ RSpec.describe 'Tenant-isolated settings', type: :request do
         .to eq(host: 'host.example.test', protocol: 'https')
     end
 
+    # The same predicate production uses for force_ssl/assume_ssl: the literal
+    # value 'false' switches SSL off, so links must be http too.
+    it 'treats FORCE_SSL=false as http, matching the production SSL setting' do
+      expect(url_options_with('HOST' => 'host.example.test', 'FORCE_SSL' => 'false'))
+        .to eq(host: 'host.example.test', protocol: 'http')
+      expect(url_options_with('HOST' => 'host.example.test', 'FORCE_SSL' => 'true'))
+        .to eq(host: 'host.example.test', protocol: 'https')
+    end
+
     it 'keeps a HOST that carries its own port' do
       expect(url_options_with('HOST' => 'localhost:3015')).to eq(host: 'localhost:3015', protocol: 'http')
     end
 
     it 'defaults to localhost:3000 when neither APP_URL nor HOST is set' do
+      expect(url_options_with({})).to eq(host: 'localhost', port: 3000, protocol: 'http')
+    end
+
+    # With no environment value at all, a legacy database row is the only
+    # candidate left — and it must still not be read.
+    it 'ignores a legacy app_url row when no environment value could mask it' do
+      create(:encrypted_config, key: 'app_url', value: 'https://database.example.test')
+
       expect(url_options_with({})).to eq(host: 'localhost', port: 3000, protocol: 'http')
     end
   end

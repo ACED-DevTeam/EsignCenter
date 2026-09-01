@@ -40,6 +40,26 @@ RSpec.describe 'Rate limiting and durable account counters', type: :request do
       ensure
         account&.destroy!
       end
+
+      # The conflict branch stamps updated_at with the database clock, which
+      # inside a wrapping test transaction would equal the insert's stamp —
+      # so this runs against real, committed statements.
+      it 'moves updated_at on every increment while created_at stays put' do
+        account = create(:account)
+
+        described_class.increment!(account.id, 'touched')
+        counter = AccountCounter.find_by!(account_id: account.id, key: 'touched')
+
+        expect(counter.updated_at).to eq(counter.created_at)
+
+        described_class.increment!(account.id, 'touched')
+        counter.reload
+
+        expect(counter.value).to eq(2)
+        expect(counter.updated_at).to be > counter.created_at
+      ensure
+        account&.destroy!
+      end
     end
 
     it 'isolates values by period' do

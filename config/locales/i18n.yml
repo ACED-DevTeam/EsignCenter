@@ -196,7 +196,6 @@ en: &en
   company_name: Company name
   time_zone: Time zone
   language: Language
-  app_url: App URL
   update: Update
   updating: Updating
   force_2fa_with_authenticator_app: Force 2FA with Authenticator App
@@ -1250,7 +1249,6 @@ es: &es
   company_name: Nombre de la empresa
   time_zone: Zona horaria
   language: Idioma
-  app_url: URL de la aplicación
   update: Actualizar
   updating: Actualizando
   force_2fa_with_authenticator_app: Forzar 2FA con la aplicación Authenticator
@@ -2301,7 +2299,6 @@ it: &it
   company_name: "Nome dell'azienda"
   time_zone: Fuso orario
   language: Lingua
-  app_url: "URL dell'applicazione"
   update: Aggiorna
   updating: Aggiornamento in corso
   force_2fa_with_authenticator_app: "Forzare 2FA con l'app Authenticator"
@@ -3352,7 +3349,6 @@ fr: &fr
   company_name: Nom de l’entreprise
   time_zone: Fuseau horaire
   language: Langue
-  app_url: URL de l’application
   update: Mettre à jour
   updating: Mise à jour
   force_2fa_with_authenticator_app: Imposer la 2FA avec une application d’authentification
@@ -4400,7 +4396,6 @@ pt: &pt
   company_name: Nome da empresa
   time_zone: Fuso horário
   language: Idioma
-  app_url: URL do aplicativo
   update: Atualizar
   updating: Atualizando
   force_2fa_with_authenticator_app: Forçar 2FA com aplicativo Authenticator
@@ -5451,7 +5446,6 @@ de: &de
   company_name: Firmenname
   time_zone: Zeitzone
   language: Sprache
-  app_url: App-URL
   update: Aktualisieren
   updating: Wird aktualisiert
   force_2fa_with_authenticator_app: 2FA mit Authenticator-App erzwingen
@@ -6903,7 +6897,6 @@ nl: &nl
   company_name: Bedrijfsnaam
   time_zone: Tijdzone
   language: Taal
-  app_url: App-URL
   update: Bijwerken
   updating: Bijwerken
   force_2fa_with_authenticator_app: 2FA afdwingen met authenticator-app

@@ -5,7 +5,9 @@
 class SearchEntriesReindexController < ApplicationController
   skip_authorization_check
 
-  before_action :require_operator_access!
+  # Prepended so an anonymous request meets the 404 before Devise can answer
+  # with a sign-in redirect: the surface must not exist for anyone else.
+  prepend_before_action :require_operator_access!
 
   def create
     ReindexAllSearchEntriesJob.perform_async

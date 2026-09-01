@@ -271,6 +271,98 @@ RSpec.describe 'Account and user creation matrix', type: :request do
     end
   end
 
+  # Before Session 2 the fulltext flag was a global row on the lowest-id
+  # account; reads are now scoped to the operator account, which only exists
+  # once the seed has run. The seed adopts the legacy flag so an upgrade does
+  # not silently switch search off — and leaves the legacy row alone.
+  describe 'operator:seed legacy fulltext flag adoption' do
+    around do |example|
+      Rails.application.load_tasks unless Rake::Task.task_defined?('operator:seed')
+      original_email = ENV.fetch('OPERATOR_EMAIL', nil)
+      original_password = ENV.fetch('OPERATOR_PASSWORD', nil)
+      ENV['OPERATOR_EMAIL'] = 'golden-operator@example.com'
+      ENV['OPERATOR_PASSWORD'] = 'golden-operator-password'
+
+      example.run
+    ensure
+      Rake::Task['operator:seed'].reenable
+      Docuseal.refresh_fulltext_search!
+
+      if original_email.nil?
+        ENV.delete('OPERATOR_EMAIL')
+      else
+        ENV['OPERATOR_EMAIL'] = original_email
+      end
+
+      if original_password.nil?
+        ENV.delete('OPERATOR_PASSWORD')
+      else
+        ENV['OPERATOR_PASSWORD'] = original_password
+      end
+    end
+
+    let(:task) { Rake::Task['operator:seed'] }
+
+    it 'adopts a legacy flag from an internal account, leaves that row alone, and is idempotent' do
+      legacy_account = create(:account, :internal)
+      legacy_row = create(:account_config, account: legacy_account, key: 'fulltext_search', value: true)
+
+      expect(Docuseal.fulltext_search?).to be(false)
+
+      expect do
+        task.invoke
+      end.to output(
+        /\ACreated operator account \d+\.\nfulltext search flag adopted from legacy account #{legacy_account.id}\n\z/
+      ).to_stdout
+
+      operator_account = Account.find_by!(account_kind: Account::OPERATOR_KIND)
+
+      expect(operator_account.account_configs.find_by!(key: 'fulltext_search').value).to be(true)
+      expect(legacy_row.reload.account).to eq(legacy_account)
+      expect(legacy_row.value).to be(true)
+      expect(AccountConfig.where(key: 'fulltext_search').count).to eq(2)
+      expect(Docuseal.fulltext_search?).to be(true)
+
+      task.reenable
+
+      expect do
+        task.invoke
+      end.to output("An operator account already exists; no changes made.\n").to_stdout
+
+      expect(AccountConfig.where(key: 'fulltext_search').count).to eq(2)
+      expect(operator_account.account_configs.where(key: 'fulltext_search').sole.value).to be(true)
+    end
+
+    it 'creates no operator row when there is no legacy flag to adopt' do
+      create(:account, :internal)
+
+      expect do
+        task.invoke
+      end.to output(/\ACreated operator account \d+\.\n\z/).to_stdout
+
+      operator_account = Account.find_by!(account_kind: Account::OPERATOR_KIND)
+
+      expect(operator_account.account_configs.where(key: 'fulltext_search')).not_to exist
+      expect(AccountConfig.exists?(key: 'fulltext_search')).to be(false)
+      expect(Docuseal.fulltext_search?).to be(false)
+    end
+
+    it 'ignores a flag that sits only on a testing child' do
+      parent = create(:account, :internal, :with_testing_account)
+      testing_child = parent.testing_accounts.sole
+      create(:account_config, account: testing_child, key: 'fulltext_search', value: true)
+
+      expect do
+        task.invoke
+      end.to output(/\ACreated operator account \d+\.\n\z/).to_stdout
+
+      operator_account = Account.find_by!(account_kind: Account::OPERATOR_KIND)
+
+      expect(operator_account.account_configs.where(key: 'fulltext_search')).not_to exist
+      expect(AccountConfig.where(key: 'fulltext_search').sole.account).to eq(testing_child)
+    end
+  end
+
   it 'redirects a customer away from setup once any user exists' do
     account = create(:account)
     create(:user, account:)

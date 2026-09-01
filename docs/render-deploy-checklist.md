@@ -23,6 +23,8 @@ pointed at it (step 5).
 Redis is **built in** (it starts inside the web service automatically) — you
 do not need a separate Redis unless you later run more than one instance. If
 you ever scale to 2+ instances, add a managed Redis and set `REDIS_URL`.
+Whether to move to managed Redis before launch is decided at launch-gate 3
+from the analysis in `docs/operations.md` section 5.
 
 ## 2. Environment variables on the web service
 
@@ -48,6 +50,12 @@ else assumes this domain works over HTTPS.**
 Open `https://esign.<your-domain>/` — you should see the EsignCenter setup
 page. Create the admin account and keep the password in your password
 manager. This admin login is for YOU only; provisioned accounts never see it.
+
+Then open `https://esign.<your-domain>/up` — the health check. It returns
+JSON like `{"status":"ok","db":"ok","redis":"ok","scheduler_last_tick_at":"…"}`
+with HTTP 200; `"status":"degraded"` (HTTP 503) means the database or Redis
+is unreachable. Point Render's health-check path at `/up`. Details in
+`docs/operations.md` section 4.
 
 **Order matters when UPGRADING:** always deploy this fork's update **before**
 the integrating app's update. An older fork can't attach the webhook auth
@@ -100,6 +108,11 @@ exist, and the steps to run right after the deploy.
 
 ### New environment variables
 
+**The complete, current manifest — every variable, where it is read, and
+what happens when it is missing — lives in `docs/operations.md` section 3.**
+That table is authoritative; the one below is the Session 1 subset kept for
+context.
+
 | Variable | What to put there |
 | --- | --- |
 | `SMTP_ADDRESS` | The platform's default mail server, e.g. `smtp.postmarkapp.com`. Any account without its own pinned server sends through this. |
@@ -115,8 +128,9 @@ exist, and the steps to run right after the deploy.
 | `MULTITENANT` | **Must stay unset.** The fork runs single-tenant by design. |
 
 One-off values used only by the post-deploy tasks below: `OPERATOR_EMAIL`
-and `OPERATOR_PASSWORD` (set the password — otherwise a generated one is
-printed into the deploy log), plus one environment variable per internal app
+and `OPERATOR_PASSWORD` (**both required** since Session 2 — the task aborts
+without them and never generates or prints a password; remove them from the
+service after the seed), plus one environment variable per internal app
 holding that app's own Postmark server token (name it whatever you like;
 `email:pin` reads it by name).
 
@@ -141,7 +155,10 @@ each account's own name.
    `removing 0 over-copied account_configs row(s)`.
 2. **Create the platform-operator account:**
    `OPERATOR_EMAIL=you@example.com OPERATOR_PASSWORD=<strong password> bundle exec rake operator:seed`
-   (safe to run twice — it says "already exists" and stops).
+   (safe to run twice — it says "already exists" and stops). Both variables
+   are required; nothing secret is printed. Then enrol 2FA for that user —
+   the operator surfaces (`/jobs`, the full-text toggle) need the operator
+   flag **and** 2FA. See `docs/operations.md` section 7.
 3. **Review every pinned mail server:** `bundle exec rake email:pins` prints one
    line per account that has its own SMTP server — account id, kind, name,
    host, From address, and whether the pin is usable. It never prints

@@ -52,6 +52,13 @@ module Docuseal
     ENV['ACTIVE_STORAGE_PUBLIC'] == 'true'
   end
 
+  # The same predicate config/environments/production.rb uses for force_ssl /
+  # assume_ssl, so generated links agree with how the app is actually served:
+  # FORCE_SSL='false' means http.
+  def force_ssl?
+    ENV['FORCE_SSL'].present? && ENV['FORCE_SSL'] != 'false'
+  end
+
   def default_pkcs
     return if Docuseal::CERTS['enabled'] == false
 
@@ -95,7 +102,7 @@ module Docuseal
         url = Addressable::URI.parse(ENV['APP_URL'])
         { host: url.host, port: url.port, protocol: url.scheme }
       elsif ENV['HOST'].present?
-        { host: ENV.fetch('HOST'), protocol: ENV['FORCE_SSL'].present? ? 'https' : 'http' }
+        { host: ENV.fetch('HOST'), protocol: force_ssl? ? 'https' : 'http' }
       else
         { host: 'localhost', port: 3000, protocol: 'http' }
       end

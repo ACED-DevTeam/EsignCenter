@@ -97,10 +97,12 @@ class User < ApplicationRecord
 
   # Platform-operator surfaces (/jobs, the instance-global fulltext toggle)
   # open only for a user flagged by `rake operator:seed` who has also enrolled
-  # 2FA. Never derived from the account kind: a testing child of the operator
+  # 2FA. Enrolled means a secret exists, not just the flag: an admin can flip
+  # otp_required_for_login on another user without any OTP ever being entered.
+  # Never derived from the account kind: a testing child of the operator
   # account inherits that kind without being an operator.
   def operator_access?
-    platform_operator? && otp_required_for_login?
+    platform_operator? && otp_required_for_login? && otp_secret.present?
   end
 
   def admin?

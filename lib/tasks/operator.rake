@@ -1,5 +1,34 @@
 # frozen_string_literal: true
 
+module OperatorSeed
+  module_function
+
+  # Before Session 2 the fulltext toggle was a global flag stored on the
+  # lowest-id account. Reads are now scoped to the operator account, which
+  # only exists once this task has run — so a fresh operator account would
+  # silently switch search off at deploy. Adopt the legacy flag onto the
+  # operator account exactly once; the legacy row is left untouched.
+  def adopt_legacy_fulltext_flag(operator_account)
+    return false unless SearchEntry.table_exists?
+    return false unless OperatorConfigs.fetch(:fulltext_search).nil?
+
+    legacy_config = AccountConfig.where(key: 'fulltext_search', value: true)
+                                 .where.not(account_id: operator_account.id)
+                                 .where.not(account_id: AccountLinkedAccount.testing.select(:linked_account_id))
+                                 .order(:id)
+                                 .first
+
+    return false if legacy_config.nil?
+
+    OperatorConfigs.set!(:fulltext_search, true)
+    Docuseal.refresh_fulltext_search!
+
+    puts "fulltext search flag adopted from legacy account #{legacy_config.account_id}"
+
+    true
+  end
+end
+
 namespace :operator do
   desc 'Create the EsignCenter platform-operator account (requires OPERATOR_EMAIL and OPERATOR_PASSWORD)'
   task seed: :environment do
@@ -11,8 +40,11 @@ namespace :operator do
     password = ENV.fetch('OPERATOR_PASSWORD', '')
     abort 'OPERATOR_PASSWORD is required (set it in the environment; it is never printed)' if password.blank?
 
-    if Account.exists?(account_kind: Account::OPERATOR_KIND)
-      puts 'An operator account already exists; no changes made.'
+    if (existing_account = OperatorConfigs.account)
+      adopted = OperatorSeed.adopt_legacy_fulltext_flag(existing_account)
+
+      puts 'An operator account already exists; no changes made.' unless adopted
+
       next
     end
 
@@ -34,5 +66,7 @@ namespace :operator do
     end
 
     puts "Created operator account #{account.id}."
+
+    OperatorSeed.adopt_legacy_fulltext_flag(account)
   end
 end

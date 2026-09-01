@@ -12,8 +12,12 @@ module OperatorAccess
 
   private
 
+  # Operator access is a property of the authenticated human (the Warden
+  # user, `true_user`), exactly as the /jobs route constraint sees it. Test
+  # mode impersonates a testing user but never changes who is signed in, so
+  # it neither grants nor removes operator access.
   def operator_access?
-    current_user&.operator_access? == true
+    true_user&.operator_access? == true
   end
 
   def require_operator_access!
