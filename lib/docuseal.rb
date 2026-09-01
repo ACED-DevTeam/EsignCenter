@@ -38,6 +38,14 @@ module Docuseal
     ENV['MULTITENANT'] == 'true'
   end
 
+  def registration_enabled?
+    ENV['REGISTRATION_ENABLED'] == 'true'
+  end
+
+  def billing_enabled?
+    ENV['BILLING_ENABLED'] == 'true'
+  end
+
   def advanced_formats?
     multitenant?
   end

@@ -12,6 +12,8 @@ module SendWebhookRequest
   LocalhostError = Class.new(StandardError)
   MetadataHostError = Class.new(StandardError)
 
+  SIGNATURE_HEADERS = %w[X-Docuseal-Signature X-Esigncenter-Signature].freeze
+
   # Cloud instance-metadata / link-local targets are never a legitimate
   # webhook receiver — posting there is an SSRF primitive (AWS/GCP/Azure
   # credentials live at 169.254.169.254). Blocked unconditionally, unlike the
@@ -27,21 +29,8 @@ module SendWebhookRequest
 
   module_function
 
-  # rubocop:disable Metrics/AbcSize
   def call(webhook_url, event_uuid:, event_type:, record:, data:, attempt: 0)
-    uri = parse_uri(webhook_url.url)
-
-    host = uri.host.to_s.downcase
-    if host.in?(METADATA_HOSTS) || LINK_LOCAL_PREFIXES.any? { |prefix| host.start_with?(prefix) }
-      raise MetadataHostError, "Can't send to a link-local/metadata address."
-    end
-
-    if Docuseal.multitenant?
-      raise HttpsError, 'Only HTTPS is allowed.' if (uri.scheme != 'https' || [443, nil].exclude?(uri.port)) &&
-                                                    !AccountConfig.exists?(key: :allow_http,
-                                                                           account_id: webhook_url.account_id)
-      raise LocalhostError, "Can't send to localhost." if uri.host.in?(LOCALHOSTS)
-    end
+    uri = validate_webhook_uri!(webhook_url)
 
     webhook_event = create_webhook_event(webhook_url, event_uuid:, event_type:, record:)
 
@@ -58,9 +47,7 @@ module SendWebhookRequest
         data: data
       }.to_json
 
-      if req.headers['X-Docuseal-Signature'].blank?
-        req.headers['X-Docuseal-Signature'] = WebhookUrls::Signatures.sign(webhook_url.hmac_secret, body: req.body)
-      end
+      add_signature_headers!(req.headers, webhook_url, body: req.body)
 
       req.options.read_timeout = 15
       req.options.open_timeout = 8
@@ -72,7 +59,38 @@ module SendWebhookRequest
   rescue Faraday::Error => e
     handle_error(webhook_event, attempt:, error_message: e.message&.truncate(100))
   end
-  # rubocop:enable Metrics/AbcSize
+
+  def validate_webhook_uri!(webhook_url)
+    uri = parse_uri(webhook_url.url)
+    host = uri.host.to_s.downcase
+
+    if host.in?(METADATA_HOSTS) || LINK_LOCAL_PREFIXES.any? { |prefix| host.start_with?(prefix) }
+      raise MetadataHostError, "Can't send to a link-local/metadata address."
+    end
+
+    account = webhook_url.account
+
+    return uri unless Docuseal.multitenant? || account.customer?
+
+    invalid_https = uri.scheme != 'https' || [443, nil].exclude?(uri.port)
+
+    if invalid_https &&
+       (account.customer? || !AccountConfig.exists?(key: :allow_http, account_id: account.id))
+      raise HttpsError, 'Only HTTPS is allowed.'
+    end
+
+    raise LocalhostError, "Can't send to localhost." if host.in?(LOCALHOSTS)
+
+    uri
+  end
+
+  def add_signature_headers!(headers, webhook_url, body:)
+    signature = WebhookUrls::Signatures.sign(webhook_url.hmac_secret, body:)
+
+    SIGNATURE_HEADERS.each do |header|
+      headers[header] = signature if headers[header].blank?
+    end
+  end
 
   def parse_uri(url)
     URI(url)

@@ -9,13 +9,7 @@ module Gates
     ACCOUNT_ONE_PATTERN,
     /\.order\(:account_id\)/
   ].freeze
-  ALLOWLIST = [
-    {
-      file: 'lib/webhook_urls.rb',
-      pattern: ACCOUNT_ONE_PATTERN,
-      reason: 'removed in phase 4'
-    }
-  ].freeze
+  ALLOWLIST = [].freeze
   SPEC_METADATA_PATTERN = /multitenant:\s*true/n
 
   module_function

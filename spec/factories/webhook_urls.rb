@@ -3,6 +3,6 @@
 FactoryBot.define do
   factory :webhook_url do
     account
-    url { Faker::Internet.url }
+    sequence(:url) { |number| "https://example.com/webhooks/#{number}" }
   end
 end

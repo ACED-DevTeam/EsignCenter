@@ -30,7 +30,7 @@ module WebhookUrls
 
     event_arel = events.map { |event| Arel::Table.new(:webhook_urls)[:events].matches("%\"#{event}\"%") }.reduce(:or)
 
-    if Docuseal.multitenant? || account_id == 1
+    if Docuseal.multitenant?
       rel.where(event_arel)
     else
       linked_account_rel =
