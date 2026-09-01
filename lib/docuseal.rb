@@ -10,18 +10,12 @@ module Docuseal
   DEFAULT_APP_URL = ENV.fetch('APP_URL', 'http://localhost:3000')
   GITHUB_URL = 'https://github.com/AmishHillBilly/EsignCenter'
   SUPPORT_EMAIL = 'support@vaclaimnet.com'
-  HOST = ENV.fetch('HOST', 'localhost')
   AATL_CERT_NAME = 'docuseal_aatl'
 
   CERTS = JSON.parse(ENV.fetch('CERTS', '{}'))
   TIMESERVER_URL = ENV.fetch('TIMESERVER_URL', nil)
   VERSION_FILE_PATH = Rails.root.join('.version')
   VERSION_FILE2_PATH = Rails.public_path.join('version')
-
-  DEFAULT_URL_OPTIONS = {
-    host: HOST,
-    protocol: ENV['FORCE_SSL'].present? ? 'https' : 'http'
-  }.freeze
 
   module_function
 
@@ -64,15 +58,17 @@ module Docuseal
     @default_pkcs ||= GenerateCertificate.load_pkcs(Docuseal::CERTS)
   end
 
+  # Instance-global toggle, memoized per process; the operator surface that
+  # flips it calls refresh_fulltext_search! afterwards.
   def fulltext_search?
     return @fulltext_search unless @fulltext_search.nil?
 
     @fulltext_search =
-      if SearchEntry.table_exists?
-        Docuseal.multitenant? || AccountConfig.exists?(key: :fulltext_search, value: true)
-      else
-        false
-      end
+      SearchEntry.table_exists? && (Docuseal.multitenant? || OperatorConfigs.enabled?(:fulltext_search))
+  end
+
+  def refresh_fulltext_search!
+    @fulltext_search = nil
   end
 
   def enable_pwa?
@@ -90,15 +86,18 @@ module Docuseal
       end
   end
 
+  # The environment is the only source of the application URL: APP_URL wins,
+  # then HOST (+ FORCE_SSL for https; a HOST that carries its own port such as
+  # `localhost:3015` is used as-is), then the local default.
   def default_url_options
     @default_url_options ||=
       if ENV['APP_URL'].present?
         url = Addressable::URI.parse(ENV['APP_URL'])
         { host: url.host, port: url.port, protocol: url.scheme }
+      elsif ENV['HOST'].present?
+        { host: ENV.fetch('HOST'), protocol: ENV['FORCE_SSL'].present? ? 'https' : 'http' }
       else
-        # Deployments configured with HOST (+ FORCE_SSL) and no APP_URL keep
-        # generating correct links (the production setup today).
-        DEFAULT_URL_OPTIONS.dup
+        { host: 'localhost', port: 3000, protocol: 'http' }
       end
   end
 

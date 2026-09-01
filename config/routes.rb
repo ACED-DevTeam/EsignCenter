@@ -3,8 +3,10 @@
 Rails.application.routes.draw do
   mount LetterOpenerWeb::Engine, at: '/letter_opener' if Rails.env.development?
 
-  if !Docuseal.multitenant? && defined?(Sidekiq::Web)
-    authenticated :user, ->(u) { u.sidekiq? } do
+  # Operator-only: outside the constraint the route does not exist, so
+  # non-operators and anonymous visitors get a 404 rather than a redirect.
+  if defined?(Sidekiq::Web)
+    authenticated :user, ->(u) { u.operator_access? } do
       mount Sidekiq::Web => '/jobs'
     end
   end
@@ -208,7 +210,6 @@ Rails.application.routes.draw do
       collection do
         patch :update_contact
         patch :update_password
-        patch :update_app_url
       end
     end
   end

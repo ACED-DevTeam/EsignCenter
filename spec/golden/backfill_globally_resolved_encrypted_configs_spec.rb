@@ -128,8 +128,9 @@ RSpec.describe BackfillGloballyResolvedEncryptedConfigs do
   end
 
   it 'copies only the two globally resolved keys' do
-    create(:encrypted_config, account: source_account,
-                              key: EncryptedConfig::APP_URL_KEY, value: 'https://source.example')
+    # A legacy app_url row (the setting is environment-only now; old rows are
+    # inert) must not travel either.
+    create(:encrypted_config, account: source_account, key: 'app_url', value: 'https://source.example')
 
     run_backfill
 

@@ -131,29 +131,25 @@ RSpec.describe 'Tenant-isolated settings', type: :request do
   end
 
   describe 'fulltext search reindex' do
-    # The toggle writes an AccountConfig row onto the lowest-id account, so a
-    # customer tenant reaching it would be a cross-tenant write.
+    # The toggle is an instance-global row on the operator account, so it is an
+    # operator surface: a tenant admin of any kind gets a 404 (the route does
+    # not exist for them) and no config row is written anywhere. The operator
+    # positive control lives in operator_access_spec.
     it 'refuses a customer admin and writes no config row anywhere' do
-      create(:account, :internal)
+      create(:account, :operator)
       customer_admin = create(:user, :admin, account: create(:account))
       sign_in(customer_admin)
 
-      expect do
-        post settings_search_entries_reindex_index_path
-      end.not_to change(AccountConfig.where(key: 'fulltext_search'), :count)
-
-      expect(response).to have_http_status(:redirect)
-      expect(flash[:alert]).to eq('Search index rebuilds are unavailable for customer accounts')
+      expect { post settings_search_entries_reindex_index_path }.to raise_error(ActionController::RoutingError)
       expect(AccountConfig.exists?(key: 'fulltext_search')).to be(false)
     end
 
-    it 'still lets an internal admin start the reindex' do
+    it 'refuses an internal admin the same way' do
+      create(:account, :operator)
       sign_in(create(:user, :admin, account: create(:account, :internal)))
 
-      post settings_search_entries_reindex_index_path
-
-      expect(response).to have_http_status(:redirect)
-      expect(AccountConfig.exists?(key: 'fulltext_search', value: true)).to be(true)
+      expect { post settings_search_entries_reindex_index_path }.to raise_error(ActionController::RoutingError)
+      expect(AccountConfig.exists?(key: 'fulltext_search')).to be(false)
     end
   end
 
@@ -206,24 +202,57 @@ RSpec.describe 'Tenant-isolated settings', type: :request do
   end
 
   describe 'application URL' do
-    it 'uses APP_URL and ignores an encrypted config row' do
-      original_app_url = ENV.fetch('APP_URL', nil)
-      ENV['APP_URL'] = 'https://environment.example.test:8443'
-      stub_const('Docuseal::DEFAULT_APP_URL', ENV.fetch('APP_URL'))
-      create(:encrypted_config, key: EncryptedConfig::APP_URL_KEY,
-                                value: 'https://database.example.test')
-      Docuseal.refresh_default_url_options!
+    # The environment is the only source: APP_URL, then HOST (+ FORCE_SSL),
+    # then the local default. There is no database setting any more, and a
+    # leftover app_url row from before the removal is inert.
+    def url_env_keys
+      %w[APP_URL HOST FORCE_SSL]
+    end
 
-      expect(Docuseal.default_url_options).to eq(
-        host: 'environment.example.test', port: 8443, protocol: 'https'
-      )
+    around do |example|
+      original_values = url_env_keys.index_with { |key| ENV.fetch(key, nil) }
+
+      example.run
     ensure
-      if original_app_url.nil?
-        ENV.delete('APP_URL')
-      else
-        ENV['APP_URL'] = original_app_url
+      original_values.each do |key, value|
+        if value.nil?
+          ENV.delete(key)
+        else
+          ENV[key] = value
+        end
       end
       Docuseal.refresh_default_url_options!
+    end
+
+    def url_options_with(env)
+      url_env_keys.each { |key| ENV.delete(key) }
+      env.each { |key, value| ENV[key] = value }
+      Docuseal.refresh_default_url_options!
+
+      Docuseal.default_url_options
+    end
+
+    it 'uses APP_URL and ignores a legacy app_url row' do
+      create(:encrypted_config, key: 'app_url', value: 'https://database.example.test')
+
+      expect(url_options_with('APP_URL' => 'https://environment.example.test:8443',
+                              'HOST' => 'ignored.example.test')).to eq(
+                                host: 'environment.example.test', port: 8443, protocol: 'https'
+                              )
+    end
+
+    it 'falls back to HOST with FORCE_SSL selecting https' do
+      expect(url_options_with('HOST' => 'host.example.test')).to eq(host: 'host.example.test', protocol: 'http')
+      expect(url_options_with('HOST' => 'host.example.test', 'FORCE_SSL' => 'true'))
+        .to eq(host: 'host.example.test', protocol: 'https')
+    end
+
+    it 'keeps a HOST that carries its own port' do
+      expect(url_options_with('HOST' => 'localhost:3015')).to eq(host: 'localhost:3015', protocol: 'http')
+    end
+
+    it 'defaults to localhost:3000 when neither APP_URL nor HOST is set' do
+      expect(url_options_with({})).to eq(host: 'localhost', port: 3000, protocol: 'http')
     end
   end
 end

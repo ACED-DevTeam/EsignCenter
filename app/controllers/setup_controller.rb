@@ -11,7 +11,6 @@ class SetupController < ApplicationController
   def index
     @account = Account.new(account_params.merge(account_kind: Account::INTERNAL_KIND))
     @user = @account.users.new(user_params)
-    @encrypted_config = EncryptedConfig.new(account: @account, key: EncryptedConfig::APP_URL_KEY)
   end
 
   def create
@@ -19,25 +18,14 @@ class SetupController < ApplicationController
     @account.timezone = Accounts.normalize_timezone(@account.timezone)
     @user = @account.users.new(user_params)
     @user.skip_confirmation!
-    @encrypted_config = EncryptedConfig.new(encrypted_config_params)
-
-    unless URI.parse(encrypted_config_params[:value].to_s).class.in?([URI::HTTP, URI::HTTPS])
-      @encrypted_config.errors.add(:value, I18n.t('should_be_a_valid_url'))
-
-      return render :index, status: :unprocessable_content
-    end
 
     return render :index, status: :unprocessable_content unless @account.valid?
 
     if @user.save
-      encrypted_configs = [
-        { key: EncryptedConfig::APP_URL_KEY, value: encrypted_config_params[:value] },
-        { key: EncryptedConfig::ESIGN_CERTS_KEY, value: GenerateCertificate.call.transform_values(&:to_pem) }
-      ]
-      @account.encrypted_configs.create!(encrypted_configs)
-      @account.account_configs.create!(key: :fulltext_search, value: true) if SearchEntry.table_exists?
-
-      Docuseal.refresh_default_url_options!
+      @account.encrypted_configs.create!(
+        key: EncryptedConfig::ESIGN_CERTS_KEY,
+        value: GenerateCertificate.call.transform_values(&:to_pem)
+      )
 
       sign_in(@user)
 
@@ -59,12 +47,6 @@ class SetupController < ApplicationController
     return {} unless params[:account]
 
     params.require(:account).permit(:name, :timezone, :locale)
-  end
-
-  def encrypted_config_params
-    return {} unless params[:encrypted_config]
-
-    params.require(:encrypted_config).permit(:value)
   end
 
   def redirect_to_root_if_signed

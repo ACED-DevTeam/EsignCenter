@@ -95,10 +95,12 @@ class User < ApplicationRecord
     true
   end
 
-  def sidekiq?
-    return true if Rails.env.development?
-
-    role == 'admin'
+  # Platform-operator surfaces (/jobs, the instance-global fulltext toggle)
+  # open only for a user flagged by `rake operator:seed` who has also enrolled
+  # 2FA. Never derived from the account kind: a testing child of the operator
+  # account inherits that kind without being an operator.
+  def operator_access?
+    platform_operator? && otp_required_for_login?
   end
 
   def admin?

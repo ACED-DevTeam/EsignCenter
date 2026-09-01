@@ -47,15 +47,6 @@
           </password-input>
         </div>
       <% end %>
-      <%= fields_for @encrypted_config do |ff| %>
-        <div class="form-control">
-          <% if @encrypted_config.value.blank? %>
-            <set-origin-url data-input-id="encrypted_config_value"></set-origin-url>
-          <% end %>
-          <%= ff.label :value, t('app_url'), class: 'label' %>
-          <%= ff.text_field :value, required: true, class: 'base-input' %>
-        </div>
-      <% end %>
       <%= fields_for @account do |ff| %>
         <div class="form-control">
           <%= ff.label :locale, t('language'), class: 'label' %>

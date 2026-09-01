@@ -19,18 +19,7 @@ module Gates
   ].freeze
   # Allowlist entries pin a file AND the exact matched snippet, so allowlisting
   # one known-good line never blanket-exempts the rest of the file.
-  ALLOWLIST = [
-    {
-      file: 'app/controllers/search_entries_reindex_controller.rb',
-      snippet: 'Account.minimum(:id)',
-      reason: 'instance-global fulltext toggle storage; becomes an operator surface in Session 2'
-    },
-    {
-      file: 'lib/docuseal.rb',
-      snippet: 'AccountConfig.exists?(key: :fulltext_search, value: true)',
-      reason: 'instance-global fulltext index toggle, read once per boot; operator surface in Session 2'
-    }
-  ].freeze
+  ALLOWLIST = [].freeze
   SPEC_METADATA_PATTERNS = [
     /multitenant:\s*true/n,
     /receive\(\s*:multitenant\?\s*\)\s*\.\s*and_return\(\s*true\s*\)/n

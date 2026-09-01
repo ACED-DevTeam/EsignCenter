@@ -197,9 +197,9 @@ RSpec.describe 'Account and user creation matrix', type: :request do
       }
     end.not_to change(Account, :count)
 
-    # The shipped single-tenant config re-renders the settings screen (the app
-    # URL is required here); the point is that account_kind is never assignable.
-    expect(response).to have_http_status(:unprocessable_content)
+    # The rename itself is the happy path for every account kind; the point is
+    # that account_kind is never assignable.
+    expect(response).to redirect_to(settings_account_path)
     expect(account.reload.name).to eq('Renamed Customer')
     expect(account.account_kind).to eq(Account::CUSTOMER_KIND)
   end
@@ -233,11 +233,12 @@ RSpec.describe 'Account and user creation matrix', type: :request do
     original_email = ENV.fetch('OPERATOR_EMAIL', nil)
     original_password = ENV.fetch('OPERATOR_PASSWORD', nil)
     ENV['OPERATOR_EMAIL'] = 'golden-operator@example.com'
-    ENV.delete('OPERATOR_PASSWORD')
+    ENV['OPERATOR_PASSWORD'] = 'golden-operator-password'
 
+    # The password comes from the environment and is never echoed back.
     expect do
       task.invoke
-    end.to output(/Generated operator password: .+\nCreated operator account \d+\.\n/).to_stdout
+    end.to output(/\ACreated operator account \d+\.\n\z/).to_stdout
 
     account = Account.find_by!(account_kind: Account::OPERATOR_KIND)
     user = account.users.find_by!(email: 'golden-operator@example.com')
@@ -246,6 +247,7 @@ RSpec.describe 'Account and user creation matrix', type: :request do
     expect(account.name).to eq('EsignCenter Operations')
     expect(user.platform_operator).to be(true)
     expect(user).to be_confirmed
+    expect(user.valid_password?('golden-operator-password')).to be(true)
 
     task.reenable
 

@@ -5,6 +5,7 @@ class ApplicationController < ActionController::Base
 
   include ActiveStorage::SetCurrent
   include Pagy::Method
+  include OperatorAccess
 
   check_authorization unless: :devise_controller?
 
