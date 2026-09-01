@@ -154,6 +154,31 @@ RSpec.describe 'Email tenant isolation', type: :lib do
     expect(message['X-EC-Account-Id']).to be_nil
   end
 
+  it 'forces test delivery when a real SMTP transport is configured but the mode is not smtp' do
+    message = build_message
+    message.delivery_method(:smtp, address: 'platform.smtp.example', port: 587)
+    allow(MailConfigs).to receive(:delivery_mode).and_return('test')
+
+    ActionMailerConfigsInterceptor.delivering_email(message)
+
+    expect(message.delivery_method).to be_a(Mail::TestMailer)
+  end
+
+  it 'tags Devise mail with the user account so pinned SMTP applies' do
+    account = create(:account, name: 'Devise Tenant')
+    user = create(:user, account:)
+    pin_smtp(account, host: 'devise.smtp.example')
+    allow(MailConfigs).to receive(:delivery_mode).and_return('smtp')
+
+    message = Devise::Mailer.reset_password_instructions(user, 'token').message
+    expect(message['X-EC-Account-Id']&.value).to eq(account.id.to_s)
+
+    ActionMailerConfigsInterceptor.delivering_email(message)
+
+    expect(message.delivery_method.settings[:address]).to eq('devise.smtp.example')
+    expect(message['X-EC-Account-Id']).to be_nil
+  end
+
   it 'tags UserMailer with the invited user account' do
     account = create(:account)
     user = create(:user, account:)

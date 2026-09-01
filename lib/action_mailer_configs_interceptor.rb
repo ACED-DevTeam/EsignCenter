@@ -15,7 +15,14 @@ module ActionMailerConfigsInterceptor
       return message
     end
 
-    return message unless MailConfigs.delivery_mode == 'smtp'
+    unless MailConfigs.delivery_mode == 'smtp'
+      # Never let a real SMTP transport survive a non-smtp delivery mode (a
+      # production dry run must not email customers); other transports
+      # (letter_opener, test) are already safe.
+      message.delivery_method(:test) if message.delivery_method.is_a?(Mail::SMTP)
+
+      return message
+    end
 
     result = MailConfigs.resolve(account)
 

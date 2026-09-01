@@ -21,26 +21,56 @@ module Api
       def create
         result = provision_account
 
-        unless result[:replayed]
+        if result[:replayed]
+          render_replay(result[:event])
+        else
           Rails.logger.info("provisioned account #{result[:event].account_id} for #{result[:event].email}")
+
+          render_provisioning_event(result[:event], status: :created)
         end
-
-        render_provisioning_event(result[:event], status: result[:replayed] ? :ok : :created)
       rescue ActiveRecord::RecordNotUnique
-        event = existing_provisioning_event
-
-        raise unless event
-
-        render_provisioning_event(event, status: :ok)
+        handle_not_unique
       rescue ActiveRecord::RecordInvalid => e
         if duplicate_email?(e.record)
-          render json: { error: 'A user with this email already exists' }, status: :conflict
+          render_duplicate_email
         else
           render json: { error: e.record.errors.full_messages.join(', ') }, status: :unprocessable_content
         end
       end
 
       private
+
+      # A replayed idempotency key must carry the same request; otherwise the
+      # caller would silently receive some other account's credentials.
+      def render_replay(event)
+        if event.email == requested_email
+          render_provisioning_event(event, status: :ok)
+        else
+          render json: { error: 'Idempotency key was already used with different parameters' }, status: :conflict
+        end
+      end
+
+      def handle_not_unique
+        event = existing_provisioning_event
+
+        if event
+          render_replay(event)
+        elsif User.exists?(email: requested_email)
+          # Lost a race on the unique users.email index, not on the
+          # idempotency key — same contract as the validation-time duplicate.
+          render_duplicate_email
+        else
+          raise
+        end
+      end
+
+      def render_duplicate_email
+        render json: { error: 'A user with this email already exists' }, status: :conflict
+      end
+
+      def requested_email
+        account_params[:email].to_s.strip.downcase
+      end
 
       def provision_account
         ApplicationRecord.transaction do

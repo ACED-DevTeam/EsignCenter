@@ -75,6 +75,17 @@ RSpec.describe 'Account and user creation matrix', type: :request do
     ).to eq(original_counts)
   end
 
+  it 'returns a conflict when an idempotency key is replayed with different parameters' do
+    post_provision(name: 'Replay Firm', email: 'golden-replay-a@example.com', idempotency_key: 'golden-mismatch-key')
+    original_counts = [Account.count, User.count, ProvisioningEvent.count]
+
+    post_provision(name: 'Replay Firm', email: 'golden-replay-b@example.com', idempotency_key: 'golden-mismatch-key')
+
+    expect(response).to have_http_status(:conflict)
+    expect(response.parsed_body['error']).to eq('Idempotency key was already used with different parameters')
+    expect([Account.count, User.count, ProvisioningEvent.count]).to eq(original_counts)
+  end
+
   it 'returns a conflict for a duplicate email and rolls back the account' do
     create(:user, email: 'golden-taken@example.com')
     original_counts = [Account.count, User.count, ProvisioningEvent.count]
@@ -248,9 +259,8 @@ RSpec.describe 'Account and user creation matrix', type: :request do
     account = create(:account)
     create(:user, account:)
 
-    get setup_index_path
+    expect { get setup_index_path }.not_to change(Account, :count)
 
     expect(response).to redirect_to(new_user_session_path)
-    expect(Account.count).to eq(1)
   end
 end

@@ -16,6 +16,10 @@ module Devise
       def devise_mail(record, action, opts = {}, &)
         assign_message_metadata(action, record)
 
+        # Tag the tenant so the interceptor resolves this account's pinned
+        # SMTP config (Devise::Mailer inherits ApplicationMailer).
+        mail_account(record.account) if record.respond_to?(:account) && record.account
+
         initialize_from_record(record)
 
         I18n.with_locale(record.account.locale) do
@@ -170,7 +174,9 @@ Devise.setup do |config|
   # without confirming their account.
   # Default is 0.days, meaning the user cannot access the website without
   # confirming their account.
-  config.allow_unconfirmed_access_for = nil
+  # Unconfirmed users may never sign in; every trusted creation path calls
+  # skip_confirmation!, so only future public-signup users are gated.
+  config.allow_unconfirmed_access_for = 0.days
 
   # A period that the user is allowed to confirm their account before their
   # token becomes invalid. For example, if set to 3.days, the user can confirm

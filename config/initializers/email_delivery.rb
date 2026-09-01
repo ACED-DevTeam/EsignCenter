@@ -6,12 +6,24 @@ module EmailDeliveryConfig
   module_function
 
   def check!
+    explicit_mode = ENV.fetch('EMAIL_DELIVERY_MODE', nil)
+
+    if explicit_mode.present? && !explicit_mode.in?(%w[smtp test])
+      message = "EMAIL_DELIVERY_MODE=#{explicit_mode} is invalid (use 'smtp' or 'test')"
+
+      raise message if Rails.env.production?
+
+      Rails.logger.warn(message)
+    end
+
     return unless MailConfigs.delivery_mode == 'smtp'
 
     if ENV['SMTP_ADDRESS'].blank?
-      message = 'EMAIL_DELIVERY_MODE=smtp but SMTP_ADDRESS is not set; only accounts with pinned SMTP can send email'
+      message = 'SMTP delivery mode but SMTP_ADDRESS is not set; only accounts with pinned SMTP can send email'
 
-      raise message if Rails.env.production?
+      # Raise only when smtp mode was asked for explicitly; a bare production
+      # boot (mode defaulted) keeps working for pinned-account-only setups.
+      raise message if Rails.env.production? && explicit_mode == 'smtp'
 
       Rails.logger.warn(message)
     end

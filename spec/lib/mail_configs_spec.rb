@@ -120,7 +120,15 @@ RSpec.describe MailConfigs, type: :lib do
       allow(Rails).to receive(:env).and_return(ActiveSupport::EnvironmentInquirer.new('production'))
 
       expect { described_class.check! }
-        .to raise_error(RuntimeError, /EMAIL_DELIVERY_MODE=smtp but SMTP_ADDRESS is not set/)
+        .to raise_error(RuntimeError, /SMTP delivery mode but SMTP_ADDRESS is not set/)
+    end
+
+    it 'raises at boot in production for an invalid explicit mode value' do
+      ENV['EMAIL_DELIVERY_MODE'] = 'tes'
+      allow(Rails).to receive(:env).and_return(ActiveSupport::EnvironmentInquirer.new('production'))
+
+      expect { described_class.check! }
+        .to raise_error(RuntimeError, /EMAIL_DELIVERY_MODE=tes is invalid/)
     end
 
     it 'warns without raising in development when SMTP_ADDRESS is missing' do
@@ -129,7 +137,7 @@ RSpec.describe MailConfigs, type: :lib do
 
       expect { described_class.check! }.not_to raise_error
       expect(Rails.logger).to have_received(:warn)
-        .with(/EMAIL_DELIVERY_MODE=smtp but SMTP_ADDRESS is not set/)
+        .with(/SMTP delivery mode but SMTP_ADDRESS is not set/)
     end
   end
 end
