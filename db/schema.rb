@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_01_090600) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_01_180000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gin"
   enable_extension "pg_catalog.plpgsql"
@@ -41,6 +41,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_01_090600) do
     t.text "value", null: false
     t.index ["account_id", "key"], name: "index_account_configs_on_account_id_and_key", unique: true
     t.index ["account_id"], name: "index_account_configs_on_account_id"
+  end
+
+  create_table "account_counters", force: :cascade do |t|
+    t.bigint "account_id", null: false
+    t.datetime "created_at", null: false
+    t.string "key", null: false
+    t.string "period", default: "", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "value", default: 0, null: false
+    t.index ["account_id", "key", "period"], name: "index_account_counters_on_account_id_and_key_and_period", unique: true
+    t.index ["account_id"], name: "index_account_counters_on_account_id"
   end
 
   create_table "account_linked_accounts", force: :cascade do |t|
@@ -584,6 +595,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_01_090600) do
   add_foreign_key "access_tokens", "users"
   add_foreign_key "account_accesses", "accounts"
   add_foreign_key "account_configs", "accounts"
+  add_foreign_key "account_counters", "accounts"
   add_foreign_key "account_linked_accounts", "accounts"
   add_foreign_key "account_linked_accounts", "accounts", column: "linked_account_id"
   add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"

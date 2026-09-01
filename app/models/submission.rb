@@ -121,6 +121,8 @@ class Submission < ApplicationRecord
     preserved: 'preserved'
   }, scope: false, prefix: true
 
+  after_create :increment_submissions_created_counter
+
   def expired?
     expire_at && expire_at <= Time.current
   end
@@ -186,5 +188,11 @@ class Submission < ApplicationRecord
     return if combined_document.blank?
 
     ActiveStorage::Blob.proxy_url(combined_document.blob, expires_at:)
+  end
+
+  private
+
+  def increment_submissions_created_counter
+    AccountCounters.increment!(account_id, 'submissions_created')
   end
 end

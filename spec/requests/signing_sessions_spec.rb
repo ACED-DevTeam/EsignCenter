@@ -154,7 +154,7 @@ describe 'Signing Sessions API' do
       template = create(:template, account:, author:)
 
       stub_const('Api::SigningSessionsController::CREATE_RATE_LIMIT', 1)
-      RateLimit::STORE.clear
+      RateLimit.store.clear
 
       2.times do
         post '/api/signing_sessions', headers: headers, params: {
@@ -167,7 +167,7 @@ describe 'Signing Sessions API' do
       expect(response).to have_http_status(:too_many_requests)
       expect(response.parsed_body).to eq({ 'error' => 'Too many requests' })
     ensure
-      RateLimit::STORE.clear
+      RateLimit.store.clear
     end
 
     it 'requires an embed origin so signer links are only framed by the calling app' do

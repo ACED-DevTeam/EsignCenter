@@ -31,6 +31,7 @@ class Account < ApplicationRecord
   has_one_attached :logo
 
   has_many :users, dependent: :destroy
+  has_many :account_counters, dependent: :delete_all
   has_many :encrypted_configs, dependent: :destroy
   has_many :account_configs, dependent: :destroy
   has_many :email_messages, dependent: :destroy
