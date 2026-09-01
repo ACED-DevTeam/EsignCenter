@@ -23,7 +23,9 @@ RSpec.describe 'Submission Preview' do
     context 'when user is not signed in' do
       context 'when submission is not completed' do
         before do
-          create(:encrypted_config, account:, key: EncryptedConfig::EMAIL_SMTP_KEY, value: '{}')
+          create(:encrypted_config, account:, key: EncryptedConfig::EMAIL_SMTP_KEY,
+                                    value: { 'host' => 'smtp.example.com', 'port' => '587',
+                                             'from_email' => 'docs@example.com' })
 
           submission.submitters.each { |s| s.update(completed_at: 1.day.ago) }
 
