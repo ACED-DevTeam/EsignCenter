@@ -20,7 +20,7 @@ module Api
     end
 
     rescue_from RateLimit::LimitApproached do |e|
-      Rollbar.error(e) if defined?(Rollbar)
+      ErrorReport.error(e)
 
       render json: { error: 'Too many requests' }, status: :too_many_requests
     end
@@ -31,7 +31,7 @@ module Api
       end
 
       rescue_from JSON::ParserError do |e|
-        Rollbar.warning(e) if defined?(Rollbar)
+        ErrorReport.warning(e)
 
         render json: { error: "JSON parse error: #{e.message}" }, status: :unprocessable_content
       end
@@ -82,16 +82,25 @@ module Api
     end
 
     def authenticate_user!
-      render json: { error: 'Not authenticated' }, status: :unauthorized unless current_user
+      return render json: { error: 'Not authenticated' }, status: :unauthorized unless current_user
+
+      # Session users are governed by Devise (an archived account cannot sign
+      # in); a token keeps working until its account state says otherwise.
+      return if @token_user.nil? || AccountStates.tokens_allowed?(@token_user.account)
+
+      render json: { error: 'Account is not active' }, status: :unauthorized
     end
 
     def current_user
-      super || @current_user ||=
-                 if request.headers['X-Auth-Token'].present?
-                   sha256 = Digest::SHA256.hexdigest(request.headers['X-Auth-Token'])
+      super || @current_user ||= user_from_token
+    end
 
-                   User.joins(:access_token).active.find_by(access_token: { sha256: })
-                 end
+    def user_from_token
+      return if request.headers['X-Auth-Token'].blank?
+
+      sha256 = Digest::SHA256.hexdigest(request.headers['X-Auth-Token'])
+
+      @token_user = User.joins(:access_token).active.find_by(access_token: { sha256: })
     end
 
     def current_account

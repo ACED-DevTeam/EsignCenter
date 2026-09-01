@@ -8,7 +8,7 @@ class RevealAccessTokenController < ApplicationController
     by: -> { current_user.id },
     store: RateLimit.store,
     with: lambda {
-      Rollbar.error('Rate limit api key') if defined?(Rollbar)
+      ErrorReport.error('Rate limit api key')
 
       render turbo_stream: turbo_stream.replace(:modal, template: 'reveal_access_token/show',
                                                         locals: { error_message: I18n.t(:too_many_attempts) }),

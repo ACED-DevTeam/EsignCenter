@@ -10,7 +10,7 @@ module ActionMailerConfigsInterceptor
     account = Account.find_by(id: account_id) if account_id.present?
 
     if Docuseal.demo?
-      message.delivery_method(:test)
+      message.delivery_method(null_delivery_method)
 
       return message
     end
@@ -19,7 +19,7 @@ module ActionMailerConfigsInterceptor
       # Never let a real SMTP transport survive a non-smtp delivery mode (a
       # production dry run must not email customers); other transports
       # (letter_opener, test) are already safe.
-      message.delivery_method(:test) if message.delivery_method.is_a?(Mail::SMTP)
+      message.delivery_method(null_delivery_method) if message.delivery_method.is_a?(Mail::SMTP)
 
       return message
     end
@@ -28,17 +28,34 @@ module ActionMailerConfigsInterceptor
 
     case result.source
     when :account
-      message.delivery_method(:smtp, result.smtp)
+      deliver_via_smtp(message, result.smtp)
       message.from = result.from
     when :env
-      message.delivery_method(:smtp, result.smtp)
+      deliver_via_smtp(message, result.smtp)
       rewrite_from(message, result.from) if result.from
     when :none
-      message.delivery_method(:test)
-      warn_missing_smtp(message, account)
+      message.delivery_method(null_delivery_method)
+      report_missing_smtp(message, account)
     end
 
     message
+  end
+
+  # A failed SMTP send must raise so the Sidekiq mail job retries and the
+  # failure is reported, instead of being swallowed by the production default
+  # (raise_delivery_errors = false).
+  def deliver_via_smtp(message, smtp_settings)
+    message.delivery_method(:smtp, smtp_settings)
+    message.raise_delivery_errors = true
+  end
+
+  # The test environment keeps Mail::TestMailer so specs can inspect
+  # deliveries; everywhere else an undeliverable message is dropped outright
+  # (Mail::TestMailer would retain every message in memory for the life of
+  # the process). Mail resolves only its own symbols here, so the class goes
+  # in directly.
+  def null_delivery_method
+    Rails.env.test? ? :test : NullMailDelivery
   end
 
   def rewrite_from(message, smtp_from)
@@ -51,10 +68,19 @@ module ActionMailerConfigsInterceptor
     end
   end
 
-  def warn_missing_smtp(message, account)
+  # In production a message with nowhere to go is an incident (a tenant's
+  # mail is silently not leaving), so it reports at error level.
+  def report_missing_smtp(message, account)
     return if message.instance_variable_defined?(:@ec_missing_smtp_warned)
 
-    Rails.logger.warn("no SMTP config for account #{account&.id || 'none'}")
+    text = "no SMTP config for account #{account&.id || 'none'}"
+
+    if Rails.env.production?
+      ErrorReport.error(text)
+    else
+      ErrorReport.warning(text)
+    end
+
     message.instance_variable_set(:@ec_missing_smtp_warned, true)
   end
 end

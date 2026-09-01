@@ -27,7 +27,7 @@ class StartFormController < ApplicationController
                                                   @template.submitters.first)['uuid'])
       render :email_verification if params[:email_verification]
     else
-      Rollbar.warning("Not shared template: #{@template.id}") if defined?(Rollbar)
+      ErrorReport.warning("Not shared template: #{@template.id}")
 
       return render :private if current_user && current_ability.can?(:read, @template)
 
@@ -118,7 +118,7 @@ class StartFormController < ApplicationController
     return if @resubmit_submitter
     return if @template.shared_link? || (current_user && current_ability.can?(:read, @template))
 
-    Rollbar.warning("Not shared template: #{@template.id}") if defined?(Rollbar)
+    ErrorReport.warning("Not shared template: #{@template.id}")
 
     redirect_to start_form_path(@template.slug)
   end

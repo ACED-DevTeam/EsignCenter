@@ -143,7 +143,7 @@ module Submissions
       begin
         pdf.write(io, incremental: true, validate: false)
       rescue HexaPDF::MalformedPDFError => e
-        Rollbar.error(e) if defined?(Rollbar)
+        ErrorReport.error(e)
 
         pdf.write(io, incremental: false, validate: false)
       end

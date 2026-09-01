@@ -32,7 +32,7 @@ module Api
     rescue ActiveRecord::RecordNotFound
       render json: { error: 'Template not found' }, status: :unprocessable_content
     rescue DownloadUtils::UnableToDownload => e
-      Rollbar.warning(e) if defined?(Rollbar)
+      ErrorReport.warning(e)
 
       render json: { error: e.message }, status: :unprocessable_content
     end

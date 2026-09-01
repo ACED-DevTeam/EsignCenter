@@ -36,7 +36,7 @@ module Api
       render json: { error: 'Template not found' }, status: :unprocessable_content
     rescue Submitters::NormalizeValues::BaseError, Submissions::CreateFromSubmitters::BaseError,
            DownloadUtils::UnableToDownload => e
-      Rollbar.warning(e) if defined?(Rollbar)
+      ErrorReport.warning(e)
 
       render json: { error: e.message }, status: :unprocessable_content
     end

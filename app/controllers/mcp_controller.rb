@@ -29,7 +29,10 @@ class McpController < ActionController::API
   private
 
   def authenticate_user!
-    render json: { error: 'Not authenticated' }, status: :unauthorized unless current_user
+    return render json: { error: 'Not authenticated' }, status: :unauthorized unless current_user
+    return if AccountStates.tokens_allowed?(current_user.account)
+
+    render json: { error: 'Account is not active' }, status: :unauthorized
   end
 
   def verify_mcp_enabled!

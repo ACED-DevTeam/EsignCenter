@@ -232,7 +232,7 @@ module Submitters
 
     TemplateMailer.otp_verification_email(submitter.submission.template, email: submitter.email).deliver_later!
   rescue RateLimit::LimitApproached
-    Rollbar.warning("Limit verification code for template: #{submitter.submission.template.id}") if defined?(Rollbar)
+    ErrorReport.warning("Limit verification code for template: #{submitter.submission.template.id}")
 
     raise UnableToSendCode, I18n.t('too_many_attempts')
   end

@@ -16,7 +16,7 @@ module Api
       blob_uuid, purp, exp = ApplicationRecord.signed_id_verifier.verified(params[:signed_uuid])
 
       if blob_uuid.blank? || purp != 'blob'
-        Rollbar.error('Blob not found') if defined?(Rollbar)
+        ErrorReport.error('Blob not found')
 
         return head :not_found
       end
@@ -24,7 +24,7 @@ module Api
       blob = ActiveStorage::Blob.find_by!(uuid: blob_uuid)
 
       if Submitters::DANGEROUS_EXTENSIONS.include?(blob.filename.extension.to_s.downcase)
-        Rollbar.error('Dangerous extension') if defined?(Rollbar)
+        ErrorReport.error('Dangerous extension')
 
         return head :unprocessable_content
       end

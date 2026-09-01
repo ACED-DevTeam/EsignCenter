@@ -31,14 +31,14 @@ class ApplicationController < ActionController::Base
   end
 
   rescue_from RateLimit::LimitApproached do |e|
-    Rollbar.error(e) if defined?(Rollbar)
+    ErrorReport.error(e)
 
     redirect_to request.referer, alert: 'Too many requests', status: :too_many_requests
   end
 
   if Rails.env.production? || Rails.env.test?
     rescue_from CanCan::AccessDenied do |e|
-      Rollbar.warning(e) if defined?(Rollbar)
+      ErrorReport.warning(e)
 
       redirect_to root_path, alert: e.message
     end

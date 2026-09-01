@@ -93,7 +93,7 @@ module Submitters
 
         raise RequiredFieldError, uuid if validate_required
 
-        Rollbar.warning("Required field #{submitter.id}: #{uuid}") if defined?(Rollbar)
+        ErrorReport.warning("Required field #{submitter.id}: #{uuid}")
       end
 
       submitter
@@ -493,7 +493,7 @@ module Submitters
       raise ValidationError, 'Invalid field' if field['submitter_uuid'] != submitter.uuid
 
       if field['readonly'] == true
-        Rollbar.warning("Readonly field #{submitter.id}: #{field['uuid']}") if defined?(Rollbar)
+        ErrorReport.warning("Readonly field #{submitter.id}: #{field['uuid']}")
 
         raise ValidationError, 'Read-only field'
       end

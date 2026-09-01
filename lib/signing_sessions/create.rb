@@ -57,7 +57,7 @@ module SigningSessions
 
     def create_submission(template)
       if template.fields.blank?
-        Rollbar.warning("Template does not contain fields: #{template.id}") if defined?(Rollbar)
+        ErrorReport.warning("Template does not contain fields: #{template.id}")
 
         raise Submissions::CreateFromSubmitters::BaseError, 'Template does not contain fields'
       end

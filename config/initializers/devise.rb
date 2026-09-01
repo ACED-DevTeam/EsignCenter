@@ -4,7 +4,7 @@ Devise.otp_allowed_drift = 60.seconds
 
 class FailureApp < Devise::FailureApp
   def respond
-    Rollbar.warning('Invalid password') if defined?(Rollbar) && warden_message == :invalid
+    ErrorReport.warning('Invalid password') if warden_message == :invalid
 
     super
   end

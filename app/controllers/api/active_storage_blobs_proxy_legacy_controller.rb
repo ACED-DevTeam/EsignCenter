@@ -13,14 +13,14 @@ module Api
 
     # rubocop:disable Metrics
     def show
-      Rollbar.info('Blob legacy') if defined?(Rollbar)
+      ErrorReport.info('Blob legacy')
 
       blob = ActiveStorage::Blob.find_signed(params[:signed_blob_id] || params[:signed_id])
 
       return head :not_found unless blob
 
       if Submitters::DANGEROUS_EXTENSIONS.include?(blob.filename.extension.to_s.downcase)
-        Rollbar.error('Dangerous extension') if defined?(Rollbar)
+        ErrorReport.error('Dangerous extension')
 
         return head :unprocessable_content
       end
@@ -32,7 +32,7 @@ module Api
       end
 
       unless is_permitted
-        Rollbar.error("Blob account not found: #{blob.id}") if defined?(Rollbar)
+        ErrorReport.error("Blob account not found: #{blob.id}")
 
         return render json: { error: 'Not authenticated' }, status: :unauthorized
       end

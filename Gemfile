@@ -39,8 +39,12 @@ gem 'rouge', require: false
 gem 'rqrcode', require: false
 gem 'ruby-vips'
 gem 'rubyXL', require: false
+gem 'sentry-rails'
+gem 'sentry-ruby'
+gem 'sentry-sidekiq'
 gem 'shakapacker'
 gem 'sidekiq'
+gem 'sidekiq-cron'
 gem 'sqlite3', require: false
 gem 'strip_attributes'
 gem 'trilogy', require: false

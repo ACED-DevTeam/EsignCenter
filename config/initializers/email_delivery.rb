@@ -43,3 +43,8 @@ module EmailDeliveryConfig
 end
 
 EmailDeliveryConfig.check!
+
+# A transport that drops the message (see lib/null_mail_delivery.rb).
+ActiveSupport.on_load(:action_mailer) do
+  add_delivery_method :null, NullMailDelivery
+end

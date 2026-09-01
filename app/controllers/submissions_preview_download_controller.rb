@@ -17,13 +17,13 @@ class SubmissionsPreviewDownloadController < ApplicationController
 
     unless current_user_submission?(@submission)
       if use_2fa?(@submission)
-        Rollbar.info("2FA download error: #{last_submitter.id}") if defined?(Rollbar)
+        ErrorReport.info("2FA download error: #{last_submitter.id}")
 
         return head :not_found
       end
 
       if last_submitter.completed_at < TTL.ago
-        Rollbar.info("TTL: #{last_submitter.id}") if defined?(Rollbar)
+        ErrorReport.info("TTL: #{last_submitter.id}")
 
         return head :not_found
       end

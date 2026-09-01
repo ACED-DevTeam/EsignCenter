@@ -81,11 +81,11 @@ class SubmitFormController < ApplicationController
 
     head :ok
   rescue Submitters::SubmitValues::RequiredFieldError => e
-    Rollbar.warning("Required field #{@submitter.id}: #{e.message}") if defined?(Rollbar)
+    ErrorReport.warning("Required field #{@submitter.id}: #{e.message}")
 
     render json: { field_uuid: e.message }, status: :unprocessable_content
   rescue Submitters::SubmitValues::ValidationError => e
-    Rollbar.warning("Validation error #{@submitter.id}: #{e.message}") if defined?(Rollbar)
+    ErrorReport.warning("Validation error #{@submitter.id}: #{e.message}")
 
     render json: { error: e.message }, status: :unprocessable_content
   end

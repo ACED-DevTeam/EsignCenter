@@ -12,7 +12,7 @@ class SendSubmitterInvitationEmailJob
     return if submitter.submission.source == 'invite' && !Accounts.can_send_emails?(submitter.account, on_events: true)
 
     unless Accounts.can_send_invitation_emails?(submitter.account)
-      Rollbar.warning("Skip email: #{submitter.account.id}") if defined?(Rollbar)
+      ErrorReport.warning("Skip email: #{submitter.account.id}")
 
       return
     end

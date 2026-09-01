@@ -27,7 +27,7 @@ module ActionMailerEventsObserver
       )
     end
   rescue StandardError => e
-    Rollbar.error(e) if defined?(Rollbar)
+    ErrorReport.error(e)
 
     raise if Rails.env.local?
   end

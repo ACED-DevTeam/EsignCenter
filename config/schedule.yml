@@ -1,0 +1,7 @@
+# Recurring Sidekiq jobs (sidekiq-cron). Loaded by the Sidekiq server on
+# startup from config/initializers/sidekiq.rb.
+scheduler_heartbeat:
+  cron: '* * * * *'
+  class: 'SchedulerHeartbeatJob'
+  queue: recurrent
+  description: 'Writes the scheduler heartbeat that /up reports as scheduler_last_tick_at'

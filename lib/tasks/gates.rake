@@ -19,7 +19,18 @@ module Gates
   ].freeze
   # Allowlist entries pin a file AND the exact matched snippet, so allowlisting
   # one known-good line never blanket-exempts the rest of the file.
-  ALLOWLIST = [].freeze
+  ALLOWLIST = [
+    {
+      file: 'lib/tasks/operator.rake',
+      snippet: "AccountConfig.where(key: 'fulltext_search', value: true)",
+      reason: 'one-time legacy global adoption in operator:seed'
+    },
+    {
+      file: 'lib/storage_config_guard.rb',
+      snippet: 'EncryptedConfig.exists?(key: EncryptedConfig::FILES_STORAGE_KEY)',
+      reason: 'boot-time inventory across all accounts (row existence only, no value is read or resolved)'
+    }
+  ].freeze
   SPEC_METADATA_PATTERNS = [
     /multitenant:\s*true/n,
     /receive\(\s*:multitenant\?\s*\)\s*\.\s*and_return\(\s*true\s*\)/n
