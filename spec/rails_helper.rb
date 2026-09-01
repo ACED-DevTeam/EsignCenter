@@ -3,6 +3,18 @@
 require 'spec_helper'
 ENV['RAILS_ENV'] ||= 'test'
 ENV['TZ'] ||= 'UTC'
+
+# The dev container loads .env.standalone.local (real SMTP/TSA/Stripe credentials) for the
+# staging walk. Specs must stay hermetic: every spec that needs one of these vars sets it
+# itself, so scrub exactly the keys that file declares before Rails boots.
+env_local = File.expand_path('../.env.standalone.local', __dir__)
+if File.exist?(env_local)
+  File.readlines(env_local).each do |line|
+    key = line[/\A([A-Z][A-Z0-9_]*)=/, 1]
+    ENV.delete(key) if key
+  end
+end
+
 require_relative '../config/environment'
 abort('The Rails environment is running in production mode!') if Rails.env.production? # rubocop:disable Rails/Exit
 require 'rspec/rails'
