@@ -50,7 +50,7 @@ describe 'Template Builder Sessions API' do
     end
 
     it 'does not create an edit-capable builder URL for a read-only shared template' do
-      parent_account = create(:account, :with_testing_account)
+      parent_account = create(:account, :internal, :with_testing_account)
       testing_account = parent_account.testing_accounts.first
       parent_author = create(:user, account: parent_account)
       testing_editor = create(:user, :editor, account: testing_account)

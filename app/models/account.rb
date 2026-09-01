@@ -4,20 +4,28 @@
 #
 # Table name: accounts
 #
-#  id          :bigint           not null, primary key
-#  archived_at :datetime
-#  locale      :string           not null
-#  name        :string           not null
-#  timezone    :string           not null
-#  uuid        :string           not null
-#  created_at  :datetime         not null
-#  updated_at  :datetime         not null
+#  id           :bigint           not null, primary key
+#  account_kind :string           default("customer"), not null
+#  archived_at  :datetime
+#  locale       :string           not null
+#  name         :string           not null
+#  timezone     :string           not null
+#  uuid         :string           not null
+#  created_at   :datetime         not null
+#  updated_at   :datetime         not null
 #
 # Indexes
 #
-#  index_accounts_on_uuid  (uuid) UNIQUE
+#  index_accounts_on_account_kind  (account_kind)
+#  index_accounts_on_uuid          (uuid) UNIQUE
 #
 class Account < ApplicationRecord
+  KINDS = [
+    OPERATOR_KIND = 'operator',
+    INTERNAL_KIND = 'internal',
+    CUSTOMER_KIND = 'customer'
+  ].freeze
+
   attribute :uuid, :string, default: -> { SecureRandom.uuid }
 
   has_one_attached :logo
@@ -58,6 +66,20 @@ class Account < ApplicationRecord
   attribute :locale, :string, default: 'en-US'
 
   scope :active, -> { where(archived_at: nil) }
+
+  validates :account_kind, inclusion: { in: KINDS }
+
+  def operator?
+    account_kind == OPERATOR_KIND
+  end
+
+  def internal?
+    account_kind == INTERNAL_KIND
+  end
+
+  def customer?
+    account_kind == CUSTOMER_KIND
+  end
 
   def testing?
     linked_account_account&.testing?

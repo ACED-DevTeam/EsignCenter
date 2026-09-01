@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_06_121640) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_01_090200) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gin"
   enable_extension "pg_catalog.plpgsql"
@@ -55,6 +55,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_06_121640) do
   end
 
   create_table "accounts", force: :cascade do |t|
+    t.string "account_kind", default: "customer", null: false
     t.datetime "archived_at"
     t.datetime "created_at", null: false
     t.string "locale", null: false
@@ -62,6 +63,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_06_121640) do
     t.string "timezone", null: false
     t.datetime "updated_at", null: false
     t.string "uuid", null: false
+    t.index ["account_kind"], name: "index_accounts_on_account_kind"
     t.index ["uuid"], name: "index_accounts_on_uuid", unique: true
   end
 
@@ -313,6 +315,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_06_121640) do
     t.index ["uid"], name: "index_oauth_applications_on_uid", unique: true
   end
 
+  create_table "provisioning_events", force: :cascade do |t|
+    t.bigint "account_id", null: false
+    t.datetime "created_at", null: false
+    t.string "email", null: false
+    t.string "idempotency_key"
+    t.datetime "updated_at", null: false
+    t.bigint "webhook_url_id"
+    t.index ["account_id"], name: "index_provisioning_events_on_account_id"
+    t.index ["idempotency_key"], name: "index_provisioning_events_on_idempotency_key", unique: true, where: "(idempotency_key IS NOT NULL)"
+  end
+
   create_table "search_entries", force: :cascade do |t|
     t.bigint "account_id", null: false
     t.datetime "created_at", null: false
@@ -513,6 +526,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_06_121640) do
     t.datetime "locked_at"
     t.boolean "otp_required_for_login", default: false, null: false
     t.string "otp_secret"
+    t.boolean "platform_operator", default: false, null: false
     t.datetime "remember_created_at"
     t.datetime "reset_password_sent_at"
     t.string "reset_password_token"
@@ -588,6 +602,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_06_121640) do
   add_foreign_key "oauth_access_grants", "users", column: "resource_owner_id"
   add_foreign_key "oauth_access_tokens", "oauth_applications", column: "application_id"
   add_foreign_key "oauth_access_tokens", "users", column: "resource_owner_id"
+  add_foreign_key "provisioning_events", "accounts"
   add_foreign_key "submission_events", "accounts"
   add_foreign_key "submission_events", "submissions"
   add_foreign_key "submission_events", "submitters"

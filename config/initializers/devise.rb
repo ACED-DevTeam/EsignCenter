@@ -184,7 +184,10 @@ Devise.setup do |config|
   # initial account confirmation) to be applied. Requires additional unconfirmed_email
   # db field (see migrations). Until confirmed, new email is stored in
   # unconfirmed_email column, and copied to email column on successful confirmation.
-  config.reconfirmable = true
+  # Email changes apply immediately (pre-confirmable behavior preserved).
+  # :confirmable exists for the public-signup flow only; every internal path
+  # calls skip_confirmation!. Revisit for customer accounts with registration.
+  config.reconfirmable = false
 
   # Defines which key will be used when confirming an account
   # config.confirmation_keys = [:email]

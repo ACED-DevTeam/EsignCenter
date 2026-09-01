@@ -9,15 +9,16 @@ class SetupController < ApplicationController
   before_action :ensure_first_user_not_created!
 
   def index
-    @account = Account.new(account_params)
+    @account = Account.new(account_params.merge(account_kind: Account::INTERNAL_KIND))
     @user = @account.users.new(user_params)
     @encrypted_config = EncryptedConfig.new(account: @account, key: EncryptedConfig::APP_URL_KEY)
   end
 
   def create
-    @account = Account.new(account_params)
+    @account = Account.new(account_params.merge(account_kind: Account::INTERNAL_KIND))
     @account.timezone = Accounts.normalize_timezone(@account.timezone)
     @user = @account.users.new(user_params)
+    @user.skip_confirmation!
     @encrypted_config = EncryptedConfig.new(encrypted_config_params)
 
     unless URI.parse(encrypted_config_params[:value].to_s).class.in?([URI::HTTP, URI::HTTPS])

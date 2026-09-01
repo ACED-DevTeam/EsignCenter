@@ -22,6 +22,7 @@
 #  locked_at              :datetime
 #  otp_required_for_login :boolean          default(FALSE), not null
 #  otp_secret             :string
+#  platform_operator      :boolean          default(FALSE), not null
 #  remember_created_at    :datetime
 #  reset_password_sent_at :datetime
 #  reset_password_token   :string
@@ -71,7 +72,7 @@ class User < ApplicationRecord
   has_many :encrypted_configs, dependent: :destroy, class_name: 'EncryptedUserConfig'
   has_many :email_messages, dependent: :destroy, foreign_key: :author_id, inverse_of: :author
 
-  devise :two_factor_authenticatable, :recoverable, :rememberable, :validatable, :trackable, :lockable
+  devise :two_factor_authenticatable, :confirmable, :recoverable, :rememberable, :validatable, :trackable, :lockable
 
   attribute :role, :string, default: ADMIN_ROLE
   attribute :uuid, :string, default: -> { SecureRandom.uuid }

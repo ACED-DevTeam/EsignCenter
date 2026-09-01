@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 describe 'Submission API' do
-  let(:account) { create(:account, :with_testing_account) }
+  let(:account) { create(:account, :internal, :with_testing_account) }
   let(:testing_account) { account.testing_accounts.first }
   let(:author) { create(:user, account:) }
   let(:testing_author) { create(:user, account: testing_account) }

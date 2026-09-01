@@ -7,6 +7,7 @@ module Accounts
 
   def create_duplicate(account)
     new_account = account.dup
+    new_account.account_kind = account.account_kind
 
     new_user = account.users.first.dup
 
@@ -14,6 +15,7 @@ module Accounts
     new_user.account = new_account
     new_user.encrypted_password = SecureRandom.hex
     new_user.email = "#{SecureRandom.hex}@docuseal.com"
+    new_user.confirmed_at = Time.current
 
     account.templates.each do |template|
       new_template = template.dup
@@ -51,6 +53,7 @@ module Accounts
 
     testing_account = account.dup.tap { |a| a.name = "Testing - #{a.name}" }
     testing_account.uuid = SecureRandom.uuid
+    testing_account.account_kind = account.account_kind
 
     ApplicationRecord.transaction do
       account.testing_accounts << testing_account
@@ -58,13 +61,16 @@ module Accounts
       original_email = account.users.order(:id).first.email
       test_email = generate_unique_test_email(original_email)
 
-      testing_account.users.create!(
+      testing_user = testing_account.users.new(
         email: test_email,
         first_name: 'Testing',
         last_name: 'Environment',
         password: SecureRandom.hex,
         role: :admin
       )
+      testing_user.skip_confirmation!
+      testing_user.save!
+      testing_user
     end
   end
 

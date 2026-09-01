@@ -55,6 +55,7 @@ class UsersController < ApplicationController
 
     @user.password = SecureRandom.hex if @user.password.blank?
     @user.role = User::ADMIN_ROLE unless role_valid?(@user.role)
+    @user.skip_confirmation!
 
     if @user.save
       UserMailer.invitation_email(@user).deliver_later!

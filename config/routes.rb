@@ -14,7 +14,7 @@ Rails.application.routes.draw do
   get 'up' => 'rails/health#show'
   get 'manifest' => 'pwa#manifest'
 
-  devise_for :users, path: '/', only: %i[sessions passwords],
+  devise_for :users, path: '/', only: %i[sessions passwords confirmations],
                      controllers: { sessions: 'sessions', passwords: 'passwords' }
 
   devise_scope :user do

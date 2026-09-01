@@ -19,11 +19,35 @@ module Api
       DEFAULT_WEBHOOK_EVENTS = %w[form.completed form.declined submission.completed submission.expired].freeze
 
       def create
-        account = nil
-        user = nil
-        webhook_url = nil
+        result = provision_account
 
+        unless result[:replayed]
+          Rails.logger.info("provisioned account #{result[:event].account_id} for #{result[:event].email}")
+        end
+
+        render_provisioning_event(result[:event], status: result[:replayed] ? :ok : :created)
+      rescue ActiveRecord::RecordNotUnique
+        event = existing_provisioning_event
+
+        raise unless event
+
+        render_provisioning_event(event, status: :ok)
+      rescue ActiveRecord::RecordInvalid => e
+        if duplicate_email?(e.record)
+          render json: { error: 'A user with this email already exists' }, status: :conflict
+        else
+          render json: { error: e.record.errors.full_messages.join(', ') }, status: :unprocessable_content
+        end
+      end
+
+      private
+
+      def provision_account
         ApplicationRecord.transaction do
+          if (event = existing_provisioning_event)
+            next { event:, replayed: true }
+          end
+
           account = create_account
           user = create_admin_user(account)
 
@@ -42,13 +66,27 @@ module Api
           )
 
           webhook_url = create_webhook_url(account)
+          event = ProvisioningEvent.create!(
+            account:,
+            idempotency_key: idempotency_key,
+            email: user.email,
+            webhook_url_id: webhook_url&.id
+          )
+
+          { event:, replayed: false }
         end
+      end
+
+      def render_provisioning_event(event, status:)
+        account = event.account
+        user = account.users.order(:id).first!
+        webhook_url = WebhookUrl.find_by(id: event.webhook_url_id, account:)
 
         render json: {
           account_id: account.id,
           account_uuid: account.uuid,
           user_id: user.id,
-          email: user.email,
+          email: event.email,
           api_token: user.access_token.token,
           webhook_url_id: webhook_url&.id,
           # The per-webhook HMAC key every delivery is signed with
@@ -56,29 +94,42 @@ module Api
           # receiver can actually verify the signatures — without it the
           # signature header is unverifiable noise to the receiving app.
           webhook_hmac_secret: webhook_url&.hmac_secret
-        }, status: :created
-      rescue ActiveRecord::RecordInvalid => e
-        render json: { error: e.record.errors.full_messages.join(', ') }, status: :unprocessable_content
+        }, status:
       end
-
-      private
 
       def create_account
         Account.create!(
           name: account_params[:name].presence || 'New Account',
           timezone: Accounts.normalize_timezone(account_params[:timezone].presence || 'UTC'),
-          locale: account_params[:locale].presence || 'en-US'
+          locale: account_params[:locale].presence || 'en-US',
+          account_kind: Account::INTERNAL_KIND
         )
       end
 
       def create_admin_user(account)
-        account.users.create!(
+        user = account.users.new(
           email: account_params[:email].to_s.strip.downcase,
           password: SecureRandom.base58(24),
           first_name: account_params[:first_name].presence || 'Admin',
           last_name: account_params[:last_name].presence || 'User',
           role: User::ADMIN_ROLE
         )
+        user.skip_confirmation!
+        user.save!
+        user.access_token
+        user
+      end
+
+      def existing_provisioning_event
+        ProvisioningEvent.find_by(idempotency_key:) if idempotency_key.present?
+      end
+
+      def idempotency_key
+        account_params[:idempotency_key].presence
+      end
+
+      def duplicate_email?(record)
+        record.is_a?(User) && record.errors.details[:email].any? { |error| error[:error] == :taken }
       end
 
       def authenticate_admin_token!
@@ -115,7 +166,7 @@ module Api
       end
 
       def account_params
-        params.permit(:name, :email, :first_name, :last_name, :timezone, :locale)
+        params.permit(:name, :email, :first_name, :last_name, :timezone, :locale, :idempotency_key)
       end
 
       def webhook_params

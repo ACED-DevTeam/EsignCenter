@@ -8,6 +8,7 @@ FactoryBot.define do
     password { 'password' }
     role { User::ADMIN_ROLE }
     email { Faker::Internet.email }
+    confirmed_at { Time.current }
 
     trait :admin do
       role { User::ADMIN_ROLE }
