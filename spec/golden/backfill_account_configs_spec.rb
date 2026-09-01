@@ -9,6 +9,14 @@ require Rails.root.join('db/migrate/20260901090500_cleanup_over_copied_account_c
 # never fell back — copying it would newly impose the lowest-id account's
 # settings on other tenants, and for 'bcc_emails' it would BCC other tenants'
 # completed documents to the lowest-id account's recipients.
+#
+# A caller in a settings-form view does NOT make a key globally resolved: the
+# personalization settings partials only pre-fill the admin's settings editor.
+# form_completed_button, form_completed_message and policy_links are read at
+# RUNTIME by Submitters::FormConfigs, a direct per-account query with no
+# fallback, so copying them would inject the lowest-id account's completion
+# message, completion-button URL and policy links into other tenants'
+# signer-facing signing flow.
 RSpec.describe BackfillAccountConfigs do
   # The lowest-id account is the one the pre-change global fallback pointed at.
   let!(:source_account) { create(:account) }
@@ -55,11 +63,26 @@ RSpec.describe BackfillAccountConfigs do
     SQL
   end
 
+  # The three keys whose only find_for_account callers are settings-form views;
+  # their runtime read is Submitters::FormConfigs, which never falls back.
+  def create_signer_facing_source_configs
+    create(:account_config, account: source_account,
+                            key: AccountConfig::FORM_COMPLETED_BUTTON_KEY,
+                            value: { 'title' => 'Back to source', 'url' => 'https://source.example' })
+    create(:account_config, account: source_account,
+                            key: AccountConfig::FORM_COMPLETED_MESSAGE_KEY,
+                            value: { 'title' => 'Thanks', 'body' => 'From the source tenant' })
+  end
+
   before do
     # Globally resolved before the change — must be copied.
     create(:account_config, account: source_account,
                             key: AccountConfig::SUBMITTER_COMPLETED_EMAIL_KEY,
                             value: completed_email_value)
+
+    # Read at runtime per-account by Submitters::FormConfigs (policy_links is in
+    # its DEFAULT_KEYS) — the settings-view caller only pre-fills the editor, so
+    # this key never resolved globally at runtime and must NOT be copied.
     create(:account_config, account: source_account,
                             key: AccountConfig::POLICY_LINKS_KEY,
                             value: [{ 'title' => 'Terms', 'url' => 'https://source.example/terms' }])
@@ -74,9 +97,29 @@ RSpec.describe BackfillAccountConfigs do
                             value: true)
   end
 
+  it 'keeps the two migrations allowlists identical' do
+    expect(BackfillAccountConfigs::GLOBALLY_RESOLVED_KEYS)
+      .to eq(CleanupOverCopiedAccountConfigs::GLOBALLY_RESOLVED_KEYS)
+  end
+
   describe 'the corrected backfill' do
     it 'treats the first created account as the pre-change global fallback source' do
       expect(Account.minimum(:id)).to eq(source_account.id)
+    end
+
+    it 'never copies the signer-facing form keys read per-account by FormConfigs' do
+      create_signer_facing_source_configs
+
+      run_backfill
+
+      signer_facing_keys = [AccountConfig::FORM_COMPLETED_BUTTON_KEY,
+                            AccountConfig::FORM_COMPLETED_MESSAGE_KEY,
+                            AccountConfig::POLICY_LINKS_KEY]
+
+      expect(other_account.account_configs.pluck(:key)).not_to include(*signer_facing_keys)
+      expect(AccountConfig.where(key: signer_facing_keys).pluck(:account_id).uniq)
+        .to eq([source_account.id])
+      expect(BackfillAccountConfigs::GLOBALLY_RESOLVED_KEYS).not_to include(*signer_facing_keys)
     end
 
     it 'never copies bcc_emails to another tenant' do
@@ -135,11 +178,56 @@ RSpec.describe BackfillAccountConfigs do
       expect(other_account.account_configs.find_by(key: AccountConfig::FORCE_MFA)).to be_nil
       expect(other_account.account_configs.find_by(key: AccountConfig::SUBMITTER_COMPLETED_EMAIL_KEY).value)
         .to eq(completed_email_value)
-      expect(other_account.account_configs.find_by(key: AccountConfig::POLICY_LINKS_KEY)).to be_present
+      # policy_links is no longer allowlisted — its runtime read is FormConfigs,
+      # so an over-copied row is signer-facing pollution and must be removed.
+      expect(other_account.account_configs.find_by(key: AccountConfig::POLICY_LINKS_KEY)).to be_nil
       expect(source_account.account_configs.pluck(:key)).to contain_exactly(
         AccountConfig::SUBMITTER_COMPLETED_EMAIL_KEY, AccountConfig::POLICY_LINKS_KEY,
         AccountConfig::BCC_EMAILS, AccountConfig::FORCE_MFA
       )
+    end
+
+    it 'removes over-copied signer-facing form keys' do
+      create_signer_facing_source_configs
+
+      run_original_buggy_backfill
+
+      signer_facing_keys = [AccountConfig::FORM_COMPLETED_BUTTON_KEY,
+                            AccountConfig::FORM_COMPLETED_MESSAGE_KEY,
+                            AccountConfig::POLICY_LINKS_KEY]
+
+      expect(other_account.account_configs.pluck(:key)).to include(*signer_facing_keys)
+
+      run_cleanup
+
+      expect(other_account.reload.account_configs.pluck(:key)).not_to include(*signer_facing_keys)
+      expect(source_account.account_configs.pluck(:key)).to include(*signer_facing_keys)
+    end
+
+    it 'removes a lone bcc_emails copy that has no batch sibling' do
+      # If the original backfill wrote exactly one row on a database, that row
+      # has no same-timestamp sibling. For bcc_emails the leak must still be
+      # repaired, so the sibling requirement is waived for that key alone.
+      lone_copy = create(:account_config, account: other_account,
+                                          key: AccountConfig::BCC_EMAILS,
+                                          value: 'audit@source-tenant.example')
+
+      run_cleanup
+
+      expect(AccountConfig.where(id: lone_copy.id)).to be_empty
+      expect(AccountConfig.where(key: AccountConfig::BCC_EMAILS).pluck(:account_id))
+        .to eq([source_account.id])
+    end
+
+    it 'keeps a lone non-bcc row that has no batch sibling' do
+      # The production-safety guard: on a database that never ran the original
+      # migration, a real operator setting that happens to match the source
+      # account must survive.
+      lone_row = create(:account_config, account: other_account,
+                                         key: AccountConfig::FORCE_MFA, value: true)
+
+      expect { run_cleanup }.not_to change(AccountConfig, :count)
+      expect(lone_row.reload.value).to be(true)
     end
 
     it 'is a no-op on a database that only ever ran the corrected backfill' do

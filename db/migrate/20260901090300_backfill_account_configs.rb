@@ -18,16 +18,36 @@ class BackfillAccountConfigs < ActiveRecord::Migration[8.1]
   # tenants that never had them (and, for bcc_emails, leak documents across
   # tenants).
   #
+  # IMPORTANT distinction — a caller in a settings-form view does NOT make a key
+  # globally resolved. Views such as app/views/personalization_settings/
+  # _form_completed_button_form.html.erb, _form_completed_message_form.html.erb
+  # and _form_policy_links_form.html.erb call AccountConfigs.find_for_account
+  # only to decide what an admin sees pre-filled in the settings EDITOR. The
+  # runtime read — what signers actually get — is elsewhere. For
+  # form_completed_button, form_completed_message and policy_links that runtime
+  # read is Submitters::FormConfigs (lib/submitters/form_configs.rb), which does
+  # a direct per-account query with no fallback:
+  #   submitter.submission.account.account_configs.where(key: DEFAULT_KEYS + keys)
+  # and all three keys are in DEFAULT_KEYS. So they never resolved globally at
+  # runtime, and copying them would inject the lowest-id account's completion
+  # message, completion-button URL and policy links into other tenants'
+  # signer-facing signing flow. Only a RUNTIME read path through the former
+  # global fallback qualifies a key for this list.
+  #
+  # Each key below is verified read at runtime through that fallback:
+  #   submitter_invitation_email     app/mailers/submitter_mailer.rb:27
+  #   submitter_completed_email      app/mailers/submitter_mailer.rb:58
+  #   submitter_documents_copy_email app/mailers/submitter_mailer.rb:114 and
+  #                                  app/jobs/process_submitter_completion_job.rb:134
+  #   submitter_reminders            lib/submitters/schedule_reminders.rb:16
+  #
   # String literals rather than AccountConfig:: constants so the migration does
   # not depend on application code. The matching constants are named alongside.
   GLOBALLY_RESOLVED_KEYS = [
-    'submitter_invitation_email',   # AccountConfig::SUBMITTER_INVITATION_EMAIL_KEY
-    'submitter_completed_email',    # AccountConfig::SUBMITTER_COMPLETED_EMAIL_KEY
+    'submitter_invitation_email',     # AccountConfig::SUBMITTER_INVITATION_EMAIL_KEY
+    'submitter_completed_email',      # AccountConfig::SUBMITTER_COMPLETED_EMAIL_KEY
     'submitter_documents_copy_email', # AccountConfig::SUBMITTER_DOCUMENTS_COPY_EMAIL_KEY
-    'submitter_reminders',          # AccountConfig::SUBMITTER_REMINDERS
-    'form_completed_button',        # AccountConfig::FORM_COMPLETED_BUTTON_KEY
-    'form_completed_message',       # AccountConfig::FORM_COMPLETED_MESSAGE_KEY
-    'policy_links'                  # AccountConfig::POLICY_LINKS_KEY
+    'submitter_reminders'             # AccountConfig::SUBMITTER_REMINDERS
   ].freeze
 
   def up
