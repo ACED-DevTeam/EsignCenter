@@ -2,10 +2,6 @@
 
 # rubocop:disable RSpec/DescribeClass
 RSpec.describe 'Webhook hardening' do
-  before do
-    allow(Docuseal).to receive(:multitenant?).and_return(false)
-  end
-
   # The wire contract, restated independently of the implementation: the
   # header value is "<unix timestamp>.<hex HMAC-SHA256 of '<timestamp>.<body>'
   # keyed with the webhook secret>". Computed here with bare OpenSSL on
@@ -177,6 +173,52 @@ RSpec.describe 'Webhook hardening' do
       uri = SendWebhookRequest.validate_webhook_uri!(webhook_url)
 
       expect(uri.to_s).to eq(webhook_url.url)
+    end
+  end
+
+  describe 'SSRF enforcement on the delivery path' do
+    # The refusals above call validate_webhook_uri! directly. The guard has to
+    # live inside SendWebhookRequest.call itself: if the call site stopped
+    # validating, every example above would stay green while a customer's
+    # webhook posted to localhost. So this drives the real delivery path and
+    # checks the two things that only happen after validation — the HTTP
+    # request and the WebhookEvent row.
+    def deliver(webhook_url, submitter)
+      SendWebhookRequest.call(webhook_url, event_uuid: SecureRandom.uuid, event_type: 'submission.created',
+                                           record: submitter, data: { id: submitter.id })
+    end
+
+    def build_submitter(account)
+      user = create(:user, account:)
+      template = create(:template, account:, author: user, attachment_count: 0)
+      submission = create(:submission, template:, created_by_user: user)
+
+      create(:submitter, submission:, uuid: template.submitters.first['uuid'])
+    end
+
+    it 'refuses a customer localhost URL before any request or event exists' do
+      account = create(:account)
+      submitter = build_submitter(account)
+      webhook_url = create(:webhook_url, account:, url: 'http://localhost/webhook')
+
+      expect do
+        deliver(webhook_url, submitter)
+      end.to raise_error(SendWebhookRequest::HttpsError, 'Only HTTPS is allowed.')
+
+      expect(a_request(:post, 'http://localhost/webhook')).not_to have_been_made
+      expect(WebhookEvent.where(webhook_url:)).to be_empty
+    end
+
+    it 'delivers the same localhost URL for an internal account' do
+      account = create(:account, :internal)
+      submitter = build_submitter(account)
+      webhook_url = create(:webhook_url, account:, url: 'http://localhost/webhook')
+      stub_request(:post, 'http://localhost/webhook').to_return(status: 200)
+
+      deliver(webhook_url, submitter)
+
+      expect(a_request(:post, 'http://localhost/webhook')).to have_been_made.once
+      expect(WebhookEvent.find_by!(webhook_url:).status).to eq('success')
     end
   end
 

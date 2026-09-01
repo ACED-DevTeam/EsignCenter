@@ -95,11 +95,29 @@ RSpec.describe BackfillAccountConfigs do
     create(:account_config, account: source_account,
                             key: AccountConfig::FORCE_MFA,
                             value: true)
+
+    # Globally resolved by a second, independent read — the unscoped
+    # AccountConfig.where(key:).first_or_initialize in fetch_sign_reason — so
+    # the lowest-id account's row decided every tenant's PDF signature Reason
+    # format. Must be copied.
+    create(:account_config, account: source_account,
+                            key: AccountConfig::ESIGNING_PREFERENCE_KEY,
+                            value: 'multiple')
   end
 
   it 'keeps the two migrations allowlists identical' do
     expect(BackfillAccountConfigs::GLOBALLY_RESOLVED_KEYS)
       .to eq(CleanupOverCopiedAccountConfigs::GLOBALLY_RESOLVED_KEYS)
+  end
+
+  it 'allowlists exactly the keys that were read globally at runtime' do
+    expect(BackfillAccountConfigs::GLOBALLY_RESOLVED_KEYS).to contain_exactly(
+      AccountConfig::SUBMITTER_INVITATION_EMAIL_KEY,
+      AccountConfig::SUBMITTER_COMPLETED_EMAIL_KEY,
+      AccountConfig::SUBMITTER_DOCUMENTS_COPY_EMAIL_KEY,
+      AccountConfig::SUBMITTER_REMINDERS,
+      AccountConfig::ESIGNING_PREFERENCE_KEY
+    )
   end
 
   describe 'the corrected backfill' do
@@ -137,7 +155,20 @@ RSpec.describe BackfillAccountConfigs do
 
       expect(copied_keys).to match_array(BackfillAccountConfigs::GLOBALLY_RESOLVED_KEYS &
                                          source_account.account_configs.pluck(:key))
+      expect(copied_keys).to contain_exactly(AccountConfig::SUBMITTER_COMPLETED_EMAIL_KEY,
+                                             AccountConfig::ESIGNING_PREFERENCE_KEY)
       expect(copied_keys).not_to include(AccountConfig::BCC_EMAILS, AccountConfig::FORCE_MFA)
+    end
+
+    it 'copies esigning_preference so the signature Reason format is preserved' do
+      run_backfill
+
+      copied = other_account.account_configs.find_by(key: AccountConfig::ESIGNING_PREFERENCE_KEY)
+
+      expect(copied).to be_present
+      expect(copied.value).to eq('multiple')
+      expect(AccountConfigs.find_for_account(other_account, AccountConfig::ESIGNING_PREFERENCE_KEY))
+        .to eq(copied)
     end
 
     it 'still copies the globally resolved template keys so behavior is preserved' do
@@ -181,9 +212,11 @@ RSpec.describe BackfillAccountConfigs do
       # policy_links is no longer allowlisted — its runtime read is FormConfigs,
       # so an over-copied row is signer-facing pollution and must be removed.
       expect(other_account.account_configs.find_by(key: AccountConfig::POLICY_LINKS_KEY)).to be_nil
+      expect(other_account.account_configs.find_by(key: AccountConfig::ESIGNING_PREFERENCE_KEY).value)
+        .to eq('multiple')
       expect(source_account.account_configs.pluck(:key)).to contain_exactly(
         AccountConfig::SUBMITTER_COMPLETED_EMAIL_KEY, AccountConfig::POLICY_LINKS_KEY,
-        AccountConfig::BCC_EMAILS, AccountConfig::FORCE_MFA
+        AccountConfig::BCC_EMAILS, AccountConfig::FORCE_MFA, AccountConfig::ESIGNING_PREFERENCE_KEY
       )
     end
 
@@ -204,19 +237,19 @@ RSpec.describe BackfillAccountConfigs do
       expect(source_account.account_configs.pluck(:key)).to include(*signer_facing_keys)
     end
 
-    it 'removes a lone bcc_emails copy that has no batch sibling' do
-      # If the original backfill wrote exactly one row on a database, that row
-      # has no same-timestamp sibling. For bcc_emails the leak must still be
-      # repaired, so the sibling requirement is waived for that key alone.
-      lone_copy = create(:account_config, account: other_account,
-                                          key: AccountConfig::BCC_EMAILS,
-                                          value: 'audit@source-tenant.example')
+    it 'keeps a lone identical bcc_emails row that has no batch sibling' do
+      # Production never ran the original backfill. A second internal account
+      # that legitimately BCCs the same mailbox as the lowest-id account, set
+      # once and never edited, satisfies every condition except the batch
+      # fingerprint — it is a real setting and must survive. (A one-row
+      # original backfill would leave such a row on the dev database only,
+      # and dev is reset rather than repaired.)
+      lone_row = create(:account_config, account: other_account,
+                                         key: AccountConfig::BCC_EMAILS,
+                                         value: 'audit@source-tenant.example')
 
-      run_cleanup
-
-      expect(AccountConfig.where(id: lone_copy.id)).to be_empty
-      expect(AccountConfig.where(key: AccountConfig::BCC_EMAILS).pluck(:account_id))
-        .to eq([source_account.id])
+      expect { run_cleanup }.not_to change(AccountConfig, :count)
+      expect(lone_row.reload.value).to eq('audit@source-tenant.example')
     end
 
     it 'keeps a lone non-bcc row that has no batch sibling' do

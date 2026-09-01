@@ -70,10 +70,94 @@ differ in your app):
 Webhooks (the fork telling the app "someone signed") are configured
 automatically when an e-sign account is provisioned: the fork calls the
 webhook URL the app registers, signing every delivery with a per-account key
-the app captures at provisioning and verifies. A well-behaved integrating app
-should also re-check documents on a schedule, so even a missed webhook only
-delays a status by a few minutes. (Accounts provisioned by an older version
-authenticate with their original shared secret and keep working.)
+the app captures at provisioning and verifies. Every delivery now carries the
+signature in two headers with the same value — `X-Esigncenter-Signature` and
+the older `X-Docuseal-Signature` — so an app can verify whichever it already
+reads and switch to the new name whenever convenient. A well-behaved
+integrating app should also re-check documents on a schedule, so even a missed
+webhook only delays a status by a few minutes. (Accounts provisioned by an
+older version authenticate with their original shared secret and keep
+working.)
+
+The provisioning call (`POST /api/admin/accounts`) accepts an optional
+`idempotency_key` — any string the integrating app makes up once per
+"create this workspace" request and sends again on a retry. What it buys
+you: if the network drops after the account was created but before the app
+saw the reply, re-sending the same request with the same key returns the
+original account and its credentials again with status **200** instead of
+creating a duplicate. If the same key is ever re-sent with a *different* email,
+the fork refuses with status **409** and touches nothing (the key belongs to
+the first request). Each replay and each refusal is written to the server log
+with the account id and the key, never the credentials.
+
+## Session 1 additions (per-account settings, email, kill switches)
+
+Session 1 of the standalone-SaaS work changed how the fork finds its settings:
+every account now uses **its own** email server, signing certificate and
+templates instead of silently borrowing account #1's. This section lists the
+new environment variables, what the upgrade does to accounts that already
+exist, and the steps to run right after the deploy.
+
+### New environment variables
+
+| Variable | What to put there |
+| --- | --- |
+| `SMTP_ADDRESS` | The platform's default mail server, e.g. `smtp.postmarkapp.com`. Any account without its own pinned server sends through this. |
+| `SMTP_PORT` | `587` |
+| `SMTP_USERNAME` / `SMTP_PASSWORD` | The credentials for that server (for Postmark, the EsignCenter server token in both). |
+| `SMTP_FROM` | The platform's From address, e.g. `EsignCenter <noreply@esigncenter.com>`. **Boot rule:** if `SMTP_ADDRESS` is set and `SMTP_FROM` is not, the app refuses to start in production — otherwise platform mail would go out under a tenant's From address. Set both or neither. |
+| `TIMESERVER_URL` | The trusted timestamp service stamped into signed PDFs (the DigiCert URL chosen in Session 0). Accounts without their own timeserver row use this. |
+| `EMAIL_DELIVERY_MODE` | Leave unset. It defaults to `smtp` in production (real mail) and `test` everywhere else (mail is captured, never sent). Set it explicitly only to force one of those two values; anything else refuses to boot. |
+| `APP_URL` | Optional. The full public URL, e.g. `https://esign.example.com`. When unset the app builds links from `HOST` + `FORCE_SSL`, which is what production does today. |
+| `REGISTRATION_ENABLED` | Leave unset (off). Public sign-up is dark until a later session flips it to `true`. |
+| `BILLING_ENABLED` | Leave unset (off). Same idea for billing. |
+| `CERTS` | **Must stay unset.** Certificates now live per account in the database, and `CERTS` is only consulted for an account with no certificate row. Every pre-existing account gets its row from the upgrade, but a freshly seeded operator account has none — so a stray `CERTS` value would quietly become that account's signing identity. |
+| `MULTITENANT` | **Must stay unset.** The fork runs single-tenant by design. |
+
+One-off values used only by the post-deploy tasks below: `OPERATOR_EMAIL`
+and `OPERATOR_PASSWORD` (set the password — otherwise a generated one is
+printed into the deploy log), plus one environment variable per internal app
+holding that app's own Postmark server token (name it whatever you like;
+`email:pin` reads it by name).
+
+### What the upgrade does to existing accounts
+
+The migrations run automatically on boot and take seconds. They add an account
+"kind" (every existing account becomes *internal* — your own apps, account #1,
+and their test-mode twins), mark every existing user's email as confirmed, add
+an audit table for provisioning calls, and copy from account #1 to each other
+pre-existing account — only where that account has nothing of its own — the
+things that used to apply to everyone: the four email-template/reminder
+settings, the PDF signature-reason preference, the signing certificate, the
+pinned SMTP server, and the timeserver URL. Nothing is deleted on production,
+and nothing changes for an account that already had its own value. One visible
+difference: mail that used to show account #1's name as the sender now shows
+each account's own name.
+
+### After the deploy, in this order
+
+1. **Check the migration log.** Render runs `rake db:migrate` on boot; the log
+   should show the migrations completing and the line
+   `removing 0 over-copied account_configs row(s)`.
+2. **Create the platform-operator account:**
+   `OPERATOR_EMAIL=you@example.com OPERATOR_PASSWORD=<strong password> bundle exec rake operator:seed`
+   (safe to run twice — it says "already exists" and stops).
+3. **Review every pinned mail server:** `bundle exec rake email:pins` prints one
+   line per account that has its own SMTP server — account id, kind, name,
+   host, From address, and whether the pin is usable. It never prints
+   credentials. Unpin (`ACCOUNT_ID=<id> bundle exec rake email:unpin`) or re-pin
+   any row you do not recognise; after the migration expect one row per
+   pre-existing non-testing account (test-mode twins inherit their parent's),
+   all copied from account #1.
+4. **Pin each internal app to its own Postmark server:**
+   `ACCOUNT_ID=<id> SMTP_TOKEN_ENV=<NAME_OF_TOKEN_VAR> FROM_EMAIL=<verified sender> bundle exec rake email:pin`
+   — once per internal app account. The From address must be a sender
+   signature or domain verified on that Postmark server, or Postmark rejects
+   the mail. Safe to re-run; it overwrites the pin.
+5. **Canary.** From one internal app, send a document to yourself: the invite
+   email should arrive from that app's own server, signing should complete, the
+   completion email should arrive, and the app's webhook should verify. Then
+   check the log has no `no SMTP config for account` lines.
 
 ## 6. After a deploy that changes built-in field mappings
 

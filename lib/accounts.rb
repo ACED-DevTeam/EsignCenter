@@ -139,11 +139,19 @@ module Accounts
     end
   end
 
+  # Own row, then a testing parent's row (Account#configuration_lookup_accounts,
+  # the same walk certs, account configs and SMTP pins use), then the
+  # environment value. Never another tenant's row.
   def load_timeserver_url(account)
     return Docuseal::TIMESERVER_URL.presence if Docuseal.multitenant?
 
-    account.encrypted_configs.find_by(key: EncryptedConfig::TIMESTAMP_SERVER_URL_KEY)&.value.presence ||
-      Docuseal::TIMESERVER_URL.presence
+    account.configuration_lookup_accounts.each do |source_account|
+      url = source_account.encrypted_configs.find_by(key: EncryptedConfig::TIMESTAMP_SERVER_URL_KEY)&.value.presence
+
+      return url if url
+    end
+
+    Docuseal::TIMESERVER_URL.presence
   end
 
   def load_trusted_certs(account)

@@ -29,11 +29,6 @@ module Gates
       file: 'lib/docuseal.rb',
       snippet: 'AccountConfig.exists?(key: :fulltext_search, value: true)',
       reason: 'instance-global fulltext index toggle, read once per boot; operator surface in Session 2'
-    },
-    {
-      file: 'lib/send_webhook_request.rb',
-      snippet: 'AccountConfig.exists?(key: :allow_http, account_id: account.id)',
-      reason: 'account-scoped by account_id in the same call; key: simply leads the hash'
     }
   ].freeze
   SPEC_METADATA_PATTERNS = [

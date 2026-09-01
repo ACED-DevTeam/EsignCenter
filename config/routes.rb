@@ -15,7 +15,7 @@ Rails.application.routes.draw do
   get 'manifest' => 'pwa#manifest'
 
   devise_for :users, path: '/', only: %i[sessions passwords confirmations],
-                     controllers: { sessions: 'sessions', passwords: 'passwords' }
+                     controllers: { sessions: 'sessions', passwords: 'passwords', confirmations: 'confirmations' }
 
   devise_scope :user do
     resource :invitation, only: %i[update] do

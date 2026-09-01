@@ -3,15 +3,21 @@
 # Repairs databases that ran the ORIGINAL version of 20260901090300, which
 # copied EVERY one of the lowest-id account's account_configs rows into every
 # other pre-existing account. Only the keys listed below were ever resolved
-# globally (the fallback lived in AccountConfigs.find_for_account); every other
-# key was read per-account and never fell back. So the extra rows are not
-# behavior preservation — they silently impose the lowest-id account's settings
-# on other tenants, and for 'bcc_emails' they cause completed documents from
+# globally (the fallback lived in AccountConfigs.find_for_account, plus the
+# unscoped esigning_preference read in fetch_sign_reason); every other key was
+# read per-account and never fell back. So the extra rows are not behavior
+# preservation — they silently impose the lowest-id account's settings on
+# other tenants, and for 'bcc_emails' they cause completed documents from
 # other tenants to be BCC'd to the lowest-id account's recipients.
 #
 # This migration must be a no-op on any database that never ran the original
 # (production has not), and must never remove a value an operator set. It
-# therefore deletes only rows that carry the buggy backfill's full fingerprint.
+# therefore deletes only rows that carry the buggy backfill's full fingerprint
+# — every key, bcc_emails included, requires the batch-sibling fingerprint.
+# The one lone-row case the fingerprint cannot catch (a one-row original
+# backfill) exists only on the dev database, which is reset rather than
+# repaired; a real production bcc_emails row that merely matches the
+# lowest-id account's mailbox must survive.
 class CleanupOverCopiedAccountConfigs < ActiveRecord::Migration[8.1]
   # Same allowlist as the corrected 20260901090300 — the two must stay identical
   # (a spec asserts it). String literals so the migration does not depend on
@@ -27,16 +33,18 @@ class CleanupOverCopiedAccountConfigs < ActiveRecord::Migration[8.1]
   # behavior preservation — they inject the lowest-id account's completion
   # message, completion-button URL and policy links into other tenants'
   # signer-facing signing flow.
+  #
+  # esigning_preference is present because its pre-change runtime read
+  # (lib/submissions/generate_result_attachments.rb#fetch_sign_reason) was an
+  # unscoped AccountConfig.where(key:).first_or_initialize — a global read that
+  # bypassed find_for_account entirely — so its copies are behavior preservation.
   GLOBALLY_RESOLVED_KEYS = [
     'submitter_invitation_email',     # AccountConfig::SUBMITTER_INVITATION_EMAIL_KEY
     'submitter_completed_email',      # AccountConfig::SUBMITTER_COMPLETED_EMAIL_KEY
     'submitter_documents_copy_email', # AccountConfig::SUBMITTER_DOCUMENTS_COPY_EMAIL_KEY
-    'submitter_reminders'             # AccountConfig::SUBMITTER_REMINDERS
+    'submitter_reminders',            # AccountConfig::SUBMITTER_REMINDERS
+    'esigning_preference'             # AccountConfig::ESIGNING_PREFERENCE_KEY
   ].freeze
-
-  # AccountConfig::BCC_EMAILS — the single key exempted from the batch-sibling
-  # requirement below, because its stale copy leaks documents across tenants.
-  BCC_EMAILS_KEY = 'bcc_emails'
 
   def up
     return if select_value('SELECT COUNT(*) FROM accounts').to_i <= 1
@@ -82,21 +90,16 @@ class CleanupOverCopiedAccountConfigs < ActiveRecord::Migration[8.1]
   #    collisions to the microsecond across separate operator edits do not
   #    happen, so this clause admits backfill rows and nothing else. Trade-off:
   #    if the original backfill wrote exactly one row on the whole database, that
-  #    lone row has no sibling — see the bcc_emails exemption below.
-  #
-  # Exemption to 5, for 'bcc_emails' ONLY: that key is deleted on conditions 1-4
-  # alone, with no sibling required. It is the one key whose stale copy causes
-  # cross-tenant document delivery — ProcessSubmitterCompletionJob#build_bcc_addresses
-  # reads it and SubmitterMailer.completed_email attaches the completed documents
-  # and the audit log — so a lone copy left behind by a one-row backfill would
-  # keep leaking. A false-positive deletion here is harmless: it merely stops a
-  # BCC that duplicated the lowest-id account's address, which an operator can
-  # re-set in seconds. It is not a security setting whose silent removal weakens
-  # anything. Every other non-allowlisted key keeps the sibling requirement,
-  # where a false positive WOULD silently weaken a real setting (e.g. force_mfa).
+  #    lone row has no sibling and is left in place — accepted, because the only
+  #    database that ran the original is dev, and it is reset rather than
+  #    repaired. There is deliberately NO per-key exemption (not even for
+  #    bcc_emails, whose stale copy would leak documents): an exemption would
+  #    delete a real, never-edited bcc_emails row on a non-lowest account that
+  #    legitimately BCCs the same mailbox as the lowest-id account, on a
+  #    production database that never ran the original — breaking the no-op
+  #    guarantee above.
   def over_copied_ids_sql
     allowed_keys = GLOBALLY_RESOLVED_KEYS.map { |key| quote(key) }.join(', ')
-    leaky_key = quote(BCC_EMAILS_KEY)
 
     <<~SQL.squish
       SELECT victims.id
@@ -111,23 +114,20 @@ class CleanupOverCopiedAccountConfigs < ActiveRecord::Migration[8.1]
             AND source.key = victims.key
             AND source.value = victims.value
         )
-        AND (
-          victims.key = #{leaky_key}
-          OR EXISTS (
-            SELECT 1
-            FROM account_configs AS batch_sibling
-            WHERE batch_sibling.id <> victims.id
-              AND batch_sibling.created_at = victims.created_at
-              AND batch_sibling.created_at = batch_sibling.updated_at
-              AND batch_sibling.account_id <> (SELECT MIN(id) FROM accounts)
-              AND EXISTS (
-                SELECT 1
-                FROM account_configs AS sibling_source
-                WHERE sibling_source.account_id = (SELECT MIN(id) FROM accounts)
-                  AND sibling_source.key = batch_sibling.key
-                  AND sibling_source.value = batch_sibling.value
-              )
-          )
+        AND EXISTS (
+          SELECT 1
+          FROM account_configs AS batch_sibling
+          WHERE batch_sibling.id <> victims.id
+            AND batch_sibling.created_at = victims.created_at
+            AND batch_sibling.created_at = batch_sibling.updated_at
+            AND batch_sibling.account_id <> (SELECT MIN(id) FROM accounts)
+            AND EXISTS (
+              SELECT 1
+              FROM account_configs AS sibling_source
+              WHERE sibling_source.account_id = (SELECT MIN(id) FROM accounts)
+                AND sibling_source.key = batch_sibling.key
+                AND sibling_source.value = batch_sibling.value
+            )
         )
     SQL
   end

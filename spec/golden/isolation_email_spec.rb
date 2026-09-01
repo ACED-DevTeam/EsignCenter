@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require 'rake'
+
 # rubocop:disable RSpec/DescribeClass
 RSpec.describe 'Email tenant isolation', type: :lib do
   include_context 'with isolated SMTP environment'
@@ -174,6 +176,65 @@ RSpec.describe 'Email tenant isolation', type: :lib do
     message = UserMailer.invitation_email(user).message
 
     expect(message.from).to eq(['noreply@esigncenter.com'])
+  end
+
+  describe 'rake email:pin' do
+    let(:pin_env_keys) { %w[ACCOUNT_ID SMTP_TOKEN_ENV GOLDEN_PIN_TOKEN FROM_EMAIL SMTP_HOST SMTP_PIN_PORT] }
+
+    around do |example|
+      original_values = pin_env_keys.index_with { |key| ENV.fetch(key, nil) }
+      pin_env_keys.each { |key| ENV.delete(key) }
+
+      example.run
+    ensure
+      original_values.each do |key, value|
+        value.nil? ? ENV.delete(key) : ENV[key] = value
+      end
+    end
+
+    # The operator mechanism end to end: the task writes the pin the resolver
+    # actually honours, so a submitter email for that account leaves through
+    # the pinned host with the token as credentials and the pinned From —
+    # even though the platform SMTP server is configured.
+    it 'pins an internal account so its submitter mail uses the pinned server over the platform one' do
+      Rails.application.load_tasks unless Rake::Task.task_defined?('email:pin')
+      task = Rake::Task['email:pin']
+      account = create(:account, :internal, name: 'Pinned Firm')
+      author = create(:user, account:)
+      template = create(:template, account:, author:, attachment_count: 0)
+      submission = create(:submission, template:, created_by_user: author)
+      submitter = create(:submitter, submission:, uuid: template.submitters.first['uuid'])
+
+      ENV['ACCOUNT_ID'] = account.id.to_s
+      ENV['SMTP_TOKEN_ENV'] = 'GOLDEN_PIN_TOKEN'
+      ENV['GOLDEN_PIN_TOKEN'] = 'golden-postmark-server-token'
+      ENV['FROM_EMAIL'] = 'notices@pinned-firm.example'
+      ENV['SMTP_HOST'] = 'pinned.smtp.example'
+
+      expect { task.invoke }.to output("Pinned SMTP for account #{account.id} to pinned.smtp.example.\n").to_stdout
+
+      ENV['EMAIL_DELIVERY_MODE'] = 'smtp'
+      ENV['SMTP_ADDRESS'] = 'platform.smtp.example'
+      ENV['SMTP_FROM'] = 'platform@example.com'
+      ENV['POSTMARK_API_TOKEN'] = 'platform-server-token'
+      message = SubmitterMailer.invitation_email(submitter).message
+
+      ActionMailerConfigsInterceptor.delivering_email(message)
+
+      expect(message.delivery_method).to be_a(Mail::SMTP)
+      expect(message.delivery_method.settings).to include(
+        address: 'pinned.smtp.example',
+        port: '587',
+        user_name: 'golden-postmark-server-token',
+        password: 'golden-postmark-server-token',
+        authentication: 'plain'
+      )
+      expect(message.from).to eq(['notices@pinned-firm.example'])
+      expect(message[:from].to_s).to include('Pinned Firm')
+      expect(message[:from].to_s).not_to include('platform@example.com')
+    ensure
+      task&.reenable
+    end
   end
 
   it 'reports email availability only for the account pin or platform environment' do

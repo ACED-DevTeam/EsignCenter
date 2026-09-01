@@ -40,8 +40,17 @@ module Api
       # caller would silently receive some other account's credentials.
       def render_replay(event)
         if event.email == requested_email
+          Rails.logger.info(
+            "provisioning replay for account #{event.account_id} (idempotency key #{event.idempotency_key})"
+          )
+
           render_provisioning_event(event, status: :ok)
         else
+          Rails.logger.warn(
+            "provisioning idempotency conflict for account #{event.account_id} " \
+            "(idempotency key #{event.idempotency_key} reused with different parameters)"
+          )
+
           render json: { error: 'Idempotency key was already used with different parameters' }, status: :conflict
         end
       end

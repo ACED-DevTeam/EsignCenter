@@ -310,4 +310,59 @@ RSpec.describe 'Account and user creation matrix', type: :request do
     expect(User.devise_modules).not_to include(:registerable)
     expect(Rails.application.routes.url_helpers).not_to respond_to(:new_user_registration_path)
   end
+
+  # Devise :confirmations is mounted (a confirmed_at is required to sign in),
+  # but its public endpoints are a registration surface: the resend form
+  # enumerates emails and the POST triggers mail to any address. They sit
+  # behind the REGISTRATION_ENABLED kill switch until self-serve signup ships.
+  describe 'Devise confirmation routes behind REGISTRATION_ENABLED' do
+    around do |example|
+      original_value = ENV.fetch('REGISTRATION_ENABLED', nil)
+      ENV.delete('REGISTRATION_ENABLED')
+
+      example.run
+    ensure
+      if original_value.nil?
+        ENV.delete('REGISTRATION_ENABLED')
+      else
+        ENV['REGISTRATION_ENABLED'] = original_value
+      end
+    end
+
+    it 'returns 404 for the resend form and the resend POST while the switch is off' do
+      user = create(:user, email: 'golden-unconfirmed@example.com')
+      user.update_column(:confirmed_at, nil)
+
+      get new_user_confirmation_path
+
+      expect(response).to have_http_status(:not_found)
+      expect(response.body).to be_empty
+
+      expect do
+        post user_confirmation_path, params: { user: { email: 'golden-unconfirmed@example.com' } }
+      end.not_to change(ActionMailer::Base.deliveries, :count)
+
+      expect(response).to have_http_status(:not_found)
+      expect(user.reload.confirmation_sent_at).to be_nil
+    end
+
+    it 'serves the resend form and sends confirmation mail once the switch is on' do
+      ENV['REGISTRATION_ENABLED'] = 'true'
+      user = create(:user, email: 'golden-unconfirmed@example.com')
+      user.update_column(:confirmed_at, nil)
+
+      get new_user_confirmation_path
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include('name="user[email]"')
+
+      expect do
+        post user_confirmation_path, params: { user: { email: 'golden-unconfirmed@example.com' } }
+      end.to change(ActionMailer::Base.deliveries, :count).by(1)
+
+      expect(response).to have_http_status(:redirect)
+      expect(ActionMailer::Base.deliveries.last.to).to eq(['golden-unconfirmed@example.com'])
+      expect(user.reload.confirmation_sent_at).to be_present
+    end
+  end
 end

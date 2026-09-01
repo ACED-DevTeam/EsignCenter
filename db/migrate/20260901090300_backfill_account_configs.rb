@@ -41,13 +41,24 @@ class BackfillAccountConfigs < ActiveRecord::Migration[8.1]
   #                                  app/jobs/process_submitter_completion_job.rb:134
   #   submitter_reminders            lib/submitters/schedule_reminders.rb:16
   #
+  # One more key was resolved globally by a SECOND, independent read that did
+  # not go through AccountConfigs.find_for_account at all:
+  #   esigning_preference            lib/submissions/generate_result_attachments.rb
+  #                                  #fetch_sign_reason (pre-change) —
+  #     AccountConfig.where(key: ESIGNING_PREFERENCE_KEY).first_or_initialize(value: 'single')
+  #   unscoped, so the lowest account_configs.id row with that key decided the
+  #   signature Reason format (single vs per-signer) in EVERY tenant's signed
+  #   PDF. In practice that row belongs to the lowest-id account (it was set up
+  #   first), so copying from MIN(accounts.id) like the other keys preserves it.
+  #
   # String literals rather than AccountConfig:: constants so the migration does
   # not depend on application code. The matching constants are named alongside.
   GLOBALLY_RESOLVED_KEYS = [
     'submitter_invitation_email',     # AccountConfig::SUBMITTER_INVITATION_EMAIL_KEY
     'submitter_completed_email',      # AccountConfig::SUBMITTER_COMPLETED_EMAIL_KEY
     'submitter_documents_copy_email', # AccountConfig::SUBMITTER_DOCUMENTS_COPY_EMAIL_KEY
-    'submitter_reminders'             # AccountConfig::SUBMITTER_REMINDERS
+    'submitter_reminders',            # AccountConfig::SUBMITTER_REMINDERS
+    'esigning_preference'             # AccountConfig::ESIGNING_PREFERENCE_KEY
   ].freeze
 
   def up

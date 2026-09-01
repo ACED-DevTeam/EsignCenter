@@ -75,7 +75,7 @@ module SendWebhookRequest
     invalid_https = uri.scheme != 'https' || [443, nil].exclude?(uri.port)
 
     if invalid_https &&
-       (account.customer? || !AccountConfig.exists?(key: :allow_http, account_id: account.id))
+       (account.customer? || !AccountConfig.exists?(account_id: account.id, key: :allow_http))
       raise HttpsError, 'Only HTTPS is allowed.'
     end
 

@@ -49,6 +49,22 @@ RSpec.describe 'Tenant-isolated settings', type: :request do
 
       expect(Accounts.load_timeserver_url(account)).to eq('https://environment.example.test')
     end
+
+    it 'lets a testing child inherit the parent value but never a linked or unrelated account' do
+      parent = create(:account, :internal)
+      testing_child = create(:account, :internal)
+      parent.testing_accounts << testing_child
+      linked_child = create(:account, :internal)
+      AccountLinkedAccount.create!(account: parent, linked_account: linked_child, account_type: 'linked')
+      unrelated_account = create(:account)
+      create(:encrypted_config, account: parent, key: EncryptedConfig::TIMESTAMP_SERVER_URL_KEY,
+                                value: 'https://parent.example.test')
+      stub_const('Docuseal::TIMESERVER_URL', 'https://environment.example.test')
+
+      expect(Accounts.load_timeserver_url(testing_child.reload)).to eq('https://parent.example.test')
+      expect(Accounts.load_timeserver_url(linked_child.reload)).to eq('https://environment.example.test')
+      expect(Accounts.load_timeserver_url(unrelated_account)).to eq('https://environment.example.test')
+    end
   end
 
   describe 'account configs' do
@@ -156,6 +172,36 @@ RSpec.describe 'Tenant-isolated settings', type: :request do
       sign_in(create(:user, :admin, account: create(:account)))
 
       expect { get '/settings/storage' }.to raise_error(ActionController::RoutingError)
+    end
+  end
+
+  describe 'storage loader' do
+    # Object storage is environment-only. A leftover (or newly written)
+    # active_storage row on the lowest-id account — the row the old loader
+    # read for the whole instance — must not change the service any tenant's
+    # files are written to.
+    it 'ignores a lowest-id account storage row and keeps the environment-selected service' do
+      lowest_account = create(:account)
+      expect(Account.minimum(:id)).to eq(lowest_account.id)
+      create(:encrypted_config, account: lowest_account, key: EncryptedConfig::FILES_STORAGE_KEY,
+                                value: {
+                                  'service' => 'aws_s3',
+                                  'configs' => {
+                                    'access_key_id' => 'AKIAGOLDENTENANT',
+                                    'secret_access_key' => 'golden-tenant-secret',
+                                    'region' => 'us-east-1',
+                                    'bucket' => 'golden-tenant-bucket',
+                                    'endpoint' => 'https://storage.golden-tenant.example'
+                                  }
+                                })
+      service_before = ActiveStorage::Blob.service
+
+      LoadActiveStorageConfigs.reload
+      LoadActiveStorageConfigs.call
+
+      expect(ActiveStorage::Blob.service).to equal(service_before)
+      expect(ActiveStorage::Blob.service).to be_a(ActiveStorage::Service::DiskService)
+      expect(Rails.application.config.active_storage.service).to eq(:test)
     end
   end
 

@@ -111,6 +111,47 @@ describe 'Admin Accounts API' do
       expect(response).to have_http_status(:forbidden)
     end
 
+    it 'logs an idempotent replay without changing the response' do
+      params = { name: 'Firm', email: 'esign-replay@example.com', idempotency_key: 'replay-key-1' }
+
+      post '/api/admin/accounts', headers: headers, params: params.to_json
+      expect(response).to have_http_status(:created)
+      account_id = response.parsed_body['account_id']
+
+      allow(Rails.logger).to receive(:info).and_call_original
+
+      expect do
+        post '/api/admin/accounts', headers: headers, params: params.to_json
+      end.not_to change(Account, :count)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body['account_id']).to eq(account_id)
+      expect(Rails.logger).to have_received(:info)
+        .with("provisioning replay for account #{account_id} (idempotency key replay-key-1)")
+    end
+
+    it 'logs a warning on an idempotency key reused with different parameters' do
+      post '/api/admin/accounts', headers: headers,
+                                  params: { name: 'Firm', email: 'esign-conflict-a@example.com',
+                                            idempotency_key: 'conflict-key-1' }.to_json
+      expect(response).to have_http_status(:created)
+      account_id = response.parsed_body['account_id']
+
+      allow(Rails.logger).to receive(:warn).and_call_original
+
+      expect do
+        post '/api/admin/accounts', headers: headers,
+                                    params: { name: 'Firm', email: 'esign-conflict-b@example.com',
+                                              idempotency_key: 'conflict-key-1' }.to_json
+      end.not_to change(Account, :count)
+
+      expect(response).to have_http_status(:conflict)
+      expect(response.parsed_body['error']).to eq('Idempotency key was already used with different parameters')
+      expect(Rails.logger).to have_received(:warn)
+        .with("provisioning idempotency conflict for account #{account_id} " \
+              '(idempotency key conflict-key-1 reused with different parameters)')
+    end
+
     it 'returns 422 with the validation message for a duplicate email' do
       create(:user, email: 'taken@example.com')
 
