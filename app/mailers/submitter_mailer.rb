@@ -8,6 +8,7 @@ class SubmitterMailer < ApplicationMailer
 
   def invitation_email(submitter)
     @current_account = submitter.submission.account
+    mail_account(@current_account)
     @submitter = submitter
 
     if submitter.preferences['email_message_uuid']
@@ -47,6 +48,7 @@ class SubmitterMailer < ApplicationMailer
 
   def completed_email(submitter, user, to: nil)
     @current_account = submitter.submission.account
+    mail_account(@current_account)
     @submitter = submitter
     @submission = submitter.submission
     @user = user
@@ -86,6 +88,7 @@ class SubmitterMailer < ApplicationMailer
 
   def declined_email(submitter, user)
     @current_account = submitter.submission.account
+    mail_account(@current_account)
     @submitter = submitter
     @submission = submitter.submission
     @user = user
@@ -104,6 +107,7 @@ class SubmitterMailer < ApplicationMailer
 
   def documents_copy_email(submitter, to: nil, sig: false)
     @current_account = submitter.submission.account
+    mail_account(@current_account)
     @submitter = submitter
     @sig = submitter.signed_id(expires_in: SIGN_TTL, purpose: :download_completed) if sig
 
@@ -144,6 +148,7 @@ class SubmitterMailer < ApplicationMailer
   end
 
   def otp_verification_email(submitter, locale: nil)
+    mail_account(submitter.account)
     @submitter = submitter
     @otp_code = EmailVerificationCodes.generate([submitter.email.downcase.strip, submitter.slug].join(':'))
 

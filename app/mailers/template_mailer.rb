@@ -3,6 +3,7 @@
 class TemplateMailer < ApplicationMailer
   def otp_verification_email(template, email:)
     @current_account = template.account
+    mail_account(@current_account)
     @template = template
 
     @otp_code = EmailVerificationCodes.generate([email.downcase.strip, template.slug].join(':'))

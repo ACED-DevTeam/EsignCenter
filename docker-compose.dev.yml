@@ -20,6 +20,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.dev
+    env_file:
+      - path: .env.standalone.local
+        required: false
     depends_on:
       postgres:
         condition: service_healthy

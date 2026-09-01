@@ -179,12 +179,12 @@ module Accounts
      *Docuseal.trusted_certs]
   end
 
-  def can_send_emails?(_account, **_params)
-    return true if Docuseal.multitenant?
+  def can_send_emails?(account, **_params)
     return true if Rails.env.development?
+    return true if EncryptedConfig.exists?(account:, key: EncryptedConfig::EMAIL_SMTP_KEY)
     return true if ENV['SMTP_ADDRESS'].present?
 
-    EncryptedConfig.exists?(key: EncryptedConfig::EMAIL_SMTP_KEY)
+    false
   end
 
   def can_send_invitation_emails?(_account)

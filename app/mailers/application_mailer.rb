@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 class ApplicationMailer < ActionMailer::Base
-  default from: 'EsignCenter <noreply@esigncenter.app>'
+  default from: 'EsignCenter <noreply@esigncenter.com>'
   layout 'mailer'
 
   register_interceptor ActionMailerConfigsInterceptor
@@ -16,6 +16,7 @@ class ApplicationMailer < ActionMailer::Base
 
   after_action :set_message_metadata
   after_action :set_message_uuid
+  after_action :set_mail_account_header
 
   def default_url_options
     Docuseal.default_url_options.merge(host: ENV.fetch('EMAIL_HOST', Docuseal.default_url_options[:host]))
@@ -39,5 +40,17 @@ class ApplicationMailer < ActionMailer::Base
 
   def put_metadata(attrs)
     @message_metadata = (@message_metadata || {}).merge(attrs)
+  end
+
+  protected
+
+  def mail_account(account)
+    @_mail_account = account
+  end
+
+  private
+
+  def set_mail_account_header
+    headers['X-EC-Account-Id'] = @_mail_account.id.to_s if @_mail_account
   end
 end
