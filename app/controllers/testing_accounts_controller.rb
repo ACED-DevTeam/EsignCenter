@@ -7,7 +7,7 @@ class TestingAccountsController < ApplicationController
     authorize!(:manage, current_account)
     authorize!(:manage, current_user)
 
-    return refuse_customer_test_mode if true_user.account.customer?
+    return if refuse_customer_test_mode
 
     impersonate_user(Accounts.find_or_create_testing_user(true_user.account))
 
@@ -18,15 +18,5 @@ class TestingAccountsController < ApplicationController
     stop_impersonating_user
 
     redirect_back(fallback_location: root_path)
-  end
-
-  private
-
-  def refuse_customer_test_mode
-    if request.format.html?
-      redirect_back fallback_location: root_path, alert: 'Test mode is unavailable for customer accounts'
-    else
-      head :forbidden
-    end
   end
 end

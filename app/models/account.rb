@@ -85,6 +85,14 @@ class Account < ApplicationRecord
     linked_account_account&.testing?
   end
 
+  # Configuration belongs to this account first. Testing children may inherit
+  # from their testing parent only when the child has no usable value.
+  def configuration_lookup_accounts
+    link = linked_account_account
+
+    [self, (link.account if link&.testing?)].compact
+  end
+
   def tz_info
     @tz_info ||= TZInfo::Timezone.get(ActiveSupport::TimeZone::MAPPING[timezone] || timezone)
   end

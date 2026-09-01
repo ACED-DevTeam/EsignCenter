@@ -181,28 +181,21 @@ RSpec.describe 'Webhook hardening' do
   end
 
   describe 'launch kill switches' do
-    it 'keeps registration disabled unless its environment value is exactly true' do
-      allow(ENV).to receive(:[]).and_call_original
-      allow(ENV).to receive(:[]).with('REGISTRATION_ENABLED').and_return(nil)
-      expect(Docuseal.registration_enabled?).to be(false)
+    [
+      ['registration', 'REGISTRATION_ENABLED', :registration_enabled?, 'TRUE'],
+      ['billing', 'BILLING_ENABLED', :billing_enabled?, '1']
+    ].each do |label, env_key, predicate, non_true_value|
+      it "keeps #{label} disabled unless its environment value is exactly true" do
+        allow(ENV).to receive(:[]).and_call_original
+        allow(ENV).to receive(:[]).with(env_key).and_return(nil)
+        expect(Docuseal.public_send(predicate)).to be(false)
 
-      allow(ENV).to receive(:[]).with('REGISTRATION_ENABLED').and_return('TRUE')
-      expect(Docuseal.registration_enabled?).to be(false)
+        allow(ENV).to receive(:[]).with(env_key).and_return(non_true_value)
+        expect(Docuseal.public_send(predicate)).to be(false)
 
-      allow(ENV).to receive(:[]).with('REGISTRATION_ENABLED').and_return('true')
-      expect(Docuseal.registration_enabled?).to be(true)
-    end
-
-    it 'keeps billing disabled unless its environment value is exactly true' do
-      allow(ENV).to receive(:[]).and_call_original
-      allow(ENV).to receive(:[]).with('BILLING_ENABLED').and_return(nil)
-      expect(Docuseal.billing_enabled?).to be(false)
-
-      allow(ENV).to receive(:[]).with('BILLING_ENABLED').and_return('1')
-      expect(Docuseal.billing_enabled?).to be(false)
-
-      allow(ENV).to receive(:[]).with('BILLING_ENABLED').and_return('true')
-      expect(Docuseal.billing_enabled?).to be(true)
+        allow(ENV).to receive(:[]).with(env_key).and_return('true')
+        expect(Docuseal.public_send(predicate)).to be(true)
+      end
     end
 
     it 'returns 404 from both controller guards when their switches are off' do

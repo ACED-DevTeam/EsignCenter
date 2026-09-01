@@ -20,7 +20,8 @@ class ApplicationController < ActionController::Base
                 :true_ability,
                 :form_link_host,
                 :svg_icon,
-                :account_logo_url
+                :account_logo_url,
+                :test_mode_available?
 
   impersonates :user, with: ->(uuid) { User.find_by(uuid:) }
 
@@ -98,6 +99,22 @@ class ApplicationController < ActionController::Base
 
   def current_account
     current_user&.account
+  end
+
+  def test_mode_available?
+    !true_user.account.customer?
+  end
+
+  def refuse_customer_test_mode
+    return false if test_mode_available?
+
+    if request.format.html?
+      redirect_back fallback_location: root_path, alert: 'Test mode is unavailable for customer accounts'
+    else
+      head :forbidden
+    end
+
+    true
   end
 
   # Signed, non-expiring proxy URL for an account's custom logo, or nil when none is set.

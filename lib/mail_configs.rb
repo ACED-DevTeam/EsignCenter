@@ -33,14 +33,10 @@ module MailConfigs
   def find_smtp_config(account)
     return [nil, nil] unless account
 
-    config = usable_smtp_config(account)
+    account.configuration_lookup_accounts.each do |source_account|
+      config = usable_smtp_config(source_account)
 
-    return [account, config] if config
-
-    if account.testing? && (parent = account.linked_account_account.account)
-      parent_config = usable_smtp_config(parent)
-
-      return [parent, parent_config] if parent_config
+      return [source_account, config] if config
     end
 
     [nil, nil]

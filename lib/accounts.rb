@@ -203,15 +203,13 @@ module Accounts
   end
 
   def esign_certs_config_for(account)
-    encrypted_config = account.encrypted_configs.find_by(key: EncryptedConfig::ESIGN_CERTS_KEY)
+    account.configuration_lookup_accounts.each do |source_account|
+      encrypted_config = source_account.encrypted_configs.find_by(key: EncryptedConfig::ESIGN_CERTS_KEY)
 
-    if encrypted_config.nil? && account.testing?
-      encrypted_config = account.linked_account_account.account.encrypted_configs.find_by(
-        key: EncryptedConfig::ESIGN_CERTS_KEY
-      )
+      return encrypted_config if encrypted_config
     end
 
-    encrypted_config
+    nil
   end
 
   def raise_missing_esign_certs!(account)
