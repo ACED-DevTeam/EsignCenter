@@ -9,23 +9,49 @@ module MailConfigs
   module_function
 
   def resolve(account)
-    email_config = EncryptedConfig.find_by(account:, key: EncryptedConfig::EMAIL_SMTP_KEY) if account
-
-    # An incomplete pin (the settings form can save an empty hash) must not
-    # shadow the platform default and silently kill the tenant's mail.
-    email_config = nil if email_config && !pin_usable?(email_config.value)
+    source_account, email_config = find_smtp_config(account)
 
     if email_config
       Result.new(
         source: :account,
         smtp: build_account_smtp(email_config.value),
-        from: %("#{account.name.to_s.delete('"')}" <#{email_config.value['from_email']}>)
+        from: %("#{source_account.name.to_s.delete('"')}" <#{email_config.value['from_email']}>)
       )
     elsif ENV['SMTP_ADDRESS'].present?
       Result.new(source: :env, smtp: build_env_smtp, from: ENV['SMTP_FROM'].presence)
     else
       Result.new(source: :none, smtp: {}, from: nil)
     end
+  end
+
+  # Returns [account_the_pin_belongs_to, config] or [nil, nil].
+  #
+  # Testing accounts are created by duplication without configs, so — like
+  # esign certs (Accounts.esign_certs_config_for) and account configs
+  # (AccountConfigs.find_for_account) — a test-mode child falls back to its
+  # parent's pinned SMTP server instead of dropping to the platform default.
+  def find_smtp_config(account)
+    return [nil, nil] unless account
+
+    config = usable_smtp_config(account)
+
+    return [account, config] if config
+
+    if account.testing? && (parent = account.linked_account_account.account)
+      parent_config = usable_smtp_config(parent)
+
+      return [parent, parent_config] if parent_config
+    end
+
+    [nil, nil]
+  end
+
+  # An incomplete pin (the settings form can save an empty hash) must not
+  # shadow the platform default and silently kill the tenant's mail.
+  def usable_smtp_config(account)
+    config = EncryptedConfig.find_by(account:, key: EncryptedConfig::EMAIL_SMTP_KEY)
+
+    config if config && pin_usable?(config.value)
   end
 
   def delivery_mode

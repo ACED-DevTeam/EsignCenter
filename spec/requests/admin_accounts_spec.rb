@@ -111,7 +111,7 @@ describe 'Admin Accounts API' do
       expect(response).to have_http_status(:forbidden)
     end
 
-    it 'returns 409 for a duplicate email' do
+    it 'returns 422 with the validation message for a duplicate email' do
       create(:user, email: 'taken@example.com')
 
       expect do
@@ -120,8 +120,8 @@ describe 'Admin Accounts API' do
         }.to_json
       end.not_to change(Account, :count)
 
-      expect(response).to have_http_status(:conflict)
-      expect(response.parsed_body['error']).to eq('A user with this email already exists')
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body['error']).to eq('Email has already been taken')
     end
   end
 end

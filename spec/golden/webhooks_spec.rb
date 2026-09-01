@@ -6,6 +6,20 @@ RSpec.describe 'Webhook hardening' do
     allow(Docuseal).to receive(:multitenant?).and_return(false)
   end
 
+  # The wire contract, restated independently of the implementation: the
+  # header value is "<unix timestamp>.<hex HMAC-SHA256 of '<timestamp>.<body>'
+  # keyed with the webhook secret>". Computed here with bare OpenSSL on
+  # purpose — calling Signatures.sign/verify would make the assertion a
+  # tautology that survives a digest swap or a framing change.
+  def expect_wire_signature!(header_value, secret:, body:)
+    expect(header_value).to match(/\A\d+\.[0-9a-f]{64}\z/)
+
+    timestamp, digest = header_value.split('.', 2)
+
+    expect(Integer(timestamp)).to be_within(120).of(Time.current.to_i)
+    expect(digest).to eq(OpenSSL::HMAC.hexdigest('sha256', secret, "#{timestamp}.#{body}"))
+  end
+
   describe 'signed webhook delivery' do
     let(:account) { create(:account) }
     let(:webhook_url) { create(:webhook_url, account:, events: ['submission.created']) }
@@ -21,16 +35,52 @@ RSpec.describe 'Webhook hardening' do
 
       expect(captured_request).to be_present
 
-      SendWebhookRequest::SIGNATURE_HEADERS.each do |header|
-        signature = captured_request.headers[header]
-
-        expect(signature).to be_present
-        expect(WebhookUrls::Signatures.verify(webhook_url.hmac_secret,
-                                              body: captured_request.body,
-                                              header: signature)).to be(true)
+      # Literal header names: renaming or dropping either one is a breaking
+      # change for every receiver already deployed against them.
+      %w[X-Docuseal-Signature X-Esigncenter-Signature].each do |header|
+        expect_wire_signature!(captured_request.headers[header],
+                               secret: webhook_url.hmac_secret,
+                               body: captured_request.body)
       end
     end
 
+    it 'rejects a signature older than the replay window and accepts a fresh one' do
+      body = '{"id":123}'
+      secret = webhook_url.hmac_secret
+      tolerance = WebhookUrls::Signatures::TOLERANCE
+
+      stale_timestamp = Time.current.to_i - tolerance - 60
+      stale_header =
+        "#{stale_timestamp}.#{OpenSSL::HMAC.hexdigest('sha256', secret, "#{stale_timestamp}.#{body}")}"
+
+      expect { WebhookUrls::Signatures.verify(secret, body:, header: stale_header) }
+        .to raise_error(WebhookUrls::Signatures::TimestampError, 'Too old')
+
+      future_timestamp = Time.current.to_i + tolerance + 60
+      future_header =
+        "#{future_timestamp}.#{OpenSSL::HMAC.hexdigest('sha256', secret, "#{future_timestamp}.#{body}")}"
+
+      expect { WebhookUrls::Signatures.verify(secret, body:, header: future_header) }
+        .to raise_error(WebhookUrls::Signatures::TimestampError, 'In future')
+
+      fresh_timestamp = Time.current.to_i
+      fresh_header =
+        "#{fresh_timestamp}.#{OpenSSL::HMAC.hexdigest('sha256', secret, "#{fresh_timestamp}.#{body}")}"
+
+      expect(WebhookUrls::Signatures.verify(secret, body:, header: fresh_header)).to be(true)
+    end
+
+    it 'rejects a fresh timestamp carrying a digest for a different body' do
+      secret = webhook_url.hmac_secret
+      timestamp = Time.current.to_i
+      header = "#{timestamp}.#{OpenSSL::HMAC.hexdigest('sha256', secret, "#{timestamp}.{\"id\":1}")}"
+
+      expect { WebhookUrls::Signatures.verify(secret, body: '{"id":2}', header:) }
+        .to raise_error(WebhookUrls::Signatures::InvalidSignatureError)
+    end
+
+    # The custom-secret behaviour below is the product's legacy contract: a
+    # user-set static header wins over the generated signature. Unchanged.
     SendWebhookRequest::SIGNATURE_HEADERS.each do |custom_header|
       it "preserves a custom #{custom_header} header" do
         webhook_url.update!(secret: { custom_header => 'custom-signature' })
@@ -70,10 +120,10 @@ RSpec.describe 'Webhook hardening' do
 
       described_class.new.perform('submitter_id' => submitter.id, 'webhook_url_id' => webhook_url.id)
 
-      SendWebhookRequest::SIGNATURE_HEADERS.each do |header|
-        expect(WebhookUrls::Signatures.verify(webhook_url.hmac_secret,
-                                              body: captured_request.body,
-                                              header: captured_request.headers[header])).to be(true)
+      %w[X-Docuseal-Signature X-Esigncenter-Signature].each do |header|
+        expect_wire_signature!(captured_request.headers[header],
+                               secret: webhook_url.hmac_secret,
+                               body: captured_request.body)
       end
     end
 

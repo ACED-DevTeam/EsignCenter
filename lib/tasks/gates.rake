@@ -3,24 +3,49 @@
 module Gates
   ROOT = File.expand_path('../..', __dir__)
   ACCOUNT_ONE_PATTERN = Regexp.new(['\\baccount(_id)?\\s*', '==\\s*', '1\\b'].join)
-  # Whole-file, multiline-aware patterns: an unscoped EncryptedConfig lookup
-  # (any finder with key: and no account scoping survives a line break), any
-  # first-account query, and account-one literals in any spacing.
+  # Whole-file, multiline-aware patterns: an unscoped EncryptedConfig or
+  # AccountConfig lookup (any finder whose first argument is key:, i.e. no
+  # account scoping — and it survives a line break), any first-account query,
+  # and account-one literals in any spacing.
+  CONFIG_FINDERS = 'find_by|find_by!|exists\?|where|order|pluck|pick|take|' \
+                   'first_or_initialize|find_or_initialize_by|find_or_create_by'
   ISOLATION_PATTERNS = [
-    /EncryptedConfig\s*\.\s*(find_by|find_by!|exists\?|where|order)\(\s*key:/m,
+    /EncryptedConfig\s*\.\s*(#{CONFIG_FINDERS})\(\s*key:/m,
+    /AccountConfig\s*\.\s*(#{CONFIG_FINDERS})\(\s*key:/m,
     /Account\s*\.\s*order\(\s*:id\s*\)\s*\.\s*(first|take|limit)/m,
     /Account\s*\.\s*(first\b|minimum\(\s*:id\s*\))/m,
     ACCOUNT_ONE_PATTERN,
     /\.order\(\s*:account_id\s*\)/m
   ].freeze
+  # Allowlist entries pin a file AND the exact matched snippet, so allowlisting
+  # one known-good line never blanket-exempts the rest of the file.
   ALLOWLIST = [
     {
       file: 'app/controllers/search_entries_reindex_controller.rb',
-      pattern: /Account\s*\.\s*(first\b|minimum\(\s*:id\s*\))/m,
+      snippet: 'Account.minimum(:id)',
       reason: 'instance-global fulltext toggle storage; becomes an operator surface in Session 2'
+    },
+    {
+      file: 'lib/docuseal.rb',
+      snippet: 'AccountConfig.exists?(key: :fulltext_search, value: true)',
+      reason: 'instance-global fulltext index toggle, read once per boot; operator surface in Session 2'
+    },
+    {
+      file: 'lib/send_webhook_request.rb',
+      snippet: 'AccountConfig.exists?(key: :allow_http, account_id: account.id)',
+      reason: 'account-scoped by account_id in the same call; key: simply leads the hash'
     }
   ].freeze
-  SPEC_METADATA_PATTERN = /multitenant:\s*true/n
+  SPEC_METADATA_PATTERNS = [
+    /multitenant:\s*true/n,
+    /receive\(\s*:multitenant\?\s*\)\s*\.\s*and_return\(\s*true\s*\)/n
+  ].freeze
+  # Stubbing multitenancy on is banned outright in the golden specs: they must
+  # exercise the shipped single-tenant configuration.
+  GOLDEN_SPEC_PREFIX = 'spec/golden/'
+  # This file is the gate definition: it necessarily spells out every banned
+  # pattern and every allowlisted snippet, so it never scans itself.
+  SELF_PATH = 'lib/tasks/gates.rake'
 
   module_function
 
@@ -32,16 +57,19 @@ module Gates
     source_files.flat_map do |path|
       relative_path = path.delete_prefix("#{ROOT}/")
       content = File.binread(path).force_encoding(Encoding::UTF_8).scrub
+      lines = content.lines
 
-      ISOLATION_PATTERNS.filter_map do |pattern|
-        match = pattern.match(content)
+      # Every occurrence is reported, not just the first: a file with one
+      # allowlisted line must still fail on a second, unreviewed one.
+      ISOLATION_PATTERNS.flat_map do |pattern|
+        content.to_enum(:scan, pattern).filter_map do
+          line_number = content[0...Regexp.last_match.begin(0)].count("\n") + 1
+          line = lines[line_number - 1].to_s.strip
 
-        next unless match
-        next if allowlisted?(relative_path, pattern)
+          next if allowlisted?(relative_path, line)
 
-        line_number = content[0...match.begin(0)].count("\n") + 1
-
-        "#{relative_path}:#{line_number}: #{match[0].split("\n").first.strip}"
+          "#{relative_path}:#{line_number}: #{line}"
+        end
       end
     end
   end
@@ -52,24 +80,35 @@ module Gates
 
       next [] if relative_path == 'spec/rails_helper.rb'
 
+      patterns = spec_metadata_patterns_for(relative_path)
+
       File.binread(path).each_line.with_index.filter_map do |line, index|
-        next unless SPEC_METADATA_PATTERN.match?(line)
+        next unless patterns.any? { |pattern| pattern.match?(line) }
 
         "#{relative_path}:#{index + 1}: #{line.strip}"
       end
     end
   end
 
+  def spec_metadata_patterns_for(relative_path)
+    return SPEC_METADATA_PATTERNS if relative_path.start_with?(GOLDEN_SPEC_PREFIX)
+
+    SPEC_METADATA_PATTERNS.first(1)
+  end
+
   def source_files
     Dir.glob(File.join(ROOT, '{app,lib,config}', '**', '*.{rb,rake,erb}'))
+       .reject { |path| path.delete_prefix("#{ROOT}/") == SELF_PATH }
   end
 
   def spec_files
     Dir.glob(File.join(ROOT, 'spec', '**', '*')).select { |path| File.file?(path) }.sort
   end
 
-  def allowlisted?(file, pattern)
-    ALLOWLIST.any? { |entry| entry.fetch(:file) == file && entry.fetch(:pattern) == pattern }
+  # An entry exempts one reviewed line, never the whole file: the matched
+  # line itself has to carry the allowlisted snippet.
+  def allowlisted?(file, line)
+    ALLOWLIST.any? { |entry| entry.fetch(:file) == file && line.include?(entry.fetch(:snippet)) }
   end
 
   def run_gate!(name, command)

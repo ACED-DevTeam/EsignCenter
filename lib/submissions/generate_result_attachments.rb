@@ -1003,16 +1003,12 @@ module Submissions
     def fetch_sign_reason(submitter)
       reason_name = submitter.email || submitter.name || submitter.phone
 
-      config =
-        if Docuseal.multitenant?
-          AccountConfig.where(account: submitter.account, key: AccountConfig::ESIGNING_PREFERENCE_KEY)
-                       .first_or_initialize(value: 'single')
-        else
-          AccountConfig.where(key: AccountConfig::ESIGNING_PREFERENCE_KEY)
-                       .first_or_initialize(value: 'single')
-        end
+      # Always resolved through the submitter's own account (with the testing
+      # account's parent fallback) — an unscoped lookup would let any tenant's
+      # row decide every other tenant's signed-PDF reason text.
+      config = AccountConfigs.find_for_account(submitter.account, AccountConfig::ESIGNING_PREFERENCE_KEY)
 
-      return sign_reason(reason_name) if config.value == 'multiple'
+      return sign_reason(reason_name) if (config&.value || 'single') == 'multiple'
 
       if !submitter.submission.submitters.exists?(completed_at: nil) &&
          submitter.completed_at == submitter.submission.submitters.maximum(:completed_at)

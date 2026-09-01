@@ -281,7 +281,7 @@
           <% end %>
         <% end %>
         <%= render 'extra_preferences' %>
-        <% if !Docuseal.multitenant? && SearchEntry.table_exists? && (!Docuseal.fulltext_search? || params[:reindex] == 'true') && can?(:manage, EncryptedConfig) %>
+        <% if !Docuseal.multitenant? && !current_account.customer? && SearchEntry.table_exists? && (!Docuseal.fulltext_search? || params[:reindex] == 'true') && can?(:manage, EncryptedConfig) %>
           <div class="flex items-center justify-between gap-4 py-2.5">
             <span>
               <%= t('efficient_search_with_search_index') %>

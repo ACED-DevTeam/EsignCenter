@@ -93,6 +93,46 @@ RSpec.describe MailConfigs, type: :lib do
     end
   end
 
+  describe 'testing-account inheritance' do
+    it 'sends a test-mode child through the parent pinned server' do
+      parent = create(:account, :internal, name: 'Parent Firm')
+      testing_child = create(:account, :internal)
+      parent.testing_accounts << testing_child
+      create_smtp_config(parent)
+      ENV['SMTP_ADDRESS'] = 'platform.smtp.example'
+
+      result = described_class.resolve(testing_child.reload)
+
+      expect(result.source).to eq(:account)
+      expect(result.smtp).to include(address: 'pinned.smtp.example', user_name: 'pinned-user')
+      expect(result.from).to eq('"Parent Firm" <tenant@example.com>')
+    end
+
+    it 'prefers the test-mode child own pin over the parent pin' do
+      parent = create(:account, :internal, name: 'Parent Firm')
+      testing_child = create(:account, :internal, name: 'Testing - Parent Firm')
+      parent.testing_accounts << testing_child
+      create_smtp_config(parent)
+      create_smtp_config(testing_child, 'host' => 'child.smtp.example', 'from_email' => 'child@example.com')
+
+      result = described_class.resolve(testing_child.reload)
+
+      expect(result.source).to eq(:account)
+      expect(result.smtp).to include(address: 'child.smtp.example')
+      expect(result.from).to eq('"Testing - Parent Firm" <child@example.com>')
+    end
+
+    it 'leaves a non-testing linked child on the platform default' do
+      parent = create(:account, :internal)
+      linked_child = create(:account, :internal)
+      AccountLinkedAccount.create!(account: parent, linked_account: linked_child, account_type: 'linked')
+      create_smtp_config(parent)
+      ENV['SMTP_ADDRESS'] = 'platform.smtp.example'
+
+      expect(described_class.resolve(linked_child.reload).source).to eq(:env)
+    end
+  end
+
   describe '.delivery_mode' do
     it 'reads a valid explicit mode on every call' do
       ENV['EMAIL_DELIVERY_MODE'] = 'smtp'

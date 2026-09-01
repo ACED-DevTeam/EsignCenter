@@ -31,11 +31,7 @@ module Api
       rescue ActiveRecord::RecordNotUnique
         handle_not_unique
       rescue ActiveRecord::RecordInvalid => e
-        if duplicate_email?(e.record)
-          render_duplicate_email
-        else
-          render json: { error: e.record.errors.full_messages.join(', ') }, status: :unprocessable_content
-        end
+        render json: { error: e.record.errors.full_messages.join(', ') }, status: :unprocessable_content
       end
 
       private
@@ -64,8 +60,15 @@ module Api
         end
       end
 
+      # The wire contract for a plain duplicate email is the Rails validation
+      # response (422 + "Email has already been taken"), whether the duplicate
+      # is caught by the uniqueness validation or by the unique index. 409 is
+      # reserved for an idempotency key replayed with different parameters.
       def render_duplicate_email
-        render json: { error: 'A user with this email already exists' }, status: :conflict
+        errors = ActiveModel::Errors.new(User.new)
+        errors.add(:email, :taken)
+
+        render json: { error: errors.full_messages.join(', ') }, status: :unprocessable_content
       end
 
       def requested_email
@@ -156,10 +159,6 @@ module Api
 
       def idempotency_key
         account_params[:idempotency_key].presence
-      end
-
-      def duplicate_email?(record)
-        record.is_a?(User) && record.errors.details[:email].any? { |error| error[:error] == :taken }
       end
 
       def authenticate_admin_token!

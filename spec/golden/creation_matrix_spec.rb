@@ -86,14 +86,14 @@ RSpec.describe 'Account and user creation matrix', type: :request do
     expect([Account.count, User.count, ProvisioningEvent.count]).to eq(original_counts)
   end
 
-  it 'returns a conflict for a duplicate email and rolls back the account' do
+  it 'returns an unprocessable entity for a duplicate email and rolls back the account' do
     create(:user, email: 'golden-taken@example.com')
     original_counts = [Account.count, User.count, ProvisioningEvent.count]
 
     post_provision(name: 'Duplicate Firm', email: 'golden-taken@example.com')
 
-    expect(response).to have_http_status(:conflict)
-    expect(response.parsed_body).to eq('error' => 'A user with this email already exists')
+    expect(response).to have_http_status(:unprocessable_content)
+    expect(response.parsed_body).to eq('error' => 'Email has already been taken')
     expect([Account.count, User.count, ProvisioningEvent.count]).to eq(original_counts)
   end
 
@@ -187,16 +187,19 @@ RSpec.describe 'Account and user creation matrix', type: :request do
   end
 
   it 'does not permit account kind changes through account settings' do
-    allow(Docuseal).to receive(:multitenant?).and_return(true)
     account = create(:account)
     admin = create(:user, account:)
     sign_in(admin)
 
-    patch settings_account_path, params: {
-      account: { name: 'Renamed Customer', account_kind: Account::INTERNAL_KIND }
-    }
+    expect do
+      patch settings_account_path, params: {
+        account: { name: 'Renamed Customer', account_kind: Account::INTERNAL_KIND }
+      }
+    end.not_to change(Account, :count)
 
-    expect(response).to have_http_status(:redirect)
+    # The shipped single-tenant config re-renders the settings screen (the app
+    # URL is required here); the point is that account_kind is never assignable.
+    expect(response).to have_http_status(:unprocessable_content)
     expect(account.reload.name).to eq('Renamed Customer')
     expect(account.account_kind).to eq(Account::CUSTOMER_KIND)
   end
@@ -273,5 +276,38 @@ RSpec.describe 'Account and user creation matrix', type: :request do
     expect { get setup_index_path }.not_to change(Account, :count)
 
     expect(response).to redirect_to(new_user_session_path)
+  end
+
+  it 'refuses a setup POST once any user exists, creating no account or user' do
+    create(:user, account: create(:account))
+
+    setup_params = {
+      account: { name: 'Setup Squatter', timezone: 'UTC', locale: 'en-US' },
+      user: {
+        first_name: 'Setup',
+        last_name: 'Squatter',
+        email: 'golden-setup-squatter@example.com',
+        password: 'golden-setup-password'
+      },
+      encrypted_config: { value: 'https://squatter.example.test' }
+    }
+
+    original_counts = [Account.count, User.count]
+
+    post setup_index_path, params: setup_params
+
+    expect(response).to redirect_to(new_user_session_path)
+    expect([Account.count, User.count]).to eq(original_counts)
+    expect(User.exists?(email: 'golden-setup-squatter@example.com')).to be(false)
+  end
+
+  # Self-serve signup is off: Devise is mounted without :registrations, so no
+  # registration route may exist. Re-adding :registrations fails here.
+  it 'exposes no Devise registration route' do
+    route_names = Rails.application.routes.routes.filter_map(&:name)
+
+    expect(route_names.grep(/registration/)).to be_empty
+    expect(User.devise_modules).not_to include(:registerable)
+    expect(Rails.application.routes.url_helpers).not_to respond_to(:new_user_registration_path)
   end
 end
