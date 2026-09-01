@@ -2,14 +2,24 @@
 
 module Gates
   ROOT = File.expand_path('../..', __dir__)
-  ACCOUNT_ONE_PATTERN = Regexp.new(['account_id', ' == ', '1'].join)
+  ACCOUNT_ONE_PATTERN = Regexp.new(['\\baccount(_id)?\\s*', '==\\s*', '1\\b'].join)
+  # Whole-file, multiline-aware patterns: an unscoped EncryptedConfig lookup
+  # (any finder with key: and no account scoping survives a line break), any
+  # first-account query, and account-one literals in any spacing.
   ISOLATION_PATTERNS = [
-    /EncryptedConfig\.(find_by|exists\?|order)\(\s*key:/,
-    /Account\.order\(:id\)\.first/,
+    /EncryptedConfig\s*\.\s*(find_by|find_by!|exists\?|where|order)\(\s*key:/m,
+    /Account\s*\.\s*order\(\s*:id\s*\)\s*\.\s*(first|take|limit)/m,
+    /Account\s*\.\s*(first\b|minimum\(\s*:id\s*\))/m,
     ACCOUNT_ONE_PATTERN,
-    /\.order\(:account_id\)/
+    /\.order\(\s*:account_id\s*\)/m
   ].freeze
-  ALLOWLIST = [].freeze
+  ALLOWLIST = [
+    {
+      file: 'app/controllers/search_entries_reindex_controller.rb',
+      pattern: /Account\s*\.\s*(first\b|minimum\(\s*:id\s*\))/m,
+      reason: 'instance-global fulltext toggle storage; becomes an operator surface in Session 2'
+    }
+  ].freeze
   SPEC_METADATA_PATTERN = /multitenant:\s*true/n
 
   module_function
@@ -21,14 +31,17 @@ module Gates
   def source_failures
     source_files.flat_map do |path|
       relative_path = path.delete_prefix("#{ROOT}/")
+      content = File.binread(path).force_encoding(Encoding::UTF_8).scrub
 
-      File.readlines(path).each_with_index.filter_map do |line, index|
-        pattern = ISOLATION_PATTERNS.find { |candidate| candidate.match?(line) }
+      ISOLATION_PATTERNS.filter_map do |pattern|
+        match = pattern.match(content)
 
-        next unless pattern
+        next unless match
         next if allowlisted?(relative_path, pattern)
 
-        "#{relative_path}:#{index + 1}: #{line.strip}"
+        line_number = content[0...match.begin(0)].count("\n") + 1
+
+        "#{relative_path}:#{line_number}: #{match[0].split("\n").first.strip}"
       end
     end
   end

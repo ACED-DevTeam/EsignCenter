@@ -141,7 +141,7 @@ class SubmitFormController < ApplicationController
     return unless @submitter&.submission&.source_embed?
 
     prefs = @submitter.submission.preferences || {}
-    origins = (Array(prefs['embed_origins']).presence || Array(prefs['embed_origin'])).reject(&:blank?)
+    origins = (Array(prefs['embed_origins']).presence || Array(prefs['embed_origin'])).compact_blank
 
     return if origins.blank?
 

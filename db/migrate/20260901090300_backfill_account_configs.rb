@@ -23,4 +23,10 @@ class BackfillAccountConfigs < ActiveRecord::Migration[8.1]
         )
     SQL
   end
+
+  def down
+    # The copied rows are indistinguishable from operator-set values by now —
+    # deleting them could destroy real settings. Roll forward only.
+    raise ActiveRecord::IrreversibleMigration
+  end
 end

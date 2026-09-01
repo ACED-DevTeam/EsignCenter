@@ -176,7 +176,6 @@ Rails.application.routes.draw do
 
   scope '/settings', as: :settings do
     unless Docuseal.multitenant?
-      resources :storage, only: %i[index create], controller: 'storage_settings'
       resources :search_entries_reindex, only: %i[create]
       resources :sms, only: %i[index], controller: 'sms_settings'
       resources :mcp, only: %i[index new create destroy], controller: 'mcp_settings'

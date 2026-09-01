@@ -114,22 +114,19 @@ module Accounts
   end
 
   def load_signing_pkcs(account)
+    encrypted_config = esign_certs_config_for(account)
+
+    if Docuseal.multitenant?
+      return Docuseal.default_pkcs if encrypted_config&.value.blank?
+
+    else
+      return Docuseal.default_pkcs if encrypted_config.nil? && Docuseal::CERTS.present?
+
+      raise_missing_esign_certs!(account) unless encrypted_config
+
+    end
     cert_data =
-      if Docuseal.multitenant?
-        data = EncryptedConfig.find_by(account:, key: EncryptedConfig::ESIGN_CERTS_KEY)&.value
-
-        return Docuseal.default_pkcs if data.blank?
-
-        data
-      else
-        encrypted_config = esign_certs_config_for(account)
-
-        return Docuseal.default_pkcs if encrypted_config.nil? && Docuseal::CERTS.present?
-
-        raise_missing_esign_certs!(account) unless encrypted_config
-
-        encrypted_config.value
-      end
+      encrypted_config.value
 
     if (default_cert = cert_data['custom']&.find { |e| e['status'] == 'default' })
       if default_cert['name'] == Docuseal::AATL_CERT_NAME
@@ -143,22 +140,24 @@ module Accounts
   end
 
   def load_timeserver_url(account)
+    return Docuseal::TIMESERVER_URL.presence if Docuseal.multitenant?
+
     account.encrypted_configs.find_by(key: EncryptedConfig::TIMESTAMP_SERVER_URL_KEY)&.value.presence ||
       Docuseal::TIMESERVER_URL.presence
   end
 
   def load_trusted_certs(account)
+    encrypted_config = esign_certs_config_for(account)
+
     cert_data =
       if Docuseal.multitenant?
-        value = EncryptedConfig.find_by(account:, key: EncryptedConfig::ESIGN_CERTS_KEY)&.value || {}
-
-        Docuseal::CERTS.merge(value)
+        Docuseal::CERTS.merge(encrypted_config&.value || {})
       else
-        encrypted_config = esign_certs_config_for(account)
+        return_certs = encrypted_config.nil? && Docuseal::CERTS.present?
 
-        raise_missing_esign_certs!(account) unless encrypted_config
+        raise_missing_esign_certs!(account) unless encrypted_config || return_certs
 
-        encrypted_config.value
+        encrypted_config&.value || Docuseal::CERTS
       end
 
     default_pkcs = GenerateCertificate.load_pkcs(cert_data)
@@ -178,10 +177,10 @@ module Accounts
 
   def can_send_emails?(account, **_params)
     return true if Rails.env.development?
-    return true if EncryptedConfig.exists?(account:, key: EncryptedConfig::EMAIL_SMTP_KEY)
-    return true if ENV['SMTP_ADDRESS'].present?
 
-    false
+    # Mirrors MailConfigs.resolve so the UI never promises mail the
+    # interceptor would drop (e.g. an incomplete pinned config).
+    MailConfigs.resolve(account).source != :none
   end
 
   def can_send_invitation_emails?(_account)

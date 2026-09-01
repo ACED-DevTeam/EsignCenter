@@ -171,6 +171,24 @@ RSpec.describe 'Webhook hardening' do
 
       expect(described_class.for_account_id(account.id, 'submission.created')).to contain_exactly(matching_webhook)
     end
+
+    it 'never fans a customer account out to a linked parent endpoint' do
+      parent = create(:account, :internal)
+      customer = create(:account)
+      AccountLinkedAccount.create!(account: parent, linked_account: customer, account_type: 'linked')
+      create(:webhook_url, account: parent, events: ['submission.created'])
+
+      expect(described_class.for_account_id(customer.id, 'submission.created')).to be_empty
+    end
+
+    it 'keeps the linked-parent fan-out for internal accounts with no own URLs' do
+      parent = create(:account, :internal)
+      child = create(:account, :internal)
+      AccountLinkedAccount.create!(account: parent, linked_account: child, account_type: 'linked')
+      parent_webhook = create(:webhook_url, account: parent, events: ['submission.created'])
+
+      expect(described_class.for_account_id(child.id, 'submission.created')).to contain_exactly(parent_webhook)
+    end
   end
 
   def status_from_controller_guard(guard)

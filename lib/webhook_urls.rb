@@ -30,7 +30,12 @@ module WebhookUrls
 
     event_arel = events.map { |event| Arel::Table.new(:webhook_urls)[:events].matches("%\"#{event}\"%") }.reduce(:or)
 
-    if Docuseal.multitenant?
+    account_kind = Account.where(id: account_id).pick(:account_kind)
+
+    # Customer tenants deliver only to their own webhook URLs — the legacy
+    # linked-account fan-out (events falling through to a parent account's
+    # endpoint) is an internal-accounts mechanism, never a customer one.
+    if Docuseal.multitenant? || account_kind == Account::CUSTOMER_KIND
       rel.where(event_arel)
     else
       linked_account_rel =

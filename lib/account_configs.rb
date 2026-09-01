@@ -43,6 +43,12 @@ module AccountConfigs
   end
 
   def find_for_account(account, key)
-    account.account_configs.find_by(key:)
+    configs = account.account_configs.find_by(key:)
+
+    # Testing accounts are created by duplication without configs — resolve
+    # the parent's so test mode behaves like the real account.
+    configs ||= account.linked_account_account.account.account_configs.find_by(key:) if account.testing?
+
+    configs
   end
 end

@@ -91,10 +91,15 @@ module Docuseal
   end
 
   def default_url_options
-    @default_url_options ||= begin
-      url = Addressable::URI.parse(DEFAULT_APP_URL)
-      { host: url.host, port: url.port, protocol: url.scheme }
-    end
+    @default_url_options ||=
+      if ENV['APP_URL'].present?
+        url = Addressable::URI.parse(ENV['APP_URL'])
+        { host: url.host, port: url.port, protocol: url.scheme }
+      else
+        # Deployments configured with HOST (+ FORCE_SSL) and no APP_URL keep
+        # generating correct links (the production setup today).
+        DEFAULT_URL_OPTIONS.dup
+      end
   end
 
   def product_name

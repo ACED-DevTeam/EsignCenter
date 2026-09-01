@@ -67,25 +67,20 @@ RSpec.describe 'Tenant-isolated settings', type: :request do
   end
 
   describe 'storage settings' do
-    it 'returns 404 for a customer account admin' do
-      expect_storage_status_for(create(:account), :not_found)
-    end
+    # The DB-driven storage screen is removed entirely: object storage is
+    # configured only via environment variables, so no account of any kind
+    # can reach or mutate a storage config over HTTP.
+    it 'has no storage settings route for any account kind' do
+      %i[operator internal].each do |kind|
+        sign_in(create(:user, :admin, account: create(:account, kind)))
 
-    it 'returns 404 for an internal account admin' do
-      expect_storage_status_for(create(:account, :internal), :not_found)
-    end
+        expect { get '/settings/storage' }.to raise_error(ActionController::RoutingError)
+        sign_out(:user)
+      end
 
-    it 'returns 200 for an operator account admin' do
-      expect_storage_status_for(create(:account, :operator), :ok)
-    end
+      sign_in(create(:user, :admin, account: create(:account)))
 
-    def expect_storage_status_for(account, status)
-      sign_in(create(:user, :admin, account:))
-
-      get settings_storage_index_path
-
-      expect(response).to have_http_status(status)
-      sign_out(:user)
+      expect { get '/settings/storage' }.to raise_error(ActionController::RoutingError)
     end
   end
 
