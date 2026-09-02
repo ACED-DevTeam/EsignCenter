@@ -116,18 +116,10 @@ RSpec.describe 'Error reporting', type: :lib do
   end
 
   describe 'config/initializers/sentry.rb' do
-    let(:sentry_env_keys) { %w[SENTRY_DSN SENTRY_ENVIRONMENT] }
+    stash_env('SENTRY_DSN', 'SENTRY_ENVIRONMENT', clear: true)
 
-    around do |example|
-      original_values = sentry_env_keys.index_with { |key| ENV.fetch(key, nil) }
-      sentry_env_keys.each { |key| ENV.delete(key) }
-
-      example.run
-    ensure
+    after do
       Sentry.close if Sentry.initialized?
-      original_values.each do |key, value|
-        value.nil? ? ENV.delete(key) : ENV[key] = value
-      end
     end
 
     it 'stays dormant without SENTRY_DSN' do
@@ -192,18 +184,7 @@ RSpec.describe 'Error reporting', type: :lib do
   end
 
   describe StorageConfigGuard do
-    let(:storage_env_keys) { StorageConfigGuard::STORAGE_ENV_KEYS }
-
-    around do |example|
-      original_values = storage_env_keys.index_with { |key| ENV.fetch(key, nil) }
-      storage_env_keys.each { |key| ENV.delete(key) }
-
-      example.run
-    ensure
-      original_values.each do |key, value|
-        value.nil? ? ENV.delete(key) : ENV[key] = value
-      end
-    end
+    stash_env(*StorageConfigGuard::STORAGE_ENV_KEYS, clear: true)
 
     def production!
       allow(Rails).to receive(:env).and_return(ActiveSupport::EnvironmentInquirer.new('production'))

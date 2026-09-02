@@ -24,6 +24,15 @@ RSpec.describe 'Operator access', type: :request do
     child
   end
 
+  # An account admin can flip otp_required_for_login on another user without
+  # any OTP ever being entered; only real enrollment leaves a secret behind, so
+  # the flag alone is not 2FA.
+  def create_operator_flagged_without_secret
+    create(:user, :admin, account: operator_account, platform_operator: true).tap do |user|
+      user.update!(otp_required_for_login: true, otp_secret: nil)
+    end
+  end
+
   let(:operator_account) { create(:account, :operator) }
   let(:operator) { enroll_two_factor(create(:user, :admin, account: operator_account, platform_operator: true)) }
   let(:customer_admin) { create(:user, :admin, account: create(:account)) }
@@ -40,107 +49,69 @@ RSpec.describe 'Operator access', type: :request do
       expect(response).to have_http_status(:ok)
     end
 
-    it 'has no route for an anonymous visitor' do
-      expect { get '/jobs' }.to raise_error(ActionController::RoutingError)
-    end
+    # Everyone who is not an operator with enrolled 2FA meets the same closed
+    # door. One row per identity; each row is its own example and carries its
+    # own setup and its own extra assertions.
+    [
+      ['an anonymous visitor', -> {}],
+      ['a customer admin', -> { customer_admin }],
+      ['an internal admin', -> { internal_admin }],
+      ['an operator-flagged user without 2FA',
+       -> { create(:user, :admin, account: operator_account, platform_operator: true) }],
+      ['an operator-flagged user whose 2FA flag has no secret',
+       -> { create_operator_flagged_without_secret }],
+      ['an admin inside a testing child of the operator account',
+       lambda {
+         testing_child = create_testing_child(operator_account)
 
-    it 'has no route for a customer admin' do
-      sign_in(customer_admin)
+         enroll_two_factor(create(:user, :admin, account: testing_child)).tap do |testing_admin|
+           expect(testing_child.account_kind).to eq(Account::OPERATOR_KIND)
+           expect(testing_admin.platform_operator).to be(false)
+         end
+       }]
+    ].each do |description, build_user|
+      it "has no route for #{description}" do
+        user = instance_exec(&build_user)
 
-      expect { get '/jobs' }.to raise_error(ActionController::RoutingError)
-    end
+        sign_in(user) if user
 
-    it 'has no route for an internal admin' do
-      sign_in(internal_admin)
-
-      expect { get '/jobs' }.to raise_error(ActionController::RoutingError)
-    end
-
-    it 'has no route for an operator-flagged user without 2FA' do
-      sign_in(create(:user, :admin, account: operator_account, platform_operator: true))
-
-      expect { get '/jobs' }.to raise_error(ActionController::RoutingError)
-    end
-
-    # An account admin can flip otp_required_for_login on another user; only
-    # real enrollment leaves a secret behind, so the flag alone is not 2FA.
-    it 'has no route for an operator-flagged user whose 2FA flag has no secret' do
-      flagged_only = create(:user, :admin, account: operator_account, platform_operator: true)
-      flagged_only.update!(otp_required_for_login: true, otp_secret: nil)
-
-      sign_in(flagged_only)
-
-      expect { get '/jobs' }.to raise_error(ActionController::RoutingError)
-    end
-
-    it 'has no route for an admin inside a testing child of the operator account' do
-      testing_child = create_testing_child(operator_account)
-      testing_admin = enroll_two_factor(create(:user, :admin, account: testing_child))
-
-      expect(testing_child.account_kind).to eq(Account::OPERATOR_KIND)
-      expect(testing_admin.platform_operator).to be(false)
-
-      sign_in(testing_admin)
-
-      expect { get '/jobs' }.to raise_error(ActionController::RoutingError)
+        expect { get '/jobs' }.to raise_error(ActionController::RoutingError)
+      end
     end
   end
 
   describe 'POST /settings/search_entries_reindex' do
-    it 'is a 404 for a customer admin and writes nothing' do
-      operator_account
-      sign_in(customer_admin)
+    # The operator surface answers everyone else with a 404 and writes nothing:
+    # no config row on any account, no reindex job queued. HTML gets the
+    # routing error, a non-HTML request an empty 404 body — never a redirect to
+    # sign-in. One row per identity and format.
+    [
+      ['is a 404 for a customer admin and writes nothing', :html, -> { customer_admin }],
+      ['is a 404 for an internal admin and writes nothing', :html, -> { internal_admin }],
+      ['is a 404 for an anonymous visitor, never a redirect to sign-in', :html, -> {}],
+      ['is a 404 for an operator-flagged user whose 2FA flag has no secret', :html,
+       -> { create_operator_flagged_without_secret }],
+      ['is an empty 404 for a non-HTML request', :json, -> { customer_admin }],
+      ['is an empty 404 for an anonymous non-HTML request', :json, -> {}]
+    ].each do |description, format, build_user|
+      it description do
+        operator_account
+        user = instance_exec(&build_user)
 
-      expect { post settings_search_entries_reindex_index_path }.to raise_error(ActionController::RoutingError)
-      expect(AccountConfig.exists?(key: 'fulltext_search')).to be(false)
-      expect(ReindexAllSearchEntriesJob.jobs).to be_empty
-    end
+        sign_in(user) if user
 
-    it 'is a 404 for an internal admin and writes nothing' do
-      operator_account
-      sign_in(internal_admin)
+        if format == :html
+          expect { post settings_search_entries_reindex_index_path }.to raise_error(ActionController::RoutingError)
+        else
+          post settings_search_entries_reindex_index_path, as: format
 
-      expect { post settings_search_entries_reindex_index_path }.to raise_error(ActionController::RoutingError)
-      expect(AccountConfig.exists?(key: 'fulltext_search')).to be(false)
-      expect(ReindexAllSearchEntriesJob.jobs).to be_empty
-    end
+          expect(response).to have_http_status(:not_found)
+          expect(response.body).to be_empty
+        end
 
-    it 'is an empty 404 for a non-HTML request' do
-      operator_account
-      sign_in(customer_admin)
-
-      post settings_search_entries_reindex_index_path, as: :json
-
-      expect(response).to have_http_status(:not_found)
-      expect(response.body).to be_empty
-      expect(AccountConfig.exists?(key: 'fulltext_search')).to be(false)
-    end
-
-    it 'is a 404 for an anonymous visitor, never a redirect to sign-in' do
-      operator_account
-
-      expect { post settings_search_entries_reindex_index_path }.to raise_error(ActionController::RoutingError)
-      expect(AccountConfig.exists?(key: 'fulltext_search')).to be(false)
-      expect(ReindexAllSearchEntriesJob.jobs).to be_empty
-    end
-
-    it 'is an empty 404 for an anonymous non-HTML request' do
-      operator_account
-
-      post settings_search_entries_reindex_index_path, as: :json
-
-      expect(response).to have_http_status(:not_found)
-      expect(response.body).to be_empty
-      expect(AccountConfig.exists?(key: 'fulltext_search')).to be(false)
-    end
-
-    it 'is a 404 for an operator-flagged user whose 2FA flag has no secret' do
-      flagged_only = create(:user, :admin, account: operator_account, platform_operator: true)
-      flagged_only.update!(otp_required_for_login: true, otp_secret: nil)
-      sign_in(flagged_only)
-
-      expect { post settings_search_entries_reindex_index_path }.to raise_error(ActionController::RoutingError)
-      expect(AccountConfig.exists?(key: 'fulltext_search')).to be(false)
+        expect(AccountConfig.exists?(key: 'fulltext_search')).to be(false)
+        expect(ReindexAllSearchEntriesJob.jobs).to be_empty
+      end
     end
 
     it 'lets the operator start the reindex and lands the flag on the operator account only' do
@@ -302,18 +273,9 @@ RSpec.describe 'Operator access', type: :request do
     end
 
     describe 'provisioning' do
-      around do |example|
-        original_token = ENV.fetch('ADMIN_PROVISION_TOKEN', nil)
-        ENV['ADMIN_PROVISION_TOKEN'] = 'golden-operator-provision-token'
+      stash_env('ADMIN_PROVISION_TOKEN')
 
-        example.run
-      ensure
-        if original_token.nil?
-          ENV.delete('ADMIN_PROVISION_TOKEN')
-        else
-          ENV['ADMIN_PROVISION_TOKEN'] = original_token
-        end
-      end
+      before { ENV['ADMIN_PROVISION_TOKEN'] = 'golden-operator-provision-token' }
 
       it 'ignores platform_operator, role and account_kind' do
         post '/api/admin/accounts',
@@ -335,27 +297,11 @@ RSpec.describe 'Operator access', type: :request do
     end
 
     describe 'operator:seed' do
-      around do |example|
-        Rails.application.load_tasks unless Rake::Task.task_defined?('operator:seed')
-        original_email = ENV.fetch('OPERATOR_EMAIL', nil)
-        original_password = ENV.fetch('OPERATOR_PASSWORD', nil)
+      stash_env('OPERATOR_EMAIL', 'OPERATOR_PASSWORD')
 
-        example.run
-      ensure
-        Rake::Task['operator:seed'].reenable
+      before { Rails.application.load_tasks unless Rake::Task.task_defined?('operator:seed') }
 
-        if original_email.nil?
-          ENV.delete('OPERATOR_EMAIL')
-        else
-          ENV['OPERATOR_EMAIL'] = original_email
-        end
-
-        if original_password.nil?
-          ENV.delete('OPERATOR_PASSWORD')
-        else
-          ENV['OPERATOR_PASSWORD'] = original_password
-        end
-      end
+      after { Rake::Task['operator:seed'].reenable }
 
       it 'refuses to run without OPERATOR_PASSWORD and never generates one' do
         ENV['OPERATOR_EMAIL'] = 'golden-operator@example.com'

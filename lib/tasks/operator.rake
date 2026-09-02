@@ -15,7 +15,7 @@ module OperatorSeed
 
     legacy_config = AccountConfig.where(key: 'fulltext_search', value: true)
                                  .where.not(account_id: operator_account.id)
-                                 .where.not(account_id: AccountLinkedAccount.testing.select(:linked_account_id))
+                                 .where.not(account_id: Account.testing_child_ids)
                                  .order(:id)
                                  .first
 

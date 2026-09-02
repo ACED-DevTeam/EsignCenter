@@ -4,6 +4,7 @@ module Api
   class ApiBaseController < ActionController::API
     include ActiveStorage::SetCurrent
     include Pagy::Method
+    include TokenAccountGuard
 
     DEFAULT_LIMIT = 10
     MAX_LIMIT = 100
@@ -91,15 +92,11 @@ module Api
     end
 
     # Session users are governed by Devise (an archived account cannot sign
-    # in); a token keeps working until its account state says otherwise. The
-    # refusal never says why. Anonymous requests and unknown tokens pass
-    # through untouched — authenticate_user! (where not skipped) handles them.
-    def refuse_inactive_token_account!
-      token_user = user_from_token
-
-      return if token_user.nil? || AccountStates.tokens_allowed?(token_user.account)
-
-      render json: { error: 'Account is not active' }, status: :unauthorized
+    # in); a token keeps working until its account state says otherwise.
+    # Anonymous requests and unknown tokens resolve to nobody and pass through
+    # untouched — authenticate_user! (where not skipped) handles them.
+    def token_account_user
+      user_from_token
     end
 
     def current_user

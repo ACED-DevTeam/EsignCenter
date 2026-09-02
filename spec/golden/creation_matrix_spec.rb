@@ -276,29 +276,17 @@ RSpec.describe 'Account and user creation matrix', type: :request do
   # once the seed has run. The seed adopts the legacy flag so an upgrade does
   # not silently switch search off — and leaves the legacy row alone.
   describe 'operator:seed legacy fulltext flag adoption' do
-    around do |example|
+    stash_env('OPERATOR_EMAIL', 'OPERATOR_PASSWORD')
+
+    before do
       Rails.application.load_tasks unless Rake::Task.task_defined?('operator:seed')
-      original_email = ENV.fetch('OPERATOR_EMAIL', nil)
-      original_password = ENV.fetch('OPERATOR_PASSWORD', nil)
       ENV['OPERATOR_EMAIL'] = 'golden-operator@example.com'
       ENV['OPERATOR_PASSWORD'] = 'golden-operator-password'
+    end
 
-      example.run
-    ensure
+    after do
       Rake::Task['operator:seed'].reenable
       Docuseal.refresh_fulltext_search!
-
-      if original_email.nil?
-        ENV.delete('OPERATOR_EMAIL')
-      else
-        ENV['OPERATOR_EMAIL'] = original_email
-      end
-
-      if original_password.nil?
-        ENV.delete('OPERATOR_PASSWORD')
-      else
-        ENV['OPERATOR_PASSWORD'] = original_password
-      end
     end
 
     let(:task) { Rake::Task['operator:seed'] }

@@ -13,7 +13,7 @@ module OperatorConfigs
   # alone is ambiguous: the child is excluded by its testing link.
   def candidates
     Account.where(account_kind: Account::OPERATOR_KIND)
-           .where.not(id: AccountLinkedAccount.testing.select(:linked_account_id))
+           .where.not(id: Account.testing_child_ids)
   end
 
   def account

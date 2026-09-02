@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 class McpController < ActionController::API
+  include TokenAccountGuard
+
   before_action :authenticate_user!
   before_action :verify_mcp_enabled!
 
@@ -30,9 +32,14 @@ class McpController < ActionController::API
 
   def authenticate_user!
     return render json: { error: 'Not authenticated' }, status: :unauthorized unless current_user
-    return if AccountStates.tokens_allowed?(current_user.account)
 
-    render json: { error: 'Account is not active' }, status: :unauthorized
+    refuse_inactive_token_account!
+  end
+
+  # This door authenticates by bearer token only, so the current user is
+  # always the token's user.
+  def token_account_user
+    current_user
   end
 
   def verify_mcp_enabled!

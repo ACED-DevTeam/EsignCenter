@@ -70,6 +70,14 @@ class Account < ApplicationRecord
 
   validates :account_kind, inclusion: { in: KINDS }
 
+  # Accounts that exist only as another account's testing child. A testing
+  # child copies its parent's account_kind (lib/accounts.rb), so the kind alone
+  # can never tell the two apart — every operator-scoped lookup subtracts this
+  # set.
+  def self.testing_child_ids
+    AccountLinkedAccount.testing.select(:linked_account_id)
+  end
+
   def operator?
     account_kind == OPERATOR_KIND
   end
