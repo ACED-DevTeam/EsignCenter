@@ -6,7 +6,8 @@
 # MCP tokens and the blob proxies that authorize a download through the
 # token without ever requiring one. The refusal never says why.
 RSpec.describe 'Token account state', type: :request do
-  let(:account) { create(:account) }
+  # A paid customer: the free plan has no tokens to refuse in the first place.
+  let(:account) { create(:account, :paid) }
   let(:author) { create(:user, account:) }
   let(:template) { create(:template, account:, author:) }
   let(:api_headers) { { 'x-auth-token': author.access_token.token } }

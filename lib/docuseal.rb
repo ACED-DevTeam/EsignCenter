@@ -9,7 +9,7 @@ module Docuseal
   PRODUCT_NAME = 'EsignCenter'
   DEFAULT_APP_URL = ENV.fetch('APP_URL', 'http://localhost:3000')
   GITHUB_URL = 'https://github.com/AmishHillBilly/EsignCenter'
-  SUPPORT_EMAIL = 'support@vaclaimnet.com'
+  SUPPORT_EMAIL = 'evan@processorteam.com'
   AATL_CERT_NAME = 'docuseal_aatl'
 
   CERTS = JSON.parse(ENV.fetch('CERTS', '{}'))

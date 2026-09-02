@@ -4,6 +4,11 @@ class WebhookSettingsController < ApplicationController
   load_and_authorize_resource :webhook_url, parent: false, only: %i[index show new create update destroy]
   load_and_authorize_resource :webhook_url, only: %i[resend], id_param: :webhook_id
 
+  # Webhooks are paid-only: saving, editing and test-sending a URL are refused
+  # for a free account. Existing rows are never deleted on a downgrade — they
+  # simply stop receiving (WebhookUrls.for_account_id returns none).
+  before_action -> { Entitlements.require!(current_account, :webhooks) }, only: %i[create update resend]
+
   def index
     @webhook_urls = @webhook_urls.order(id: :desc)
     @webhook_url = @webhook_urls.first_or_initialize

@@ -5,7 +5,7 @@ Get template creation and update notifications using these events:
 - **'template.created'** is triggered when the template is created.
 - **'tempate.updated'** is triggered when the template is updated.
 
-
+Every request is signed. The `X-Esigncenter-Signature` header carries `<timestamp>.<sha256>` — the hex HMAC-SHA256 of `<timestamp>.<request body>` keyed with the webhook's HMAC signing secret (Settings → Webhooks → HMAC). The same value is also sent as the legacy `X-Docuseal-Signature` header, so an integration may verify whichever it already reads.
 
 ```json
 {

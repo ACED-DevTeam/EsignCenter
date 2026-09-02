@@ -250,7 +250,7 @@ RSpec.describe 'Webhook hardening' do
 
   describe WebhookUrls do
     it 'returns an accounts own event-matching URLs when it has no non-testing links' do
-      account = create(:account)
+      account = create(:account, :paid)
       matching_webhook = create(:webhook_url, account:, events: ['submission.created'])
       create(:webhook_url, account:, events: ['submission.completed'])
 
@@ -259,7 +259,7 @@ RSpec.describe 'Webhook hardening' do
 
     it 'never fans a customer account out to a linked parent endpoint' do
       parent = create(:account, :internal)
-      customer = create(:account)
+      customer = create(:account, :paid)
       AccountLinkedAccount.create!(account: parent, linked_account: customer, account_type: 'linked')
       create(:webhook_url, account: parent, events: ['submission.created'])
 

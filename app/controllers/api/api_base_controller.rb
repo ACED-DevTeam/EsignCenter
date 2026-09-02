@@ -25,6 +25,10 @@ module Api
       render json: { error: e.message }, status: :unprocessable_content
     end
 
+    rescue_from Entitlements::UpgradeRequired do
+      render json: { error: Entitlements::REFUSAL_MESSAGE }, status: :forbidden
+    end
+
     rescue_from RateLimit::LimitApproached do |e|
       ErrorReport.error(e)
 
@@ -88,7 +92,23 @@ module Api
     end
 
     def authenticate_user!
-      render json: { error: 'Not authenticated' }, status: :unauthorized unless current_user
+      return render json: { error: 'Not authenticated' }, status: :unauthorized unless current_user
+
+      refuse_unentitled_token_account!
+    end
+
+    # The REST API is a paid-only surface for the TOKEN: a request that
+    # authenticated with X-Auth-Token from an account without the :api
+    # entitlement is refused here, existing tokens included. The same
+    # endpoints keep working over the browser session (the in-app builder and
+    # dashboard call /api/* with the session cookie), so nothing is checked
+    # when user_from_token is nil. Controllers that skip authenticate_user!
+    # (public signing-form endpoints) are untouched by design.
+    def refuse_unentitled_token_account!
+      return if user_from_token.nil?
+      return if Entitlements.allowed?(current_account, :api)
+
+      render json: { error: Entitlements::REFUSAL_MESSAGE }, status: :forbidden
     end
 
     # Session users are governed by Devise (an archived account cannot sign

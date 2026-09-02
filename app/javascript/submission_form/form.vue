@@ -671,7 +671,6 @@
       <FormCompleted
         v-else
         :is-demo="isDemo"
-        :attribution="attribution"
         :has-signature-fields="stepFields.some((fields) => fields.some((f) => ['signature', 'initials'].includes(f.type)))"
         :has-multiple-documents="hasMultipleDocuments"
         :completed-button="completedRedirectUrl ? {} : completedButton"
@@ -1072,11 +1071,6 @@ export default {
       type: Boolean,
       required: false,
       default: false
-    },
-    attribution: {
-      type: Boolean,
-      required: false,
-      default: true
     },
     language: {
       type: String,

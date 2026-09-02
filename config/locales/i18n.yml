@@ -80,7 +80,6 @@ en: &en
   accessiable_by: Accessible by
   team_access: Team access
   document_download_filename_format: Document download filename format
-  docuseal_trusted_signature: EsignCenter Trusted Signature
   hello_name: Hi %{name}
   you_are_invited_to_product_name: You are invited to %{product_name}
   you_have_been_invited_to_account_name_product_name_please_sign_up_using_the_link_below_: 'You have been invited to %{account_name} %{product_name}. Please sign up using the link below:'
@@ -210,7 +209,6 @@ en: &en
   combine_completed_documents_and_audit_log: Combine completed documents and Audit Log
   salesforce_integration: Salesforce Integration
   salesforce_has_been_connected: Salesforce has been connected.
-  connect_salesforce_account_to_integrate_with_docuseal: Connect Salesforce account to integrate with EsignCenter
   re_connect_salesforce: Re-connect Salesforce
   connect_salesforce: Connect Salesforce
   danger_zone: Danger Zone
@@ -369,7 +367,6 @@ en: &en
   qr_code: QR Code
   print: Print
   scan_the_qr_code_above_with_your_phone_camera_to_open_and_sign_this_document: Scan the QR code above with your phone camera to open and sign this document.
-  count_documents_signed_with_html: '<b>%{count}</b> documents signed with'
   storage: Storage
   notifications: Notifications
   e_signature: E-Signature
@@ -383,8 +380,6 @@ en: &en
   exit: Exit
   leave: Leave
   impersonated_as: Impersonated as
-  ask_ai: Ask AI
-  ai_assistant: AI Assistant
   discord_community: Discord Community
   integrations: Integrations
   teams: Teams
@@ -596,7 +591,7 @@ en: &en
   secret: Secret
   hmac: HMAC
   hmac_signing_secret: HMAC Signing Secret
-  hmac_signature_header_hint_html: 'Each request is signed with the %{header} header: &lt;timestamp&gt;.&lt;sha256&gt;.'
+  hmac_signature_header_hint_html: 'Each request is signed with the %{header} header: &lt;timestamp&gt;.&lt;sha256&gt;. The same value is also sent as %{legacy_header} for older integrations.'
   count_submissions_have_been_created: '%{count} submissions have been created.'
   sms_length_cant_be_longer_than_120_bytes: SMS length can't be longer than 120 bytes
   connected_successfully: Connected successfully.
@@ -745,7 +740,6 @@ en: &en
   use_otp_code_to_sign_in_or_click_the_link_below_html: 'Use <b>%{code}</b> code to sign in or click the link below:'
   complete_sign_in: Complete Sign In
   please_reply_to_this_email_if_you_dont_recognize_this_sign_in_attempt: Please reply to this email if you don't recognize this sign in attempt.
-  docuseal_support: EsignCenter Support
   use_the_edit_form_to_move_it_to_another_team: Use the edit form to move it to another team.
   too_many_sms_attempts_try_again_in_a_few_seconds: Too many SMS attempts. Try again in a few seconds.
   number_phone_number_is_invalid: "+%{number} phone number is invalid"
@@ -760,10 +754,8 @@ en: &en
   tell_us_more_about_your_experience: Tell us more about your experience
   extremely_dissatisfied: Extremely Dissatisfied
   extremely_satisfied: Extremely Satisfied
-  your_pro_plan_payment_is_overdue: Your Pro plan payment is overdue.
   click_here_to_update_your_payment_details_and_clear_the_invoice_to_ensure_uninterrupted_service_html: <a href="%{url}" class="link">Click here</a> to update your payment details and clear the invoice to ensure uninterrupted service.
   overdue_payment: Overdue Payment
-  your_pro_plan_has_been_suspended_due_to_unpaid_invoices_you_can_update_your_payment_details_to_settle_the_invoice_and_continue_using_docuseal_or_cancel_your_subscription: Your Pro Plan has been suspended due to unpaid invoices. You can update your payment details to settle the invoice and continue using EsignCenter or cancel your subscription.
   manage_subscription: Manage Subscription
   submission_created_by_email_html: '<b>Submission created</b> by %{email}'
   submission_created_by_email_via_source_html: '<b>Submission created</b> by %{email} via %{source}'
@@ -847,7 +839,7 @@ en: &en
   use_otp_code_to_access_the_api_key_html: Use <b>%{code}</b> code to access the API key.
   please_reply_to_this_email_if_you_dont_recognize_this_request: Please reply to this email if you don't recognize this request.
   your_user_account_has_been_archived_contact_your_administrator_to_restore_access_to_your_account: Your user account has been archived. Contact your administrator to restore access to your account.
-  your_email_could_not_be_reached_this_may_happen_if_there_was_a_typo_in_your_address_or_if_your_mailbox_is_not_available_please_contact_support_email_to_log_in: Your email could not be reached. This may happen if there was a typo in your address or if your mailbox is not available. Please contact support@vaclaimnet.com to log in.
+  your_email_could_not_be_reached_this_may_happen_if_there_was_a_typo_in_your_address_or_if_your_mailbox_is_not_available_please_contact_support_email_to_log_in: Your email could not be reached. This may happen if there was a typo in your address or if your mailbox is not available. Please contact %{support_email} to log in.
   efficient_search_with_search_index: Efficient search with search index
   reindex: Reindex
   build_search_index: Build Search Index
@@ -1031,7 +1023,7 @@ en: &en
     settings: 'Settings'
     settings_account_description: 'With comprehensive account settings, you can customize the eSigning experience and invite more users.'
     support: 'Support'
-    support_description: 'You can use our self-service AI assistant or email us at support@vaclaimnet.com if you have any questions.'
+    support_description: 'Email us at %{support_email} if you have any questions.'
     settings_template_description: 'Use this button to access your account settings page.'
   doorkeeper:
     scopes:
@@ -1133,7 +1125,6 @@ es: &es
   awaiting_completion_by_the_other_party: "Esperando la finalización por la otra parte"
   enforce_recipients_order: 'Hacer cumplir el orden de los destinatarios'
   first_party: 'Primera Parte'
-  docuseal_trusted_signature: Firma de confianza EsignCenter
   hello_name: Hola %{name}
   you_are_invited_to_product_name: Estás invitado a %{product_name}
   you_have_been_invited_to_account_name_product_name_please_sign_up_using_the_link_below_: 'Has sido invitado a %{account_name} %{product_name}. Por favor, regístrate usando el enlace a continuación:'
@@ -1263,7 +1254,6 @@ es: &es
   combine_completed_documents_and_audit_log: Combinar documentos completados y Registro de Auditoría
   salesforce_integration: Integración con Salesforce
   salesforce_has_been_connected: Salesforce ha sido conectado.
-  connect_salesforce_account_to_integrate_with_docuseal: Conectar cuenta de Salesforce para integrar con EsignCenter
   re_connect_salesforce: Volver a conectar Salesforce
   connect_salesforce: Conectar Salesforce
   danger_zone: Zona de peligro
@@ -1422,7 +1412,6 @@ es: &es
   qr_code: Código QR
   print: Imprimir
   scan_the_qr_code_above_with_your_phone_camera_to_open_and_sign_this_document: Escanea el código QR de arriba con la cámara de tu teléfono para abrir y firmar este documento.
-  count_documents_signed_with_html: '<b>%{count}</b> documentos firmados con'
   storage: Almacenamiento
   notifications: Notificaciones
   e_signature: Firma electrónica
@@ -1436,8 +1425,6 @@ es: &es
   exit: Salir
   leave: Salir
   impersonated_as: Accediendo como
-  ask_ai: Preguntar a la IA
-  ai_assistant: Asistente IA
   discord_community: Comunidad en Discord
   integrations: Integraciones
   teams: Equipos
@@ -1649,7 +1636,7 @@ es: &es
   secret: Secreto
   hmac: HMAC
   hmac_signing_secret: Secreto de firma HMAC
-  hmac_signature_header_hint_html: 'Cada solicitud se firma con el encabezado %{header}: &lt;timestamp&gt;.&lt;sha256&gt;.'
+  hmac_signature_header_hint_html: 'Cada solicitud se firma con el encabezado %{header}: &lt;timestamp&gt;.&lt;sha256&gt;. El mismo valor también se envía como %{legacy_header} para integraciones antiguas.'
   count_submissions_have_been_created: '%{count} envíos han sido creados.'
   sms_length_cant_be_longer_than_120_bytes: La longitud del SMS no puede ser mayor a 120 bytes.
   connected_successfully: Conectado con éxito.
@@ -1795,7 +1782,6 @@ es: &es
   use_otp_code_to_sign_in_or_click_the_link_below_html: 'Usa el código <b>%{code}</b> para iniciar sesión o haz clic en el enlace a continuación:'
   complete_sign_in: Completar Inicio de Sesión
   please_reply_to_this_email_if_you_dont_recognize_this_sign_in_attempt: Responde a este correo electrónico si no reconoces este intento de inicio de sesión.
-  docuseal_support: Soporte EsignCenter
   use_the_edit_form_to_move_it_to_another_team: Usa el formulario de edición para moverlo a otro equipo.
   too_many_sms_attempts_try_again_in_a_few_seconds: Demasiados intentos de SMS. Intenta de nuevo en unos segundos.
   number_phone_number_is_invalid: "El número de teléfono +%{number} no es válido"
@@ -1810,10 +1796,8 @@ es: &es
   tell_us_more_about_your_experience: Cuéntanos más sobre tu experiencia
   extremely_dissatisfied: Extremadamente insatisfecho
   extremely_satisfied: Extremadamente satisfecho
-  your_pro_plan_payment_is_overdue: El pago de tu plan Pro está atrasado.
   click_here_to_update_your_payment_details_and_clear_the_invoice_to_ensure_uninterrupted_service_html: '<a href="%{url}" class="link">Haz clic aquí</a> para actualizar tus datos de pago y liquidar la factura para garantizar un servicio ininterrumpido.'
   overdue_payment: Pago Atrasado
-  your_pro_plan_has_been_suspended_due_to_unpaid_invoices_you_can_update_your_payment_details_to_settle_the_invoice_and_continue_using_docuseal_or_cancel_your_subscription: Tu plan Pro ha sido suspendido debido a facturas impagas. Puedes actualizar tus datos de pago para liquidar la factura y seguir usando EsignCenter o cancelar tu suscripción.
   manage_subscription: Gestionar Suscripción
   submission_created_by_email_html: '<b>Envío creado</b> por %{email}'
   submission_created_by_email_via_source_html: '<b>Envío creado</b> por %{email} a través de %{source}'
@@ -1897,7 +1881,7 @@ es: &es
   use_otp_code_to_access_the_api_key_html: Usa el código <b>%{code}</b> para acceder a la clave API.
   please_reply_to_this_email_if_you_dont_recognize_this_request: Responde a este correo si no reconoces esta solicitud.
   your_user_account_has_been_archived_contact_your_administrator_to_restore_access_to_your_account: Tu cuenta de usuario ha sido archivada. Contacta a tu administrador para restaurar el acceso a tu cuenta.
-  your_email_could_not_be_reached_this_may_happen_if_there_was_a_typo_in_your_address_or_if_your_mailbox_is_not_available_please_contact_support_email_to_log_in: No se pudo acceder a tu correo electrónico. Esto puede ocurrir si hubo un error tipográfico en tu dirección o si tu buzón no está disponible. Por favor, contacta a support@vaclaimnet.com para iniciar sesión.
+  your_email_could_not_be_reached_this_may_happen_if_there_was_a_typo_in_your_address_or_if_your_mailbox_is_not_available_please_contact_support_email_to_log_in: No se pudo acceder a tu correo electrónico. Esto puede ocurrir si hubo un error tipográfico en tu dirección o si tu buzón no está disponible. Por favor, contacta a %{support_email} para iniciar sesión.
   efficient_search_with_search_index: Búsqueda eficiente con índice de búsqueda
   reindex: Reindexar
   build_search_index: Construir índice de búsqueda
@@ -2081,7 +2065,7 @@ es: &es
     settings: 'Configuración'
     settings_account_description: 'Con una configuración completa de la cuenta, puedes personalizar la experiencia de firma y añadir más usuarios.'
     support: 'Soporte'
-    support_description: 'Puedes usar nuestro asistente de IA o escribirnos a support@vaclaimnet.com si tienes preguntas.'
+    support_description: 'Escríbenos a %{support_email} si tienes preguntas.'
     settings_template_description: 'Usa este botón para acceder a la configuración de tu cuenta.'
   doorkeeper:
     scopes:
@@ -2183,7 +2167,6 @@ it: &it
   awaiting_completion_by_the_other_party: "In attesa di completamento da parte dell'altra parte"
   enforce_recipients_order: "Applicare l'ordine dei destinatari"
   first_party: 'Prima parte'
-  docuseal_trusted_signature: "Firma Fiduciaria EsignCenter"
   hello_name: Ciao %{name}
   you_are_invited_to_product_name: Sei stato invitato a %{product_name}
   you_have_been_invited_to_account_name_product_name_please_sign_up_using_the_link_below_: 'Sei stato invitato a %{account_name} %{product_name}. Registrati utilizzando il link qui sotto:'
@@ -2313,7 +2296,6 @@ it: &it
   combine_completed_documents_and_audit_log: Combinare i documenti completati e il Registro di Audit
   salesforce_integration: Integrazione con Salesforce
   salesforce_has_been_connected: Salesforce è stato connesso.
-  connect_salesforce_account_to_integrate_with_docuseal: "Connetti l'account Salesforce per integrare con EsignCenter"
   re_connect_salesforce: Riconnetti Salesforce
   connect_salesforce: Connetti Salesforce
   danger_zone: Zona di pericolo
@@ -2472,7 +2454,6 @@ it: &it
   qr_code: Codice QR
   print: Stampa
   scan_the_qr_code_above_with_your_phone_camera_to_open_and_sign_this_document: Scansiona il codice QR qui sopra con la fotocamera del tuo telefono per aprire e firmare questo documento.
-  count_documents_signed_with_html: '<b>%{count}</b> documenti firmati con'
   storage: Archiviazione
   notifications: Notifiche
   e_signature: Firma elettronica
@@ -2486,8 +2467,6 @@ it: &it
   exit: Esci
   leave: Lascia
   impersonated_as: Impersonato come
-  ask_ai: "Chiedi all'IA"
-  ai_assistant: Assistente IA
   discord_community: Comunità Discord
   integrations: Integrazioni
   teams: Squadre
@@ -2699,7 +2678,7 @@ it: &it
   secret: Segreto
   hmac: HMAC
   hmac_signing_secret: Segreto di firma HMAC
-  hmac_signature_header_hint_html: 'Ogni richiesta viene firmata con l''intestazione %{header}: &lt;timestamp&gt;.&lt;sha256&gt;.'
+  hmac_signature_header_hint_html: 'Ogni richiesta viene firmata con l''intestazione %{header}: &lt;timestamp&gt;.&lt;sha256&gt;. Lo stesso valore viene inviato anche come %{legacy_header} per le integrazioni precedenti.'
   count_submissions_have_been_created: '%{count} invii sono stati creati.'
   sms_length_cant_be_longer_than_120_bytes: "La lunghezza dell'SMS non può superare i 120 byte."
   connected_successfully: Collegamento avvenuto con successo.
@@ -2845,7 +2824,6 @@ it: &it
   use_otp_code_to_sign_in_or_click_the_link_below_html: 'Usa il codice <b>%{code}</b> per accedere o clicca sul link qui sotto:'
   complete_sign_in: "Completa l'Accesso"
   please_reply_to_this_email_if_you_dont_recognize_this_sign_in_attempt: Rispondi a questa e-mail se non riconosci questo tentativo di accesso.
-  docuseal_support: Supporto EsignCenter
   use_the_edit_form_to_move_it_to_another_team: Usa il modulo di modifica per spostarlo in un altro team.
   too_many_sms_attempts_try_again_in_a_few_seconds: Troppi tentativi di SMS. Riprova tra qualche secondo.
   number_phone_number_is_invalid: "Il numero di telefono +%{number} non è valido"
@@ -2860,10 +2838,8 @@ it: &it
   tell_us_more_about_your_experience: Raccontaci di più sulla tua esperienza
   extremely_dissatisfied: Estremamente insoddisfatto
   extremely_satisfied: Estremamente soddisfatto
-  your_pro_plan_payment_is_overdue: Il pagamento del tuo piano Pro è in ritardo.
   click_here_to_update_your_payment_details_and_clear_the_invoice_to_ensure_uninterrupted_service_html: '<a href="%{url}" class="link">Fai clic qui</a> per aggiornare i tuoi dati di pagamento e saldare la fattura per garantire un servizio ininterrotto.'
   overdue_payment: Pagamento Scaduto
-  your_pro_plan_has_been_suspended_due_to_unpaid_invoices_you_can_update_your_payment_details_to_settle_the_invoice_and_continue_using_docuseal_or_cancel_your_subscription: Il tuo piano Pro è stato sospeso a causa di fatture non pagate. Puoi aggiornare i tuoi dati di pagamento per saldare la fattura e continuare a utilizzare EsignCenter o annullare l'abbonamento.
   manage_subscription: Gestisci Abbonamento
   submission_created_by_email_html: '<b>Invio creato</b> da %{email}'
   submission_created_by_email_via_source_html: '<b>Invio creato</b> da %{email} tramite %{source}'
@@ -2947,7 +2923,7 @@ it: &it
   use_otp_code_to_access_the_api_key_html: Usa il codice <b>%{code}</b> per accedere alla chiave API.
   please_reply_to_this_email_if_you_dont_recognize_this_request: Rispondi a questa email se non riconosci questa richiesta.
   your_user_account_has_been_archived_contact_your_administrator_to_restore_access_to_your_account: Il tuo account utente è stato archiviato. Contatta il tuo amministratore per ripristinare l'accesso al tuo account.
-  your_email_could_not_be_reached_this_may_happen_if_there_was_a_typo_in_your_address_or_if_your_mailbox_is_not_available_please_contact_support_email_to_log_in: Non è stato possibile raggiungere la tua email. Questo può accadere se c'è stato un errore di digitazione nell'indirizzo o se la tua casella di posta non è disponibile. Contatta support@vaclaimnet.com per accedere.
+  your_email_could_not_be_reached_this_may_happen_if_there_was_a_typo_in_your_address_or_if_your_mailbox_is_not_available_please_contact_support_email_to_log_in: Non è stato possibile raggiungere la tua email. Questo può accadere se c'è stato un errore di digitazione nell'indirizzo o se la tua casella di posta non è disponibile. Contatta %{support_email} per accedere.
   efficient_search_with_search_index: Ricerca efficiente con indice di ricerca
   reindex: Reindicizza
   build_search_index: Crea indice di ricerca
@@ -3131,7 +3107,7 @@ it: &it
     settings: 'Impostazioni'
     settings_account_description: "Con impostazioni complete dell'account, puoi personalizzare l'esperienza di firma elettronica e invitare altri utenti."
     support: 'Supporto'
-    support_description: 'Puoi usare il nostro assistente AI oppure scriverci a support@vaclaimnet.com se hai domande.'
+    support_description: 'Scrivici a %{support_email} se hai domande.'
     settings_template_description: "Usa questo pulsante per accedere alla pagina delle impostazioni dell'account."
   doorkeeper:
     scopes:
@@ -3233,7 +3209,6 @@ fr: &fr
   awaiting_completion_by_the_other_party: En attente de finalisation par l’autre partie
   enforce_recipients_order: Imposer l’ordre des destinataires
   first_party: Première partie
-  docuseal_trusted_signature: Signature de confiance EsignCenter
   hello_name: Bonjour %{name}
   you_are_invited_to_product_name: Vous êtes invité à %{product_name}
   you_have_been_invited_to_account_name_product_name_please_sign_up_using_the_link_below_: 'Vous avez été invité à %{account_name} %{product_name}. Veuillez vous inscrire en utilisant le lien ci-dessous :'
@@ -3363,7 +3338,6 @@ fr: &fr
   combine_completed_documents_and_audit_log: Combiner les documents complétés et le journal d’audit
   salesforce_integration: Intégration Salesforce
   salesforce_has_been_connected: Salesforce a été connecté.
-  connect_salesforce_account_to_integrate_with_docuseal: Connectez un compte Salesforce pour l’intégrer à EsignCenter
   re_connect_salesforce: Reconnecter Salesforce
   connect_salesforce: Connecter Salesforce
   danger_zone: Zone de danger
@@ -3522,7 +3496,6 @@ fr: &fr
   qr_code: Code QR
   print: Imprimer
   scan_the_qr_code_above_with_your_phone_camera_to_open_and_sign_this_document: Scannez le code QR ci-dessus avec l'appareil photo de votre téléphone pour ouvrir et signer ce document.
-  count_documents_signed_with_html: "<b>%{count}</b> documents signés avec"
   storage: Stockage
   notifications: Notifications
   e_signature: E-Signature
@@ -3536,8 +3509,6 @@ fr: &fr
   exit: Quitter
   leave: Quitter
   impersonated_as: Connecté en tant que
-  ask_ai: Demander à l’IA
-  ai_assistant: Assistant IA
   discord_community: Communauté Discord
   integrations: Intégrations
   teams: Équipes
@@ -3749,7 +3720,7 @@ fr: &fr
   secret: Secret
   hmac: HMAC
   hmac_signing_secret: Secret de signature HMAC
-  hmac_signature_header_hint_html: 'Chaque requête est signée avec l''en-tête %{header} : &lt;timestamp&gt;.&lt;sha256&gt;.'
+  hmac_signature_header_hint_html: 'Chaque requête est signée avec l''en-tête %{header} : &lt;timestamp&gt;.&lt;sha256&gt;. La même valeur est également envoyée dans %{legacy_header} pour les anciennes intégrations.'
   count_submissions_have_been_created: "%{count} soumissions ont été créées."
   sms_length_cant_be_longer_than_120_bytes: La longueur du SMS ne peut pas dépasser 120 octets
   connected_successfully: Connecté avec succès.
@@ -3895,7 +3866,6 @@ fr: &fr
   use_otp_code_to_sign_in_or_click_the_link_below_html: 'Utilisez le code <b>%{code}</b> pour vous connecter ou cliquez sur le lien ci‑dessous :'
   complete_sign_in: Terminer la connexion
   please_reply_to_this_email_if_you_dont_recognize_this_sign_in_attempt: Veuillez répondre à cet e‑mail si vous ne reconnaissez pas cette tentative de connexion.
-  docuseal_support: Support EsignCenter
   use_the_edit_form_to_move_it_to_another_team: Utilisez le formulaire d’édition pour le déplacer vers une autre équipe.
   too_many_sms_attempts_try_again_in_a_few_seconds: Trop de tentatives SMS. Réessayez dans quelques secondes.
   number_phone_number_is_invalid: Le numéro de téléphone +%{number} est invalide
@@ -3910,10 +3880,8 @@ fr: &fr
   tell_us_more_about_your_experience: Dites‑nous en plus sur votre expérience
   extremely_dissatisfied: Extrêmement insatisfait
   extremely_satisfied: Extrêmement satisfait
-  your_pro_plan_payment_is_overdue: Le paiement de votre offre Pro est en retard.
   click_here_to_update_your_payment_details_and_clear_the_invoice_to_ensure_uninterrupted_service_html: <a href="%{url}" class="link">Cliquez ici</a> pour mettre à jour vos informations de paiement et régler la facture afin de garantir la continuité du service.
   overdue_payment: Paiement en retard
-  your_pro_plan_has_been_suspended_due_to_unpaid_invoices_you_can_update_your_payment_details_to_settle_the_invoice_and_continue_using_docuseal_or_cancel_your_subscription: "Votre offre Pro a été suspendue en raison de factures impayées.\nVous pouvez mettre à jour vos informations de paiement pour régler la facture et continuer à utiliser EsignCenter, ou annuler votre abonnement."
   manage_subscription: Gérer l’abonnement
   submission_created_by_email_html: "<b>Soumission créée</b> par %{email}"
   submission_created_by_email_via_source_html: "<b>Soumission créée</b> par %{email} via %{source}"
@@ -3993,7 +3961,7 @@ fr: &fr
   use_otp_code_to_access_the_api_key_html: Utilisez le code <b>%{code}</b> pour accéder à la clé API.
   please_reply_to_this_email_if_you_dont_recognize_this_request: Veuillez répondre à cet e‑mail si vous ne reconnaissez pas cette demande.
   your_user_account_has_been_archived_contact_your_administrator_to_restore_access_to_your_account: Votre compte utilisateur a été archivé. Contactez votre administrateur pour rétablir l’accès à votre compte.
-  your_email_could_not_be_reached_this_may_happen_if_there_was_a_typo_in_your_address_or_if_your_mailbox_is_not_available_please_contact_support_email_to_log_in: Votre e‑mail n’a pas pu être joint. Cela peut se produire en cas de faute de frappe dans votre adresse ou si votre boîte aux lettres n’est pas disponible. Veuillez contacter support@vaclaimnet.com pour vous connecter.
+  your_email_could_not_be_reached_this_may_happen_if_there_was_a_typo_in_your_address_or_if_your_mailbox_is_not_available_please_contact_support_email_to_log_in: Votre e‑mail n’a pas pu être joint. Cela peut se produire en cas de faute de frappe dans votre adresse ou si votre boîte aux lettres n’est pas disponible. Veuillez contacter %{support_email} pour vous connecter.
   efficient_search_with_search_index: Recherche efficace avec index de recherche
   reindex: Réindexer
   build_search_index: Construire l’index de recherche
@@ -4178,7 +4146,7 @@ fr: &fr
     settings: Paramètres
     settings_account_description: Des paramètres de compte complets pour personnaliser l’expérience de signature et inviter d’autres utilisateurs.
     support: Support
-    support_description: Utilisez notre assistant IA en libre‑service ou contactez‑nous à support@vaclaimnet.com pour toute question.
+    support_description: 'Contactez‑nous à %{support_email} pour toute question.'
     settings_template_description: Utilisez ce bouton pour accéder à la page des paramètres de votre compte.
   doorkeeper:
     scopes:
@@ -4280,7 +4248,6 @@ pt: &pt
   awaiting_completion_by_the_other_party: "Aguardando a conclusão pela outra parte"
   enforce_recipients_order: 'Forçar a ordem dos destinatários'
   first_party: 'Primeira Parte'
-  docuseal_trusted_signature: Assinatura Confiável EsignCenter
   hello_name: Olá %{name}
   you_are_invited_to_product_name: Você está convidado para %{product_name}
   you_have_been_invited_to_account_name_product_name_please_sign_up_using_the_link_below_: 'Você foi convidado para %{account_name} %{product_name}. Inscreva-se usando o link abaixo:'
@@ -4410,7 +4377,6 @@ pt: &pt
   combine_completed_documents_and_audit_log: Combinar documentos concluídos e log de auditoria
   salesforce_integration: Integração com Salesforce
   salesforce_has_been_connected: Salesforce foi conectado.
-  connect_salesforce_account_to_integrate_with_docuseal: Conecte a conta Salesforce para integrar com o EsignCenter
   re_connect_salesforce: Reconectar Salesforce
   connect_salesforce: Conectar Salesforce
   danger_zone: Zona de perigo
@@ -4569,7 +4535,6 @@ pt: &pt
   qr_code: Código QR
   print: Imprimir
   scan_the_qr_code_above_with_your_phone_camera_to_open_and_sign_this_document: Escaneie o código QR acima com a câmera do seu telefone para abrir e assinar este documento.
-  count_documents_signed_with_html: '<b>%{count}</b> documentos assinados com'
   storage: Armazenamento
   notifications: Notificações
   e_signature: E-Assinatura
@@ -4583,8 +4548,6 @@ pt: &pt
   exit: Sair
   leave: Deixar
   impersonated_as: Acessando como
-  ask_ai: Perguntar para a IA
-  ai_assistant: Assistente de IA
   discord_community: Comunidade Discord
   integrations: Integrações
   teams: Equipes
@@ -4796,7 +4759,7 @@ pt: &pt
   secret: Segredo
   hmac: HMAC
   hmac_signing_secret: Segredo de assinatura HMAC
-  hmac_signature_header_hint_html: 'Cada requisição é assinada com o cabeçalho %{header}: &lt;timestamp&gt;.&lt;sha256&gt;.'
+  hmac_signature_header_hint_html: 'Cada requisição é assinada com o cabeçalho %{header}: &lt;timestamp&gt;.&lt;sha256&gt;. O mesmo valor também é enviado como %{legacy_header} para integrações antigas.'
   count_submissions_have_been_created: '%{count} submissões foram criadas.'
   sms_length_cant_be_longer_than_120_bytes: O comprimento do SMS não pode ultrapassar 120 bytes
   connected_successfully: Conectado com sucesso.
@@ -4942,7 +4905,6 @@ pt: &pt
   use_otp_code_to_sign_in_or_click_the_link_below_html: 'Use o código <b>%{code}</b> para entrar ou clique no link abaixo:'
   complete_sign_in: Concluir Login
   please_reply_to_this_email_if_you_dont_recognize_this_sign_in_attempt: Responda a este e-mail se você não reconhecer esta tentativa de login.
-  docuseal_support: Suporte EsignCenter
   use_the_edit_form_to_move_it_to_another_team: Use o formulário de edição para movê-lo para outra equipe.
   too_many_sms_attempts_try_again_in_a_few_seconds: Muitas tentativas de SMS. Tente novamente em alguns segundos.
   number_phone_number_is_invalid: "O número de telefone +%{number} é inválido"
@@ -4957,10 +4919,8 @@ pt: &pt
   tell_us_more_about_your_experience: Conte-nos mais sobre sua experiência
   extremely_dissatisfied: Extremamente insatisfeito
   extremely_satisfied: Extremamente satisfeito
-  your_pro_plan_payment_is_overdue: O pagamento do seu plano Pro está atrasado.
   click_here_to_update_your_payment_details_and_clear_the_invoice_to_ensure_uninterrupted_service_html: '<a href="%{url}" class="link">Clique aqui</a> para atualizar seus dados de pagamento e quitar a fatura para garantir um serviço ininterrupto.'
   overdue_payment: Pagamento Atrasado
-  your_pro_plan_has_been_suspended_due_to_unpaid_invoices_you_can_update_your_payment_details_to_settle_the_invoice_and_continue_using_docuseal_or_cancel_your_subscription: Seu plano Pro foi suspenso devido a faturas não pagas. Você pode atualizar seus dados de pagamento para quitar a fatura e continuar usando o EsignCenter ou cancelar sua assinatura.
   manage_subscription: Gerenciar Assinatura
   submission_created_by_email_html: '<b>Envio criado</b> por %{email}'
   submission_created_by_email_via_source_html: '<b>Envio criado</b> por %{email} via %{source}'
@@ -5044,7 +5004,7 @@ pt: &pt
   use_otp_code_to_access_the_api_key_html: Use o código <b>%{code}</b> para acessar a chave API.
   please_reply_to_this_email_if_you_dont_recognize_this_request: Responda a este e-mail se você não reconhecer esta solicitação.
   your_user_account_has_been_archived_contact_your_administrator_to_restore_access_to_your_account: Sua conta de usuário foi arquivada. Entre em contato com o administrador para restaurar o acesso à sua conta.
-  your_email_could_not_be_reached_this_may_happen_if_there_was_a_typo_in_your_address_or_if_your_mailbox_is_not_available_please_contact_support_email_to_log_in: Seu e-mail não pôde ser acessado. Isso pode acontecer se houve um erro de digitação no endereço ou se sua caixa de correio não estiver disponível. Entre em contato com support@vaclaimnet.com para fazer login.
+  your_email_could_not_be_reached_this_may_happen_if_there_was_a_typo_in_your_address_or_if_your_mailbox_is_not_available_please_contact_support_email_to_log_in: Seu e-mail não pôde ser acessado. Isso pode acontecer se houve um erro de digitação no endereço ou se sua caixa de correio não estiver disponível. Entre em contato com %{support_email} para fazer login.
   efficient_search_with_search_index: Pesquisa eficiente com índice de busca
   reindex: Reindexar
   build_search_index: Construir índice de busca
@@ -5228,7 +5188,7 @@ pt: &pt
     settings: 'Configurações'
     settings_account_description: 'Com configurações completas de conta, você pode personalizar a experiência de assinatura eletrônica e convidar mais usuários.'
     support: 'Suporte'
-    support_description: 'Você pode usar nosso assistente de IA ou nos escrever para support@vaclaimnet.com se tiver dúvidas.'
+    support_description: 'Escreva para %{support_email} se tiver dúvidas.'
     settings_template_description: 'Use este botão para acessar a página de configurações da sua conta.'
   doorkeeper:
     scopes:
@@ -5330,7 +5290,6 @@ de: &de
   accessiable_by: Zugänglich für
   team_access: Teamzugang
   document_download_filename_format: Format des Dateinamens beim Herunterladen von Dokumenten
-  docuseal_trusted_signature: EsignCenter-Vertrauenssignatur
   hello_name: Hallo %{name}
   you_are_invited_to_product_name: Sie sind zu %{product_name} eingeladen
   you_have_been_invited_to_account_name_product_name_please_sign_up_using_the_link_below_: 'Sie wurden zu %{account_name} %{product_name} eingeladen. Bitte registrieren Sie sich über den folgenden Link:'
@@ -5460,7 +5419,6 @@ de: &de
   combine_completed_documents_and_audit_log: Abgeschlossene Dokumente und Prüfprotokoll kombinieren
   salesforce_integration: Salesforce-Integration
   salesforce_has_been_connected: Salesforce wurde verbunden.
-  connect_salesforce_account_to_integrate_with_docuseal: Verbinden Sie Ihr Salesforce-Konto, um es mit EsignCenter zu integrieren
   re_connect_salesforce: Salesforce erneut verbinden
   connect_salesforce: Salesforce verbinden
   danger_zone: Gefahrenzone
@@ -5619,7 +5577,6 @@ de: &de
   qr_code: QR-Code
   print: Drucken
   scan_the_qr_code_above_with_your_phone_camera_to_open_and_sign_this_document: Scannen Sie den QR-Code oben mit Ihrer Handykamera, um dieses Dokument zu öffnen und zu unterzeichnen.
-  count_documents_signed_with_html: '<b>%{count}</b> Dokumente signiert mit'
   storage: Speicher
   notifications: Benachrichtigungen
   e_signature: E-Signatur
@@ -5633,8 +5590,6 @@ de: &de
   exit: Beenden
   leave: Verlassen
   impersonated_as: Eingeloggt als
-  ask_ai: KI fragen
-  ai_assistant: KI-Assistent
   discord_community: Discord-Community
   integrations: Integrationen
   teams: Teams
@@ -5846,7 +5801,7 @@ de: &de
   secret: Geheimnis
   hmac: HMAC
   hmac_signing_secret: HMAC-Signaturgeheimnis
-  hmac_signature_header_hint_html: 'Jede Anfrage wird mit dem %{header}-Header signiert: &lt;timestamp&gt;.&lt;sha256&gt;.'
+  hmac_signature_header_hint_html: 'Jede Anfrage wird mit dem %{header}-Header signiert: &lt;timestamp&gt;.&lt;sha256&gt;. Derselbe Wert wird für ältere Integrationen auch als %{legacy_header} gesendet.'
   count_submissions_have_been_created: '%{count} Einreichungen wurden erstellt.'
   sms_length_cant_be_longer_than_120_bytes: Die SMS-Länge darf 120 Bytes nicht überschreiten.
   connected_successfully: Erfolgreich verbunden.
@@ -5992,7 +5947,6 @@ de: &de
   use_otp_code_to_sign_in_or_click_the_link_below_html: 'Verwenden Sie den Code <b>%{code}</b>, um sich anzumelden, oder klicken Sie auf den untenstehenden Link:'
   complete_sign_in: Anmeldung abschließen
   please_reply_to_this_email_if_you_dont_recognize_this_sign_in_attempt: Bitte antworten Sie auf diese E-Mail, wenn Sie diesen Anmeldeversuch nicht erkennen.
-  docuseal_support: EsignCenter Support
   use_the_edit_form_to_move_it_to_another_team: Verwenden Sie das Bearbeitungsformular, um es in ein anderes Team zu verschieben.
   too_many_sms_attempts_try_again_in_a_few_seconds: Zu viele SMS-Versuche. Versuchen Sie es in ein paar Sekunden erneut.
   number_phone_number_is_invalid: "Die Telefonnummer +%{number} ist ungültig"
@@ -6007,10 +5961,8 @@ de: &de
   tell_us_more_about_your_experience: Erzählen Sie uns mehr über Ihre Erfahrung
   extremely_dissatisfied: Extrem unzufrieden
   extremely_satisfied: Extrem zufrieden
-  your_pro_plan_payment_is_overdue: Ihre Zahlung für den Pro-Plan ist überfällig.
   click_here_to_update_your_payment_details_and_clear_the_invoice_to_ensure_uninterrupted_service_html: '<a href="%{url}" class="link">Klicken Sie hier</a>, um Ihre Zahlungsdaten zu aktualisieren und die Rechnung zu begleichen, um einen unterbrechungsfreien Service sicherzustellen.'
   overdue_payment: Überfällige Zahlung
-  your_pro_plan_has_been_suspended_due_to_unpaid_invoices_you_can_update_your_payment_details_to_settle_the_invoice_and_continue_using_docuseal_or_cancel_your_subscription: Ihr Pro-Plan wurde aufgrund unbezahlter Rechnungen ausgesetzt. Sie können Ihre Zahlungsdaten aktualisieren, um die Rechnung zu begleichen und EsignCenter weiterhin zu nutzen, oder Ihr Abonnement kündigen.
   manage_subscription: Abonnement verwalten
   submission_created_by_email_html: '<b>Einreichung erstellt</b> von %{email}'
   submission_created_by_email_via_source_html: '<b>Einreichung erstellt</b> von %{email} über %{source}'
@@ -6094,7 +6046,7 @@ de: &de
   use_otp_code_to_access_the_api_key_html: Verwenden Sie den Code <b>%{code}</b>, um auf den API-Schlüssel zuzugreifen.
   please_reply_to_this_email_if_you_dont_recognize_this_request: Bitte antworten Sie auf diese E-Mail, wenn Sie diese Anfrage nicht erkennen.
   your_user_account_has_been_archived_contact_your_administrator_to_restore_access_to_your_account: Ihr Benutzerkonto wurde archiviert. Wenden Sie sich an Ihren Administrator, um den Zugriff wiederherzustellen.
-  your_email_could_not_be_reached_this_may_happen_if_there_was_a_typo_in_your_address_or_if_your_mailbox_is_not_available_please_contact_support_email_to_log_in: Ihre E-Mail konnte nicht erreicht werden. Dies kann passieren, wenn sich ein Tippfehler in Ihrer Adresse befindet oder Ihr Postfach nicht verfügbar ist. Bitte kontaktieren Sie support@vaclaimnet.com, um sich anzumelden.
+  your_email_could_not_be_reached_this_may_happen_if_there_was_a_typo_in_your_address_or_if_your_mailbox_is_not_available_please_contact_support_email_to_log_in: Ihre E-Mail konnte nicht erreicht werden. Dies kann passieren, wenn sich ein Tippfehler in Ihrer Adresse befindet oder Ihr Postfach nicht verfügbar ist. Bitte kontaktieren Sie %{support_email}, um sich anzumelden.
   efficient_search_with_search_index: Effiziente Suche mit Suchindex
   reindex: Neu indexieren
   build_search_index: Suchindex erstellen
@@ -6278,7 +6230,7 @@ de: &de
     settings: 'Einstellungen'
     settings_account_description: 'Mit umfangreichen Kontoeinstellungen können Sie das Signiererlebnis anpassen und weitere Benutzer einladen.'
     support: 'Support'
-    support_description: 'Sie können unseren KI-Assistenten nutzen oder uns bei Fragen an support@vaclaimnet.com schreiben.'
+    support_description: 'Schreiben Sie uns bei Fragen an %{support_email}.'
     settings_template_description: 'Über diese Schaltfläche gelangen Sie zu den Kontoeinstellungen.'
   doorkeeper:
     scopes:
@@ -6390,7 +6342,6 @@ pl:
   verification_code: Kod Weryfikacyjny
   resend_code: Wyślij Kod Ponownie
   powered_by: 'Napędzany przez'
-  count_documents_signed_with_html: '<b>%{count}</b> dokumentów podpisanych za pomocą'
   open_source_documents_software: 'oprogramowanie do dokumentów open source'
   eu_data_residency: Dane w UE
   please_enter_your_email_address_associated_with_the_completed_submission: Wprowadź adres e-mail powiązany z ukończonym zgłoszeniem.
@@ -6409,7 +6360,7 @@ pl:
   your_verification_code_to_access_the_name: 'Twój kod weryfikacyjny do uzyskania dostępu do "%{name}":'
   please_reply_to_this_email_if_you_didnt_request_this: Odpowiedz na ten e-mail, jeśli nie prosiłeś o to.
   your_user_account_has_been_archived_contact_your_administrator_to_restore_access_to_your_account: Twoje konto użytkownika zostało zarchiwizowane. Skontaktuj się z administratorem, aby przywrócić dostęp do konta.
-  your_email_could_not_be_reached_this_may_happen_if_there_was_a_typo_in_your_address_or_if_your_mailbox_is_not_available_please_contact_support_email_to_log_in: Nie udało się uzyskać dostępu do Twojego adresu e-mail. Może to być spowodowane literówką w adresie lub niedostępnością skrzynki. Skontaktuj się z support@vaclaimnet.com, aby się zalogować.
+  your_email_could_not_be_reached_this_may_happen_if_there_was_a_typo_in_your_address_or_if_your_mailbox_is_not_available_please_contact_support_email_to_log_in: Nie udało się uzyskać dostępu do Twojego adresu e-mail. Może to być spowodowane literówką w adresie lub niedostępnością skrzynki. Skontaktuj się z %{support_email}, aby się zalogować.
   verification_required_refresh_the_page_and_pass_2fa: Weryfikacja wymagana, odśwież stronę i przejdź uwierzytelnienie dwuskładnikowe.
   the_sender_has_requested_a_two_factor_authentication_via_one_time_password_sent_to_your_email_html: Nadawca zażądał uwierzytelniania dwuskładnikowego za pośrednictwem hasła jednorazowego wysłanego na Twój adres e-mail <b>%{email}</b>.
   please_contact_the_requester_to_specify_your_email_for_two_factor_authentication: Skontaktuj się z nadawcą, aby podać swój adres e-mail do uwierzytelniania dwuskładnikowego.
@@ -6490,7 +6441,6 @@ uk:
   verification_code: Код перевірки
   resend_code: Надіслати код знову
   powered_by: 'Працює на базі'
-  count_documents_signed_with_html: '<b>%{count}</b> документів підписано за допомогою'
   open_source_documents_software: 'відкрите програмне забезпечення для документів'
   eu_data_residency: 'Зберігання даних в ЄС'
   please_enter_your_email_address_associated_with_the_completed_submission: "Введіть адресу електронної пошти, пов'язану із завершеним поданням."
@@ -6509,7 +6459,7 @@ uk:
   your_verification_code_to_access_the_name: 'Ваш код доступу до "%{name}":'
   please_reply_to_this_email_if_you_didnt_request_this: Відповідайте на цей лист, якщо ви цього не запитували.
   your_user_account_has_been_archived_contact_your_administrator_to_restore_access_to_your_account: Ваш обліковий запис було архівовано. Зверніться до адміністратора, щоб відновити доступ.
-  your_email_could_not_be_reached_this_may_happen_if_there_was_a_typo_in_your_address_or_if_your_mailbox_is_not_available_please_contact_support_email_to_log_in: Не вдалося отримати доступ до вашої електронної пошти. Це може статися, якщо була допущена помилка в адресі або ваша скринька недоступна. Зверніться до support@vaclaimnet.com, щоб увійти.
+  your_email_could_not_be_reached_this_may_happen_if_there_was_a_typo_in_your_address_or_if_your_mailbox_is_not_available_please_contact_support_email_to_log_in: Не вдалося отримати доступ до вашої електронної пошти. Це може статися, якщо була допущена помилка в адресі або ваша скринька недоступна. Зверніться до %{support_email}, щоб увійти.
   verification_required_refresh_the_page_and_pass_2fa: Необхідна верифікація, оновіть сторінку та пройдіть двофакторну автентифікацію.
   the_sender_has_requested_a_two_factor_authentication_via_one_time_password_sent_to_your_email_html: Відправник запитав двофакторну автентифікацію за допомогою одноразового пароля, надісланого на вашу електронну пошту <b>%{email}</b>.
   please_contact_the_requester_to_specify_your_email_for_two_factor_authentication: Будь ласка, зв'яжіться з відправником, щоб вказати вашу електронну пошту для двофакторної автентифікації.
@@ -6590,7 +6540,6 @@ cs:
   verification_code: Ověřovací kód
   resend_code: Znovu odeslat kód
   powered_by: 'Poháněno'
-  count_documents_signed_with_html: '<b>%{count}</b> dokumentů podepsáno pomocí'
   open_source_documents_software: 'open source software pro dokumenty'
   eu_data_residency: 'Uložení dat v EU'
   please_enter_your_email_address_associated_with_the_completed_submission: Zadejte e-mailovou adresu spojenou s dokončeným odesláním.
@@ -6609,7 +6558,7 @@ cs:
   your_verification_code_to_access_the_name: 'Váš ověřovací kód pro přístup k "%{name}":'
   please_reply_to_this_email_if_you_didnt_request_this: Odpovězte na tento e-mail, pokud jste o to nežádali.
   your_user_account_has_been_archived_contact_your_administrator_to_restore_access_to_your_account: Váš uživatelský účet byl archivován. Kontaktujte svého administrátora pro obnovení přístupu.
-  your_email_could_not_be_reached_this_may_happen_if_there_was_a_typo_in_your_address_or_if_your_mailbox_is_not_available_please_contact_support_email_to_log_in: Na váš e-mail se nepodařilo doručit zprávu. To se může stát, pokud je v adrese překlep nebo vaše schránka není dostupná. Pro přihlášení kontaktujte support@vaclaimnet.com.
+  your_email_could_not_be_reached_this_may_happen_if_there_was_a_typo_in_your_address_or_if_your_mailbox_is_not_available_please_contact_support_email_to_log_in: Na váš e-mail se nepodařilo doručit zprávu. To se může stát, pokud je v adrese překlep nebo vaše schránka není dostupná. Pro přihlášení kontaktujte %{support_email}.
   verification_required_refresh_the_page_and_pass_2fa: Ověření vyžadováno. Aktualizujte stránku a dokončete dvoufaktorové ověření.
   the_sender_has_requested_a_two_factor_authentication_via_one_time_password_sent_to_your_email_html: Odesílatel požádal o dvoufaktorové ověření pomocí jednorázového hesla odeslaného na vaši e-mailovou adresu <b>%{email}</b>.
   please_contact_the_requester_to_specify_your_email_for_two_factor_authentication: Prosím kontaktujte odesílatele a uveďte svůj e-mail pro dvoufaktorové ověření.
@@ -6690,7 +6639,6 @@ he:
   verification_code: קוד אימות
   resend_code: שלח קוד מחדש
   powered_by: 'מופעל על ידי'
-  count_documents_signed_with_html: '<b>%{count}</b> מסמכים נחתמו באמצעות'
   open_source_documents_software: 'תוכנה בקוד פתוח למסמכים'
   eu_data_residency: 'נתונים באיחוד האירופי'
   please_enter_your_email_address_associated_with_the_completed_submission: 'אנא הזן את כתובת הדוא"ל המשויכת להגשה שהושלמה.'
@@ -6709,7 +6657,7 @@ he:
   your_verification_code_to_access_the_name: 'קוד האימות שלך לגישה ל-%{name}:'
   please_reply_to_this_email_if_you_didnt_request_this: 'השב למייל זה אם לא ביקשת זאת.'
   your_user_account_has_been_archived_contact_your_administrator_to_restore_access_to_your_account: החשבון שלך הועבר לארכיון. פנה למנהל המערכת כדי לשחזר את הגישה.
-  your_email_could_not_be_reached_this_may_happen_if_there_was_a_typo_in_your_address_or_if_your_mailbox_is_not_available_please_contact_support_email_to_log_in: לא ניתן היה לגשת לדוא"ל שלך. ייתכן שזה קרה עקב שגיאת כתיב בכתובת או אם תיבת הדואר אינה זמינה. אנא פנה ל־support@vaclaimnet.com כדי להתחבר.
+  your_email_could_not_be_reached_this_may_happen_if_there_was_a_typo_in_your_address_or_if_your_mailbox_is_not_available_please_contact_support_email_to_log_in: לא ניתן היה לגשת לדוא"ל שלך. ייתכן שזה קרה עקב שגיאת כתיב בכתובת או אם תיבת הדואר אינה זמינה. אנא פנה ל־%{support_email} כדי להתחבר.
   verification_required_refresh_the_page_and_pass_2fa: נדרש אימות. רענן את הדף והשלם אימות דו-שלבי.
   the_sender_has_requested_a_two_factor_authentication_via_one_time_password_sent_to_your_email_html: השולח ביקש אימות דו-שלבי באמצעות סיסמה חד-פעמית שנשלחה לכתובת הדוא"ל שלך <b>%{email}</b>.
   please_contact_the_requester_to_specify_your_email_for_two_factor_authentication: אנא פנה לשולח וציין את כתובת הדוא"ל שלך לאימות דו-שלבי.
@@ -6780,7 +6728,6 @@ nl: &nl
   accessiable_by: Toegankelijk voor
   team_access: Teamtoegang
   document_download_filename_format: Bestandsnaamformaat voor documentdownload
-  docuseal_trusted_signature: EsignCenter Vertrouwde handtekening
   hello_name: Hallo %{name}
   you_are_invited_to_product_name: U bent uitgenodigd voor %{product_name}
   you_have_been_invited_to_account_name_product_name_please_sign_up_using_the_link_below_: 'U bent uitgenodigd voor %{account_name} %{product_name}. Meld u aan via de onderstaande link:'
@@ -6911,7 +6858,6 @@ nl: &nl
   combine_completed_documents_and_audit_log: Voltooide documenten en auditlogboek combineren
   salesforce_integration: Salesforce-integratie
   salesforce_has_been_connected: Salesforce is verbonden.
-  connect_salesforce_account_to_integrate_with_docuseal: Verbind een Salesforce-account om te integreren met EsignCenter
   re_connect_salesforce: Salesforce opnieuw verbinden
   connect_salesforce: Salesforce verbinden
   danger_zone: Gevarenzone
@@ -7070,7 +7016,6 @@ nl: &nl
   qr_code: QR-code
   print: Afdrukken
   scan_the_qr_code_above_with_your_phone_camera_to_open_and_sign_this_document: Scan de bovenstaande QR-code met je telefooncamera om dit document te openen en te ondertekenen.
-  count_documents_signed_with_html: "<b>%{count}</b> documenten ondertekend met"
   storage: Opslag
   notifications: Meldingen
   e_signature: E-handtekening
@@ -7084,8 +7029,6 @@ nl: &nl
   exit: Afsluiten
   leave: Verlaten
   impersonated_as: Ingelogd als
-  ask_ai: AI vragen
-  ai_assistant: AI-assistent
   discord_community: Discord-community
   integrations: Integraties
   teams: Teams
@@ -7297,7 +7240,7 @@ nl: &nl
   secret: Geheim
   hmac: HMAC
   hmac_signing_secret: HMAC-ondertekeningsgeheim
-  hmac_signature_header_hint_html: 'Elk verzoek wordt ondertekend met de %{header}-header: &lt;timestamp&gt;.&lt;sha256&gt;.'
+  hmac_signature_header_hint_html: 'Elk verzoek wordt ondertekend met de %{header}-header: &lt;timestamp&gt;.&lt;sha256&gt;. Dezelfde waarde wordt voor oudere integraties ook als %{legacy_header} verzonden.'
   count_submissions_have_been_created: "%{count} inzendingen zijn aangemaakt."
   sms_length_cant_be_longer_than_120_bytes: SMS-lengte mag niet langer zijn dan 120 bytes
   connected_successfully: Succesvol verbonden.
@@ -7443,7 +7386,6 @@ nl: &nl
   use_otp_code_to_sign_in_or_click_the_link_below_html: 'Gebruik de code <b>%{code}</b> om in te loggen of klik op de onderstaande link:'
   complete_sign_in: Inloggen voltooien
   please_reply_to_this_email_if_you_dont_recognize_this_sign_in_attempt: Reageer op deze e-mail als u deze aanmeldpoging niet herkent.
-  docuseal_support: EsignCenter Support
   use_the_edit_form_to_move_it_to_another_team: Gebruik het bewerkingsformulier om het naar een ander team te verplaatsen.
   too_many_sms_attempts_try_again_in_a_few_seconds: Te veel SMS-pogingen. Probeer het over enkele seconden opnieuw.
   number_phone_number_is_invalid: Telefoonnummer +%{number} is ongeldig
@@ -7458,10 +7400,8 @@ nl: &nl
   tell_us_more_about_your_experience: Vertel ons meer over uw ervaring
   extremely_dissatisfied: Zeer ontevreden
   extremely_satisfied: Zeer tevreden
-  your_pro_plan_payment_is_overdue: Uw betaling voor het Pro-abonnement is achterstallig.
   click_here_to_update_your_payment_details_and_clear_the_invoice_to_ensure_uninterrupted_service_html: <a href="%{url}" class="link">Klik hier</a> om uw betaalgegevens bij te werken en de factuur te voldoen om ononderbroken service te garanderen.
   overdue_payment: Achterstallige betaling
-  your_pro_plan_has_been_suspended_due_to_unpaid_invoices_you_can_update_your_payment_details_to_settle_the_invoice_and_continue_using_docuseal_or_cancel_your_subscription: Uw Pro-abonnement is opgeschort vanwege onbetaalde facturen. U kunt uw betaalgegevens bijwerken om de factuur te voldoen en EsignCenter te blijven gebruiken of uw abonnement opzeggen.
   manage_subscription: Abonnement beheren
   submission_created_by_email_html: "<b>Inzending aangemaakt</b> door %{email}"
   submission_created_by_email_via_source_html: "<b>Inzending aangemaakt</b> door %{email} via %{source}"
@@ -7541,7 +7481,7 @@ nl: &nl
   use_otp_code_to_access_the_api_key_html: Gebruik de code <b>%{code}</b> om toegang te krijgen tot de API-sleutel.
   please_reply_to_this_email_if_you_dont_recognize_this_request: Reageer op deze e-mail als u dit verzoek niet herkent.
   your_user_account_has_been_archived_contact_your_administrator_to_restore_access_to_your_account: Uw gebruikersaccount is gearchiveerd. Neem contact op met uw beheerder om de toegang tot uw account te herstellen.
-  your_email_could_not_be_reached_this_may_happen_if_there_was_a_typo_in_your_address_or_if_your_mailbox_is_not_available_please_contact_support_email_to_log_in: Uw e-mailadres kon niet worden bereikt. Dit kan gebeuren als er een typefout in uw adres zit of als uw mailbox niet beschikbaar is. Neem contact op met support@vaclaimnet.com om in te loggen.
+  your_email_could_not_be_reached_this_may_happen_if_there_was_a_typo_in_your_address_or_if_your_mailbox_is_not_available_please_contact_support_email_to_log_in: Uw e-mailadres kon niet worden bereikt. Dit kan gebeuren als er een typefout in uw adres zit of als uw mailbox niet beschikbaar is. Neem contact op met %{support_email} om in te loggen.
   efficient_search_with_search_index: Efficiënt zoeken met zoekindex
   reindex: Opnieuw indexeren
   build_search_index: Zoekindex opbouwen
@@ -7725,7 +7665,7 @@ nl: &nl
     settings: Instellingen
     settings_account_description: Met uitgebreide accountinstellingen kunt u de eSigning-ervaring aanpassen en meer gebruikers uitnodigen.
     support: Ondersteuning
-    support_description: U kunt onze selfservice AI-assistent gebruiken of ons e-mailen op support@vaclaimnet.com als u vragen heeft.
+    support_description: 'E-mail ons op %{support_email} als u vragen heeft.'
     settings_template_description: Gebruik deze knop om naar uw accountinstellingenpagina te gaan.
   doorkeeper:
     scopes:
@@ -7837,7 +7777,6 @@ ar:
   verification_code: رمز التحقق
   resend_code: إعادة إرسال الرمز
   powered_by: 'مشغل بواسطة'
-  count_documents_signed_with_html: 'تم توقيع <b>%{count}</b> مستندًا باستخدام'
   open_source_documents_software: 'برنامج مستندات مفتوح المصدر'
   eu_data_residency: 'بيانات في الاتحاد الأوروبي'
   please_enter_your_email_address_associated_with_the_completed_submission: 'يرجى إدخال عنوان البريد الإلكتروني المرتبط بالإرسال المكتمل.'
@@ -7856,7 +7795,7 @@ ar:
   your_verification_code_to_access_the_name: 'رمز التحقق الخاص بك للوصول إلى "%{name}":'
   please_reply_to_this_email_if_you_didnt_request_this: 'يرجى الرد على هذا البريد إذا لم تطلب ذلك.'
   your_user_account_has_been_archived_contact_your_administrator_to_restore_access_to_your_account: تمت أرشفة حسابك. يرجى التواصل مع المسؤول لاستعادة الوصول إلى حسابك.
-  your_email_could_not_be_reached_this_may_happen_if_there_was_a_typo_in_your_address_or_if_your_mailbox_is_not_available_please_contact_support_email_to_log_in: تعذّر الوصول إلى بريدك الإلكتروني. قد يحدث هذا في حال وجود خطأ في العنوان أو إذا كان صندوق البريد غير متاح. يرجى التواصل مع support@vaclaimnet.com لتسجيل الدخول.
+  your_email_could_not_be_reached_this_may_happen_if_there_was_a_typo_in_your_address_or_if_your_mailbox_is_not_available_please_contact_support_email_to_log_in: تعذّر الوصول إلى بريدك الإلكتروني. قد يحدث هذا في حال وجود خطأ في العنوان أو إذا كان صندوق البريد غير متاح. يرجى التواصل مع %{support_email} لتسجيل الدخول.
   verification_required_refresh_the_page_and_pass_2fa: مطلوب التحقق. قم بتحديث الصفحة وأكمل المصادقة الثنائية.
   the_sender_has_requested_a_two_factor_authentication_via_one_time_password_sent_to_your_email_html: طلب المرسل المصادقة الثنائية عبر كلمة مرور لمرة واحدة مرسلة إلى عنوان بريدك الإلكتروني <b>%{email}</b>.
   please_contact_the_requester_to_specify_your_email_for_two_factor_authentication: يرجى الاتصال بالمرسل لتحديد عنوان بريدك الإلكتروني للمصادقة الثنائية.
@@ -7937,7 +7876,6 @@ ko:
   verification_code: 인증 코드
   resend_code: 코드 재전송
   powered_by: '제공:'
-  count_documents_signed_with_html: '<b>%{count}</b>개의 문서가 다음을 통해 서명됨'
   open_source_documents_software: '오픈소스 문서 소프트웨어'
   eu_data_residency: 'EU 데이터 저장 위치'
   please_enter_your_email_address_associated_with_the_completed_submission: '완료된 제출과 연결된 이메일 주소를 입력하세요.'
@@ -7956,7 +7894,7 @@ ko:
   your_verification_code_to_access_the_name: '"%{name}"에 액세스하기 위한 인증 코드:'
   please_reply_to_this_email_if_you_didnt_request_this: 요청하지 않았다면 이 이메일에 회신하세요.
   your_user_account_has_been_archived_contact_your_administrator_to_restore_access_to_your_account: 사용자 계정이 보관되었습니다. 계정 접근을 복원하려면 관리자에게 문의하세요.
-  your_email_could_not_be_reached_this_may_happen_if_there_was_a_typo_in_your_address_or_if_your_mailbox_is_not_available_please_contact_support_email_to_log_in: 이메일에 접근할 수 없습니다. 주소에 오타가 있거나 메일박스가 사용 불가능한 경우 발생할 수 있습니다. 로그인하려면 support@vaclaimnet.com에 문의하세요.
+  your_email_could_not_be_reached_this_may_happen_if_there_was_a_typo_in_your_address_or_if_your_mailbox_is_not_available_please_contact_support_email_to_log_in: 이메일에 접근할 수 없습니다. 주소에 오타가 있거나 메일박스가 사용 불가능한 경우 발생할 수 있습니다. 로그인하려면 %{support_email}에 문의하세요.
   verification_required_refresh_the_page_and_pass_2fa: 인증이 필요합니다. 페이지를 새로 고치고 2단계 인증을 완료하세요.
   the_sender_has_requested_a_two_factor_authentication_via_one_time_password_sent_to_your_email_html: 발신자가 <b>%{email}</b> 이메일 주소로 전송된 일회용 비밀번호를 통해 2단계 인증을 요청했습니다.
   please_contact_the_requester_to_specify_your_email_for_two_factor_authentication: 2단계 인증을 위해 이메일 주소를 지정하려면 요청자에게 문의하세요.
@@ -8037,7 +7975,6 @@ ja:
   verification_code: 認証コード
   resend_code: コードを再送信
   powered_by: '提供元：'
-  count_documents_signed_with_html: '<b>%{count}</b> 件のドキュメントが以下で署名されました'
   open_source_documents_software: 'オープンソースのドキュメントソフトウェア'
   eu_data_residency: 'EU データ保存場所'
   please_enter_your_email_address_associated_with_the_completed_submission: '完了した提出に関連付けられたメールアドレスを入力してください。'
@@ -8056,7 +7993,7 @@ ja:
   your_verification_code_to_access_the_name: '"%{name}" へアクセスするための認証コード：'
   please_reply_to_this_email_if_you_didnt_request_this: このリクエストを行っていない場合は、このメールに返信してください。
   your_user_account_has_been_archived_contact_your_administrator_to_restore_access_to_your_account: あなたのユーザーアカウントはアーカイブされました。アクセスを復元するには管理者に連絡してください。
-  your_email_could_not_be_reached_this_may_happen_if_there_was_a_typo_in_your_address_or_if_your_mailbox_is_not_available_please_contact_support_email_to_log_in: メールにアクセスできませんでした。アドレスの入力ミスやメールボックスが利用できない場合に発生することがあります。ログインするには support@vaclaimnet.com に連絡してください。
+  your_email_could_not_be_reached_this_may_happen_if_there_was_a_typo_in_your_address_or_if_your_mailbox_is_not_available_please_contact_support_email_to_log_in: メールにアクセスできませんでした。アドレスの入力ミスやメールボックスが利用できない場合に発生することがあります。ログインするには %{support_email} に連絡してください。
   verification_required_refresh_the_page_and_pass_2fa: 認証が必要です。ページを更新して2段階認証を完了してください。
   the_sender_has_requested_a_two_factor_authentication_via_one_time_password_sent_to_your_email_html: 送信者は、<b>%{email}</b> メールアドレスに送信されたワンタイムパスワードによる2段階認証を要求しました。
   please_contact_the_requester_to_specify_your_email_for_two_factor_authentication: 2段階認証用にメールアドレスを指定するために、送信者にお問い合わせください。

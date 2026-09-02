@@ -1,0 +1,145 @@
+# frozen_string_literal: true
+
+require 'rake'
+
+Rails.application.load_tasks unless Rake::Task.task_defined?('gates:branding')
+
+# rubocop:disable RSpec/DescribeClass
+RSpec.describe 'Branding gate' do
+  # Every fixture is assembled at runtime: the gate scans spec/ too, so this
+  # file must never carry a banned literal of its own.
+  def brand(*parts)
+    parts.join
+  end
+
+  let(:upstream_host) { brand('docuseal', '.com') }
+  let(:upstream_short_host) { brand('docuseal', '.co') }
+  let(:legacy_host) { brand('vaclaim', 'net') }
+
+  describe 'Gates.branding_violations' do
+    it 'catches every banned literal case-insensitively and names it once' do
+      fixtures = {
+        brand('www.docuseal', '.com/start') => upstream_host,
+        brand('DocuSeal', '.CO/start') => upstream_short_host,
+        brand('demo.docuseal', '.tech') => brand('docuseal', '.tech'),
+        brand('app.vaclaim', 'net.com') => legacy_host,
+        brand('Koal', 'ify') => brand('koal', 'ify'),
+        brand('esigncenter', '.app') => brand('esigncenter', '.app'),
+        brand('support@vaclaim', 'net.com') => brand('support@', legacy_host),
+        brand('docuseal/', 'docuseal:latest') => brand('docuseal/', 'docuseal', ' (image ref)')
+      }
+
+      fixtures.each do |text, name|
+        violations = Gates.branding_violations("clean line\nimage = '#{text}'\n", 'lib/probe.rb')
+
+        expect(violations).to contain_exactly("lib/probe.rb:2: image = '#{text}' [#{name}]"), text
+      end
+    end
+
+    it 'reports every occurrence, each on its own line' do
+      content = "a = '#{upstream_host}'\nb = 'fine'\nc = '#{legacy_host}'\n"
+
+      expect(Gates.branding_violations(content, 'app/models/probe.rb')).to eq(
+        [
+          "app/models/probe.rb:1: a = '#{upstream_host}' [#{upstream_host}]",
+          "app/models/probe.rb:3: c = '#{legacy_host}' [#{legacy_host}]"
+        ]
+      )
+    end
+
+    it 'leaves the product name and the plain DocuSeal word alone' do
+      content = "# AGPL: the DocuSeal attribution below must be retained\nDocuseal.product_name\n"
+
+      expect(Gates.branding_violations(content, 'app/views/probe.html.erb')).to be_empty
+    end
+
+    it 'exempts the DOCUSEAL_URL constant only in lib/docuseal.rb' do
+      snippet = "DOCUSEAL_URL = 'https://www.#{upstream_host}'"
+
+      expect(Gates.branding_violations("module Docuseal\n  #{snippet}\nend\n", 'lib/docuseal.rb')).to be_empty
+      expect(Gates.branding_violations("module Docuseal\n  #{snippet}\nend\n", 'lib/other.rb'))
+        .to contain_exactly("lib/other.rb:2: #{snippet} [#{upstream_host}]")
+    end
+
+    it 'exempts the README fork statement only in README.md' do
+      snippet = "EsignCenter is a customized fork of [DocuSeal](https://www.#{upstream_host})"
+
+      expect(Gates.branding_violations("#{snippet}, licensed under the AGPL-3.0.\n", 'README.md')).to be_empty
+      expect(Gates.branding_violations("#{snippet}\n", 'docs/readme-copy.md')).to have_attributes(size: 1)
+    end
+
+    it 'fails a line that carries an allowlisted snippet plus a second banned literal' do
+      line = "DOCUSEAL_URL = 'https://www.#{upstream_host}' # mirrors #{upstream_short_host}/start"
+
+      expect(Gates.branding_violations("#{line}\n", 'lib/docuseal.rb'))
+        .to contain_exactly("lib/docuseal.rb:1: #{line} [#{upstream_short_host}]")
+    end
+
+    it 'does not exempt a partial rewrite of the allowlisted snippet' do
+      line = "DOCUSEAL_URL = 'https://#{upstream_host}/start'"
+
+      expect(Gates.branding_violations("#{line}\n", 'lib/docuseal.rb'))
+        .to contain_exactly("lib/docuseal.rb:1: #{line} [#{upstream_host}]")
+    end
+  end
+
+  describe 'Gates.attribution_failures' do
+    def write_tree(root, overrides = {})
+      Gates::ATTRIBUTION_REQUIREMENTS.each do |requirement|
+        path = File.join(root, requirement.fetch(:file))
+        FileUtils.mkdir_p(File.dirname(path))
+        File.write(path, overrides.fetch(requirement.fetch(:file), requirement.fetch(:snippets).join("\n")))
+      end
+    end
+
+    it 'passes a tree that carries every required attribution snippet' do
+      Dir.mktmpdir do |root|
+        write_tree(root)
+
+        expect(Gates.attribution_failures(root)).to be_empty
+      end
+    end
+
+    it 'fails when the DocuSeal anchor, the constant reference or the AGPL comment disappears' do
+      Dir.mktmpdir do |root|
+        write_tree(root, 'app/views/shared/_powered_by.html.erb' => "<%= t('powered_by') %>\n")
+
+        expect(Gates.attribution_failures(root)).to contain_exactly(
+          'app/views/shared/_powered_by.html.erb: attribution snippet missing: Docuseal::DOCUSEAL_URL',
+          'app/views/shared/_powered_by.html.erb: attribution snippet missing: >DocuSeal</a>',
+          'app/views/shared/_powered_by.html.erb: attribution snippet missing: AGPL LICENSE_ADDITIONAL_TERMS'
+        )
+      end
+    end
+
+    it 'fails when an attribution file is missing' do
+      Dir.mktmpdir do |root|
+        write_tree(root)
+        FileUtils.rm(File.join(root, 'app/views/templates_share_link_qr/_branding.html.erb'))
+
+        expect(Gates.attribution_failures(root))
+          .to contain_exactly('app/views/templates_share_link_qr/_branding.html.erb: attribution file is missing')
+      end
+    end
+
+    it 'pins the support email constant' do
+      expect(Gates.support_email_failures).to be_empty
+      expect(Docuseal::SUPPORT_EMAIL).to eq('evan@processorteam.com')
+    end
+  end
+
+  describe 'the current tree' do
+    it 'scans specs and never the gate definition or compiled packs' do
+      files = Gates.branding_files.map { |path| Gates.relative(path) }
+
+      expect(files).to include('spec/gates/branding_gate_spec.rb', 'README.md', 'SECURITY.md', 'docker-compose.yml')
+      expect(files).not_to include(Gates::SELF_PATH)
+      expect(files.grep(%r{\Apublic/packs})).to be_empty
+    end
+
+    it 'passes the branding gate' do
+      expect(Gates.branding_failures).to be_empty
+    end
+  end
+end
+# rubocop:enable RSpec/DescribeClass

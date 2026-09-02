@@ -5,6 +5,9 @@ module Api
     CREATE_RATE_LIMIT = 300
     CREATE_RATE_TTL = 1.minute
 
+    # The embedded template builder is the `embed` matrix row, refused for
+    # token and session callers alike.
+    before_action -> { Entitlements.require!(current_account, :embed) }
     before_action :load_template_builder_session, only: :show
 
     def show

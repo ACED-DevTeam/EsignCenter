@@ -7,6 +7,10 @@ module Api
     CREATE_RATE_LIMIT = 300
     CREATE_RATE_TTL = 1.minute
 
+    # Embedded signing sessions are their own matrix row, refused whether the
+    # caller arrived by token or by session (the generic token refusal in
+    # ApiBaseController is not what this door relies on).
+    before_action -> { Entitlements.require!(current_account, :signing_sessions) }
     before_action :load_signing_session, only: :show
 
     def show

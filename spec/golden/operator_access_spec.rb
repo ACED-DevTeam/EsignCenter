@@ -227,12 +227,22 @@ RSpec.describe 'Operator access', type: :request do
   end
 
   describe 'no HTTP path creates or promotes an operator' do
-    it 'never mentions platform_operator in a controller' do
-      hits = Rails.root.glob('app/controllers/**/*.rb').select do |path|
+    # The operator flag is written by exactly one path: `rake operator:seed`
+    # (lib/tasks/operator.rake). No controller and no other lib code may name
+    # it, and nothing may `permit!` a whole request payload — that is how a
+    # mass-assigned `platform_operator: true` would slip in.
+    it 'never mentions platform_operator outside the operator seed and never permit!s a payload' do
+      operator_hits = Rails.root.glob('{app/controllers,lib}/**/*.{rb,rake}').select do |path|
+        next false if path.to_s.end_with?('lib/tasks/operator.rake')
+
         File.read(path).include?('platform_operator')
       end
+      permit_hits = Rails.root.glob('{app,lib}/**/*.{rb,rake,erb}').select do |path|
+        File.read(path).match?(/\bpermit!/)
+      end
 
-      expect(hits).to be_empty
+      expect(operator_hits).to be_empty
+      expect(permit_hits).to be_empty
     end
 
     it 'ignores platform_operator and unknown roles on an admin user update' do

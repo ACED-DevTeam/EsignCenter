@@ -1,25 +1,49 @@
 # frozen_string_literal: true
 
+# CI gates. Every check is a pure function over (content, relative path) so
+# spec/gates/*_spec.rb can prove each banned pattern is caught and each
+# allowlist entry exempts only its own snippet, without touching the tree.
 module Gates
   ROOT = File.expand_path('../..', __dir__)
+  # This file is the gate definition: it necessarily spells out every banned
+  # pattern and every allowlisted snippet, so it never scans itself.
+  SELF_PATH = 'lib/tasks/gates.rake'
+
+  # ---------------------------------------------------------------------------
+  # Isolation gate
+  # ---------------------------------------------------------------------------
   ACCOUNT_ONE_PATTERN = Regexp.new(['\\baccount(_id)?\\s*', '==\\s*', '1\\b'].join)
-  # Whole-file, multiline-aware patterns: an unscoped EncryptedConfig or
-  # AccountConfig lookup (any finder whose first argument is key:, i.e. no
-  # account scoping — and it survives a line break), any first-account query,
-  # and account-one literals in any spacing.
-  CONFIG_FINDERS = 'find_by|find_by!|exists\?|where|order|pluck|pick|take|' \
-                   'first_or_initialize|find_or_initialize_by|find_or_create_by'
+  CONFIG_MODELS = '(?:EncryptedConfig|AccountConfig)'
+  CONFIG_FINDERS = 'find_by!?|exists\?|where|order|pluck|pick|take|first_or_initialize|' \
+                   'find_or_initialize_by|find_or_create_by!?|create_or_find_by!?'
+  # An argument list with at most one level of nested parentheses; `[^()]`
+  # matches newlines, so a call split across lines is still one call.
+  CALL_ARGS = '(?:[^()]|\((?:[^()])*\))*'
+  # A config lookup carrying `key:` ANYWHERE in its arguments without an
+  # `account:` / `account_id:` keyword alongside it is unscoped: it reads
+  # whichever account's row happens to come first.
+  UNSCOPED_CONFIG_FINDER = /
+    #{CONFIG_MODELS}\s*\.\s*(?:#{CONFIG_FINDERS})\(
+    (?!#{CALL_ARGS}\baccount(?:_id)?\s*:)
+    (?=#{CALL_ARGS}\bkey\s*:)
+    #{CALL_ARGS}\)
+  /mx
+  # Enumerating a config table with no arguments at all is unscoped by
+  # definition.
+  UNSCOPED_CONFIG_ENUMERATION = /#{CONFIG_MODELS}\s*\.\s*(?:first|take|all|pluck|find_each|each)\b/
   ISOLATION_PATTERNS = [
-    /EncryptedConfig\s*\.\s*(#{CONFIG_FINDERS})\(\s*key:/m,
-    /AccountConfig\s*\.\s*(#{CONFIG_FINDERS})\(\s*key:/m,
+    UNSCOPED_CONFIG_FINDER,
+    UNSCOPED_CONFIG_ENUMERATION,
     /Account\s*\.\s*order\(\s*:id\s*\)\s*\.\s*(first|take|limit)/m,
     /Account\s*\.\s*(first\b|minimum\(\s*:id\s*\))/m,
     ACCOUNT_ONE_PATTERN,
     /\.order\(\s*:account_id\s*\)/m
   ].freeze
-  # Allowlist entries pin a file AND the exact matched snippet, so allowlisting
-  # one known-good line never blanket-exempts the rest of the file.
-  ALLOWLIST = [
+  # Allowlist entries pin a file AND the exact snippet. A match is exempt only
+  # when it falls inside an occurrence of that snippet, so a second forbidden
+  # expression on the same line still fails. Adding an entry needs a written
+  # reason; the spec-permitted operator-config pins are the only two.
+  ISOLATION_ALLOWLIST = [
     {
       file: 'lib/tasks/operator.rake',
       snippet: "AccountConfig.where(key: 'fulltext_search', value: true)",
@@ -31,79 +55,236 @@ module Gates
       reason: 'boot-time inventory across all accounts (row existence only, no value is read or resolved)'
     }
   ].freeze
-  SPEC_METADATA_PATTERNS = [
-    /multitenant:\s*true/n,
-    /receive\(\s*:multitenant\?\s*\)\s*\.\s*and_return\(\s*true\s*\)/n
-  ].freeze
-  # Stubbing multitenancy on is banned outright in the golden specs: they must
-  # exercise the shipped single-tenant configuration.
+  # `multitenant: true` example metadata is banned in every spec: the suite
+  # exercises the shipped single-tenant configuration.
+  SPEC_METADATA_PATTERN = /multitenant:\s*true/
+  # The golden specs may not even mention multitenancy: no metadata, no stub
+  # (however it is spelled or split across lines), no constant, no ENV read.
+  GOLDEN_BAN_PATTERN = /multitenant\?|MULTITENANT|receive_messages\(\s*multitenant/
   GOLDEN_SPEC_PREFIX = 'spec/golden/'
-  # This file is the gate definition: it necessarily spells out every banned
-  # pattern and every allowlisted snippet, so it never scans itself.
-  SELF_PATH = 'lib/tasks/gates.rake'
+  SPEC_METADATA_EXEMPT = ['spec/rails_helper.rb'].freeze
+
+  # ---------------------------------------------------------------------------
+  # Branding gate
+  # ---------------------------------------------------------------------------
+  BRANDING_SCAN_GLOBS = [
+    '{app,lib,config,docs,public,spec}/**/*',
+    'README.md',
+    'SECURITY.md',
+    'docker-compose*.yml',
+    'Dockerfile*',
+    '.github/**/*.yml'
+  ].freeze
+  BRANDING_SCAN_EXCLUDED_PREFIXES = %w[public/packs public/assets].freeze
+  # Case-insensitive. Longest-first so an occurrence is reported once under
+  # its most specific name (support@vaclaimnet before vaclaimnet).
+  BANNED_LITERALS = [
+    { name: 'support@vaclaimnet', pattern: /support@vaclaimnet/i },
+    { name: 'docuseal/docuseal (image ref)', pattern: %r{docuseal/docuseal}i },
+    { name: 'esigncenter.app', pattern: /esigncenter\.app/i },
+    { name: 'docuseal.tech', pattern: /docuseal\.tech/i },
+    { name: 'docuseal.com', pattern: /docuseal\.com/i },
+    { name: 'docuseal.co', pattern: /docuseal\.co\b/i },
+    { name: 'vaclaimnet', pattern: /vaclaimnet/i },
+    { name: 'koalify', pattern: /koalify/i }
+  ].freeze
+  # The AGPL attribution target and the README fork statement are the only
+  # places the upstream domain may appear. LICENSE / LICENSE_ADDITIONAL_TERMS
+  # are legal text and are not scanned at all.
+  BRANDING_ALLOWLIST = [
+    {
+      file: 'lib/docuseal.rb',
+      snippet: "DOCUSEAL_URL = 'https://www.docuseal.com'",
+      reason: 'AGPL LICENSE_ADDITIONAL_TERMS attribution target'
+    },
+    {
+      file: 'README.md',
+      snippet: 'EsignCenter is a customized fork of [DocuSeal](https://www.docuseal.com)',
+      reason: 'fork attribution statement'
+    }
+  ].freeze
+  # The gate fails when the attribution disappears, not only when a banned
+  # literal appears: these snippets must survive in these files.
+  ATTRIBUTION_REQUIREMENTS = [
+    {
+      file: 'app/views/shared/_powered_by.html.erb',
+      snippets: ['Docuseal::DOCUSEAL_URL', '>DocuSeal</a>', 'AGPL LICENSE_ADDITIONAL_TERMS']
+    },
+    {
+      file: 'app/views/templates_share_link_qr/_branding.html.erb',
+      snippets: ["t('powered_by')", 'Docuseal::PRODUCT_URL', 'Docuseal.product_name']
+    },
+    {
+      file: 'lib/docuseal.rb',
+      snippets: ["DOCUSEAL_URL = 'https://www.docuseal.com'", "SUPPORT_EMAIL = 'evan@processorteam.com'"]
+    }
+  ].freeze
+  EXPECTED_SUPPORT_EMAIL = 'evan@processorteam.com'
 
   module_function
 
+  # --- isolation ---------------------------------------------------------------
+
   def isolation_failures
-    source_failures + spec_metadata_failures
+    source_failures + spec_failures
   end
 
   def source_failures
-    source_files.flat_map do |path|
-      relative_path = path.delete_prefix("#{ROOT}/")
-      content = File.binread(path).force_encoding(Encoding::UTF_8).scrub
-      lines = content.lines
+    source_files.flat_map { |path| isolation_violations(read(path), relative(path)) }
+  end
 
-      # Every occurrence is reported, not just the first: a file with one
-      # allowlisted line must still fail on a second, unreviewed one.
-      ISOLATION_PATTERNS.flat_map do |pattern|
-        content.to_enum(:scan, pattern).filter_map do
-          line_number = content[0...Regexp.last_match.begin(0)].count("\n") + 1
-          line = lines[line_number - 1].to_s.strip
+  def spec_failures
+    spec_files.flat_map { |path| spec_violations(read(path), relative(path)) }
+  end
 
-          next if allowlisted?(relative_path, line)
+  # Every occurrence is reported, not just the first: a file with one
+  # allowlisted expression must still fail on a second, unreviewed one. An
+  # expression two patterns both catch is reported once.
+  def isolation_violations(content, relative_path)
+    unique_matches(content, ISOLATION_PATTERNS).filter_map do |match|
+      next if allowlisted?(ISOLATION_ALLOWLIST, relative_path, content, match)
 
-          "#{relative_path}:#{line_number}: #{line}"
-        end
+      format_violation(content, relative_path, match)
+    end
+  end
+
+  def spec_violations(content, relative_path)
+    return [] if SPEC_METADATA_EXEMPT.include?(relative_path)
+
+    patterns = [SPEC_METADATA_PATTERN]
+    patterns << GOLDEN_BAN_PATTERN if relative_path.start_with?(GOLDEN_SPEC_PREFIX)
+
+    patterns.flat_map do |pattern|
+      scan_matches(content, pattern).map { |match| format_violation(content, relative_path, match) }
+    end
+  end
+
+  # --- branding ----------------------------------------------------------------
+
+  def branding_failures
+    branding_scan_failures + attribution_failures + support_email_failures
+  end
+
+  def branding_scan_failures
+    branding_files.flat_map { |path| branding_violations(read(path), relative(path)) }
+  end
+
+  def branding_violations(content, relative_path)
+    names = BANNED_LITERALS.to_h { |literal| [literal.fetch(:pattern), literal.fetch(:name)] }
+
+    unique_matches(content, names.keys).filter_map do |match|
+      next if allowlisted?(BRANDING_ALLOWLIST, relative_path, content, match)
+
+      "#{format_violation(content, relative_path, match)} [#{names.fetch(match.regexp)}]"
+    end
+  end
+
+  def attribution_failures(root = ROOT)
+    ATTRIBUTION_REQUIREMENTS.flat_map do |requirement|
+      file = requirement.fetch(:file)
+      path = File.join(root, file)
+
+      next ["#{file}: attribution file is missing"] unless File.file?(path)
+
+      content = read(path)
+
+      requirement.fetch(:snippets).reject { |snippet| content.include?(snippet) }
+                 .map { |snippet| "#{file}: attribution snippet missing: #{snippet}" }
+    end
+  end
+
+  def support_email_failures
+    return [] if defined?(Docuseal::SUPPORT_EMAIL) && Docuseal::SUPPORT_EMAIL == EXPECTED_SUPPORT_EMAIL
+
+    ["Docuseal::SUPPORT_EMAIL must be #{EXPECTED_SUPPORT_EMAIL}"]
+  end
+
+  # --- shared ------------------------------------------------------------------
+
+  def scan_matches(content, pattern)
+    content.to_enum(:scan, pattern).map { Regexp.last_match }
+  end
+
+  # Matches of every pattern, in pattern order, dropping any match that
+  # overlaps one already collected — so one expression is reported once even
+  # when two patterns both catch it.
+  def unique_matches(content, patterns)
+    patterns.each_with_object([]) do |pattern, collected|
+      scan_matches(content, pattern).each do |match|
+        next if collected.any? { |seen| overlap?(seen, match) }
+
+        collected << match
       end
     end
   end
 
-  def spec_metadata_failures
-    spec_files.flat_map do |path|
-      relative_path = path.delete_prefix("#{ROOT}/")
+  def overlap?(left, right)
+    left.begin(0) < right.end(0) && right.begin(0) < left.end(0)
+  end
 
-      next [] if relative_path == 'spec/rails_helper.rb'
+  # An entry exempts one reviewed expression, never the whole file or line:
+  # the match has to sit inside an occurrence of the allowlisted snippet.
+  def allowlisted?(allowlist, relative_path, content, match)
+    allowlist.any? do |entry|
+      next false unless entry.fetch(:file) == relative_path
 
-      patterns = spec_metadata_patterns_for(relative_path)
-
-      File.binread(path).each_line.with_index.filter_map do |line, index|
-        next unless patterns.any? { |pattern| pattern.match?(line) }
-
-        "#{relative_path}:#{index + 1}: #{line.strip}"
+      snippet_ranges(content, entry.fetch(:snippet)).any? do |range|
+        range.cover?(match.begin(0)) && range.cover?(match.end(0) - 1)
       end
     end
   end
 
-  def spec_metadata_patterns_for(relative_path)
-    return SPEC_METADATA_PATTERNS if relative_path.start_with?(GOLDEN_SPEC_PREFIX)
+  def snippet_ranges(content, snippet)
+    ranges = []
+    index = content.index(snippet)
 
-    SPEC_METADATA_PATTERNS.first(1)
+    while index
+      ranges << (index...(index + snippet.length))
+      index = content.index(snippet, index + 1)
+    end
+
+    ranges
+  end
+
+  def format_violation(content, relative_path, match)
+    line_number = content[0...match.begin(0)].count("\n") + 1
+    line = content.lines[line_number - 1].to_s.strip
+
+    "#{relative_path}:#{line_number}: #{line}"
   end
 
   def source_files
     Dir.glob(File.join(ROOT, '{app,lib,config}', '**', '*.{rb,rake,erb}'))
-       .reject { |path| path.delete_prefix("#{ROOT}/") == SELF_PATH }
+       .reject { |path| relative(path) == SELF_PATH }
+       .sort
   end
 
   def spec_files
     Dir.glob(File.join(ROOT, 'spec', '**', '*')).select { |path| File.file?(path) }.sort
   end
 
-  # An entry exempts one reviewed line, never the whole file: the matched
-  # line itself has to carry the allowlisted snippet.
-  def allowlisted?(file, line)
-    ALLOWLIST.any? { |entry| entry.fetch(:file) == file && line.include?(entry.fetch(:snippet)) }
+  def branding_files
+    BRANDING_SCAN_GLOBS.flat_map { |glob| Dir.glob(File.join(ROOT, glob)) }
+                       .select { |path| File.file?(path) }
+                       .map { |path| relative(path) }
+                       .reject { |file| file == SELF_PATH }
+                       .reject { |file| BRANDING_SCAN_EXCLUDED_PREFIXES.any? { |prefix| file.start_with?(prefix) } }
+                       .uniq
+                       .sort
+                       .map { |file| File.join(ROOT, file) }
+                       .reject { |path| binary?(path) }
+  end
+
+  def binary?(path)
+    File.binread(path, 8_000).to_s.include?("\0")
+  end
+
+  def read(path)
+    File.binread(path).force_encoding(Encoding::UTF_8).scrub
+  end
+
+  def relative(path)
+    path.delete_prefix("#{ROOT}/")
   end
 
   def run_gate!(name, command)
@@ -123,14 +304,19 @@ namespace :gates do
     puts 'Isolation gate passed.'
   end
 
-  desc 'Placeholder for the Session 3 branding gate'
+  desc 'Reject leftover upstream/legacy brand literals and prove the DocuSeal attribution survives'
   task branding: :environment do
-    puts 'branding gate lands in Session 3'
+    failures = Gates.branding_failures
+
+    abort "Branding gate failed:\n#{failures.join("\n")}" if failures.any?
+
+    puts 'Branding gate passed.'
   end
 
   desc 'Run all CI gates'
   task all: :environment do
     Rake::Task['gates:isolation'].invoke
+    Rake::Task['gates:branding'].invoke
     Gates.run_gate!('Rubocop gate', 'bundle exec rubocop')
     Gates.run_gate!('ERB lint gate', 'bundle exec erb_lint ./app')
     Gates.run_gate!('ESLint gate', './node_modules/eslint/bin/eslint.js "app/javascript/**/*.js"')

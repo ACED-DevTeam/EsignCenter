@@ -23,19 +23,24 @@ module WebhookUrls
 
   module_function
 
+  # Webhooks are paid-only: an account without the entitlement gets no URLs
+  # at all, so nothing is ever enqueued for it — including rows saved before
+  # a downgrade, which stay in place (D43) but stop receiving.
   def for_account_id(account_id, events)
     events = Array.wrap(events)
+
+    account = Account.find_by(id: account_id)
+
+    return WebhookUrl.none if account.nil? || !Entitlements.allowed?(account, :webhooks)
 
     rel = WebhookUrl.where(account_id:)
 
     event_arel = events.map { |event| Arel::Table.new(:webhook_urls)[:events].matches("%\"#{event}\"%") }.reduce(:or)
 
-    account_kind = Account.where(id: account_id).pick(:account_kind)
-
     # Customer tenants deliver only to their own webhook URLs — the legacy
     # linked-account fan-out (events falling through to a parent account's
     # endpoint) is an internal-accounts mechanism, never a customer one.
-    if Docuseal.multitenant? || account_kind == Account::CUSTOMER_KIND
+    if account.customer?
       rel.where(event_arel)
     else
       linked_account_rel =

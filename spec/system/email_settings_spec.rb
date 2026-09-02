@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 RSpec.describe 'Email Settings' do
-  let!(:account) { create(:account) }
+  let!(:account) { create(:account, :paid) }
   let!(:user) { create(:user, account:) }
 
   before do

@@ -12,10 +12,21 @@ class TemplatesPreferencesController < ApplicationController
                                                        completed_notification_email_body]
   }.freeze
 
+  # Per-template email copy is the custom-email-templates row; a BCC address
+  # is the BCC row. Both are refused only when a non-blank value comes in —
+  # clearing (and #destroy, the reset) is always allowed.
+  EMAIL_TEMPLATE_PREFERENCE_KEYS = %w[request_email_subject request_email_body
+                                      invitation_reminder_email_subject invitation_reminder_email_body
+                                      documents_copy_email_subject documents_copy_email_body
+                                      completed_notification_email_subject completed_notification_email_body
+                                      submitters].freeze
+
   def show; end
 
   def create
     authorize!(:update, @template)
+
+    require_preference_entitlements!(template_params[:preferences])
 
     @template.preferences = @template.preferences.merge(template_params[:preferences])
     @template.preferences = @template.preferences.reject { |_, v| (v.is_a?(String) || v.is_a?(Hash)) && v.blank? }
@@ -44,6 +55,14 @@ class TemplatesPreferencesController < ApplicationController
   end
 
   private
+
+  def require_preference_entitlements!(preferences)
+    Entitlements.require!(current_account, :bcc) if preferences[:bcc_completed].present?
+
+    return unless EMAIL_TEMPLATE_PREFERENCE_KEYS.any? { |key| preferences[key].present? }
+
+    Entitlements.require!(current_account, :custom_email_templates)
+  end
 
   def template_params
     params.require(:template).permit(

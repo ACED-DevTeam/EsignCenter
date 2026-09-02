@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 RSpec.describe 'Notifications Settings' do
-  let(:user) { create(:user, account: create(:account)) }
+  let(:user) { create(:user, account: create(:account, :paid)) }
 
   before do
     sign_in(user)

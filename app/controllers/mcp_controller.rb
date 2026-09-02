@@ -4,6 +4,7 @@ class McpController < ActionController::API
   include TokenAccountGuard
 
   before_action :authenticate_user!
+  before_action :require_mcp_entitlement!
   before_action :verify_mcp_enabled!
 
   before_action do
@@ -40,6 +41,14 @@ class McpController < ActionController::API
   # always the token's user.
   def token_account_user
     current_user
+  end
+
+  # MCP is a paid-only row: `:manage, :mcp` says the role may administer MCP,
+  # `:use, :mcp` says the account's plan includes it (Ability#plan_abilities).
+  def require_mcp_entitlement!
+    return if current_ability.can?(:use, :mcp)
+
+    render json: { error: Entitlements::REFUSAL_MESSAGE }, status: :forbidden
   end
 
   def verify_mcp_enabled!

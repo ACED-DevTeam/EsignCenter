@@ -28,6 +28,13 @@ module Templates
                                                 original_template.schema.deep_dup,
                                                 original_template.preferences.deep_dup)
 
+      # Fields copied in from another account's template (a shared template)
+      # are incoming fields for this account: the same entitlement check as a
+      # builder save. Cloning one's own template never re-checks (D43).
+      if author.account_id != original_template.account_id
+        Templates::AssertEntitledFields.call(author.account, [*template.fields, *template.schema])
+      end
+
       if name.present? && template.schema.size == 1 &&
          original_template.schema.first['name'] == original_template.name &&
          template.name != "#{original_template.name} (#{I18n.t('clone')})"

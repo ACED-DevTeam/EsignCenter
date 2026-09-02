@@ -22,6 +22,8 @@ class EmbedTemplateBuilderController < ApplicationController
   end
 
   def update_template
+    Templates::AssertEntitledFields.call(@template.account, [*template_params[:fields], *template_params[:schema]])
+
     @template.assign_attributes(template_params)
     @template.save!
 

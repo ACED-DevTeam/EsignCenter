@@ -9,6 +9,10 @@ module Templates
     module_function
 
     def call(attrs, user:)
+      # Every API door that builds a template from submitted fields (templates,
+      # signing sessions, builder sessions) funnels through here.
+      Templates::AssertEntitledFields.call(user.account, attrs[:fields])
+
       files = build_uploaded_files(attrs[:documents])
 
       ActiveRecord::Base.transaction do

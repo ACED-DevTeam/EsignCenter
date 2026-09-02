@@ -18,6 +18,15 @@ FactoryBot.define do
       account_kind { Account::OPERATOR_KIND }
     end
 
+    # A customer account on the paid plan. This trait is the ONE place specs
+    # say "paid": Session 5 re-points it at the real plan model and every spec
+    # using it (spec/golden/gating_spec.rb included) passes unmodified.
+    trait :paid do
+      after(:create) do |account|
+        account.account_configs.create!(key: AccountConfig::PLAN_STUB_KEY, value: Plans::PAID)
+      end
+    end
+
     trait :with_testing_account do
       after(:create) do |account|
         testing_account = account.dup.tap { |a| a.name = "Testing - #{account.name}" }

@@ -5,7 +5,7 @@ mortgage app) using **your own self‑hosted EsignCenter**, with **no per‑docu
 
 > **Important context:** The REST API is part of the open‑source DocuSeal code this fork
 > (EsignCenter) is built on — it is **not** a paid feature. The per‑document price you may
-> have seen applies only to DocuSeal's hosted cloud at `docuseal.com`. When you run this
+> have seen applies only to DocuSeal's hosted cloud service. When you run this
 > app on your own server, the API is free and unlimited.
 >
 > This repository adds one capability the open‑source app was missing: creating a

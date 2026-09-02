@@ -7,9 +7,9 @@ During the form filling and signing process, 3 types of events may occur and are
 - **'form.completed'** event is triggered upon successful form completion and signing by one of the parties.
 - **'form.declined'** event is triggered when a signer declines the submission.
 
- It's important to note that each of these events contain information available at the time of dispatch, so some data may be missing or incomplete depending on the specific event. Failed webhook requests (4xx, 5xx) are automatically retried multiple times within 48 hours (every 2^attempt minutes) for all production accounts.  
-**Related Guides**  
-[Download Signed Documents](https://www.docuseal.com/guides/download-signed-documents)
+ It's important to note that each of these events contain information available at the time of dispatch, so some data may be missing or incomplete depending on the specific event. Failed webhook requests (4xx, 5xx) are automatically retried multiple times within 48 hours (every 2^attempt minutes) for all production accounts.
+
+Every request is signed. The `X-Esigncenter-Signature` header carries `<timestamp>.<sha256>` — the hex HMAC-SHA256 of `<timestamp>.<request body>` keyed with the webhook's HMAC signing secret (Settings → Webhooks → HMAC). The same value is also sent as the legacy `X-Docuseal-Signature` header, so an integration may verify whichever it already reads.
 
 ```json
 {

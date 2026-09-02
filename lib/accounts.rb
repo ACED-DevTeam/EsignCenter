@@ -16,7 +16,7 @@ module Accounts
     new_user.uuid = SecureRandom.uuid
     new_user.account = new_account
     new_user.encrypted_password = SecureRandom.hex
-    new_user.email = "#{SecureRandom.hex}@docuseal.com"
+    new_user.email = "#{SecureRandom.hex}@esigncenter.invalid"
     new_user.confirmed_at = Time.current
 
     account.templates.each do |template|
@@ -90,23 +90,6 @@ module Accounts
     timestamp = Time.current.to_i
 
     original_email.sub('@', "+test#{timestamp}@")
-  end
-
-  def create_default_template(account)
-    template = Template.find(1)
-
-    new_template = Template.find(1).dup
-    new_template.account_id = account.id
-    new_template.slug = SecureRandom.base58(14)
-    new_template.folder = account.default_template_folder
-
-    new_template.save!
-
-    SearchEntries.enqueue_reindex(new_template)
-
-    Templates::CloneAttachments.call(template: new_template, original_template: template)
-
-    new_template
   end
 
   def load_recipient_form_fields(_account)
@@ -193,6 +176,16 @@ module Accounts
 
   def can_send_invitation_emails?(_account)
     true
+  end
+
+  # The remove_branding flag counts only while the account is entitled to
+  # branding removal: a downgraded account's flag stays in place but goes
+  # inert (D43 — a downgrade never purges), and no account means branding on.
+  def branding_removed?(account)
+    return false if account.nil?
+    return false unless Entitlements.allowed?(account, :branding_removal)
+
+    AccountConfigs.find_for_account(account, AccountConfig::REMOVE_BRANDING_KEY)&.value == true
   end
 
   def normalize_timezone(timezone)

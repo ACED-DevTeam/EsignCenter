@@ -11,6 +11,20 @@ class Ability
   def initialize(user)
     return if user.blank?
 
+    role_abilities(user)
+    plan_abilities(user)
+  end
+
+  private
+
+  # Available to every signed-in user regardless of role.
+  def personal_abilities(user)
+    can :manage, User, id: user.id
+    can :manage, UserConfig, user_id: user.id
+    can :manage, EncryptedUserConfig, user_id: user.id
+  end
+
+  def role_abilities(user)
     personal_abilities(user)
 
     if user.role == User::VIEWER_ROLE
@@ -26,13 +40,17 @@ class Ability
     admin_abilities(user)
   end
 
-  private
+  # Plan-keyed feature abilities, for every role: `can :use, :embed` etc. is
+  # granted exactly when the account's plan allows the feature (Entitlements);
+  # hidden features are never granted. Declared LAST so the explicit `cannot`
+  # outranks any broader grant (an admin's `can :manage, :mcp` would otherwise
+  # imply `:use, :mcp`). Views ask `can?(:use, :feature)`; the MCP door
+  # requires `:use, :mcp` on top of `:manage, :mcp`.
+  def plan_abilities(user)
+    allowed = Entitlements.allowed_features(user.account)
 
-  # Available to every signed-in user regardless of role.
-  def personal_abilities(user)
-    can :manage, User, id: user.id
-    can :manage, UserConfig, user_id: user.id
-    can :manage, EncryptedUserConfig, user_id: user.id
+    allowed.each { |feature| can :use, feature }
+    (Entitlements::FEATURES - allowed).each { |feature| cannot :use, feature }
   end
 
   # Read-only document access (viewer and above).

@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 describe 'Tools API' do
-  let(:account) { create(:account) }
+  let(:account) { create(:account, :paid) }
   let(:author) { create(:user, account:) }
   let(:file_path) { Rails.root.join('spec/fixtures/sample-document.pdf') }
 

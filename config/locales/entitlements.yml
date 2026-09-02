@@ -1,0 +1,30 @@
+# Feature-gating copy (Session 3). Kept in its own file so it can land in
+# parallel with the i18n.yml sweep; Phase C may fold it into i18n.yml.
+en:
+  this_feature_requires_a_paid_plan: This feature requires a paid plan
+es:
+  this_feature_requires_a_paid_plan: Esta función requiere un plan de pago
+it:
+  this_feature_requires_a_paid_plan: Questa funzione richiede un piano a pagamento
+fr:
+  this_feature_requires_a_paid_plan: Cette fonctionnalité nécessite un abonnement payant
+pt:
+  this_feature_requires_a_paid_plan: Este recurso requer um plano pago
+de:
+  this_feature_requires_a_paid_plan: Diese Funktion erfordert einen kostenpflichtigen Tarif
+pl:
+  this_feature_requires_a_paid_plan: Ta funkcja wymaga płatnego planu
+uk:
+  this_feature_requires_a_paid_plan: Ця функція доступна лише в платному плані
+cs:
+  this_feature_requires_a_paid_plan: Tato funkce vyžaduje placený plán
+he:
+  this_feature_requires_a_paid_plan: תכונה זו דורשת תוכנית בתשלום
+nl:
+  this_feature_requires_a_paid_plan: Deze functie vereist een betaald abonnement
+ar:
+  this_feature_requires_a_paid_plan: تتطلب هذه الميزة خطة مدفوعة
+ko:
+  this_feature_requires_a_paid_plan: 이 기능은 유료 플랜이 필요합니다
+ja:
+  this_feature_requires_a_paid_plan: この機能は有料プランが必要です

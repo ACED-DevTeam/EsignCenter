@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 describe Submitters::ScheduleReminders do
-  let(:account) { create(:account) }
+  let(:account) { create(:account, :paid) }
   let(:author) { create(:user, account:) }
   let(:template) { create(:template, account:, author:) }
   let(:submission) { create(:submission, :with_submitters, template:, created_by_user: author) }
@@ -24,6 +24,14 @@ describe Submitters::ScheduleReminders do
   end
 
   it 'schedules nothing when reminders are not configured' do
+    expect { described_class.call(submitter) }
+      .not_to change(SendSubmitterInvitationReminderEmailJob.jobs, :size)
+  end
+
+  it 'schedules nothing for an account whose plan lacks reminders, even with a reminders row' do
+    configure_reminders('first_duration' => 'two_days')
+    account.account_configs.find_by(key: AccountConfig::PLAN_STUB_KEY).destroy!
+
     expect { described_class.call(submitter) }
       .not_to change(SendSubmitterInvitationReminderEmailJob.jobs, :size)
   end

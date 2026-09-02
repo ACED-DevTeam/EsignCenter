@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 describe 'Template Builder Sessions API' do
-  let(:account) { create(:account) }
+  let(:account) { create(:account, :paid) }
   let(:author) { create(:user, account:) }
   let(:headers) { { 'x-auth-token': author.access_token.token } }
   let(:pdf_base64) { Base64.encode64(Rails.root.join('spec/fixtures/sample-document.pdf').read) }

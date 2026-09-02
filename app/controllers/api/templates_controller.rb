@@ -81,6 +81,8 @@ module Api
         @template.archived_at = archived == true ? Time.current : nil
       end
 
+      Templates::AssertEntitledFields.call(current_account, template_params[:fields])
+
       @template.update!(template_params)
 
       SearchEntries.enqueue_reindex(@template)

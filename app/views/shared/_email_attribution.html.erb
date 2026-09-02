@@ -1,10 +1,16 @@
-<p>
-  ---
-</p>
-<p>
-  <% if @current_account&.testing? %>
+<%# The testing-mode line always shows; the "Sent using" line is hidden only for an account entitled to branding removal that switched it on (Accounts.branding_removed?). With no account in scope, branding stays. %>
+<% if @current_account&.testing? %>
+  <p>
+    ---
+  </p>
+  <p>
     <%= t('sent_using_product_name_in_testing_mode_html', product_url: Docuseal::PRODUCT_EMAIL_URL, product_name: Docuseal.product_name) %>
-  <% else %>
+  </p>
+<% elsif !Accounts.branding_removed?(@current_account) %>
+  <p>
+    ---
+  </p>
+  <p>
     <%= t('sent_using_product_name_free_document_signing_html', product_url: Docuseal::PRODUCT_EMAIL_URL, product_name: Docuseal.product_name) %>
-  <% end %>
-</p>
+  </p>
+<% end %>

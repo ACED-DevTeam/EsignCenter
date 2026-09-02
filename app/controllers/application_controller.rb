@@ -30,6 +30,18 @@ class ApplicationController < ActionController::Base
     redirect_to request.path
   end
 
+  # A paid-only feature reached from an account whose plan lacks it. JSON
+  # callers (the builder saves with a JSON body; fetch/XHR) get the API shape;
+  # a browser form goes back where it came from with an alert. The decision is
+  # always about the acting user's account, never the request's own claims.
+  rescue_from Entitlements::UpgradeRequired do
+    if request.format.json? || request.xhr? || request.content_mime_type&.json?
+      render json: { error: Entitlements::REFUSAL_MESSAGE }, status: :forbidden
+    else
+      redirect_back fallback_location: root_path, alert: I18n.t('this_feature_requires_a_paid_plan')
+    end
+  end
+
   rescue_from RateLimit::LimitApproached do |e|
     ErrorReport.error(e)
 
@@ -145,12 +157,6 @@ class ApplicationController < ActionController::Base
 
   def form_link_host
     Docuseal.default_url_options[:host]
-  end
-
-  def maybe_redirect_com
-    return if request.domain != 'docuseal.co'
-
-    redirect_to request.url.gsub('.co/', '.com/'), allow_other_host: true, status: :moved_permanently
   end
 
   def set_csp

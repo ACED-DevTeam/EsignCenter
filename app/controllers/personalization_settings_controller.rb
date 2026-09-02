@@ -8,8 +8,11 @@ class PersonalizationSettingsController < ApplicationController
     AccountConfig::SUBMITTER_DOCUMENTS_COPY_EMAIL_KEY,
     AccountConfig::SUBMITTER_COMPLETED_EMAIL_KEY,
     AccountConfig::FORM_COMPLETED_MESSAGE_KEY,
-    *(Docuseal.multitenant? ? [] : [AccountConfig::POLICY_LINKS_KEY])
+    AccountConfig::POLICY_LINKS_KEY,
+    AccountConfig::REMOVE_BRANDING_KEY
   ].freeze
+
+  BOOLEAN_KEYS = [AccountConfig::REMOVE_BRANDING_KEY].freeze
 
   InvalidKey = Class.new(StandardError)
 
@@ -47,13 +50,21 @@ class PersonalizationSettingsController < ApplicationController
 
     raise InvalidKey unless ALLOWED_KEYS.include?(@account_config.key)
 
+    # Email templates and branding removal are paid-only rows (the signer-page
+    # copy keys and policy links stay free); clearing is always allowed.
+    Entitlements.require_for_account_config!(current_account, @account_config.key, @account_config.value)
+
     @account_config
   end
 
   def account_config_params
     attrs = params.require(:account_config).permit(:key, :value, { value: {} }, { value: [] })
 
-    return attrs if attrs[:value].is_a?(String)
+    if attrs[:value].is_a?(String)
+      attrs[:value] = attrs[:value] == 'true' if BOOLEAN_KEYS.include?(attrs[:key]) && attrs[:value].in?(%w[true false])
+
+      return attrs
+    end
 
     attrs[:value]&.transform_values! do |value|
       if value.in?(%w[true false])

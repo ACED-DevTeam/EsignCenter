@@ -5,10 +5,10 @@ RSpec.describe 'Cross-tenant HTTP denial', type: :request do
   # one tenant's API token can never read another tenant's template, while
   # the same token still serves its own.
   it 'refuses another tenant template over the templates API and serves the caller own' do
-    account_a = create(:account)
+    account_a = create(:account, :paid)
     author_a = create(:user, account: account_a)
     template_a = create(:template, account: account_a, author: author_a, name: 'Tenant A Confidential Packet')
-    account_b = create(:account)
+    account_b = create(:account, :paid)
     author_b = create(:user, account: account_b)
     template_b = create(:template, account: account_b, author: author_b, name: 'Tenant B Own Packet')
     headers = { 'x-auth-token': author_b.access_token.token }

@@ -51,6 +51,8 @@ class TemplatesController < ApplicationController
   end
 
   def update
+    Templates::AssertEntitledFields.call(current_account, [*template_params[:fields], *template_params[:schema]])
+
     @template.assign_attributes(template_params)
 
     is_name_changed = @template.name_changed?

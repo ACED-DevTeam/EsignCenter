@@ -86,24 +86,6 @@
         </span>
       </a>
     </div>
-    <div
-      v-if="attribution"
-      class="text-center mt-4"
-    >
-      <!-- AGPL LICENSE_ADDITIONAL_TERMS: the DocuSeal attribution below must be retained -->
-      {{ t('powered_by') }}
-      <a
-        href="https://www.docuseal.com/start"
-        target="_blank"
-        class="underline"
-      >DocuSeal</a> - {{ t('open_source_documents_software') }}
-      <span class="px-1">&middot;</span>
-      <a
-        href="https://github.com/AmishHillBilly/EsignCenter"
-        target="_blank"
-        class="underline"
-      >Source</a>
-    </div>
   </div>
 </template>
 
@@ -132,11 +114,6 @@ export default {
       type: Boolean,
       required: false,
       default: false
-    },
-    attribution: {
-      type: Boolean,
-      required: false,
-      default: true
     },
     hasSignatureFields: {
       type: Boolean,
