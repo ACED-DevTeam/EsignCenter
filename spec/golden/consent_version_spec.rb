@@ -36,15 +36,22 @@ RSpec.describe 'ESIGN consent version', type: :request do
   end
 
   describe 'completion with a consent version' do
-    it 'refuses a consent for a version other than the current one and records nothing' do
-      complete(submitter, esign_consent: 'true', esign_consent_version: 'v0')
+    # G13 + F6: the version must be present AND current. A request with no
+    # version at all is stale too — nothing vouches for which text that page
+    # showed, so the signer reloads and agrees again. Both refusals happen
+    # before any write, so both cases assert the same empty aftermath.
+    [['for a version other than the current one', { esign_consent_version: 'v0' }],
+     ['without a version at all', {}]].each do |description, version_params|
+      it "refuses a consent #{description} as stale and records nothing" do
+        complete(submitter, esign_consent: 'true', **version_params)
 
-      expect(response).to have_http_status(:unprocessable_content)
-      expect(response.parsed_body).to eq('error' => 'esign_consent_version_stale')
-      expect(consent_events(submitter)).not_to exist
-      expect(submitter.reload.completed_at).to be_nil
-      expect(submitter.submission_events.where(event_type: 'complete_form')).not_to exist
-      expect(ProcessSubmitterCompletionJob.jobs).to be_empty
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(response.parsed_body).to eq('error' => 'esign_consent_version_stale')
+        expect(consent_events(submitter)).not_to exist
+        expect(submitter.reload.completed_at).to be_nil
+        expect(submitter.submission_events.where(event_type: 'complete_form')).not_to exist
+        expect(ProcessSubmitterCompletionJob.jobs).to be_empty
+      end
     end
 
     it 'records the consent with the matching version and completes' do
@@ -53,18 +60,6 @@ RSpec.describe 'ESIGN consent version', type: :request do
       expect(response).to have_http_status(:ok)
       expect(submitter.reload.completed_at).to be_present
       expect(consent_events(submitter).sole.data).to include('version' => EsignConsent::VERSION)
-    end
-
-    # A request with no version at all is stale too: nothing vouches for which
-    # text that page showed, so the signer reloads and agrees again.
-    it 'refuses a consent without a version as stale and records nothing' do
-      complete(submitter, esign_consent: 'true')
-
-      expect(response).to have_http_status(:unprocessable_content)
-      expect(response.parsed_body).to eq('error' => 'esign_consent_version_stale')
-      expect(consent_events(submitter)).not_to exist
-      expect(submitter.reload.completed_at).to be_nil
-      expect(ProcessSubmitterCompletionJob.jobs).to be_empty
     end
 
     it 'refuses a stale version on the invite request too' do

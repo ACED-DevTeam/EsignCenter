@@ -75,14 +75,6 @@ RSpec.describe 'ESIGN consent', type: :request do
     submission.submitters.first.tap { |s| s.update!(sent_at: Time.current, email: 'signer@example.com') }
   end
 
-  # Link, embed and selfsign submissions copy the template's fields on the
-  # first save, so fall back to the template until then.
-  def text_field(submitter)
-    fields = submitter.submission.template_fields.presence || submitter.submission.template.fields
-
-    fields.find { |f| f['type'] == 'text' && f['submitter_uuid'] == submitter.uuid }
-  end
-
   # The consent always travels with the version the form displayed
   # (consent_version_spec proves a missing or stale version is refused).
   def consent_params

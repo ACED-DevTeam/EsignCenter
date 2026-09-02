@@ -47,23 +47,6 @@ RSpec.describe 'Public verify', type: :request do
     submission
   end
 
-  def text_field(submitter)
-    fields = submitter.submission.template_fields.presence || submitter.submission.template.fields
-
-    fields.find { |f| f['type'] == 'text' && f['submitter_uuid'] == submitter.uuid }
-  end
-
-  # The real interactive completion path, consent included (Phase A).
-  def complete!(submitter)
-    put "/s/#{submitter.slug}", params: { completed: 'true', esign_consent: 'true',
-                                          esign_consent_version: EsignConsent::VERSION,
-                                          values: { text_field(submitter)['uuid'] => 'Jane' } }
-
-    expect(response).to have_http_status(:ok)
-
-    submitter.reload
-  end
-
   # Exactly what a customer downloads for this submitter.
   def downloaded_bytes(submitter)
     attachments = Submitters.select_attachments_for_download(submitter)
@@ -102,16 +85,6 @@ RSpec.describe 'Public verify', type: :request do
     Rails.root.join('spec/fixtures/sample-document.pdf').binread
   end
 
-  def signer_public_keys(bytes)
-    HexaPDF::Document.new(io: StringIO.new(bytes)).signatures.map do |signature|
-      signature.signature_handler.signer_certificate.public_key.to_der
-    end
-  end
-
-  def public_key_of(pem)
-    OpenSSL::X509::Certificate.new(pem).public_key.to_der
-  end
-
   # The fixture signed with an identity that is not ours (its own generated
   # chain), the way any other PDF tool would sign it.
   def pdf_signed_by(pkcs)
@@ -122,15 +95,6 @@ RSpec.describe 'Public verify', type: :request do
                       reason: 'Signed elsewhere', write_options: { validate: false })
 
     io.string
-  end
-
-  def capture_stdout
-    original = $stdout
-    $stdout = StringIO.new
-    yield
-    $stdout.string
-  ensure
-    $stdout = original
   end
 
   describe 'a completed document' do

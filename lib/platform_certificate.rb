@@ -70,9 +70,14 @@ module PlatformCertificate
 
   # The current row, or nil when there is none (or no operator account).
   def current_row
+    operator_row(KEY)
+  end
+
+  # Never generates: a missing operator account or a missing row answers nil.
+  def operator_row(key)
     account = OperatorConfigs.account
 
-    account && find_row(account)
+    account && find_row(account, key:)
   end
 
   # The current row's PEMs; raises when there is nothing to read.
@@ -92,9 +97,7 @@ module PlatformCertificate
   end
 
   def retired_entries
-    account = OperatorConfigs.account
-
-    Array(account && find_row(account, key: RETIRED_KEY)&.value)
+    Array(operator_row(RETIRED_KEY)&.value)
   end
 
   # SHA-256 of the leaf certificate DER, colon-separated hex: the value Evan

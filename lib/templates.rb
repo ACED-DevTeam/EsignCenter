@@ -98,9 +98,14 @@ module Templates
   end
 
   def flagged_documents(template)
-    template.documents.preload(:blob).select do |document|
-      document.metadata['converting'] || document.metadata['conversion_failed']
-    end
+    template.documents.preload(:blob).select { |document| conversion_flagged?(document) }
+  end
+
+  # A document the conversion pipeline still owns: either being converted or
+  # marked failed. Not the same as `converting?`/`conversion_failed?`, which
+  # also apply the stale rule — this is only "does it carry a marker".
+  def conversion_flagged?(document)
+    document.metadata['converting'] || document.metadata['conversion_failed']
   end
 
   def converting?(document)

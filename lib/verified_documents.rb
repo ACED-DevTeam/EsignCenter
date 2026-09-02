@@ -16,10 +16,12 @@ module VerifiedDocuments
   module_function
 
   def record!(pdf, submission:, kind:)
+    completed = submission.submitters.where.not(completed_at: nil)
+
     VerifiedDocument.upsert(
       { sha256: sha256(pdf),
-        signed_at: submission.submitters.where.not(completed_at: nil).maximum(:completed_at) || Time.current,
-        signers_count: submission.submitters.where.not(completed_at: nil).count,
+        signed_at: completed.maximum(:completed_at) || Time.current,
+        signers_count: completed.count,
         account_id: submission.account_id,
         submission_id: submission.id,
         kind: },

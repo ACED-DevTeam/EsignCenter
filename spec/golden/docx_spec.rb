@@ -34,6 +34,15 @@ RSpec.describe 'Word document uploads', type: :request do
     post '/templates_upload', params: { files: [file] }
   end
 
+  # A dashboard Word upload and what it produced: the template and its one document.
+  def upload_word_to_dashboard(file = docx_upload)
+    upload_to_dashboard(file)
+
+    template = Template.sole
+
+    [template, template.documents.sole]
+  end
+
   # fieldtags.docx converts to a PDF without an AcroForm (LibreOffice writes
   # its text tags as plain text), so field detection is stubbed at its
   # narrowest seam — Templates::FindAcroFields — and everything downstream
@@ -87,10 +96,7 @@ RSpec.describe 'Word document uploads', type: :request do
     end
 
     it 'converts the document with LibreOffice, swaps the PDF in and purges the Word blob' do
-      upload_to_dashboard
-
-      template = Template.sole
-      attachment = template.documents.sole
+      template, attachment = upload_word_to_dashboard
       word_blob_id = attachment.blob_id
       fields_before = template.fields.deep_dup
 
@@ -195,9 +201,7 @@ RSpec.describe 'Word document uploads', type: :request do
         original.call(*args, **kwargs)
       end
 
-      upload_to_dashboard
-      template = Template.sole
-      attachment = template.documents.sole
+      template, attachment = upload_word_to_dashboard
       word_blob_id = attachment.blob_id
       job_args = ConvertWordDocumentJob.jobs.sole['args'].first
 
@@ -233,9 +237,7 @@ RSpec.describe 'Word document uploads', type: :request do
     it 'hands the fields it found to the builder through the status payload and a pending_fields marker' do
       stub_found_fields
 
-      upload_to_dashboard
-      template = Template.sole
-      attachment = template.documents.sole
+      template, attachment = upload_word_to_dashboard
       fields_before = template.fields.deep_dup
 
       ConvertWordDocumentJob.drain
@@ -260,9 +262,7 @@ RSpec.describe 'Word document uploads', type: :request do
     it 'resumes after a failure inside the schema update without converting again and still purges the Word blob' do
       allow(WordConverter).to receive(:call).and_call_original
 
-      upload_to_dashboard
-      template = Template.sole
-      attachment = template.documents.sole
+      template, attachment = upload_word_to_dashboard
       word_blob_id = attachment.blob_id
       job_args = ConvertWordDocumentJob.jobs.sole['args'].first
 
@@ -307,9 +307,7 @@ RSpec.describe 'Word document uploads', type: :request do
     it 'resumes after a failure inside the final marker-clearing save without converting again' do
       allow(WordConverter).to receive(:call).and_call_original
 
-      upload_to_dashboard
-      template = Template.sole
-      attachment = template.documents.sole
+      template, attachment = upload_word_to_dashboard
       word_blob_id = attachment.blob_id
       job_args = ConvertWordDocumentJob.jobs.sole['args'].first
 
@@ -358,9 +356,7 @@ RSpec.describe 'Word document uploads', type: :request do
     it 'keeps the pending_fields marker through an autosave that did not send it, until a field claims the document' do
       stub_found_fields
 
-      upload_to_dashboard
-      template = Template.sole
-      attachment = template.documents.sole
+      template, attachment = upload_word_to_dashboard
       ConvertWordDocumentJob.drain
 
       expect(template.reload.schema.sole).to include('pending_fields' => true)
@@ -404,9 +400,7 @@ RSpec.describe 'Word document uploads', type: :request do
     it 'never lets a client-sent pending_fields: true re-arm the marker once the merged fields are deleted' do
       stub_found_fields
 
-      upload_to_dashboard
-      template = Template.sole
-      attachment = template.documents.sole
+      template, attachment = upload_word_to_dashboard
       ConvertWordDocumentJob.drain
 
       expect(template.reload.schema.sole).to include('pending_fields' => true)
@@ -440,9 +434,7 @@ RSpec.describe 'Word document uploads', type: :request do
     it 'marks the document failed when Sidekiq gives up retrying a transient error' do
       allow(ErrorReport).to receive(:warning).and_call_original
 
-      upload_to_dashboard
-      template = Template.sole
-      attachment = template.documents.sole
+      template, attachment = upload_word_to_dashboard
       job = ConvertWordDocumentJob.jobs.sole
       error = ActiveRecord::ConnectionTimeoutError.new('storage down for good')
 
@@ -496,9 +488,7 @@ RSpec.describe 'Word document uploads', type: :request do
       allow(WordConverter).to receive(:call).and_raise(WordConverter::ConversionError, 'soffice exited with 1')
       allow(ErrorReport).to receive(:warning).and_call_original
 
-      upload_to_dashboard
-      template = Template.sole
-      attachment = template.documents.sole
+      template, attachment = upload_word_to_dashboard
 
       ConvertWordDocumentJob.drain
 
@@ -579,9 +569,7 @@ RSpec.describe 'Word document uploads', type: :request do
     it 're-enqueues itself with a delay, converts nothing and touches nobody else slot' do
       allow(WordConverter).to receive(:call).and_call_original
 
-      upload_to_dashboard
-      template = Template.sole
-      attachment = template.documents.sole
+      _template, attachment = upload_word_to_dashboard
       job_args = ConvertWordDocumentJob.jobs.sole['args'].first
       ConvertWordDocumentJob.jobs.clear
 
@@ -941,7 +929,7 @@ RSpec.describe 'Word document uploads', type: :request do
       expect(response).to have_http_status(:unprocessable_content)
       expect(response.body).to include(I18n.t('document_not_ready'))
       expect(response.body).to include(I18n.t('documents_still_converting'))
-      expect(response.body).to include(template.name)
+      expect(response.body).to include(ERB::Util.html_escape(template.name))
     end
 
     it 'refuses the dashboard Resubmit with the alert and creates nothing' do

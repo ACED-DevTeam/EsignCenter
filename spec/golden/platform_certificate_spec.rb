@@ -58,33 +58,6 @@ RSpec.describe 'Platform certificate', type: :request do
     submission.submitters.first.tap { |submitter| submitter.update!(sent_at: Time.current) }
   end
 
-  def text_field(submitter)
-    fields = submitter.submission.template_fields.presence || submitter.submission.template.fields
-
-    fields.find { |f| f['type'] == 'text' && f['submitter_uuid'] == submitter.uuid }
-  end
-
-  # The real interactive completion path, consent included (Phase A).
-  def complete!(submitter)
-    put "/s/#{submitter.slug}", params: { completed: 'true', esign_consent: 'true',
-                                          esign_consent_version: EsignConsent::VERSION,
-                                          values: { text_field(submitter)['uuid'] => 'Jane' } }
-
-    expect(response).to have_http_status(:ok)
-
-    submitter.reload
-  end
-
-  def signer_public_keys(bytes)
-    HexaPDF::Document.new(io: StringIO.new(bytes)).signatures.map do |signature|
-      signature.signature_handler.signer_certificate.public_key.to_der
-    end
-  end
-
-  def public_key_of(pem)
-    OpenSSL::X509::Certificate.new(pem).public_key.to_der
-  end
-
   describe 'signing identity by account kind' do
     # THE Done-when: an account that owns a certificate row still signs with
     # the platform one, on every artefact a signer or a verifier ever sees.
@@ -618,15 +591,6 @@ RSpec.describe 'Platform certificate', type: :request do
 
       expect(output.strip).to eq(PlatformCertificate.fingerprint)
       expect(output).to match(/\A(\h{2}:){31}\h{2}\n\z/)
-    end
-
-    def capture_stdout
-      original = $stdout
-      $stdout = StringIO.new
-      yield
-      $stdout.string
-    ensure
-      $stdout = original
     end
   end
 end

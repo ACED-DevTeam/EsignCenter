@@ -88,7 +88,7 @@ class ConvertWordDocumentJob
     template = Template.find_by(id: params['template_id'])
     attachment = template && template.documents.preload(:blob).find_by(uuid: params['attachment_uuid'])
 
-    return [] if attachment.nil? || !(attachment.metadata['converting'] || attachment.metadata['conversion_failed'])
+    return [] if attachment.nil? || !Templates.conversion_flagged?(attachment)
     return [] unless Templates.schema_lists?(template, attachment) || Templates.within_unlisted_grace?(attachment)
 
     [template, attachment]
