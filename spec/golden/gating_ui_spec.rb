@@ -319,6 +319,16 @@ RSpec.describe 'Feature gating UI', type: :request do
       bodies.each { |body| expect(docuseal_attribution_links(body)).not_to be_empty }
     end
 
+    it 'renders the DocuSeal attribution on the public /verify page for an anonymous visitor' do
+      sign_out(:user)
+      reset!
+
+      get '/verify'
+
+      expect(response).to have_http_status(:ok)
+      expect(docuseal_attribution_links(response.body)).not_to be_empty
+    end
+
     it 'renders the share-link QR attribution for free and paid-without-branding accounts alike' do
       create(:account_config, account: paid_account, key: AccountConfig::REMOVE_BRANDING_KEY, value: true)
 

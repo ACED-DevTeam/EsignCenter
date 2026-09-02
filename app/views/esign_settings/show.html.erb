@@ -5,43 +5,17 @@
       <h1 class="text-4xl font-bold mb-4">
         <%= t('pdf_signature') %>
       </h1>
-      <%# Verifying a signed PDF reads the certificate chains: an operator surface in this phase. %>
-      <% if operator_access? %>
-        <div id="result">
-          <p class="mb-2">
-            <%= t('upload_signed_pdf_file_to_validate_its_signature_') %>
-          </p>
+      <%# Signature checking moved to the public /verify page (Session 4): anyone can use it, and it reveals only the completion date and signer count. %>
+      <div class="border border-base-300 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div class="flex items-center gap-3">
+          <%= svg_icon('shield_check', class: 'w-8 h-8 shrink-0') %>
+          <div>
+            <p class="font-semibold"><%= t('verify_signed_pdf') %></p>
+            <p class="text-sm"><%= t('verify_signed_pdf_card_description') %></p>
+          </div>
         </div>
-        <%= form_for '', url: verify_pdf_signature_index_path, method: :post, html: { enctype: 'multipart/form-data' } do |f| %>
-          <%= f.button type: 'submit', class: 'flex' do %>
-            <div class="disabled mb-3">
-              <%= svg_icon('loader', class: 'w-5 h-5 animate-spin inline') %>
-              <%= "#{t('analyzing')}..." %>
-            </div>
-          <% end %>
-          <file-dropzone data-name="verify_attachments" data-submit-on-upload="true" class="w-full">
-            <label for="file" class="w-full block h-32 relative bg-base-200 hover:bg-base-200/70 rounded-md border border-base-content border-dashed">
-              <div class="absolute top-0 right-0 left-0 bottom-0 flex items-center justify-center p-2">
-                <div class="flex flex-col items-center text-center">
-                  <span data-target="file-dropzone.icon">
-                    <%= svg_icon('cloud_upload', class: 'w-10 h-10') %>
-                  </span>
-                  <span data-target="file-dropzone.loading" class="hidden">
-                    <%= svg_icon('loader', class: 'w-10 h-10 animate-spin') %>
-                  </span>
-                  <div class="font-medium mb-1">
-                    <%= t('verify_signed_pdf') %>
-                  </div>
-                  <div class="text-xs">
-                    <%= t('click_to_upload_or_drag_and_drop_files_html') %>
-                  </div>
-                </div>
-                <input id="file" name="files[]" class="hidden" data-action="change:file-dropzone#onSelectFiles" data-target="file-dropzone.input" type="file" accept="application/pdf" multiple>
-              </div>
-            </label>
-          </file-dropzone>
-        <% end %>
-      <% end %>
+        <%= link_to t('open_verify_page'), verify_path, target: '_blank', rel: 'noopener', class: 'btn btn-outline btn-sm whitespace-nowrap' %>
+      </div>
     </div>
     <%# Signing certificates are platform-operator surfaces (Session 4): customers sign with the platform certificate, internal accounts keep their rows but manage them from the console. %>
     <% if operator_access? %>

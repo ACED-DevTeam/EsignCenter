@@ -1,0 +1,41 @@
+<% content_for(:html_title, "#{t('verify_page_title')} | EsignCenter") %>
+<% content_for(:html_description, t('verify_page_intro')) %>
+<main class="max-w-xl mx-auto px-4 mt-10 md:mt-16 mb-8">
+  <div class="space-y-8">
+    <div class="text-center space-y-3">
+      <div class="mx-auto w-16 h-16 rounded-full bg-base-200 flex items-center justify-center">
+        <%= svg_icon('shield_check', class: 'w-9 h-9') %>
+      </div>
+      <h1 dir="auto" class="text-3xl md:text-4xl font-bold">
+        <%= t('verify_page_title') %>
+      </h1>
+      <p dir="auto" class="text-base-content/80 leading-relaxed">
+        <%= t('verify_page_intro') %>
+      </p>
+    </div>
+    <% if @result %>
+      <%= render 'result', result: @result %>
+    <% end %>
+    <%= form_with url: verify_path, method: :post, multipart: true, local: true, html: { class: 'space-y-4', id: 'verify_form' } do |f| %>
+      <verify-dropzone class="block">
+        <label for="verify_file" data-target="verify-dropzone.area" class="block cursor-pointer rounded-xl border-2 border-dashed border-base-300 bg-base-200/40 hover:bg-base-200/70 transition-colors px-4 py-8">
+          <div class="flex flex-col items-center text-center gap-2">
+            <%= svg_icon('cloud_upload', class: 'w-10 h-10') %>
+            <span dir="auto" class="font-medium">
+              <%= t('verify_drop_pdf_here') %>
+            </span>
+            <span dir="auto" class="text-xs text-base-content/70">
+              <%= t('verify_pdf_only_limit', limit_mb: VerifyController::MAX_FILE_SIZE / 1.megabyte) %>
+            </span>
+            <span data-target="verify-dropzone.filename" class="hidden badge badge-outline badge-lg max-w-full truncate mt-1"></span>
+          </div>
+          <%= f.file_field :file, id: 'verify_file', accept: 'application/pdf', required: true, class: 'sr-only', data: { target: 'verify-dropzone.input' } %>
+        </label>
+      </verify-dropzone>
+      <toggle-submit class="block">
+        <%= f.button button_title(title: t('verify'), disabled_with: t('analyzing'), icon: svg_icon('shield_check', class: 'w-6 h-6')), class: 'base-button w-full' %>
+      </toggle-submit>
+    <% end %>
+  </div>
+</main>
+<%= render 'shared/attribution', link_path: '/verify' %>

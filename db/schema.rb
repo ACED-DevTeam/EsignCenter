@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_01_180000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_02_100100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gin"
   enable_extension "pg_catalog.plpgsql"
@@ -552,6 +552,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_01_180000) do
     t.index ["reset_password_token"], name: "index_users_on_reset_password_token", unique: true
     t.index ["unlock_token"], name: "index_users_on_unlock_token", unique: true
     t.index ["uuid"], name: "index_users_on_uuid", unique: true
+  end
+
+  create_table "verified_documents", force: :cascade do |t|
+    t.bigint "account_id"
+    t.datetime "created_at", null: false
+    t.string "kind", null: false
+    t.string "sha256", null: false
+    t.datetime "signed_at", null: false
+    t.integer "signers_count", null: false
+    t.bigint "submission_id"
+    t.datetime "updated_at", null: false
+    t.index ["sha256"], name: "index_verified_documents_on_sha256", unique: true
   end
 
   create_table "webhook_attempts", force: :cascade do |t|

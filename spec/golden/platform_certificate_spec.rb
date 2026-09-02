@@ -288,9 +288,11 @@ RSpec.describe 'Platform certificate', type: :request do
       expect(response.body).to include(I18n.t('document_download_filename_format'))
       expect(response.body).not_to include(I18n.t('signing_certificates'))
       expect(response.body).not_to include(I18n.t('timestamp_server'))
-      expect(response.body).not_to include(I18n.t('verify_signed_pdf'))
       expect(response.body).not_to include(new_settings_esign_path)
-      expect(response.body).not_to include(verify_pdf_signature_index_path)
+      # Signature checking is the public /verify page now (Phase C): every
+      # admin gets the card linking there, nobody gets an in-app dropzone.
+      expect(response.body).to include(verify_path)
+      expect(response.body).not_to include('name="files[]"')
     end
 
     it 'shows the operator the certificate table, the upload button and the timestamp-server form' do
@@ -301,7 +303,7 @@ RSpec.describe 'Platform certificate', type: :request do
       expect(response).to have_http_status(:ok)
       expect(response.body).to include(I18n.t('signing_certificates'))
       expect(response.body).to include(I18n.t('timestamp_server'))
-      expect(response.body).to include(I18n.t('verify_signed_pdf'))
+      expect(response.body).to include(verify_path)
       expect(response.body).to include(new_settings_esign_path)
       expect(response.body).to include(I18n.t('preferences'))
     end

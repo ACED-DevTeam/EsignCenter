@@ -779,6 +779,10 @@ module Submissions
         end
 
         maybe_enable_ltv(io, sign_params)
+
+        # The bytes below are exactly what the blob stores and what a signer
+        # downloads: the public /verify page matches uploads against them.
+        VerifiedDocuments.record!(io.string, submission: submitter.submission, kind: 'document')
       else
         begin
           pdf.write(io, incremental: true, validate: false)

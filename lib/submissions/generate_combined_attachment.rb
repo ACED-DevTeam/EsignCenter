@@ -31,6 +31,8 @@ module Submissions
         sign_pdf(io, pdf, sign_params)
 
         Submissions::GenerateResultAttachments.maybe_enable_ltv(io, sign_params)
+
+        VerifiedDocuments.record!(io.string, submission:, kind: 'combined')
       else
         pdf.write(io, incremental: true, validate: true)
       end

@@ -54,6 +54,8 @@ module Submissions
           document.sign(io, **sign_params)
 
           Submissions::GenerateResultAttachments.maybe_enable_ltv(io, sign_params)
+
+          VerifiedDocuments.record!(io.string, submission:, kind: 'audit_trail')
         else
           document.write(io)
         end
@@ -71,7 +73,9 @@ module Submissions
 
     def build_audit_trail(submission)
       account = submission.account
-      verify_url = Rails.application.routes.url_helpers.settings_esign_url(
+      # The public verification page (no login): anyone holding the PDF can
+      # confirm the completion date and signer count, never the identities.
+      verify_url = Rails.application.routes.url_helpers.verify_url(
         **Docuseal.default_url_options, host: ENV.fetch('EMAIL_HOST', Docuseal.default_url_options[:host])
       )
 

@@ -57,7 +57,8 @@ Rails.application.routes.draw do
     end
   end
 
-  resources :verify_pdf_signature, only: %i[create]
+  get 'verify' => 'verify#show', as: :verify
+  post 'verify' => 'verify#create'
   resource :mfa_setup, only: %i[show new edit create destroy], controller: 'mfa_setup'
   resources :account_configs, only: %i[create destroy]
   resources :account_custom_fields, only: %i[create]

@@ -1,0 +1,35 @@
+<%# Only the day and the signer count ever appear here; the states are distinct DOM classes so a spec can target them. %>
+<% state = result[:state] %>
+<% tone, icon =
+     case state
+     when 'verified' then ['border-green-500/60 bg-green-50', 'circle_check']
+     when 'not_on_record' then ['border-amber-500/60 bg-amber-50', 'alert_circle']
+     else ['border-red-500/60 bg-red-50', 'x_circle']
+     end %>
+<% icon_tone = { 'verified' => 'text-green-600', 'not_on_record' => 'text-amber-600' }.fetch(state, 'text-red-600') %>
+<section id="verify_result" class="verify-result <%= state %> rounded-xl border p-4 <%= tone %>" data-state="<%= state %>" role="status" aria-live="polite">
+  <div class="flex items-start gap-3">
+    <%= svg_icon(icon, class: "w-7 h-7 shrink-0 #{icon_tone}") %>
+    <div dir="auto" class="space-y-1">
+      <% if state == 'verified' %>
+        <p class="font-semibold text-lg"><%= t('verify_result_verified_title') %></p>
+        <p>
+          <%= t('verify_result_verified',
+                date: l(result[:signed_on], format: :long),
+                signers: t(result[:signers_count] == 1 ? 'verify_signers_one' : 'verify_signers_other', count: result[:signers_count])) %>
+        </p>
+      <% elsif state == 'not_on_record' %>
+        <p class="font-semibold text-lg"><%= t('verify_result_not_on_record_title') %></p>
+        <p><%= t('verify_result_not_on_record') %></p>
+      <% elsif state == 'not_verified' %>
+        <p class="font-semibold text-lg"><%= t('verify_result_not_verified_title') %></p>
+        <p><%= t('verify_result_not_verified') %></p>
+      <% else %>
+        <p class="font-semibold text-lg"><%= t('verify_result_error_title') %></p>
+        <p class="verify-error <%= result[:error] %>">
+          <%= t("verify_error_#{result[:error]}", limit_mb: VerifyController::MAX_FILE_SIZE / 1.megabyte) %>
+        </p>
+      <% end %>
+    </div>
+  </div>
+</section>

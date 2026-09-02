@@ -53,7 +53,7 @@ class SubmitFormInviteController < ApplicationController
   # The invite form is the last request of an invite-then-complete signing, so
   # it carries the signer's ESIGN consent the same way a form step does.
   def complete_submitter!(submitter)
-    consent_params = params.slice(:esign_consent, :esign_consent_version).permit!.to_h
+    consent_params = params.permit(:esign_consent, :esign_consent_version).to_h
 
     Submitters::SubmitValues.call(submitter,
                                   ActionController::Parameters.new(completed: 'true', **consent_params),
