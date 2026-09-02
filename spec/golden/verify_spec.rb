@@ -187,6 +187,48 @@ RSpec.describe 'Public verify', type: :request do
     end
   end
 
+  describe 'the day shown' do
+    def long_date(time)
+      I18n.l(time.utc.to_date, format: :long, locale: :en)
+    end
+
+    # Turning on "combine PDF result" after the fact builds the combined PDF
+    # lazily at the first download — days later; the page must still name
+    # the day the signing finished, never the day the file was produced.
+    it 'names the completion day for a combined PDF built at download three days later', sidekiq: :inline do
+      platform_certificate!
+      submission = submission_for(account)
+      submitter = complete!(submission.submitters.first)
+      completion_day = long_date(submitter.completed_at)
+
+      create(:account_config, account:, key: AccountConfig::COMBINE_PDF_RESULT_KEY, value: true)
+      expect(submission.reload.combined_document_attachment).to be_nil
+
+      travel 3.days do
+        download_day = long_date(Time.current)
+        expect(download_day).not_to eq(completion_day)
+
+        bytes = downloaded_bytes(submitter)
+
+        expect(submission.reload.combined_document_attachment).to be_present
+        record = VerifiedDocument.find_by!(sha256: VerifiedDocuments.sha256(bytes))
+        expect(record.kind).to eq('combined')
+        expect(record.signed_at).to be_within(1.second).of(submitter.completed_at)
+
+        sign_out(:user)
+        reset!
+
+        verify(bytes)
+
+        expect(response).to have_http_status(:ok)
+        expect(result_state).to eq('verified')
+        expect(response.body).to include(completion_day)
+        expect(response.body).not_to include(download_day)
+        expect(response.body).to include('1 signer')
+      end
+    end
+  end
+
   describe 'negative paths' do
     it 'reports an unsigned PDF as not verified' do
       platform_certificate!

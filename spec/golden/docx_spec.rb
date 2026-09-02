@@ -901,6 +901,135 @@ RSpec.describe 'Word document uploads', type: :request do
   # keep blocking the template. A document the builder has just added is
   # listed client-side and saved on the next autosave, so a brand new
   # unlisted one still counts (Templates::CONVERSION_UNLISTED_GRACE).
+  # Two Resubmit surfaces start a fresh submission from a completed one: the
+  # dashboard button (SubmittersResubmitController) and the signer's own
+  # button on the completed page (PUT /resubmit_form, anonymous, admitted on
+  # a private template by the completed submitter's slug). Both are refused
+  # while a Word document the template lists is converting.
+  describe 'resubmitting while a Word document is not ready' do
+    let!(:account) { create(:account, :internal) }
+    let(:template) { create(:template, account:, author: user, only_field_types: %w[text]) }
+    let(:original) do
+      submission = create(:submission, :with_submitters, template:, created_by_user: user)
+
+      submission.submitters.first.tap do |submitter|
+        submitter.update!(email: user.email, sent_at: 1.hour.ago, completed_at: Time.current)
+      end
+    end
+
+    before do
+      sign_in(user)
+      original
+
+      pdf_item = template.schema.sole.deep_dup
+
+      post "/templates/#{template.id}/documents", params: { files: [docx_upload] }
+      put "/templates/#{template.id}", as: :json,
+                                       params: { template: { schema: [pdf_item, *response.parsed_body['schema']] } }
+    end
+
+    it 'refuses the signer-side Resubmit button with the not-ready page and creates nothing' do
+      expect(Templates.documents_status(template.reload)).to eq('converting')
+
+      sign_out(:user)
+      reset!
+
+      expect do
+        put '/resubmit_form', params: { resubmit: original.slug }
+      end.not_to(change { [Submission.count, Submitter.count] })
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.body).to include(I18n.t('document_not_ready'))
+      expect(response.body).to include(I18n.t('documents_still_converting'))
+      expect(response.body).to include(template.name)
+    end
+
+    it 'refuses the dashboard Resubmit with the alert and creates nothing' do
+      expect(Templates.documents_status(template.reload)).to eq('converting')
+
+      expect do
+        put "/submitters_resubmit/#{original.id}"
+      end.not_to(change { [Submission.count, Submitter.count] })
+
+      expect(response).to redirect_to("/s/#{original.slug}")
+      expect(flash[:alert]).to eq(I18n.t('documents_still_converting'))
+    end
+  end
+
+  # The dashboard's recipients form, the MCP send_documents tool and embedded
+  # signing sessions all funnel through Submissions::CreateFromSubmitters,
+  # whose readiness assert is their only guard (the send dialog and
+  # POST /api/submissions carry their own, exercised above).
+  describe 'the readiness guard shared by every other sender path' do
+    let!(:account) { create(:account, :internal) }
+    let(:template) { create(:template, account:, author: user, only_field_types: %w[text]) }
+    let(:role) { template.submitters.first['name'] }
+    let(:converting_message) { I18n.t('documents_still_converting') }
+    let(:json_headers) { { 'CONTENT_TYPE' => 'application/json' } }
+
+    before do
+      sign_in(user)
+
+      pdf_item = template.schema.sole.deep_dup
+
+      post "/templates/#{template.id}/documents", params: { files: [docx_upload] }
+      put "/templates/#{template.id}", as: :json,
+                                       params: { template: { schema: [pdf_item, *response.parsed_body['schema']] } }
+    end
+
+    it 'refuses the dashboard recipients form with the alert and creates no submission' do
+      expect(Templates.documents_status(template.reload)).to eq('converting')
+
+      expect do
+        post "/templates/#{template.id}/submissions", params: {
+          submission: { '1' => { submitters: [{ uuid: template.submitters.first['uuid'],
+                                                email: 'signer@example.com' }] } }
+        }
+      end.not_to change(Submission, :count)
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.body).to include(converting_message)
+      expect(Submitter.count).to eq(0)
+    end
+
+    it 'refuses MCP send_documents with the message and creates no submission' do
+      expect(Templates.documents_status(template.reload)).to eq('converting')
+
+      mcp_token = user.mcp_tokens.create!(name: 'Golden')
+      create(:account_config, account:, key: AccountConfig::ENABLE_MCP_KEY, value: true)
+
+      call = { name: 'send_documents',
+               arguments: { template_id: template.id, submitters: [{ role:, email: 'signer@example.com' }] } }
+
+      expect do
+        post '/mcp', headers: { 'Authorization' => "Bearer #{mcp_token.token}", **json_headers },
+                     params: { jsonrpc: '2.0', id: 1, method: 'tools/call', params: call }.to_json
+      end.not_to change(Submission, :count)
+
+      expect(response).to have_http_status(:ok)
+
+      result = response.parsed_body['result']
+      expect(result['isError']).to be(true)
+      expect(result['content'].sole['text']).to eq(converting_message)
+      expect(Submitter.count).to eq(0)
+    end
+
+    it 'refuses an embedded signing session with 422 and the message and creates no submission' do
+      expect(Templates.documents_status(template.reload)).to eq('converting')
+
+      expect do
+        post '/api/signing_sessions', headers: { 'x-auth-token': user.access_token.token, **json_headers },
+                                      params: { template_id: template.id,
+                                                embed_origin: 'https://app.example.com',
+                                                submitters: [{ role:, email: 'signer@example.com' }] }.to_json
+      end.not_to change(Submission, :count)
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body).to eq('error' => converting_message)
+      expect(Submitter.count).to eq(0)
+    end
+  end
+
   describe 'a converting document the template no longer lists' do
     let!(:account) { create(:account, :internal) }
     let(:api_headers) { { 'x-auth-token': user.access_token.token, 'CONTENT_TYPE' => 'application/json' } }

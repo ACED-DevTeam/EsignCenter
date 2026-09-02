@@ -42,9 +42,11 @@ back — and a conversion is not.
 **Nothing can be sent while a document is converting.** A template whose
 document is still converting — or failed to convert — is not ready for
 signing: the builder's Send and Sign-yourself buttons are held back with a
-tooltip, and every way of starting a signing (the send dialog, the API, the
-MCP tools, signing sessions, the shared link, "sign yourself", resubmit) is
-refused with "This template has a document that is still being converted.
+tooltip, and every way of starting a signing (the send dialog, the
+recipients form, the API, the MCP tools, signing sessions, the shared link,
+"sign yourself", and Resubmit — both the dashboard button and the signer's
+own Resubmit button on the completed page) is refused with "This template
+has a document that is still being converted.
 Try again in a moment." or, for a failed document, "A document in this
 template could not be converted. Remove it or upload it as a PDF." The API
 answers `422` with the same message. Cloning such a template (from the

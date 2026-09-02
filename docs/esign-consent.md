@@ -24,19 +24,32 @@ time they open a document they have not yet agreed on:
   ends with its version and effective date.
 - Once the box is ticked and the form sends its first request, the agreement is
   saved and the checkbox disappears for the rest of that signer's steps — and
-  it never appears again for that signer, even if they reopen their link later.
+  it does not appear again for that person, even if they reopen their link
+  later. The one exception is delegation (below): the person the form is
+  handed to starts with a fresh checkbox.
 - The same checkbox appears in the template **form preview** (the dry run in
   the builder) so senders see exactly what signers will see. The preview never
   sends anything to the server.
 
 This applies on every path a person can sign through: the emailed link, a
-share link, an embedded signing session, a resubmitted form, an email-2FA
-protected form, a form that invites the next party, and "Sign it yourself".
+share link, an embedded signing session, a resubmitted form, a delegated
+form, an email-2FA protected form, a form that invites the next party, and
+"Sign it yourself".
+
+**Delegation.** When a signer hands their form to someone else ("delegate to
+another person"), the form keeps the same signer record but gets a new email
+address and a new link. The new person is a different human, so their consent
+is collected afresh: the checkbox is shown again, the form cannot be completed
+until they tick it, and their agreement is recorded as its own event. The
+first person's agreement is not erased — it stays in the event log, dated
+before the hand-over — but it never counts for the person who signs after the
+delegation.
 
 ## 2. What is recorded
 
-Ticking the box creates **one** `esign_consent` event on the signer
-(`submission_events`), stamped with:
+Ticking the box creates **one** `esign_consent` event per person on the
+signer (`submission_events`) — one for the original signer and, after a
+delegation, one more for the person the form was handed to — stamped with:
 
 - `version` — the disclosure version the signer saw (`v1` today),
 - `ip`, `ua` (browser user agent), `sid` (session) — the same tracking data
@@ -46,19 +59,27 @@ Ticking the box creates **one** `esign_consent` event on the signer
 
 The agreement is recorded the moment it is first sent, even on a step save
 that does not complete the form. A later completion request does not need to
-repeat it.
+repeat it. Only events newer than the signer's latest `delegate_form` event
+count as that person's consent — the same rule the audit trail uses to decide
+which events belong to the current holder of the form.
 
 ## 3. Where the server enforces it
 
 All interactive signing ends in one place, `Submitters::SubmitValues`
 (`lib/submitters/submit_values.rb`). Completing a form there without a
 recorded consent event raises `EsignConsent::ConsentRequiredError`; the form
-endpoints answer `422 { "error": "esign_consent_required" }` and nothing is
-written: no completion time, no completion job, no "completed" event. The
-form shows the required message at the checkbox.
+endpoints answer `422 { "error": "esign_consent_required" }`. On the signing
+form itself (`PUT /s/:slug`) nothing is written: no completion time, no
+completion job, no "completed" event. The invite request (`POST
+/s/:slug/invite`, the form that invites the next party) may already have
+created the invited signers before the refusal; the completion itself is
+still refused, and the retry with consent is gated the same way. The form
+shows the required message at the checkbox.
 
 The consent logic lives in `lib/esign_consent.rb` (`EsignConsent`):
-`consented?`, `record!` (idempotent) and `require!`.
+`consented?`, `record!` (idempotent per person — one event per delegation)
+and `require!`; all three look only at consent events newer than the latest
+delegation.
 
 ## 4. Where it shows
 

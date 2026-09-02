@@ -5,10 +5,13 @@ require Rails.root.join('db/migrate/20260902100100_backfill_verified_documents.r
 # Documents signed before the public /verify page existed must still verify:
 # completed_documents already holds the urlsafe-base64 SHA-256 of every signed
 # per-submitter PDF, so the backfill copies it into verified_documents as hex
-# with the submitter's completion time, that submission's completed-signer
-# count and the provenance ids. Rows that cannot be dated (submitter gone or
-# never completed) or decoded are skipped, duplicates collapse onto the
-# unique fingerprint, and re-running changes nothing.
+# with the submitter's completion time, the number of signers who had
+# completed by each PDF's own completion time (the first signer's PDF says 1,
+# the second's 2 — what the live path records under the `multiple` signing
+# preference; an equal completion time counts) and the provenance ids. Rows
+# that cannot be dated (submitter gone or never completed) or decoded are
+# skipped, duplicates collapse onto the unique fingerprint, and re-running
+# changes nothing.
 RSpec.describe BackfillVerifiedDocuments do
   let!(:account) { create(:account) }
   let(:author) { create(:user, account:) }
@@ -47,10 +50,22 @@ RSpec.describe BackfillVerifiedDocuments do
 
     expect(first.signed_at).to eq(first_signer.completed_at)
     expect(second.signed_at).to eq(second_signer.completed_at)
-    expect([first, second].map(&:signers_count)).to eq([2, 2])
+    expect([first, second].map(&:signers_count)).to eq([1, 2])
     expect([first, second].map(&:account_id).uniq).to eq([account.id])
     expect([first, second].map(&:submission_id).uniq).to eq([submission.id])
     expect([first, second].map(&:kind).uniq).to eq(['document'])
+  end
+
+  it 'counts a peer who completed at the same instant (what the signing job saw when it ran)' do
+    third_bytes = "%PDF third signer #{SecureRandom.hex}"
+    third_signer = create(:submitter, submission:, account:, uuid: SecureRandom.uuid,
+                                      completed_at: second_signer.completed_at)
+    create(:completed_document, submitter: third_signer, sha256: urlsafe(third_bytes))
+
+    run_backfill
+
+    counts = [first_bytes, second_bytes, third_bytes].map { |bytes| VerifiedDocument.find_by!(sha256: hex(bytes)) }
+    expect(counts.map(&:signers_count)).to eq([1, 3, 3])
   end
 
   it 'skips rows that cannot be dated or decoded and collapses duplicate fingerprints' do

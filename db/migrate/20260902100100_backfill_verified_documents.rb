@@ -6,10 +6,16 @@ class BackfillVerifiedDocuments < ActiveRecord::Migration[8.1]
   # signed PDF bytes, one row per submitter). Copy those fingerprints into
   # verified_documents as hex so the public page can answer for them: the
   # signing date is the submitter's completion time and the signer count is
-  # that submission's completed submitters. Rows whose submitter is already
-  # gone carry no date and are skipped; a fingerprint that does not decode to
-  # 32 bytes is skipped too. Combined and audit-trail PDFs were never
-  # fingerprinted, so pre-existing ones stay "not on record" (docs/verify.md).
+  # the submitters who had completed by this submitter's completion time (what
+  # the signing job saw when it produced this PDF: under the `multiple` signing
+  # preference the first signer's PDF is generated when they finish and never
+  # regenerated, so it records 1, the second signer's 2). Ties count: a peer
+  # with an equal completed_at is included, as the live path counts everyone
+  # completed by the time the signing job runs — and the row's own submitter is
+  # always included. Rows whose submitter is already gone carry no date and are
+  # skipped; a fingerprint that does not decode to 32 bytes is skipped too.
+  # Combined and audit-trail PDFs were never fingerprinted, so pre-existing
+  # ones stay "not on record" (docs/verify.md).
   BATCH_SIZE = 1000
 
   class VerifiedDocumentRow < ActiveRecord::Base
@@ -47,7 +53,8 @@ class BackfillVerifiedDocuments < ActiveRecord::Migration[8.1]
              submitters.account_id,
              (SELECT COUNT(*) FROM submitters AS peers
               WHERE peers.submission_id = submitters.submission_id
-                AND peers.completed_at IS NOT NULL) AS signers_count
+                AND peers.completed_at IS NOT NULL
+                AND peers.completed_at <= submitters.completed_at) AS signers_count
       FROM completed_documents
         INNER JOIN submitters ON submitters.id = completed_documents.submitter_id
       WHERE completed_documents.id > #{last_id.to_i}

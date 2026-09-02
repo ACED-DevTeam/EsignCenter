@@ -121,14 +121,17 @@ class StartFormController < ApplicationController
   end
 
   # A template with a Word document still converting (or failed) has no PDF
-  # to sign yet: the shared link and the sender's own "sign yourself" start
-  # get an explanation instead of a form. Only for templates the visitor may
-  # open anyway, so a private template's existence is not confirmed.
+  # to sign yet: the shared link, the sender's own "sign yourself" start and
+  # a signer's Resubmit (the holder of a completed submitter's slug, whom
+  # authorize_start! admits on a private template) get an explanation
+  # instead of a form. Only for templates the visitor may open anyway, so a
+  # private template's existence is not confirmed.
   def refuse_unready_documents!
     status = Templates.documents_status(@template)
 
     return if status.nil?
-    return unless @template.shared_link? || (current_user && current_ability.can?(:update, @template))
+    return unless @resubmit_submitter || @template.shared_link? ||
+                  (current_user && current_ability.can?(:update, @template))
     return head :unprocessable_content unless request.format.html?
 
     @documents_not_ready = Templates::DocumentsNotReady.new(status)

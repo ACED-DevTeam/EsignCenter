@@ -133,6 +133,26 @@ RSpec.describe 'Platform certificate', type: :request do
         .to eq(internal_certificate_data.fetch(:cert))
     end
 
+    # A customer's testing child copies the customer kind, so the parent's
+    # own row is as irrelevant to it as to the parent.
+    it 'signs a customer testing child with the platform certificate, never the parent own row' do
+      platform_certificate!
+      own_certificate_data = GenerateCertificate.call.transform_values(&:to_pem)
+      certify!(account, own_certificate_data)
+      admin_for(account)
+
+      child = Accounts.find_or_create_testing_user(account).account
+
+      expect(child).not_to eq(account)
+      expect(child.customer?).to be(true)
+      expect(account.reload.testing_accounts).to include(child)
+
+      pem = Accounts.load_signing_pkcs(child).certificate.to_pem
+
+      expect(pem).to eq(platform_certificate_pems.fetch('cert'))
+      expect(pem).not_to eq(own_certificate_data.fetch(:cert))
+    end
+
     it 'signs an operator account with the platform certificate until it owns a row' do
       platform_row = platform_certificate!
       operator_account = platform_row.account

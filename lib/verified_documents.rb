@@ -7,13 +7,18 @@
 # upload byte-for-byte. Never rescues: a failed write fails the signing job
 # and Sidekiq retries it, because a signed PDF without a record would be
 # "not on record" forever.
+#
+# `signed_at` is the moment the last signer completed, not the moment the
+# bytes were produced: a combined PDF built lazily at download days later, or
+# a signing job retried across midnight, still answers the completion day on
+# /verify (the backfill of older documents used completed_at the same way).
 module VerifiedDocuments
   module_function
 
   def record!(pdf, submission:, kind:)
     VerifiedDocument.upsert(
       { sha256: sha256(pdf),
-        signed_at: Time.current,
+        signed_at: submission.submitters.where.not(completed_at: nil).maximum(:completed_at) || Time.current,
         signers_count: submission.submitters.where.not(completed_at: nil).count,
         account_id: submission.account_id,
         submission_id: submission.id,

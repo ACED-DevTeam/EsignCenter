@@ -135,6 +135,12 @@ RSpec.describe 'ESIGN consent', type: :request do
     expect(ProcessSubmitterCompletionJob.jobs.size).to eq(1)
   end
 
+  # The consent contract the signing page hands the form (the partial's
+  # data-esign-consent attribute): `consented: true` hides the checkbox.
+  def esign_consent_contract
+    JSON.parse(Nokogiri::HTML(response.body).at_css('submission-form')['data-esign-consent'])
+  end
+
   def pdf_text(bytes)
     document = HexaPDF::Document.new(io: StringIO.new(bytes))
 
@@ -261,6 +267,82 @@ RSpec.describe 'ESIGN consent', type: :request do
 
     it 'gates an internal account signer too (D53)' do
       expect_gated(emailed_submitter_for(internal_account))
+    end
+  end
+
+  # Delegation keeps the submitter row (new email, new slug) — the consent
+  # the first person gave must not let the second one finish.
+  describe 'delegation', sidekiq: :inline do
+    it 'asks the person a form was delegated to for their own consent, then prints it in their audit block' do
+      platform_certificate!
+      create(:account_config, account:, key: AccountConfig::ALLOW_TO_DELEGATE_KEY, value: true)
+      submitter = emailed_submitter_for(account)
+      old_slug = submitter.slug
+
+      # A agrees on a step save without completing.
+      put "/s/#{old_slug}", params: { values: { text_field(submitter)['uuid'] => 'Jane' }, **consent_params }
+      expect(response).to have_http_status(:ok)
+      first_consent = consent_events(submitter).sole
+      expect(EsignConsent.consented?(submitter)).to be(true)
+
+      # A hands the form to B: same row, new email and slug, one delegate_form event.
+      post "/s/#{old_slug}/delegate", params: { email: 'b@example.com' }
+      expect(response).to redirect_to("/s/#{old_slug}/delegated")
+
+      submitter.reload
+      expect(submitter.email).to eq('b@example.com')
+      expect(submitter.slug).not_to eq(old_slug)
+      delegate_event = submitter.submission_events.where(event_type: 'delegate_form').sole
+      expect(delegate_event.event_timestamp).to be > first_consent.event_timestamp
+      expect(EsignConsent.consented?(submitter)).to be(false)
+
+      # B opens the form: the checkbox is back.
+      get "/s/#{submitter.slug}"
+      expect(response).to have_http_status(:ok)
+      expect(esign_consent_contract).to include('consented' => false, 'version' => EsignConsent::VERSION)
+
+      # B cannot complete on A's consent.
+      put "/s/#{submitter.slug}", params: completion_params(submitter)
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body).to eq('error' => 'esign_consent_required')
+      expect(submitter.reload.completed_at).to be_nil
+      expect(submitter.submission_events.where(event_type: 'complete_form')).not_to exist
+      expect(consent_events(submitter).count).to eq(1)
+
+      # B agrees on a step save without completing: a second, newer event
+      # carrying B's own tracking data; A's stays in the log.
+      put "/s/#{submitter.slug}", params: { values: { text_field(submitter)['uuid'] => 'Jane' }, **consent_params }
+      expect(response).to have_http_status(:ok)
+      expect(submitter.reload.completed_at).to be_nil
+
+      consents = consent_events(submitter).order(:id).to_a
+      expect(consents).to match([
+                                  first_consent,
+                                  have_attributes(event_timestamp: be > delegate_event.event_timestamp,
+                                                  data: include('version' => EsignConsent::VERSION,
+                                                                'ip' => be_present))
+                                ])
+
+      # B completes, sending the consent again: record! finds B's event (not
+      # A's) and creates no third one — the post-delegation idempotency proof.
+      # (A PUT after completion would prove nothing: the controller answers
+      # 422 form_has_been_completed_already before consent is consulted.)
+      put "/s/#{submitter.slug}", params: completion_params(submitter, esign_consent: 'true')
+      expect(response).to have_http_status(:ok)
+      expect(submitter.reload.completed_at).to be_present
+      expect(submitter.submission_events.where(event_type: 'complete_form').count).to eq(1)
+      expect(consent_events(submitter).order(:id).to_a).to eq(consents)
+
+      # B's per-signer block in the audit trail carries the consent line
+      # (the per-signer block only counts events newer than the delegation,
+      # so the line proves B's own event, not A's).
+      audit_trail = submitter.submission.reload.audit_trail
+      expect(audit_trail).to be_attached
+
+      text = pdf_text(audit_trail.download)
+
+      expect(text).to include("#{I18n.t('consented_to_electronic_signatures')} (#{EsignConsent::VERSION}):")
+      expect(text.scan("#{I18n.t('consented_to_electronic_signatures')} (#{EsignConsent::VERSION}):").size).to eq(1)
     end
   end
 

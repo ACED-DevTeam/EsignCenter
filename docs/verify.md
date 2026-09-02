@@ -40,9 +40,9 @@ but nothing in our records matches the altered bytes.
 ## 4. How the records are written
 
 Every time EsignCenter signs a PDF it stores a `verified_documents` row with
-the SHA-256 fingerprint of the exact bytes it uploaded, the moment, the number
-of signers who had completed the submission, and the account and submission
-ids for provenance. Three artefacts are recorded:
+the SHA-256 fingerprint of the exact bytes it uploaded, the completion time,
+the number of signers who had completed the submission, and the account and
+submission ids for provenance. Three artefacts are recorded:
 
 - the per-signer signed document (`kind: document`) — the file a signer downloads
 - the combined PDF (`kind: combined`)
@@ -52,8 +52,19 @@ The write happens inside the signing job and is never rescued: if the database
 refuses the row, the job fails and Sidekiq retries it, because a signed PDF
 without a record would answer "not on record" forever.
 
+The date the page shows is the day (UTC) the **last signer completed** the
+submission — not the day the PDF file itself was generated. The two can
+differ: a combined PDF is built at the first download when "combine PDF
+result" is switched on after the signing, and a signing job can be retried
+across midnight. Both still answer the completion day.
+
 A migration backfilled the fingerprints of documents signed before this page
-existed (they were already stored, base64-encoded, in `completed_documents`).
+existed (they were already stored, base64-encoded, in `completed_documents`)
+using the same completion time. For those older records the signer count is
+the number of signers who had completed by that PDF's own completion time —
+what the signing job saw when it produced the file — so the first signer's
+copy of a two-signer document says "by 1 signer" and the second signer's says
+"by 2 signers", exactly as a document signed today would.
 
 ## 5. Why the records outlive deletion
 
@@ -110,7 +121,9 @@ Only per-signer documents were fingerprinted before this page shipped.
 Combined PDFs and audit-trail PDFs generated before Session 4 have an
 EsignCenter signature but no record, so they show **Not on record**. Every
 combined and audit-trail PDF generated since is recorded at signing time and
-verifies normally; regenerating an old combined PDF records it too.
+verifies normally; regenerating an old combined PDF records it too, and the
+page still shows the day the last signer completed, however much later the
+file was regenerated.
 
 ## 8. Where the page is linked
 
