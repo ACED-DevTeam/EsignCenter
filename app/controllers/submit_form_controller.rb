@@ -22,6 +22,12 @@ class SubmitFormController < ApplicationController
     render json: { error: 'esign_consent_required' }, status: :unprocessable_content
   end
 
+  # The page showed an older disclosure than the one now in force: the form
+  # asks the signer to reload and agree again.
+  rescue_from EsignConsent::StaleVersionError do
+    render json: { error: 'esign_consent_version_stale' }, status: :unprocessable_content
+  end
+
   def show
     submission = @submitter.submission
 

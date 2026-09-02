@@ -28,7 +28,9 @@ module Submitters
         WebhookUrls.enqueue_events(submitter, 'form.started')
       end
 
-      EsignConsent.record!(submitter, request) if params[:esign_consent].to_s == 'true'
+      if params[:esign_consent].to_s == 'true'
+        EsignConsent.record!(submitter, request, version: params[:esign_consent_version].presence)
+      end
 
       update_submitter!(submitter, params, request, validate_required:)
 

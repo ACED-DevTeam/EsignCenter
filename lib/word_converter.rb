@@ -91,12 +91,16 @@ module WordConverter
 
   # Holds one of MAX_CONCURRENT conversion slots for the block. The counter
   # lives in RateLimit.store with a TTL, so a crashed worker cannot pin a slot
-  # forever. Raises Busy when every slot is taken.
+  # forever. Raises Busy when every slot is taken — and when the store cannot
+  # answer (a nil increment): the cap fails closed, the job's delayed retry
+  # comes back when the store does.
   def with_slot
     active = RateLimit.store.increment(ACTIVE_KEY, 1, expires_in: ACTIVE_TTL)
 
-    if active && active > MAX_CONCURRENT
-      RateLimit.store.decrement(ACTIVE_KEY, 1)
+    raise Busy, 'conversion slot counter unavailable' if active.nil?
+
+    if active > MAX_CONCURRENT
+      release_slot
 
       raise Busy, "#{active - 1} conversions already running"
     end
@@ -105,7 +109,16 @@ module WordConverter
 
     yield
   ensure
-    RateLimit.store.decrement(ACTIVE_KEY, 1) if acquired
+    release_slot if acquired
+  end
+
+  # A counter at or below zero is deleted rather than kept: a stale key would
+  # otherwise drift negative (a decrement after the TTL expired recreates it
+  # below zero and widens the cap), and a fresh key gets a fresh TTL.
+  def release_slot
+    left = RateLimit.store.decrement(ACTIVE_KEY, 1)
+
+    RateLimit.store.delete(ACTIVE_KEY) if left && left <= 0
   end
 
   def convert(data, filename:)
@@ -145,7 +158,7 @@ module WordConverter
       BINARY, '--headless', '--norestore', '--nologo', '--nolockcheck',
       "-env:UserInstallation=file://#{profile}",
       '--convert-to', 'pdf', '--outdir', tmp, input,
-      pgroup: true, in: File::NULL, out: log_path, err: log_path
+      pgroup: true, in: File::NULL, %i[out err] => [log_path, 'w']
     )
   rescue Errno::ENOENT, Errno::EACCES => e
     raise Unavailable, "#{BINARY}: #{e.message}"
@@ -169,31 +182,56 @@ module WordConverter
     end
   end
 
-  # TERM the whole group, give it a moment, then KILL it; always reap the
-  # leader so nothing is left behind as a zombie.
+  # TERM the whole group, give it the grace period, then KILL the group —
+  # always, even when the leader is already gone: a descendant that ignored
+  # TERM is still in the group. Both signals are ESRCH-safe, and the leader
+  # is reaped so nothing is left behind as a zombie.
   def kill_process_group(pid)
     signal_group(pid, 'TERM')
 
     grace_deadline = monotonic_now + TERM_GRACE_SECONDS
+    leader_reaped = false
 
     while monotonic_now < grace_deadline
-      _, status = Process.wait2(pid, Process::WNOHANG)
+      leader_reaped ||= reap_nonblocking(pid)
 
-      return if status
+      break if leader_reaped && group_gone?(pid)
 
       sleep POLL_INTERVAL
     end
 
     signal_group(pid, 'KILL')
 
-    Process.wait(pid)
-  rescue Errno::ECHILD, Errno::ESRCH
-    nil
+    reap(pid) unless leader_reaped
   end
 
   def signal_group(pid, signal)
     Process.kill(signal, -pid)
   rescue Errno::ESRCH, Errno::EPERM
+    nil
+  end
+
+  def group_gone?(pid)
+    Process.kill(0, -pid)
+
+    false
+  rescue Errno::ESRCH
+    true
+  rescue Errno::EPERM
+    false
+  end
+
+  def reap_nonblocking(pid)
+    _, status = Process.wait2(pid, Process::WNOHANG)
+
+    !status.nil?
+  rescue Errno::ECHILD
+    true
+  end
+
+  def reap(pid)
+    Process.wait(pid)
+  rescue Errno::ECHILD
     nil
   end
 

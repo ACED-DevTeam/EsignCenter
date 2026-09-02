@@ -98,6 +98,15 @@ Old events keep their old version, so the audit trail always says which text
 a signer agreed to. Signers who consented under an earlier version are not
 asked again — a new version is a new text for new signers, not a revocation.
 
+The signing page sends back the version it displayed together with the
+consent. A page that was opened before the bump and is only submitted
+afterwards therefore cannot record the new version for a text the signer
+never saw: the server refuses it, the page shows "The signing disclosure was
+updated. Please reload the page and agree again." at the checkbox, and after
+a reload the signer sees the new disclosure and a fresh checkbox. A request
+that carries no version at all (a page loaded before this field existed) is
+taken as the current version.
+
 ## 7. Locale rule
 
 Every consent string exists as a real translation in all 14 base locales

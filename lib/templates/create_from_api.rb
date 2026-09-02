@@ -51,15 +51,22 @@ module Templates
 
       content_type = Marcel::MimeType.for(tempfile)
 
-      unless content_type == Templates::CreateAttachments::PDF_CONTENT_TYPE || content_type.to_s.start_with?('image/')
-        raise Templates::CreateAttachments::InvalidFileType, "#{content_type}/#{index}"
-      end
+      assert_pdf_or_image!(content_type, index)
 
       ActionDispatch::Http::UploadedFile.new(
         tempfile:,
         filename: document[:name].presence || "document-#{index + 1}.pdf",
         type: content_type
       )
+    end
+
+    # The API and MCP doors stay PDF/image-only: a Word file would start an
+    # asynchronous conversion behind a synchronous contract (docs/word-uploads.md).
+    def assert_pdf_or_image!(content_type, label)
+      return if content_type == Templates::CreateAttachments::PDF_CONTENT_TYPE
+      return if content_type.to_s.start_with?('image/')
+
+      raise Templates::CreateAttachments::InvalidFileType, "#{content_type}/#{label}"
     end
 
     def decode_document_file(encoded_file, index)

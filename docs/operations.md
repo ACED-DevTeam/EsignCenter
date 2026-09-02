@@ -30,6 +30,7 @@ Contents:
 5. [Redis: embedded vs managed](#5-redis-embedded-vs-managed)
 6. [Postmark: moving to a separate account](#6-postmark-moving-to-a-separate-account)
 7. [What Session 2 changed for operators](#7-what-session-2-changed-for-operators)
+8. [Signing certificates and timestamps](#8-signing-certificates-and-timestamps)
 
 ---
 
@@ -157,8 +158,11 @@ from the pre-deploy snapshot**, never `db:rollback`.
 
 ### 2.1 Before you start
 
-1. Confirm on Render that `CERTS` and `MULTITENANT` are **not set** (section
-   3 explains why `CERTS` is dangerous now).
+1. Confirm on Render that `MULTITENANT` is **not set**. The old
+   "confirm `CERTS` is unset" step is **moot**: Session 4 deleted `CERTS`
+   from the code, so a leftover value on the service does nothing at all
+   (section 8). `TIMESERVER_URL` must be set — production refuses to boot
+   without it.
 2. Confirm `HOST` on Render equals the host in the old app-URL setting, or
    set `APP_URL` explicitly. Every link in every email and webhook is built
    from this. Check the old value from the Render Shell:
@@ -380,7 +384,7 @@ Sessions 5–6 and are listed there when they land.
 | `SMTP_FROM` | Required with `SMTP_ADDRESS` | `lib/mail_configs.rb`, `config/initializers/email_delivery.rb` | **Boot refuses to start** in production when `SMTP_ADDRESS` is set and this is not — otherwise platform mail would go out under a tenant's From address. Format: `EsignCenter <noreply@esigncenter.com>`. |
 | `SMTP_DOMAIN`, `SMTP_AUTHENTICATION`, `SMTP_ENABLE_STARTTLS`, `SMTP_ENABLE_SSL`, `SMTP_ENABLE_TLS`, `SMTP_SSL_VERIFY`, `SMTP_OPEN_TIMEOUT`, `SMTP_READ_TIMEOUT` | Optional | `lib/mail_configs.rb` | Tuning for non-Postmark servers. Defaults: STARTTLS on, certificate verification on, 15 s open / 25 s read timeouts. Leave unset for Postmark. |
 | `EMAIL_DELIVERY_MODE` | Optional | `lib/mail_configs.rb`, `config/initializers/email_delivery.rb` | Defaults to `smtp` in production and `test` elsewhere. Set only to force one of those; any other value refuses to boot in production. In `test` mode no mail leaves the server. |
-| `TIMESERVER_URL` | Required | `lib/docuseal.rb`, `lib/accounts.rb` | Accounts without their own timeserver row sign PDFs **without** a trusted timestamp. |
+| `TIMESERVER_URL` | **Required** | `lib/docuseal.rb`, `lib/accounts.rb`, `config/initializers/timestamp_server_guard.rb` | The trusted timestamp authority (the DigiCert URL chosen in Session 0) stamped into every signed PDF. **Boot refuses to start** in production when it is unset. If the authority is unreachable at signing time the signing job **fails loudly** — Sentry gets one report and Sidekiq retries the job — instead of embedding a locally generated time that only looked trusted (section 8). |
 | `REDIS_URL` | Optional today; required for managed Redis | `config/dotenv.rb`, `lib/rate_limit.rb`, Sidekiq | When unset the app derives a local URL and starts its own Redis inside the container (`lib/puma/plugin/redis_server.rb`). Setting it to a managed Redis URL turns the embedded one off automatically. See section 5. |
 | `SIDEKIQ_THREADS` | Optional | `lib/puma/plugin/sidekiq_embed.rb` | Background-job worker threads; default 5. |
 | `RUN_MIGRATIONS` | Optional | `config/initializers/migrate.rb` | Migrations run on every production boot unless set to `false`. Leave unset on Render; use `false` only for one-off consoles against a copy. |
@@ -391,12 +395,12 @@ Sessions 5–6 and are listed there when they land.
 | `SIDEKIQ_BASIC_AUTH_PASSWORD` | Optional | `config/initializers/sidekiq.rb` | Adds a browser username/password prompt in front of `/jobs` **in addition to** the operator + 2FA requirement. Not needed; the route already returns 404 to everyone else. |
 | `REGISTRATION_ENABLED` | Launch switch | `lib/docuseal.rb`, `app/controllers/concerns/launch_gates.rb` | Unset = off: sign-up and confirmation pages return 404. Set exactly `true` to open. |
 | `BILLING_ENABLED` | Launch switch | `lib/docuseal.rb`, `app/controllers/concerns/launch_gates.rb` | Unset = off: billing pages return 404. Set exactly `true` to open. |
-| `CERTS` | **Must stay unset** | `lib/docuseal.rb` | Only consulted for an account with no certificate row (a freshly seeded operator account has none). A stray value would silently become that account's signing identity. |
+| `CERTS` | **Gone (Session 4)** | — | The app no longer reads this variable anywhere; a leftover value on the service is inert. Signing identities come from the platform certificate on the operator account (section 8). A code gate fails the build if anything reads `CERTS` again. |
 | `MULTITENANT` | **Must stay unset** | `lib/docuseal.rb`, `config/puma.rb` | Setting it changes tenancy behaviour and stops the embedded Redis/Sidekiq from starting. |
 | `DEMO` | Must stay unset | `lib/docuseal.rb`, mail interceptor | Demo mode captures all mail and adds a demo queue. |
 | `ACTIVE_STORAGE_PUBLIC` | Leave unset | `config/environments/production.rb`, `lib/docuseal.rb` | Unset = files are served through the app with expiring links (correct). `true` would assume a public bucket. |
 | `PRESIGNED_URLS_EXPIRE_MINUTES`, `FILE_URLS_EXPIRE_MINUTES` | Optional | `config/environments/production.rb`, `lib/accounts.rb` | Download-link lifetimes; defaults 240 and 40 minutes. |
-| `TRUSTED_CERTS` | Optional | `lib/docuseal.rb` | Extra root certificates trusted by `/verify`. Unset is fine. |
+| `TRUSTED_CERTS` | Optional | `lib/docuseal.rb` | Extra root certificates trusted when verifying a signed PDF, on top of the platform certificate. Unset is fine. |
 | `WORD_CONVERSION_ENABLED` | Optional (Session 4) | `lib/word_converter.rb` | Unset = Word (.docx/.doc) uploads are on whenever LibreOffice is in the image. Set to exactly `false` to switch them off: the upload forms stop offering Word files and any Word file sent is refused with a clear message. The kill switch for LibreOffice trouble. See `docs/word-uploads.md`. |
 | `SOFFICE_PATH` | Optional (Session 4) | `lib/word_converter.rb` | Full path to the LibreOffice binary when `soffice` is not on `PATH`. Leave unset for the shipped image. |
 | One-off, for `rake email:pin`: `ACCOUNT_ID`, `SMTP_TOKEN_ENV`, `FROM_EMAIL`, `SMTP_HOST`, `SMTP_PIN_PORT`, plus one variable per internal app holding that app's Postmark server token (any name; `SMTP_TOKEN_ENV` names it) | Task-time only | `lib/tasks/email.rake` | The task aborts naming the missing one. `SMTP_HOST` defaults to `smtp.postmarkapp.com`, `SMTP_PIN_PORT` to `587`. |
@@ -516,14 +520,16 @@ background job **inside the same container** as Puma, Sidekiq and the
 embedded Redis. LibreOffice can spike to hundreds of megabytes per
 conversion. If the container hits its memory limit, the whole container is
 killed — and with it every queued, retrying and scheduled job in the embedded
-Redis. Session 4's guards (low-concurrency queue, hard timeout, size cap)
+Redis. Session 4's guards (two-slot conversion cap, hard timeout, size cap)
 reduce the odds; they do not change what is lost when it happens. The
 Render plan's memory limit for the Standard tier: **confirm at launch-gate
 review** (the checklist notes the PDF work already needs Standard).
 
 What shipped (Session 4 D): conversions run on the `documents` Sidekiq queue
-with one worker thread, at most **two** LibreOffice processes at once
-(`WordConverter::MAX_CONCURRENT`), a 120-second hard timeout that kills the
+(a fetch weight on the shared worker pool, not a thread of its own), at most
+**two** LibreOffice processes at once — the two-slot counter
+(`WordConverter::MAX_CONCURRENT`) is the real cap, and it fails closed when
+Redis cannot answer — a 120-second hard timeout that kills the
 whole process group, a 20 MB file cap, and 30 conversions per account per
 hour. Budget a few hundred megabytes per running conversion on top of the
 web server's working set when choosing the tier. `WORD_CONVERSION_ENABLED=false`
@@ -704,3 +710,96 @@ Render env vars.
   `401 {"error": "Account is not active"}`; an embedded template-builder
   token (minted through the API) gets a plain 404. Session 7 adds suspension
   to the same guard (`lib/account_states.rb`).
+
+---
+
+## 8. Signing certificates and timestamps
+
+*(Session 4. Plain English: a **certificate** is the digital identity a PDF
+signature is made with — like a company seal. A **timestamp authority (TSA)**
+is an outside service that vouches for what time the signature was made.)*
+
+### 8.1 One platform certificate for every customer
+
+Every customer account signs with **one** certificate — the platform
+certificate, named `EsignCenter` — held by the platform-operator account. A
+customer account can no longer have a signing identity of its own: if an old
+certificate row is still sitting on a customer account (every account got one
+from the Session 1 upgrade), it is **ignored**.
+
+- **Where it lives:** an encrypted row (`platform_esign_certs`) on the
+  operator account. There is exactly one.
+- **Where it comes from:** `rake operator:seed` creates it the first time it
+  runs, and the task is safe to re-run — it never makes a second one.
+- **Internal apps (VA Claims and friends) are the exception:** they keep
+  their own certificate rows and keep signing with them. Those rows are no
+  longer editable in the app; changing one is a console job (Session 8 adds
+  an operator console for it).
+- **No operator account = no signing.** If the platform certificate cannot be
+  resolved, signing stops with a loud error naming `rake operator:seed`
+  instead of quietly borrowing some other account's identity.
+
+### 8.2 Custody: keep an offline copy (launch gate 1)
+
+The platform certificate is the only thing that proves an EsignCenter
+signature is ours. Losing the database without a copy means every document
+signed so far can no longer be traced to a certificate you still hold. Export
+it once, right after the seed, and keep it somewhere safe and offline (a
+password manager's secure file store, or an encrypted USB stick):
+
+```sh
+bundle exec rake "operator:platform_cert:export[/tmp/esigncenter-platform-cert.pem]"
+```
+
+It writes one file readable only by its owner (mode `0600`) holding the
+certificate, its two authority certificates and the private keys, and prints
+**only** the fingerprint and the file size — never any key material. Download
+it from the Render Shell, store it, then delete the copy in `/tmp`.
+
+To check at any time which certificate the running app is using:
+
+```sh
+bundle exec rake operator:platform_cert:fingerprint
+```
+
+Compare that fingerprint with the one printed by the export. If they differ,
+the running app is signing with a certificate you do not have a copy of.
+
+### 8.3 Restore and rotation
+
+- **Restore:** the certificate comes back with the database (it is a row in
+  `encrypted_configs`). The offline copy is the fallback for the case where
+  the database is gone for good.
+- **Rotation** (only if the key is believed exposed): in the Render Shell,
+  delete the platform row and let the next signature generate a fresh one —
+
+  ```sh
+  bundle exec rails runner 'OperatorConfigs.account.encrypted_configs.find_by(key: EncryptedConfig::PLATFORM_ESIGN_CERTS_KEY)&.destroy!; puts PlatformCertificate.fingerprint'
+  ```
+
+  then **export the new one immediately**. Consequence: documents signed
+  before the rotation stay valid and verifiable — the old certificate is
+  still trusted for verification — but new signatures carry the new
+  identity, and the two fingerprints differ. Never rotate casually.
+
+### 8.4 The timestamp authority is loud now
+
+`TIMESERVER_URL` is required in production; the app refuses to boot without
+it. When the authority is unreachable or answers with an error, the signing
+job now **fails**: Sentry gets one report, Sidekiq retries the job (a short
+outage heals itself), and no document is written with a fake timestamp. The
+old behaviour embedded a locally generated time that looked like a trusted
+timestamp but proved nothing.
+
+Customer accounts always use the platform `TIMESERVER_URL`; a timestamp-server
+row on a customer account is ignored. Internal accounts may still pin their
+own.
+
+### 8.5 Certificates and timestamps are operator-only surfaces
+
+In **Settings → E-Signature**, every admin still sees the signing
+preferences (multiple signatures, flatten, download filename). The
+certificate table, the certificate upload button, the timestamp-server form
+and the PDF-verification box are visible **only** to the platform operator;
+for everyone else those pages return 404, exactly as if the routes did not
+exist.

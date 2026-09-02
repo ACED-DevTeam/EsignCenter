@@ -32,12 +32,18 @@ module DownloadUtils
   ].freeze
 
   UnableToDownload = Class.new(StandardError)
+  # The response body passed `max_bytes` (the download stops there).
+  TooLarge = Class.new(UnableToDownload)
 
   module_function
 
   # infra-keep: every caller that fetches a user-supplied URL passes validate: true explicitly;
   # the default only decides the behaviour for internal callers.
-  def call(url, validate: Docuseal.multitenant?)
+  #
+  # With `max_bytes` the body is streamed and the download is abandoned as
+  # soon as it exceeds the bound, so a large file never sits in memory whole;
+  # the returned response carries the collected body as usual.
+  def call(url, validate: Docuseal.multitenant?, max_bytes: nil)
     uri = begin
       URI(url)
     rescue URI::Error
@@ -46,9 +52,30 @@ module DownloadUtils
 
     validate_uri!(uri) if validate
 
-    resp = conn(validate:).get(uri)
+    resp = max_bytes ? bounded_get(uri, validate:, max_bytes:) : conn(validate:).get(uri)
 
     raise UnableToDownload, "Error loading: #{uri}" if resp.status >= 400
+
+    resp
+  end
+
+  def bounded_get(uri, validate:, max_bytes:)
+    body = +''
+
+    resp = conn(validate:).get(uri) do |req|
+      req.options.on_data = proc do |chunk, received_bytes, env|
+        # A redirect's own body streams through here too before the
+        # follow-redirects middleware moves on; only the final answer counts.
+        next if env.status.to_i.between?(300, 399)
+
+        raise TooLarge, "Error loading: #{uri}. The file is larger than #{max_bytes / 1.megabyte} MB." if
+          received_bytes > max_bytes
+
+        body << chunk
+      end
+    end
+
+    resp.env.body = body
 
     resp
   end

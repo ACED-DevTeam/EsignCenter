@@ -2,9 +2,9 @@
 
 module Templates
   # What the builder polls while a Word document is being converted: the
-  # attachment's own metadata is the source of truth (the schema the builder
-  # autosaves may lag behind it), and a ready document comes back in the same
-  # shape the add-document response uses, so the builder can swap it in.
+  # attachment's own metadata is the source of truth (the schema flags are a
+  # cache of it), and a ready document comes back in the same shape the
+  # add-document response uses, so the builder can swap it in.
   module ConversionStatus
     DOCUMENT_JSON = {
       methods: %i[metadata signed_key],
@@ -23,15 +23,16 @@ module Templates
 
       result = { status:, schema_item: }
 
-      if status == 'ready'
-        result[:document] = document.as_json(DOCUMENT_JSON)
-        result[:fields] = template.fields
-        result[:submitters] = template.submitters
-      end
+      # The document JSON carries the fields the conversion found in
+      # `metadata.pdf.fields`, like the add-document response: the builder
+      # merges and saves them itself.
+      result[:document] = document.as_json(DOCUMENT_JSON) if status == 'ready'
 
       result
     end
 
+    # `converting` stays on until the job's post-processing is done, so a
+    # PDF blob that is already stored still reads as converting here.
     def status_for(document)
       if document.metadata['converting']
         'converting'

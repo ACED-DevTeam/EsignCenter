@@ -33,25 +33,35 @@ class TemplatesUploadsController < ApplicationController
   rescue Templates::CreateAttachments::PdfEncrypted
     render turbo_stream: turbo_stream.append(params[:form_id], html: helpers.tag.prompt_password)
   rescue StandardError => e
-    # The template is saved before its file is stored; a refused file must not
-    # leave that empty template behind on the dashboard.
-    discard_empty_template!
-
-    message = Templates::CreateAttachments.upload_error_message(e)
-
-    return redirect_to(root_path, alert: message) if message
-
-    ErrorReport.error(e)
-
-    raise if Rails.env.local?
-
-    redirect_to root_path, alert: I18n.t('unable_to_update_file')
+    refuse_upload!(e)
   end
 
   private
 
-  def discard_empty_template!
-    return unless @template.persisted? && @template.schema.blank? && @template.documents.none?
+  # The template is saved before its files are stored, and files are stored
+  # one by one: a refusal anywhere in the batch must not leave that template
+  # (with whatever was attached before the refused file) behind on the
+  # dashboard. A conversion job already queued for it finds nothing to do.
+  def refuse_upload!(error)
+    discard_template!
+
+    message = Templates::CreateAttachments.upload_error_message(error)
+
+    return redirect_to(root_path, alert: message) if message
+
+    # A download that failed or was cut off at the size cap is the user's
+    # condition, not a defect; anything else is reported.
+    unless error.is_a?(DownloadUtils::UnableToDownload)
+      ErrorReport.error(error)
+
+      raise error if Rails.env.local?
+    end
+
+    redirect_to root_path, alert: I18n.t('unable_to_update_file')
+  end
+
+  def discard_template!
+    return unless @template.persisted?
 
     @template.destroy!
   rescue StandardError => e
@@ -71,14 +81,29 @@ class TemplatesUploadsController < ApplicationController
     template
   end
 
+  # The download is bounded before anything is read into memory whole: a
+  # Word file stops at the converter's cap (and is refused with its message),
+  # anything else at the API's per-document cap.
   def create_file_params_from_url
-    tempfile = Tempfile.new
-    tempfile.binmode
-    tempfile.write(DownloadUtils.call(params[:url], validate: true).body)
-    tempfile.rewind
-
     filename = URI.decode_www_form_component(params[:filename]) if params[:filename].present?
     filename ||= File.basename(URI.decode_www_form_component(params[:url]))
+
+    word = Templates::CreateAttachments::DOCUMENT_EXTENSIONS.include?(File.extname(filename).downcase)
+    max_bytes = word ? WordConverter::MAX_FILE_SIZE : Templates::CreateFromApi::MAX_DOCUMENT_SIZE
+
+    body =
+      begin
+        DownloadUtils.call(params[:url], validate: true, max_bytes:).body
+      rescue DownloadUtils::TooLarge
+        raise WordConverter::FileTooLarge if word
+
+        raise
+      end
+
+    tempfile = Tempfile.new
+    tempfile.binmode
+    tempfile.write(body)
+    tempfile.rewind
 
     file = ActionDispatch::Http::UploadedFile.new(
       tempfile:,

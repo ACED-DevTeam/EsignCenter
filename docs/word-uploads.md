@@ -33,10 +33,21 @@ MCP tools, signing sessions, the shared link, "sign yourself", resubmit) is
 refused with "This template has a document that is still being converted.
 Try again in a moment." or, for a failed document, "A document in this
 template could not be converted. Remove it or upload it as a PDF." The API
-answers `422` with the same message.
+answers `422` with the same message. Cloning such a template (from the
+dashboard, the API or an embedded builder session) is refused with the same
+message too: a copy would share the unconverted file and never finish.
+
+The readiness check reads the stored documents themselves, not the builder's
+copy of the template: saving in the builder, reloading it, or an autosave that
+lands mid-conversion cannot make a converting document look ready, and after
+a reload the builder shows the converting (or failed) card again and keeps
+checking.
 
 A file that cannot be accepted is refused straight away with a specific
-message — no template or document is created:
+message — no template or document is created, even when other files in the
+same upload were fine. Files are recognised by their contents, not by the
+name or type the browser sends: a Word file called `.pdf`, or sent as a zip,
+is still treated as a Word file.
 
 | Situation | Message |
 |---|---|
@@ -56,7 +67,7 @@ in place the original Word file is deleted from storage; only the PDF is kept.
 | Time per conversion | 120 seconds, then the LibreOffice process group is killed | `WordConverter::TIMEOUT_SECONDS` |
 | Conversions running at once (whole instance) | 2 | `WordConverter::MAX_CONCURRENT` |
 | Conversions per account | 30 per hour | `Templates::CreateAttachments::WORD_CONVERSIONS_PER_HOUR` |
-| Queue | `documents`, one worker thread | `config/sidekiq.yml` |
+| Queue | `documents`, fetch weight 1 on the shared worker pool (not a thread of its own) | `config/sidekiq.yml` |
 
 Each conversion runs in its own temporary directory with its own LibreOffice
 profile and is removed afterwards. LibreOffice is started directly (never
@@ -92,6 +103,11 @@ Both are optional; nothing else needs configuring.
   down with it (see `docs/operations.md` section 5, "Memory contention with
   LibreOffice"). Plan for the Standard tier at least and confirm the limit at
   launch-gate 3.
-- **CPU.** Conversions are CPU-bound for a few seconds each; the single
-  worker thread on the `documents` queue and the two-slot cap keep them from
-  crowding out signing traffic.
+- **CPU.** Conversions are CPU-bound for a few seconds each. The `documents`
+  entry in `config/sidekiq.yml` is only a fetch weight: the embedded Sidekiq
+  runs its `SIDEKIQ_THREADS` worker threads across every queue, so the queue
+  itself does not limit how many conversions run. The real cap is the
+  two-slot counter (`WordConverter::MAX_CONCURRENT`): at most two LibreOffice
+  processes at once, whatever the worker pool is doing — and if the counter's
+  store (Redis) cannot answer, the job waits and retries rather than run
+  uncounted.

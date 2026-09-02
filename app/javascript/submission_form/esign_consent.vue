@@ -16,6 +16,11 @@
         aria-describedby="esign_consent_required"
         @change="$emit('update:modelValue', $event.target.checked)"
       >
+      <input
+        type="hidden"
+        name="esign_consent_version"
+        :value="config.version"
+      >
       <div class="text-sm sm:text-base leading-snug">
         <label
           for="esign_consent"
@@ -37,7 +42,7 @@
       :role="error ? 'alert' : undefined"
       :class="error ? 'text-error text-sm mt-1 ps-7' : 'sr-only'"
     >
-      {{ config.required_message }}
+      {{ stale ? config.stale_message : config.required_message }}
     </p>
   </div>
 </template>
@@ -46,11 +51,20 @@
 export default {
   name: 'EsignConsent',
   props: {
-    // { label, link_text, required_message, modal_id } — strings come from the
-    // Rails partial so config/locales/i18n.yml stays the single source.
+    // { version, label, link_text, required_message, stale_message, modal_id }
+    // — strings come from the Rails partial so config/locales/i18n.yml stays
+    // the single source. `version` is sent back with the consent so the server
+    // can refuse a consent given on an outdated disclosure.
     config: {
       type: Object,
       required: true
+    },
+    // The server refused the version this page displayed: the signer has to
+    // reload and agree again.
+    stale: {
+      type: Boolean,
+      required: false,
+      default: false
     },
     modelValue: {
       type: Boolean,

@@ -631,6 +631,7 @@
           v-model="esignConsentChecked"
           :config="esignConsent"
           :error="showEsignConsentRequired"
+          :stale="esignConsentStale"
         />
         <div
           v-if="(currentField.type !== 'payment' && currentField.type !== 'verification' && currentField.type !== 'kba') || submittedValues[currentField.uuid]"
@@ -676,6 +677,7 @@
         :authenticity-token="authenticityToken"
         :url="baseUrl + submitPath + '/invite'"
         :esign-consent="esignConsentChecked"
+        :esign-consent-version="esignConsent.version"
         :style="{ maxWidth: isBreakpointMd ? '582px' : '' }"
         @success="[isInvite = false, performComplete($event)]"
       />
@@ -1154,7 +1156,8 @@ export default {
       showBlankConfirm: false,
       isEsignConsented: this.esignConsent.consented !== false,
       esignConsentChecked: false,
-      showEsignConsentRequired: false
+      showEsignConsentRequired: false,
+      esignConsentStale: false
     }
   },
   computed: {
@@ -1901,6 +1904,14 @@ export default {
               // checkbox again (with its message) instead of a generic alert.
               this.isEsignConsented = false
               this.esignConsentChecked = false
+              this.refuseWithoutEsignConsent()
+            } else if (data.error === 'esign_consent_version_stale') {
+              // The disclosure changed since this page loaded: the checkbox
+              // comes back with the reload message; a reload shows the new
+              // disclosure and a fresh, enabled checkbox.
+              this.isEsignConsented = false
+              this.esignConsentChecked = false
+              this.esignConsentStale = true
               this.refuseWithoutEsignConsent()
             } else if (data.error) {
               const i18nKey = data.error.replace(/\s+/g, '_').toLowerCase()

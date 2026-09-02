@@ -42,15 +42,49 @@ module Templates
 
   module_function
 
-  # nil when every document is ready, otherwise 'converting' or 'failed'
-  # (a failed document outranks a converting one: it needs the user's action).
+  # nil when every document is ready, otherwise 'converting' or 'failed'.
+  # The attachments' own blob metadata decides — the schema flags are only a
+  # cache the builder reads (see refresh_conversion_flags). A document still
+  # converting anywhere on the template blocks, whether or not the schema
+  # lists it yet; a failed one blocks while the schema still lists it (the
+  # builder's "remove document" drops it from the schema, not from storage).
+  # A failed document outranks a converting one: it needs the user's action.
   def documents_status(template)
-    items = template.schema.to_a
+    flagged = flagged_documents(template)
 
-    return 'failed' if items.any? { |item| item['conversion_failed'] || item[:conversion_failed] }
-    return 'converting' if items.any? { |item| item['converting'] || item[:converting] }
+    return if flagged.empty?
+
+    schema_uuids = template.schema.to_a.map { |item| item['attachment_uuid'] || item[:attachment_uuid] }
+
+    return 'failed' if flagged.any? { |d| d.metadata['conversion_failed'] && schema_uuids.include?(d.uuid) }
+    return 'converting' if flagged.any? { |d| d.metadata['converting'] }
 
     nil
+  end
+
+  def flagged_documents(template)
+    template.documents.preload(:blob).select do |document|
+      document.metadata['converting'] || document.metadata['conversion_failed']
+    end
+  end
+
+  # Re-derives every schema item's `converting` / `conversion_failed` flag
+  # from its attachment's metadata. The builder autosaves the whole schema
+  # without those keys (they are not permitted params, and the client is not
+  # trusted with them), so each save would otherwise drop the placeholder and
+  # stop the polling after a reload.
+  def refresh_conversion_flags(template)
+    flagged = flagged_documents(template).index_by(&:uuid)
+
+    template.schema = template.schema.to_a.map do |item|
+      item = item.to_h.stringify_keys.except('converting', 'conversion_failed')
+      document = flagged[item['attachment_uuid']]
+
+      item['converting'] = true if document&.metadata&.dig('converting')
+      item['conversion_failed'] = true if document&.metadata&.dig('conversion_failed')
+
+      item
+    end
   end
 
   def documents_ready?(template)

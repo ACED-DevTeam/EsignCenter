@@ -17,6 +17,12 @@
       name="esign_consent"
       value="true"
     >
+    <input
+      v-if="esignConsent"
+      type="hidden"
+      name="esign_consent_version"
+      :value="esignConsentVersion"
+    >
     <div
       v-for="(submitter, index) in [...submitters, ...optionalSubmitters]"
       :key="submitter.uuid"
@@ -112,6 +118,12 @@ export default {
       type: Boolean,
       required: false,
       default: false
+    },
+    // The disclosure version the signer agreed to (sent with the consent).
+    esignConsentVersion: {
+      type: String,
+      required: false,
+      default: ''
     }
   },
   emits: ['success'],

@@ -54,13 +54,16 @@ module Templates
       [documents, dynamic_documents]
     end
 
-    def handle_pdf_or_image(template, file, document_data = nil, params = {}, extract_fields: false, metadata: {})
+    # `content_type` is the sniffed type (handle_file_types); the declared one
+    # is only a fallback for callers that already know what they hold.
+    def handle_pdf_or_image(template, file, document_data = nil, params = {}, extract_fields: false, metadata: {},
+                            content_type: nil)
       document_data ||= file.read
+      content_type ||= file.content_type
 
-      document_data = maybe_decrypt_pdf_or_raise(document_data, params) if file.content_type == PDF_CONTENT_TYPE
+      document_data = maybe_decrypt_pdf_or_raise(document_data, params) if content_type == PDF_CONTENT_TYPE
 
-      blob = build_document_blob(document_data, filename: file.original_filename,
-                                                content_type: file.content_type, metadata:)
+      blob = build_document_blob(document_data, filename: file.original_filename, content_type:, metadata:)
 
       document = template.documents.create!(blob:)
 
@@ -159,11 +162,30 @@ module Templates
       raise PdfEncrypted
     end
 
+    # What the bytes say the file is (Marcel reads the magic numbers, then the
+    # name and the declared type only to refine them). Every upload is routed
+    # by this, never by the browser's declared type: a .docx is a zip inside,
+    # and a renamed file is whatever it really is.
+    def sniff_content_type(file)
+      io = file.respond_to?(:tempfile) ? file.tempfile : file
+      io.rewind if io.respond_to?(:rewind)
+
+      type = Marcel::MimeType.for(io, name: file.original_filename.to_s, declared_type: file.content_type.to_s)
+
+      io.rewind if io.respond_to?(:rewind)
+
+      type
+    end
+
+    def zip?(content_type)
+      content_type == ZIP_CONTENT_TYPE || content_type == X_ZIP_CONTENT_TYPE
+    end
+
     def extract_zip_files(files)
       extracted_files = []
 
       Array.wrap(files).each do |file|
-        if file.content_type == ZIP_CONTENT_TYPE || file.content_type == X_ZIP_CONTENT_TYPE
+        if zip?(sniff_content_type(file))
           total_size = 0
 
           Zip::File.open(file.tempfile).each do |entry|
@@ -200,19 +222,21 @@ module Templates
     end
 
     def handle_file_types(template, file, params, extract_fields:, dynamic: false)
-      if file.content_type.include?('image') || file.content_type == PDF_CONTENT_TYPE
-        return [handle_pdf_or_image(template, file, file.read, params, extract_fields:), []]
-      end
+      content_type = sniff_content_type(file)
 
-      document_data = file.read
-      content_type = Marcel::MimeType.for(StringIO.new(document_data), name: file.original_filename,
-                                                                       declared_type: file.content_type)
+      if content_type.include?('image') || content_type == PDF_CONTENT_TYPE
+        return [handle_pdf_or_image(template, file, file.read, params, extract_fields:, content_type:), []]
+      end
 
       if WordConverter.word?(content_type:, filename: file.original_filename)
-        return [handle_word_document(template, file, document_data, content_type:), []]
+        # The size is known before a byte of the upload is read into memory;
+        # handle_word_document checks the bytes it got once more.
+        raise WordConverter::FileTooLarge if file.respond_to?(:size) && file.size.to_i > WordConverter::MAX_FILE_SIZE
+
+        return [handle_word_document(template, file, file.read, content_type:), []]
       end
 
-      raise InvalidFileType, "#{file.content_type}/#{dynamic}"
+      raise InvalidFileType, "#{content_type}/#{dynamic}"
     end
   end
 end

@@ -6,8 +6,9 @@ module Mcp
       SCHEMA = {
         name: 'create_template',
         title: 'Create Template',
-        description: 'Create a document template. Provide a URL to upload a PDF/DOCX file, or provide only a name ' \
-                     'to create an empty template and receive an edit URL where the file can be uploaded via the UI.',
+        description: 'Create a document template. Provide a URL to upload a PDF or image file, or provide only ' \
+                     'a name to create an empty template and receive an edit URL where the file can be uploaded ' \
+                     'via the UI.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -17,7 +18,7 @@ module Mcp
             },
             url: {
               type: 'string',
-              description: 'Optional URL of a PDF or DOCX file to upload. If omitted, an empty template is ' \
+              description: 'Optional URL of a PDF or image file to upload. If omitted, an empty template is ' \
                            'created and the returned edit_url can be used to upload a file via the UI.'
             }
           },
@@ -30,6 +31,9 @@ module Mcp
           openWorldHint: true
         }
       }.freeze
+
+      # Same words as the API's refusal (Api::TemplatesController).
+      UNSUPPORTED_FORMAT_MESSAGE = 'Unsupported document format. Only PDF and image files are supported.'
 
       module_function
 
@@ -63,11 +67,16 @@ module Mcp
             type: Marcel::MimeType.for(tempfile)
           )
 
+          # Sniffed before anything is saved: MCP keeps the API's PDF/image-only
+          # contract (a Word file would convert asynchronously behind a
+          # synchronous answer).
+          Templates::CreateFromApi.assert_pdf_or_image!(file.content_type, filename)
+
           template.name = arguments['name'].presence || File.basename(filename, '.*')
           template.save!
 
           documents, = Templates::CreateAttachments.call(template, { files: [file] }, extract_fields: true)
-          schema = documents.map { |doc| { attachment_uuid: doc.uuid, name: doc.filename.base } }
+          schema = documents.map { |doc| Templates::CreateAttachments.schema_item(doc) }
 
           if template.fields.blank?
             template.fields = Templates::ProcessDocument.normalize_attachment_fields(template, documents)
@@ -95,6 +104,10 @@ module Mcp
             }
           ]
         }
+      rescue Templates::CreateAttachments::InvalidFileType
+        template.destroy! if template.persisted?
+
+        { content: [{ type: 'text', text: UNSUPPORTED_FORMAT_MESSAGE }], isError: true }
       end
       # rubocop:enable Metrics/AbcSize, Metrics/MethodLength
     end

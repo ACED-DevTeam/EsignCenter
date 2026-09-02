@@ -3,6 +3,15 @@
 class TemplatesCloneAndReplaceController < ApplicationController
   load_and_authorize_resource :template
 
+  # Raised by Templates::Clone (before anything is saved) while a Word
+  # document of the original is still converting or failed to convert.
+  rescue_from Templates::DocumentsNotReady do |e|
+    respond_to do |f|
+      f.html { redirect_back(fallback_location: root_path, alert: e.message) }
+      f.json { render json: { error: e.message }, status: :unprocessable_content }
+    end
+  end
+
   def create
     return head :unprocessable_content if params[:files].blank?
 

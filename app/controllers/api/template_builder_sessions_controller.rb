@@ -32,6 +32,8 @@ module Api
     rescue Templates::CreateAttachments::InvalidFileType
       render json: { error: 'Unsupported document format. Only PDF and image files are supported.' },
              status: :unprocessable_content
+    rescue Templates::DocumentsNotReady => e
+      render json: { error: e.message }, status: :unprocessable_content
     rescue ActiveRecord::RecordNotFound
       render json: { error: 'Template not found' }, status: :unprocessable_content
     rescue DownloadUtils::UnableToDownload => e

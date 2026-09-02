@@ -102,10 +102,41 @@ RSpec.describe WordConverter do
         expect(RateLimit.store.read(active_key)).to eq(1)
       end
 
-      expect(RateLimit.store.read(active_key)).to eq(0)
+      # A released last slot deletes the key (a fresh key gets a fresh TTL).
+      expect(RateLimit.store.read(active_key)).to be_nil
 
       expect { described_class.with_slot { raise 'boom' } }.to raise_error('boom')
-      expect(RateLimit.store.read(active_key)).to eq(0)
+      expect(RateLimit.store.read(active_key)).to be_nil
+    end
+
+    it 'never leaves the counter at or below zero, whatever it found' do
+      RateLimit.store.write(active_key, 0)
+
+      described_class.with_slot do
+        expect(RateLimit.store.read(active_key)).to eq(1)
+      end
+
+      expect(RateLimit.store.read(active_key)).to be_nil
+
+      # A stale key that drifted negative (decrement after the TTL expired).
+      RateLimit.store.write(active_key, -1)
+
+      described_class.with_slot do
+        expect(RateLimit.store.read(active_key)).to eq(0)
+      end
+
+      expect(RateLimit.store.read(active_key)).to be_nil
+    end
+
+    it 'fails closed when the store cannot count (nil increment) and touches nothing' do
+      allow(RateLimit.store).to receive(:increment).and_return(nil)
+      allow(RateLimit.store).to receive(:decrement).and_call_original
+
+      expect { described_class.with_slot { raise 'never reached' } }
+        .to raise_error(WordConverter::Busy, /unavailable/)
+
+      expect(RateLimit.store).not_to have_received(:decrement)
+      expect(RateLimit.store.read(active_key)).to be_nil
     end
   end
 

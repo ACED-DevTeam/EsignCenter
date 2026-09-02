@@ -3341,24 +3341,23 @@ export default {
         this.template.documents.splice(documentIndex, 1, data.document)
       }
 
-      if (nextItem.pending_fields && data.fields) {
-        this.template.fields = data.fields
-
-        if (data.submitters) {
-          this.template.submitters = data.submitters
-
-          if (!this.template.submitters.find((s) => s.uuid === this.selectedSubmitter?.uuid)) {
-            this.selectedSubmitter = this.template.submitters[0]
-          }
-        }
-      }
-
       if (this.editable) {
-        this.save()
-      }
+        // The job never touches template.fields (a save from this builder
+        // would overwrite it): the fields it found travel in the document's
+        // metadata and are merged here, exactly like an added PDF's.
+        const pdfFields = data.document?.metadata?.pdf?.fields
 
-      if (nextItem.pending_fields) {
-        this.pendingFieldAttachmentUuids.push(attachmentUuid)
+        if (pdfFields?.length) {
+          this.pendingFieldAttachmentUuids.push(attachmentUuid)
+
+          pdfFields.forEach((field) => {
+            field.submitter_uuid = this.selectedSubmitter.uuid
+
+            this.insertField(field)
+          })
+        }
+
+        this.save()
       }
     },
     onConversionFailed (attachmentUuid, data) {

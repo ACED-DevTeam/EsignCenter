@@ -5,6 +5,10 @@ class SubmitFormInviteController < ApplicationController
     render json: { error: 'esign_consent_required' }, status: :unprocessable_content
   end
 
+  rescue_from EsignConsent::StaleVersionError do
+    render json: { error: 'esign_consent_version_stale' }, status: :unprocessable_content
+  end
+
   skip_before_action :authenticate_user!
   skip_authorization_check
 
@@ -49,9 +53,10 @@ class SubmitFormInviteController < ApplicationController
   # The invite form is the last request of an invite-then-complete signing, so
   # it carries the signer's ESIGN consent the same way a form step does.
   def complete_submitter!(submitter)
+    consent_params = params.slice(:esign_consent, :esign_consent_version).permit!.to_h
+
     Submitters::SubmitValues.call(submitter,
-                                  ActionController::Parameters.new(completed: 'true',
-                                                                   esign_consent: params[:esign_consent]),
+                                  ActionController::Parameters.new(completed: 'true', **consent_params),
                                   request)
   end
 

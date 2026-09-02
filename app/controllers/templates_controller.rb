@@ -56,6 +56,10 @@ class TemplatesController < ApplicationController
 
     @template.assign_attributes(template_params)
 
+    # The converting/failed flags come from the attachments, never from the
+    # client (see Templates.refresh_conversion_flags).
+    Templates.refresh_conversion_flags(@template) if template_params.key?(:schema)
+
     is_name_changed = @template.name_changed?
 
     @template.save!

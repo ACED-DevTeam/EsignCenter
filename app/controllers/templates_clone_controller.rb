@@ -3,6 +3,12 @@
 class TemplatesCloneController < ApplicationController
   load_and_authorize_resource :template, instance_name: :base_template
 
+  # Raised by Templates::Clone while a Word document of the original is still
+  # converting or failed to convert.
+  rescue_from Templates::DocumentsNotReady do |e|
+    redirect_back(fallback_location: root_path, alert: e.message)
+  end
+
   def new
     authorize!(:create, Template)
 

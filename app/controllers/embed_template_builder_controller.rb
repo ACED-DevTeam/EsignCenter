@@ -43,6 +43,11 @@ class EmbedTemplateBuilderController < ApplicationController
                                          schema: template_params[:schema], baseline: @template)
 
     @template.assign_attributes(template_params)
+
+    # The converting/failed flags come from the attachments, never from the
+    # client (see Templates.refresh_conversion_flags).
+    Templates.refresh_conversion_flags(@template) if template_params.key?(:schema)
+
     @template.save!
 
     SearchEntries.enqueue_reindex(@template)

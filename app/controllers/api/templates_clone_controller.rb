@@ -35,6 +35,8 @@ module Api
       SearchEntries.enqueue_reindex(cloned_template)
 
       render json: Templates::SerializeForApi.call(cloned_template, schema_documents:)
+    rescue Templates::DocumentsNotReady => e
+      render json: { error: e.message }, status: :unprocessable_content
     end
   end
 end
