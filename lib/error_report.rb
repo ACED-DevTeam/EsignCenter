@@ -30,8 +30,16 @@ module ErrorReport
 
     nil
   rescue StandardError => e
-    Rails.logger.error("ErrorReport failed: #{e.class}: #{e.message}")
+    emergency_log(e)
 
+    nil
+  end
+
+  # Last resort when Sentry or the logger itself fails: a logger that raises
+  # (closed, broken backend) must not take the caller down either.
+  def emergency_log(error)
+    Rails.logger.error("ErrorReport failed: #{error.class}: #{error.message}")
+  rescue StandardError
     nil
   end
 

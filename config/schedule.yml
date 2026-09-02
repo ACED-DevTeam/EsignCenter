@@ -1,5 +1,6 @@
-# Recurring Sidekiq jobs (sidekiq-cron). Loaded by the Sidekiq server on
-# startup from config/initializers/sidekiq.rb.
+# Recurring Sidekiq jobs (sidekiq-cron). This is sidekiq-cron's default
+# schedule file: the gem's own startup hook loads it when a Sidekiq server
+# boots (source "schedule", so a job deleted here is purged on deploy).
 scheduler_heartbeat:
   cron: '* * * * *'
   class: 'SchedulerHeartbeatJob'

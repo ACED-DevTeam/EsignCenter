@@ -13,11 +13,16 @@ module RateLimit
         ActiveSupport::Cache::RedisCacheStore.new(
           url: ENV.fetch('REDIS_URL'),
           namespace: 'rate_limit',
-          error_handler: lambda do |method:, returning:, exception:|
-            Rails.error.report(exception, handled: true, severity: :warning, context: { method:, returning: })
-          end
+          error_handler: method(:report_store_error)
         )
       end
+  end
+
+  # An unreachable Redis fails open (the store returns nil and every limit is
+  # off until it is back); the failure itself goes through the one reporting
+  # seam so it reaches Sentry and the log. Never raises.
+  def report_store_error(method:, returning:, exception:)
+    ErrorReport.warning(exception, method:, returning:)
   end
 
   def call(key, limit:, ttl:, enabled: true)

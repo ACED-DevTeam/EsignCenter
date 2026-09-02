@@ -17,9 +17,10 @@ module ActionMailerConfigsInterceptor
 
     unless MailConfigs.delivery_mode == 'smtp'
       # Never let a real SMTP transport survive a non-smtp delivery mode (a
-      # production dry run must not email customers); other transports
-      # (letter_opener, test) are already safe.
-      message.delivery_method(null_delivery_method) if message.delivery_method.is_a?(Mail::SMTP)
+      # production dry run must not email customers), and never let
+      # Mail::TestMailer hoard messages outside the test suite. Developer
+      # transports (letter_opener) stay as they are.
+      message.delivery_method(null_delivery_method) if replace_with_null?(message)
 
       return message
     end
@@ -47,6 +48,18 @@ module ActionMailerConfigsInterceptor
   def deliver_via_smtp(message, smtp_settings)
     message.delivery_method(:smtp, smtp_settings)
     message.raise_delivery_errors = true
+  end
+
+  # Transports that must not survive a non-smtp delivery mode: a real SMTP
+  # transport anywhere, and Mail::TestMailer outside the test environment
+  # (where it IS the null method and is left as it is). Mail loads its
+  # transports lazily, so they are resolved here at call time.
+  def replace_with_null?(message)
+    transport = message.delivery_method
+
+    return true if transport.is_a?(Mail::SMTP)
+
+    transport.is_a?(Mail::TestMailer) && !Rails.env.test?
   end
 
   # The test environment keeps Mail::TestMailer so specs can inspect

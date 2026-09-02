@@ -50,6 +50,13 @@ RSpec.describe 'Error reporting', type: :lib do
         expect { described_class.error(StandardError.new('boom')) }.not_to raise_error
         expect(Rails.logger).to have_received(:error).with('ErrorReport failed: RuntimeError: sentry down')
       end
+
+      it 'never raises even when the emergency logger raises too' do
+        allow(Sentry).to receive(:capture_exception).and_raise(RuntimeError, 'sentry down')
+        allow(Rails.logger).to receive(:error).and_raise(IOError, 'closed stream')
+
+        expect { expect(described_class.error(StandardError.new('boom'))).to be_nil }.not_to raise_error
+      end
     end
 
     context 'when Sentry is not initialised' do
@@ -69,6 +76,42 @@ RSpec.describe 'Error reporting', type: :lib do
         expect(Rails.logger).to have_received(:warn).with('Already sent: 3')
         expect(Rails.logger).to have_received(:info).with('TTL: 4')
       end
+    end
+  end
+
+  # Redis unreachable: the rate-limit store fails open (every limit is off)
+  # and says so through the one seam, so the outage is visible in Sentry.
+  describe RateLimit do
+    let(:unreachable_redis) do
+      Class.new do
+        def method_missing(*)
+          raise Redis::CannotConnectError, 'redis down'
+        end
+
+        def respond_to_missing?(*)
+          false
+        end
+      end.new
+    end
+
+    let(:store) do
+      ActiveSupport::Cache::RedisCacheStore.new(redis: unreachable_redis, pool: false, namespace: 'rate_limit',
+                                                error_handler: described_class.method(:report_store_error))
+    end
+
+    before do
+      allow(Sentry).to receive(:initialized?).and_return(true)
+      allow(Sentry).to receive(:capture_exception)
+      allow(described_class).to receive(:store).and_return(store)
+    end
+
+    it 'fails open and reports the store error to Sentry at warning level' do
+      expect(described_class.call('golden', limit: 1, ttl: 1.minute)).to be(true)
+      expect(described_class.call('golden', limit: 1, ttl: 1.minute)).to be(true)
+
+      expect(Sentry).to have_received(:capture_exception)
+        .with(an_instance_of(Redis::CannotConnectError), level: :warning, extra: { method: :increment, returning: nil })
+        .twice
     end
   end
 
@@ -121,6 +164,30 @@ RSpec.describe 'Error reporting', type: :lib do
       load sentry_initializer
 
       expect(Sentry.configuration.environment).to eq('test')
+    end
+
+    # Rails' own error reporter (Rails.error) is a second reporting path used
+    # by framework internals; it forwards to Sentry only when the subscriber
+    # is registered, which the railtie does at boot from this setting.
+    it 'registers the Rails.error subscriber so those reports reach Sentry too' do
+      ENV['SENTRY_DSN'] = 'https://public@example.ingest.sentry.io/1'
+
+      load sentry_initializer
+
+      expect(Sentry.configuration.rails.register_error_subscriber).to be(true)
+
+      # The railtie subscribes in after_initialize, which already ran in this
+      # process without a DSN — do exactly what it does then.
+      Sentry::Railtie.instance.register_error_subscriber(Rails.application)
+      allow(Sentry).to receive(:capture_exception)
+      error = RuntimeError.new('x')
+
+      Rails.error.report(error, handled: true)
+
+      expect(Sentry).to have_received(:capture_exception)
+        .with(error, hash_including(level: :warning, tags: hash_including(handled: true)))
+    ensure
+      Rails.error.unsubscribe(Sentry::Rails::ErrorSubscriber) if defined?(Sentry::Rails::ErrorSubscriber)
     end
   end
 

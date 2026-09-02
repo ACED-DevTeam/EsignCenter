@@ -12,9 +12,16 @@ module AccountStates
 
   module_function
 
+  # A testing child is the same tenant as its parent: archiving the parent
+  # refuses the child's tokens too (the self + testing-parent chain is
+  # Account#configuration_lookup_accounts, the Session 1 inheritance helper).
   def tokens_allowed?(account)
     return false if account.nil?
 
+    account.configuration_lookup_accounts.all? { |candidate| active?(candidate) }
+  end
+
+  def active?(account)
     TOKEN_REFUSAL_STATES.none? { |state| account.public_send(state).present? }
   end
 end

@@ -12,6 +12,11 @@ module Api
 
     wrap_parameters false
 
+    # The account-state guard runs on EVERY request that presents a token —
+    # including the controllers below that skip authenticate_user! (blob
+    # proxies, tracking endpoints) yet still authorize through current_user.
+    # Subclasses never skip it.
+    before_action :refuse_inactive_token_account!
     before_action :authenticate_user!
     check_authorization
 
@@ -82,11 +87,17 @@ module Api
     end
 
     def authenticate_user!
-      return render json: { error: 'Not authenticated' }, status: :unauthorized unless current_user
+      render json: { error: 'Not authenticated' }, status: :unauthorized unless current_user
+    end
 
-      # Session users are governed by Devise (an archived account cannot sign
-      # in); a token keeps working until its account state says otherwise.
-      return if @token_user.nil? || AccountStates.tokens_allowed?(@token_user.account)
+    # Session users are governed by Devise (an archived account cannot sign
+    # in); a token keeps working until its account state says otherwise. The
+    # refusal never says why. Anonymous requests and unknown tokens pass
+    # through untouched — authenticate_user! (where not skipped) handles them.
+    def refuse_inactive_token_account!
+      token_user = user_from_token
+
+      return if token_user.nil? || AccountStates.tokens_allowed?(token_user.account)
 
       render json: { error: 'Account is not active' }, status: :unauthorized
     end
@@ -96,11 +107,12 @@ module Api
     end
 
     def user_from_token
-      return if request.headers['X-Auth-Token'].blank?
+      return @user_from_token if defined?(@user_from_token)
+      return @user_from_token = nil if request.headers['X-Auth-Token'].blank?
 
       sha256 = Digest::SHA256.hexdigest(request.headers['X-Auth-Token'])
 
-      @token_user = User.joins(:access_token).active.find_by(access_token: { sha256: })
+      @user_from_token = User.joins(:access_token).active.find_by(access_token: { sha256: })
     end
 
     def current_account

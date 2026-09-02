@@ -333,6 +333,20 @@ RSpec.describe 'Account and user creation matrix', type: :request do
       expect(operator_account.account_configs.where(key: 'fulltext_search').sole.value).to be(true)
     end
 
+    it 'adopts over an operator row that reads false' do
+      operator_account = create(:account, :operator)
+      create(:account_config, account: operator_account, key: 'fulltext_search', value: false)
+      legacy_account = create(:account, :internal)
+      create(:account_config, account: legacy_account, key: 'fulltext_search', value: true)
+
+      expect do
+        task.invoke
+      end.to output("fulltext search flag adopted from legacy account #{legacy_account.id}\n").to_stdout
+
+      expect(operator_account.account_configs.where(key: 'fulltext_search').sole.value).to be(true)
+      expect(Docuseal.fulltext_search?).to be(true)
+    end
+
     it 'creates no operator row when there is no legacy flag to adopt' do
       create(:account, :internal)
 

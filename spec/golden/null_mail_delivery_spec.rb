@@ -70,6 +70,36 @@ RSpec.describe 'Null mail delivery', type: :lib do
       expect(message.delivery_method).to be_a(NullMailDelivery)
     end
 
+    it 'drops a message already on Mail::TestMailer when the delivery mode is not smtp' do
+      message = build_message
+      allow(MailConfigs).to receive(:delivery_mode).and_return('test')
+
+      expect(message.delivery_method).to be_a(Mail::TestMailer)
+
+      ActionMailerConfigsInterceptor.delivering_email(message)
+
+      expect(message.delivery_method).to be_a(NullMailDelivery)
+    end
+
+    it 'leaves a developer transport such as letter_opener alone' do
+      developer_transport = Class.new do
+        attr_reader :settings
+
+        def initialize(settings = {})
+          @settings = settings
+        end
+
+        def deliver!(_mail); end
+      end
+      message = build_message
+      message.delivery_method(developer_transport)
+      allow(MailConfigs).to receive(:delivery_mode).and_return('test')
+
+      ActionMailerConfigsInterceptor.delivering_email(message)
+
+      expect(message.delivery_method).to be_a(developer_transport)
+    end
+
     it 'drops demo mail' do
       allow(Docuseal).to receive(:demo?).and_return(true)
       message = build_message

@@ -2,8 +2,9 @@
 
 # A still-valid token stops working the moment its account leaves the active
 # state. Session sign-in already refuses archived accounts (Devise); this
-# covers every token-authenticated door instead: API keys, signing sessions
-# and MCP tokens. The refusal never says why.
+# covers every token-authenticated door instead: API keys, signing sessions,
+# MCP tokens and the blob proxies that authorize a download through the
+# token without ever requiring one. The refusal never says why.
 RSpec.describe 'Token account state', type: :request do
   let(:account) { create(:account) }
   let(:author) { create(:user, account:) }
@@ -114,6 +115,85 @@ RSpec.describe 'Token account state', type: :request do
       archive!(account)
 
       mcp_tools_list
+
+      expect(response).to have_http_status(:unauthorized)
+      expect(response.parsed_body).to eq(refusal)
+    end
+  end
+
+  describe 'GET the blob proxy' do
+    # An expired download link is served only to a token (or session) that
+    # can read the record — the proxy skips authenticate_user! and decides
+    # through current_user, so the state guard has to hold there too.
+    let(:blob) { template.documents.first.blob }
+    let(:expired_path) { ActiveStorage::Blob.proxy_path(blob, expires_at: 1.hour.ago) }
+
+    it 'serves an expired link to the token before the archive and refuses it after' do
+      get expired_path, headers: api_headers
+
+      expect(response).to have_http_status(:ok)
+
+      archive!(account)
+
+      get expired_path, headers: api_headers
+
+      expect(response).to have_http_status(:unauthorized)
+      expect(response.parsed_body).to eq(refusal)
+    end
+
+    it 'still serves a public logo blob to an anonymous visitor' do
+      account.logo.attach(io: Rails.root.join('spec/fixtures/sample-image.png').open,
+                          filename: 'logo.png', content_type: 'image/png')
+      archive!(account)
+
+      get ActiveStorage::Blob.proxy_path(account.logo.blob)
+
+      expect(response).to have_http_status(:ok)
+    end
+
+    # The legacy proxy route is only mounted in a mode the test environment
+    # does not run in, so its guard is asserted on the callback chain: every
+    # API controller that skips authenticate_user! keeps the state guard.
+    it 'keeps the state guard on every API controller that skips authenticate_user!' do
+      controllers = [
+        Api::ActiveStorageBlobsProxyController, Api::ActiveStorageBlobsProxyLegacyController,
+        Api::SubmitterFormViewsController, Api::SubmitterEmailClicksController, Api::Admin::AccountsController
+      ]
+
+      controllers.each do |controller|
+        filters = controller._process_action_callbacks.select { |callback| callback.kind == :before }.map(&:filter)
+
+        expect(filters).to include(:refuse_inactive_token_account!), controller.name
+        expect(filters).not_to include(:authenticate_user!), controller.name
+      end
+    end
+  end
+
+  describe 'testing-child tokens' do
+    let(:account) { create(:account, :internal) }
+
+    # The test-mode API key belongs to the testing child, which is the same
+    # tenant as its parent: archiving the parent alone must refuse it.
+    it 'refuses the test-mode API key once the parent account is archived' do
+      sign_in(author)
+      post testing_account_path, headers: { 'HTTP_REFERER' => root_url }
+
+      expect(response).to have_http_status(:redirect)
+
+      sign_out(:user)
+
+      testing_child = account.testing_accounts.reload.sole
+      child_headers = { 'x-auth-token': testing_child.users.sole.access_token.token }
+
+      get '/api/templates', headers: child_headers
+
+      expect(response).to have_http_status(:ok)
+
+      archive!(account)
+
+      expect(testing_child.reload.archived_at).to be_nil
+
+      get '/api/templates', headers: child_headers
 
       expect(response).to have_http_status(:unauthorized)
       expect(response.parsed_body).to eq(refusal)

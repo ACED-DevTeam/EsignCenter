@@ -13,6 +13,7 @@ RSpec.describe 'Scheduler', type: :lib do
 
   after do
     Sidekiq.redis { |conn| conn.call('DEL', tick_key) }
+    Sidekiq::Cron::Job.destroy_all!
   end
 
   it 'declares the heartbeat every minute on the recurrent queue' do
@@ -27,12 +28,19 @@ RSpec.describe 'Scheduler', type: :lib do
     expect(queues).not_to include('rollbar')
   end
 
-  it 'registers the heartbeat job the way the Sidekiq server does at startup and enqueues it' do
-    Sidekiq::Cron::Job.load_from_hash!(schedule)
+  # sidekiq-cron's own startup hook loads its default schedule file; the app
+  # adds no second loader (one would re-register every job as "dynamic" and
+  # defeat the purge of jobs removed from the file).
+  it 'registers the heartbeat job through the gem loader the Sidekiq server runs at startup and enqueues it' do
+    expect(Sidekiq::Cron.configuration.cron_schedule_file).to eq('config/schedule.yml')
+    expect(Rails.root.join('config/initializers/sidekiq.rb').read).not_to include('load_from_hash!')
+
+    Sidekiq::Cron::ScheduleLoader.new.load_schedule
 
     job = Sidekiq::Cron::Job.find('scheduler_heartbeat')
 
     expect(job).to be_present
+    expect(job.source).to eq('schedule')
     expect(job.klass).to eq('SchedulerHeartbeatJob')
     expect(job.cron).to eq('* * * * *')
     expect(job.queue_name_with_prefix).to eq('recurrent')

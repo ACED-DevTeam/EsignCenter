@@ -7,10 +7,11 @@ module OperatorSeed
   # lowest-id account. Reads are now scoped to the operator account, which
   # only exists once this task has run — so a fresh operator account would
   # silently switch search off at deploy. Adopt the legacy flag onto the
-  # operator account exactly once; the legacy row is left untouched.
+  # operator account until it reads true (a false or missing operator row is
+  # adopted over); the legacy row is left untouched.
   def adopt_legacy_fulltext_flag(operator_account)
     return false unless SearchEntry.table_exists?
-    return false unless OperatorConfigs.fetch(:fulltext_search).nil?
+    return false if OperatorConfigs.enabled?(:fulltext_search)
 
     legacy_config = AccountConfig.where(key: 'fulltext_search', value: true)
                                  .where.not(account_id: operator_account.id)

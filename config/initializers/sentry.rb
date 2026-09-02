@@ -11,6 +11,10 @@ if ENV['SENTRY_DSN'].present?
     config.release = Docuseal.version.presence
     config.send_default_pii = false
     config.breadcrumbs_logger = [:active_support_logger]
+    # Anything reported through Rails.error (Rails' own error reporter, used
+    # by framework internals) is forwarded to Sentry as well; application
+    # code reports through ErrorReport.
+    config.rails.register_error_subscriber = true
     # Errors only: no performance tracing.
     config.traces_sample_rate = 0.0
   end

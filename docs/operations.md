@@ -363,9 +363,9 @@ Sessions 5–6 and are listed there when they land.
 | Variable | Required? | Where it is read | What happens when missing |
 | --- | --- | --- | --- |
 | `DATABASE_URL` | Required | `config/dotenv.rb`, database config | Boot fails (production has no fallback). Use the database's **Internal** URL. |
-| `SECRET_KEY_BASE` | Required | Rails sessions; `config/environments/production.rb` derives the **encryption key** for `encrypted_configs` (certificates, SMTP pins) and the embedded Redis password from it | Boot fails. **Never change it** — every encrypted row becomes unreadable. Keep an offline copy. |
+| `SECRET_KEY_BASE` | Required | Rails sessions; `config/environments/production.rb` derives the **encryption key** for `encrypted_configs` (certificates, SMTP pins) from it; `config/dotenv.rb` and `lib/puma/plugin/redis_server.rb` derive the embedded Redis password from it | **Boot does not fail — it quietly makes a new one.** `config/dotenv.rb` generates a random secret, writes it to `<WORKDIR>/docuseal.env` and carries on. Sessions still work and `/up` still says `ok`, but every existing encrypted row (signing certificates, pinned SMTP passwords) is unreadable under the new key: signing and tenant mail break with decryption errors. Render **must keep this variable set** on the service, and it must **never change** — keep an offline copy. |
 | `ENCRYPTION_SECRET` | Optional | `config/environments/production.rb` | Derived from `SECRET_KEY_BASE`. Do not set it on an existing deployment; setting it later has the same effect as rotating the key. |
-| `HOST` | Required unless `APP_URL` set | `lib/docuseal.rb` `default_url_options`, Rails host list | Links fall back to `http://localhost:3000` — every email and webhook link breaks. A value with a port (`host:3015`) is honoured. |
+| `HOST` | Required unless `APP_URL` set | `lib/docuseal.rb` `default_url_options` only — it builds every generated link (emails, webhooks, file URLs). It is **not** fed into any Rails host allow-list; the app has none. | Links fall back to `http://localhost:3000` — every email and webhook link breaks. A value with a port (`host:3015`) is honoured. |
 | `FORCE_SSL` | Required (`true`) | `lib/docuseal.rb` (links become `https`), production SSL redirect | Links are built with `http://` and the app does not force HTTPS. |
 | `APP_URL` | Optional | `lib/docuseal.rb` `default_url_options` | When set, the full URL (`https://esign.example.com`) wins over `HOST`/`FORCE_SSL` for every generated link. When unset, `HOST` + `FORCE_SSL` are used. This is now the **only** source; the old per-account app-URL setting in the database is gone (see section 7). |
 | `WORKDIR` | Set by the image (`/data/docuseal`) | `config/dotenv.rb`, Redis snapshot dir | Leave as the image sets it. |
@@ -384,7 +384,7 @@ Sessions 5–6 and are listed there when they land.
 | `REDIS_URL` | Optional today; required for managed Redis | `config/dotenv.rb`, `lib/rate_limit.rb`, Sidekiq | When unset the app derives a local URL and starts its own Redis inside the container (`lib/puma/plugin/redis_server.rb`). Setting it to a managed Redis URL turns the embedded one off automatically. See section 5. |
 | `SIDEKIQ_THREADS` | Optional | `lib/puma/plugin/sidekiq_embed.rb` | Background-job worker threads; default 5. |
 | `RUN_MIGRATIONS` | Optional | `config/initializers/migrate.rb` | Migrations run on every production boot unless set to `false`. Leave unset on Render; use `false` only for one-off consoles against a copy. |
-| `SENTRY_DSN` | Required (Session 2) | `config/initializers/sentry.rb` | Sentry (error tracking) is not initialised; errors go to the Render log only via `ErrorReport`. Nothing breaks, but nobody is alerted. |
+| `SENTRY_DSN` | Required (Session 2) | `config/initializers/sentry.rb` | Sentry (error tracking) is not initialised; everything reported through `ErrorReport` — application errors, mail failures, rate-limit store (Redis) errors, the storage boot warning — goes to the Render log only. Nothing breaks, but nobody is alerted. |
 | `SENTRY_ENVIRONMENT` | Optional | `config/initializers/sentry.rb` | Defaults to the Rails environment (`production`). Set to `staging` on a staging service so its errors are filed separately. |
 | `OPERATOR_EMAIL` | Required for `rake operator:seed` only | `lib/tasks/operator.rake` | The task aborts with `OPERATOR_EMAIL is required`. |
 | `OPERATOR_PASSWORD` | **Required** for `rake operator:seed` (Session 2 change) | `lib/tasks/operator.rake` | The task aborts with `OPERATOR_PASSWORD is required`. It is never generated or printed. Remove the variable from Render after the seed. |
@@ -491,10 +491,12 @@ side effects to know about:
 - Each request that would have been rate-limited waits for the Redis
   connection to time out first, so those requests get roughly **one extra
   second** of latency while Redis is down.
-- Every failed store call is reported through Rails' error reporter, which
-  Sentry picks up when `SENTRY_DSN` is set — so a Redis outage shows up in
-  Sentry as a stream of rate-limit store errors. That is the signal to look
-  at; the app itself will not tell you its limits are off.
+- Every failed store call is reported through `ErrorReport` (the app's one
+  reporting seam) at warning level — to Sentry when `SENTRY_DSN` is set, to
+  the log otherwise — so a Redis outage shows up in Sentry as a stream of
+  rate-limit store errors (`Redis::CannotConnectError` and friends). That is
+  the signal to look at; the app itself will not tell you its limits are
+  off.
 
 This is a deliberate choice: an unreachable Redis should not turn every
 signing link into a "Too many requests" page. The trade-off is that the
@@ -635,7 +637,7 @@ Render env vars.
   test-mode twin — gets a plain 404, not a redirect. There is no HTTP path
   that grants the operator flag: only the rake task can set it, and a golden
   spec asserts that.
-- **The full-text search toggle (`POST /search_entries_reindex`) is
+- **The full-text search toggle (`POST /settings/search_entries_reindex`) is
   operator-only** and stores its flag on the operator account, never on
   "account #1". Non-operators get 404 and do not see the button.
 - **Full-text search is off on a fresh install until an operator turns it
@@ -670,7 +672,12 @@ Render env vars.
 - **Sentry replaces Rollbar.** Set `SENTRY_DSN`; there are no Rollbar
   references left in the code. Mail delivery failures now reach Sentry (SMTP
   errors raise inside the mail job and retry), and an account with no mail
-  server at all is an **error** in Sentry, not a log warning.
+  server at all is an **error** in Sentry, not a log warning. Rails' own
+  error reporter is subscribed to Sentry as well, so framework-internal
+  reports land there too. One thing is **not** covered any more: JavaScript
+  errors in the signer's browser (the signing page) were captured by
+  Rollbar's browser SDK and are no longer captured by anything — add
+  `@sentry/browser` later if that visibility is wanted.
 - **Mail is never silently hoarded.** Outside the test suite, "no server" and
   `EMAIL_DELIVERY_MODE=test` use a true null delivery that discards the
   message instead of keeping it in memory forever.
