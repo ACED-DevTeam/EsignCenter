@@ -1,6 +1,19 @@
 en: &en
+  webhook_url: Webhook URL
+  webhook_url_must_use_https: must use https
+  webhook_url_must_not_point_at_a_private_address: must not point at localhost or a private/metadata address
+  templates_that_require_email_2fa_cannot_be_used_via_a_shared_link: Templates that require email 2FA cannot be used via a shared link.
+  removing_product_name_branding_from_emails_and_signing_pages_is_available_on_the_paid_plan: 'Removing %{product_name} branding from emails and signing pages is available on the paid plan.'
+  custom_email_templates_are_available_on_the_paid_plan: Custom email templates are available on the paid plan.
+  automatic_reminders_are_available_on_the_paid_plan: Automatic sign request reminders are available on the paid plan.
+  saved_smtp_settings: Saved SMTP settings
+  these_smtp_settings_are_not_used_on_your_current_plan_upgrade_to_use_them_again_or_remove_them: These SMTP settings were saved on a paid plan and are not used on your current plan. Upgrade to use them again, or remove them.
+  remove_smtp_settings: Remove SMTP settings
+  smtp_settings_have_been_removed: SMTP settings have been removed.
   this_feature_requires_a_paid_plan: This feature requires a paid plan
   this_feature_is_not_available: This feature is not available
+  email_invitation_required: Email invitation required
+  email_verification_shared_link_instructions: "This form requires an emailed invitation because email verification is enabled. The sender can turn off \"Require email 2FA\" in the template's preferences to share it by link."
   feature_is_available_on_the_paid_plan: '%{feature} is available on the paid plan.'
   upgrade_to_unlock_this_and_every_other_paid_feature: Upgrade your account to unlock this and every other paid feature.
   upgrade_plan: Upgrade plan
@@ -35,7 +48,6 @@ en: &en
   upload_a_new_document: Upload a New Document
   billing: Billing
   hi_there: Hi there
-  templates_that_require_email_or_phone_2fa_cannot_be_used_via_a_shared_link: Templates that require email or phone 2FA cannot be used via a shared link.
   pro: Pro
   thanks: Thanks
   private: Private
@@ -1071,8 +1083,21 @@ en: &en
       detailed: "%B %d, %Y %H:%M:%S"
 
 es: &es
+  webhook_url: URL del webhook
+  webhook_url_must_use_https: debe usar https
+  webhook_url_must_not_point_at_a_private_address: no debe apuntar a localhost ni a una dirección privada o de metadatos
+  templates_that_require_email_2fa_cannot_be_used_via_a_shared_link: Las plantillas que requieren 2FA por correo electrónico no se pueden usar mediante un enlace compartido.
+  removing_product_name_branding_from_emails_and_signing_pages_is_available_on_the_paid_plan: 'Eliminar la marca %{product_name} de los correos y las páginas de firma está disponible en el plan de pago.'
+  custom_email_templates_are_available_on_the_paid_plan: Las plantillas de correo personalizadas están disponibles en el plan de pago.
+  automatic_reminders_are_available_on_the_paid_plan: Los recordatorios automáticos de solicitud de firma están disponibles en el plan de pago.
+  saved_smtp_settings: Configuración SMTP guardada
+  these_smtp_settings_are_not_used_on_your_current_plan_upgrade_to_use_them_again_or_remove_them: Esta configuración SMTP se guardó en un plan de pago y no se usa en tu plan actual. Mejora tu plan para volver a usarla o elimínala.
+  remove_smtp_settings: Eliminar configuración SMTP
+  smtp_settings_have_been_removed: La configuración SMTP se ha eliminado.
   this_feature_requires_a_paid_plan: Esta función requiere un plan de pago
   this_feature_is_not_available: Esta función no está disponible
+  email_invitation_required: Se requiere una invitación por correo electrónico
+  email_verification_shared_link_instructions: "Este formulario requiere una invitación por correo electrónico porque la verificación de correo está habilitada. El remitente puede desactivar \"Requerir 2FA por correo electrónico\" en las preferencias de la plantilla para compartirlo mediante un enlace."
   feature_is_available_on_the_paid_plan: '%{feature} está disponible en el plan de pago.'
   upgrade_to_unlock_this_and_every_other_paid_feature: Mejora tu cuenta para desbloquear esta y todas las demás funciones de pago.
   upgrade_plan: Mejorar plan
@@ -1084,7 +1109,6 @@ es: &es
   knowledge_based_authentication: Autenticación basada en el conocimiento
   kba_field: KBA
   passed: Aprobado
-  templates_that_require_email_or_phone_2fa_cannot_be_used_via_a_shared_link: Las plantillas que requieren autenticación en dos pasos por correo electrónico o teléfono no se pueden usar mediante un enlace compartido.
   make_owner: Hacer propietario
   billing: Facturación
   add_from_google_drive: Agregar desde Google Drive
@@ -2122,8 +2146,21 @@ es: &es
       detailed: "%-d de %B de %Y %H:%M:%S"
 
 it: &it
+  webhook_url: URL del webhook
+  webhook_url_must_use_https: deve usare https
+  webhook_url_must_not_point_at_a_private_address: non deve puntare a localhost o a un indirizzo privato/di metadati
+  templates_that_require_email_2fa_cannot_be_used_via_a_shared_link: I modelli che richiedono 2FA via email non possono essere utilizzati tramite un link condiviso.
+  removing_product_name_branding_from_emails_and_signing_pages_is_available_on_the_paid_plan: 'La rimozione del marchio %{product_name} da email e pagine di firma è disponibile nel piano a pagamento.'
+  custom_email_templates_are_available_on_the_paid_plan: I modelli email personalizzati sono disponibili nel piano a pagamento.
+  automatic_reminders_are_available_on_the_paid_plan: I promemoria automatici delle richieste di firma sono disponibili nel piano a pagamento.
+  saved_smtp_settings: Impostazioni SMTP salvate
+  these_smtp_settings_are_not_used_on_your_current_plan_upgrade_to_use_them_again_or_remove_them: Queste impostazioni SMTP sono state salvate con un piano a pagamento e non vengono usate nel piano attuale. Passa al piano a pagamento per riutilizzarle oppure rimuovile.
+  remove_smtp_settings: Rimuovi impostazioni SMTP
+  smtp_settings_have_been_removed: Le impostazioni SMTP sono state rimosse.
   this_feature_requires_a_paid_plan: Questa funzione richiede un piano a pagamento
   this_feature_is_not_available: Questa funzione non è disponibile
+  email_invitation_required: È richiesto un invito via email
+  email_verification_shared_link_instructions: "Questo modulo richiede un invito via email perché la verifica email è abilitata. Il mittente può disattivare \"Richiedi 2FA email\" nelle preferenze del modello per condividerlo tramite link."
   feature_is_available_on_the_paid_plan: '%{feature} è disponibile nel piano a pagamento.'
   upgrade_to_unlock_this_and_every_other_paid_feature: Aggiorna il tuo account per sbloccare questa e tutte le altre funzioni a pagamento.
   upgrade_plan: Aggiorna piano
@@ -2135,7 +2172,6 @@ it: &it
   knowledge_based_authentication: Autenticazione basata sulla conoscenza
   kba_field: KBA
   passed: Superato
-  templates_that_require_email_or_phone_2fa_cannot_be_used_via_a_shared_link: I modelli che richiedono 2FA via email o telefono non possono essere utilizzati tramite un link condiviso.
   make_owner: Rendi proprietario
   billing: Fatturazione
   add_from_google_drive: Aggiungi da Google Drive
@@ -3173,8 +3209,21 @@ it: &it
       detailed: "%d %B %Y %H:%M:%S"
 
 fr: &fr
+  webhook_url: URL du webhook
+  webhook_url_must_use_https: doit utiliser https
+  webhook_url_must_not_point_at_a_private_address: ne doit pas pointer vers localhost ni vers une adresse privée ou de métadonnées
+  templates_that_require_email_2fa_cannot_be_used_via_a_shared_link: Les modèles nécessitant une authentification à deux facteurs par e-mail ne peuvent pas être utilisés via un lien partagé.
+  removing_product_name_branding_from_emails_and_signing_pages_is_available_on_the_paid_plan: 'La suppression de la marque %{product_name} des e-mails et des pages de signature est disponible avec l''abonnement payant.'
+  custom_email_templates_are_available_on_the_paid_plan: 'Les modèles d''e-mail personnalisés sont disponibles avec l''abonnement payant.'
+  automatic_reminders_are_available_on_the_paid_plan: 'Les rappels automatiques de demande de signature sont disponibles avec l''abonnement payant.'
+  saved_smtp_settings: Paramètres SMTP enregistrés
+  these_smtp_settings_are_not_used_on_your_current_plan_upgrade_to_use_them_again_or_remove_them: 'Ces paramètres SMTP ont été enregistrés avec un abonnement payant et ne sont pas utilisés avec votre abonnement actuel. Passez à l''abonnement payant pour les réutiliser, ou supprimez-les.'
+  remove_smtp_settings: Supprimer les paramètres SMTP
+  smtp_settings_have_been_removed: Les paramètres SMTP ont été supprimés.
   this_feature_requires_a_paid_plan: Cette fonctionnalité nécessite un abonnement payant
   this_feature_is_not_available: Cette fonctionnalité n'est pas disponible
+  email_invitation_required: Invitation par e-mail requise
+  email_verification_shared_link_instructions: "Ce formulaire nécessite une invitation par e-mail car la vérification de l’adresse e-mail est activée. L’expéditeur peut désactiver \"Exiger la 2FA par e-mail\" dans les préférences du modèle pour le partager par lien."
   feature_is_available_on_the_paid_plan: '%{feature} est disponible avec l''abonnement payant.'
   upgrade_to_unlock_this_and_every_other_paid_feature: Passez à un abonnement payant pour débloquer cette fonctionnalité et toutes les autres.
   upgrade_plan: 'Changer d''abonnement'
@@ -3186,7 +3235,6 @@ fr: &fr
   knowledge_based_authentication: Authentification basée sur la connaissance
   kba_field: KBA
   passed: Réussi
-  templates_that_require_email_or_phone_2fa_cannot_be_used_via_a_shared_link: Les modèles nécessitant une authentification à deux facteurs par e-mail ou téléphone ne peuvent pas être utilisés via un lien partagé.
   make_owner: Rendre propriétaire
   billing: Facturation
   add_from_google_drive: Ajouter depuis Google Drive
@@ -4221,8 +4269,21 @@ fr: &fr
       detailed: "%A %d %B %Y %Hh%Mm%Ss"
 
 pt: &pt
+  webhook_url: URL do webhook
+  webhook_url_must_use_https: deve usar https
+  webhook_url_must_not_point_at_a_private_address: não deve apontar para localhost nem para um endereço privado/de metadados
+  templates_that_require_email_2fa_cannot_be_used_via_a_shared_link: Modelos que exigem 2FA por e-mail não podem ser usados por meio de um link compartilhado.
+  removing_product_name_branding_from_emails_and_signing_pages_is_available_on_the_paid_plan: 'Remover a marca %{product_name} dos e-mails e das páginas de assinatura está disponível no plano pago.'
+  custom_email_templates_are_available_on_the_paid_plan: Modelos de e-mail personalizados estão disponíveis no plano pago.
+  automatic_reminders_are_available_on_the_paid_plan: Lembretes automáticos de solicitação de assinatura estão disponíveis no plano pago.
+  saved_smtp_settings: Configurações SMTP salvas
+  these_smtp_settings_are_not_used_on_your_current_plan_upgrade_to_use_them_again_or_remove_them: Estas configurações SMTP foram salvas em um plano pago e não são usadas no seu plano atual. Faça upgrade para usá-las novamente ou remova-as.
+  remove_smtp_settings: Remover configurações SMTP
+  smtp_settings_have_been_removed: As configurações SMTP foram removidas.
   this_feature_requires_a_paid_plan: Este recurso requer um plano pago
   this_feature_is_not_available: Este recurso não está disponível
+  email_invitation_required: É necessário um convite por e-mail
+  email_verification_shared_link_instructions: "Este formulário requer um convite por e-mail porque a verificação de e-mail está ativada. O remetente pode desativar \"Exigir 2FA por e-mail\" nas preferências do modelo para compartilhá-lo por link."
   feature_is_available_on_the_paid_plan: '%{feature} está disponível no plano pago.'
   upgrade_to_unlock_this_and_every_other_paid_feature: Atualize a sua conta para desbloquear este e todos os outros recursos pagos.
   upgrade_plan: Atualizar plano
@@ -4234,7 +4295,6 @@ pt: &pt
   knowledge_based_authentication: Autenticação baseada em conhecimento
   kba_field: KBA
   passed: Aprovado
-  templates_that_require_email_or_phone_2fa_cannot_be_used_via_a_shared_link: Modelos que exigem 2FA por e-mail ou telefone não podem ser usados por meio de um link compartilhado.
   make_owner: Tornar proprietário
   billing: Faturamento
   add_from_google_drive: Adicionar do Google Drive
@@ -5272,8 +5332,21 @@ pt: &pt
       detailed: "%A, %d de %B de %Y, %H:%M:%Sh"
 
 de: &de
+  webhook_url: Webhook-URL
+  webhook_url_must_use_https: muss https verwenden
+  webhook_url_must_not_point_at_a_private_address: darf nicht auf localhost oder eine private/Metadaten-Adresse verweisen
+  templates_that_require_email_2fa_cannot_be_used_via_a_shared_link: Vorlagen, die eine Zwei-Faktor-Authentifizierung per E-Mail erfordern, können nicht über einen geteilten Link verwendet werden.
+  removing_product_name_branding_from_emails_and_signing_pages_is_available_on_the_paid_plan: 'Das Entfernen des %{product_name}-Brandings aus E-Mails und Signaturseiten ist im kostenpflichtigen Tarif verfügbar.'
+  custom_email_templates_are_available_on_the_paid_plan: Eigene E-Mail-Vorlagen sind im kostenpflichtigen Tarif verfügbar.
+  automatic_reminders_are_available_on_the_paid_plan: Automatische Erinnerungen für Signaturanfragen sind im kostenpflichtigen Tarif verfügbar.
+  saved_smtp_settings: Gespeicherte SMTP-Einstellungen
+  these_smtp_settings_are_not_used_on_your_current_plan_upgrade_to_use_them_again_or_remove_them: Diese SMTP-Einstellungen wurden in einem kostenpflichtigen Tarif gespeichert und werden in Ihrem aktuellen Tarif nicht verwendet. Wechseln Sie den Tarif, um sie wieder zu nutzen, oder entfernen Sie sie.
+  remove_smtp_settings: SMTP-Einstellungen entfernen
+  smtp_settings_have_been_removed: Die SMTP-Einstellungen wurden entfernt.
   this_feature_requires_a_paid_plan: Diese Funktion erfordert einen kostenpflichtigen Tarif
   this_feature_is_not_available: Diese Funktion ist nicht verfügbar
+  email_invitation_required: E-Mail-Einladung erforderlich
+  email_verification_shared_link_instructions: "Dieses Formular erfordert eine E-Mail-Einladung, da die E-Mail-Verifizierung aktiviert ist. Der Absender kann \"E-Mail-2FA erforderlich\" in den Vorlageneinstellungen deaktivieren, um es per Link zu teilen."
   feature_is_available_on_the_paid_plan: '%{feature} ist im kostenpflichtigen Tarif verfügbar.'
   upgrade_to_unlock_this_and_every_other_paid_feature: 'Wechseln Sie den Tarif, um diese und alle weiteren kostenpflichtigen Funktionen freizuschalten.'
   upgrade_plan: Tarif wechseln
@@ -5285,7 +5358,6 @@ de: &de
   knowledge_based_authentication: Wissensbasierte Authentifizierung
   kba_field: KBA
   passed: Bestanden
-  templates_that_require_email_or_phone_2fa_cannot_be_used_via_a_shared_link: Vorlagen, die eine Zwei-Faktor-Authentifizierung per E-Mail oder Telefon erfordern, können nicht über einen geteilten Link verwendet werden.
   make_owner: Eigentümer machen
   billing: Abrechnung
   add_from_google_drive: Aus Google Drive hinzufügen
@@ -6323,8 +6395,21 @@ de: &de
       detailed: "%A, %d. %B %Y, %H:%M:%S Uhr"
 
 pl:
+  webhook_url: Adres URL webhooka
+  webhook_url_must_use_https: musi używać https
+  webhook_url_must_not_point_at_a_private_address: nie może wskazywać na localhost ani na adres prywatny/metadanych
+  templates_that_require_email_2fa_cannot_be_used_via_a_shared_link: Szablony wymagające uwierzytelniania e-mail 2FA nie mogą być używane za pomocą udostępnionego linku.
+  removing_product_name_branding_from_emails_and_signing_pages_is_available_on_the_paid_plan: 'Usunięcie brandingu %{product_name} z e-maili i stron podpisywania jest dostępne w płatnym planie.'
+  custom_email_templates_are_available_on_the_paid_plan: Własne szablony e-maili są dostępne w płatnym planie.
+  automatic_reminders_are_available_on_the_paid_plan: Automatyczne przypomnienia o prośbie o podpis są dostępne w płatnym planie.
+  saved_smtp_settings: Zapisane ustawienia SMTP
+  these_smtp_settings_are_not_used_on_your_current_plan_upgrade_to_use_them_again_or_remove_them: Te ustawienia SMTP zostały zapisane w płatnym planie i nie są używane w Twoim obecnym planie. Zmień plan, aby ponownie z nich korzystać, albo je usuń.
+  remove_smtp_settings: Usuń ustawienia SMTP
+  smtp_settings_have_been_removed: Ustawienia SMTP zostały usunięte.
   this_feature_requires_a_paid_plan: Ta funkcja wymaga płatnego planu
   this_feature_is_not_available: Ta funkcja nie jest dostępna
+  email_invitation_required: Wymagane zaproszenie e-mail
+  email_verification_shared_link_instructions: "Ten formularz wymaga zaproszenia e-mail, ponieważ weryfikacja adresu e-mail jest włączona. Nadawca może wyłączyć \"Wymagaj uwierzytelniania e-mail 2FA\" w preferencjach szablonu, aby udostępnić go za pomocą linku."
   feature_is_available_on_the_paid_plan: '%{feature} jest dostępna w płatnym planie.'
   upgrade_to_unlock_this_and_every_other_paid_feature: 'Zmień plan, aby odblokować tę i wszystkie inne płatne funkcje.'
   upgrade_plan: Zmień plan
@@ -6432,8 +6517,21 @@ pl:
   too_many_requests_try_again_later: Zbyt wiele żądań. Spróbuj ponownie później.
 
 uk:
+  webhook_url: URL вебхука
+  webhook_url_must_use_https: має використовувати https
+  webhook_url_must_not_point_at_a_private_address: не може вказувати на localhost або приватну адресу/адресу метаданих
+  templates_that_require_email_2fa_cannot_be_used_via_a_shared_link: Шаблони, які вимагають 2FA електронною поштою, не можна використовувати через спільне посилання.
+  removing_product_name_branding_from_emails_and_signing_pages_is_available_on_the_paid_plan: 'Видалення брендингу %{product_name} з електронних листів і сторінок підписання доступне в платному плані.'
+  custom_email_templates_are_available_on_the_paid_plan: Власні шаблони електронних листів доступні в платному плані.
+  automatic_reminders_are_available_on_the_paid_plan: Автоматичні нагадування про запит на підпис доступні в платному плані.
+  saved_smtp_settings: Збережені налаштування SMTP
+  these_smtp_settings_are_not_used_on_your_current_plan_upgrade_to_use_them_again_or_remove_them: Ці налаштування SMTP були збережені в платному плані й не використовуються у вашому поточному плані. Перейдіть на платний план, щоб знову їх використовувати, або видаліть їх.
+  remove_smtp_settings: Видалити налаштування SMTP
+  smtp_settings_have_been_removed: Налаштування SMTP видалено.
   this_feature_requires_a_paid_plan: Ця функція доступна лише в платному плані
   this_feature_is_not_available: Ця функція недоступна
+  email_invitation_required: Потрібне запрошення електронною поштою
+  email_verification_shared_link_instructions: "Ця форма потребує запрошення електронною поштою, оскільки перевірку електронної пошти ввімкнено. Відправник може вимкнути \"Вимагати 2FA електронною поштою\" в налаштуваннях шаблону, щоб поділитися формою за посиланням."
   feature_is_available_on_the_paid_plan: '%{feature} доступна в платному плані.'
   upgrade_to_unlock_this_and_every_other_paid_feature: 'Оновіть план, щоб розблокувати цю та всі інші платні функції.'
   upgrade_plan: Оновити план
@@ -6541,8 +6639,21 @@ uk:
   too_many_requests_try_again_later: Забагато запитів. Спробуйте пізніше.
 
 cs:
+  webhook_url: URL webhooku
+  webhook_url_must_use_https: musí používat https
+  webhook_url_must_not_point_at_a_private_address: nesmí odkazovat na localhost ani na privátní adresu / adresu metadat
+  templates_that_require_email_2fa_cannot_be_used_via_a_shared_link: Šablony vyžadující e-mailové 2FA nelze používat prostřednictvím sdíleného odkazu.
+  removing_product_name_branding_from_emails_and_signing_pages_is_available_on_the_paid_plan: 'Odstranění brandingu %{product_name} z e-mailů a podpisových stránek je k dispozici v placeném plánu.'
+  custom_email_templates_are_available_on_the_paid_plan: Vlastní e-mailové šablony jsou k dispozici v placeném plánu.
+  automatic_reminders_are_available_on_the_paid_plan: Automatická připomenutí žádostí o podpis jsou k dispozici v placeném plánu.
+  saved_smtp_settings: Uložené nastavení SMTP
+  these_smtp_settings_are_not_used_on_your_current_plan_upgrade_to_use_them_again_or_remove_them: Toto nastavení SMTP bylo uloženo v placeném plánu a ve vašem aktuálním plánu se nepoužívá. Přejděte na placený plán, abyste ho mohli znovu používat, nebo ho odstraňte.
+  remove_smtp_settings: Odstranit nastavení SMTP
+  smtp_settings_have_been_removed: Nastavení SMTP bylo odstraněno.
   this_feature_requires_a_paid_plan: Tato funkce vyžaduje placený plán
   this_feature_is_not_available: Tato funkce není k dispozici
+  email_invitation_required: Je vyžadována e-mailová pozvánka
+  email_verification_shared_link_instructions: "Tento formulář vyžaduje e-mailovou pozvánku, protože je zapnuto ověření e-mailu. Odesílatel může v předvolbách šablony vypnout \"Vyžadovat e-mailové 2FA\" a formulář pak sdílet odkazem."
   feature_is_available_on_the_paid_plan: '%{feature} je k dispozici v placeném plánu.'
   upgrade_to_unlock_this_and_every_other_paid_feature: Přejděte na placený plán a odemkněte tuto i všechny ostatní placené funkce.
   upgrade_plan: Změnit plán
@@ -6650,8 +6761,21 @@ cs:
   too_many_requests_try_again_later: Příliš mnoho požadavků. Zkuste to později.
 
 he:
+  webhook_url: כתובת ה-Webhook
+  webhook_url_must_use_https: חייבת להשתמש ב-https
+  webhook_url_must_not_point_at_a_private_address: אינה יכולה להפנות ל-localhost או לכתובת פרטית/כתובת מטא-נתונים
+  templates_that_require_email_2fa_cannot_be_used_via_a_shared_link: תבניות הדורשות אימות דו-שלבי באימייל אינן ניתנות לשימוש באמצעות קישור משותף.
+  removing_product_name_branding_from_emails_and_signing_pages_is_available_on_the_paid_plan: 'הסרת המיתוג של %{product_name} מאימיילים ומעמודי החתימה זמינה בתוכנית בתשלום.'
+  custom_email_templates_are_available_on_the_paid_plan: תבניות אימייל מותאמות אישית זמינות בתוכנית בתשלום.
+  automatic_reminders_are_available_on_the_paid_plan: תזכורות אוטומטיות לבקשות חתימה זמינות בתוכנית בתשלום.
+  saved_smtp_settings: הגדרות SMTP שמורות
+  these_smtp_settings_are_not_used_on_your_current_plan_upgrade_to_use_them_again_or_remove_them: הגדרות SMTP אלה נשמרו בתוכנית בתשלום ואינן בשימוש בתוכנית הנוכחית שלך. שדרגו כדי להשתמש בהן שוב, או הסירו אותן.
+  remove_smtp_settings: הסרת הגדרות SMTP
+  smtp_settings_have_been_removed: הגדרות ה-SMTP הוסרו.
   this_feature_requires_a_paid_plan: תכונה זו דורשת תוכנית בתשלום
   this_feature_is_not_available: תכונה זו אינה זמינה
+  email_invitation_required: נדרשת הזמנה בדוא״ל
+  email_verification_shared_link_instructions: "טופס זה דורש הזמנה בדוא״ל מכיוון שאימות דוא״ל מופעל. השולח יכול לכבות את \"דרוש אימות דו-שלבי בדוא״ל\" בהעדפות התבנית כדי לשתף אותו באמצעות קישור."
   feature_is_available_on_the_paid_plan: '%{feature} זמין בתוכנית בתשלום.'
   upgrade_to_unlock_this_and_every_other_paid_feature: שדרגו את החשבון כדי לפתוח תכונה זו ואת כל שאר התכונות בתשלום.
   upgrade_plan: שדרוג תוכנית
@@ -6759,8 +6883,21 @@ he:
   too_many_requests_try_again_later: יותר מדי בקשות. נסה שוב מאוחר יותר.
 
 nl: &nl
+  webhook_url: Webhook-URL
+  webhook_url_must_use_https: moet https gebruiken
+  webhook_url_must_not_point_at_a_private_address: mag niet naar localhost of een privé-/metadata-adres verwijzen
+  templates_that_require_email_2fa_cannot_be_used_via_a_shared_link: Sjablonen waarvoor e-mail-2FA vereist is, kunnen niet via een gedeelde link worden gebruikt.
+  removing_product_name_branding_from_emails_and_signing_pages_is_available_on_the_paid_plan: 'Het verwijderen van %{product_name}-branding uit e-mails en ondertekeningspagina''s is beschikbaar in het betaalde abonnement.'
+  custom_email_templates_are_available_on_the_paid_plan: Aangepaste e-mailsjablonen zijn beschikbaar in het betaalde abonnement.
+  automatic_reminders_are_available_on_the_paid_plan: Automatische herinneringen voor ondertekeningsverzoeken zijn beschikbaar in het betaalde abonnement.
+  saved_smtp_settings: Opgeslagen SMTP-instellingen
+  these_smtp_settings_are_not_used_on_your_current_plan_upgrade_to_use_them_again_or_remove_them: Deze SMTP-instellingen zijn opgeslagen in een betaald abonnement en worden in je huidige abonnement niet gebruikt. Upgrade om ze opnieuw te gebruiken, of verwijder ze.
+  remove_smtp_settings: SMTP-instellingen verwijderen
+  smtp_settings_have_been_removed: De SMTP-instellingen zijn verwijderd.
   this_feature_requires_a_paid_plan: Deze functie vereist een betaald abonnement
   this_feature_is_not_available: Deze functie is niet beschikbaar
+  email_invitation_required: E-mailuitnodiging vereist
+  email_verification_shared_link_instructions: "Voor dit formulier is een e-mailuitnodiging vereist omdat e-mailverificatie is ingeschakeld. De afzender kan \"E-mail-2FA vereisen\" uitschakelen in de sjabloonvoorkeuren om het formulier via een link te delen."
   feature_is_available_on_the_paid_plan: '%{feature} is beschikbaar in het betaalde abonnement.'
   upgrade_to_unlock_this_and_every_other_paid_feature: Upgrade je account om deze en alle andere betaalde functies te ontgrendelen.
   upgrade_plan: Abonnement upgraden
@@ -6772,7 +6909,6 @@ nl: &nl
   knowledge_based_authentication: Kennisgebaseerde authenticatie
   kba_field: KBA
   passed: Geslaagd
-  templates_that_require_email_or_phone_2fa_cannot_be_used_via_a_shared_link: Sjablonen waarvoor e-mail- of telefoon-2FA vereist is, kunnen niet via een gedeelde link worden gebruikt.
   make_owner: Eigenaar maken
   billing: Facturatie
   add_from_google_drive: Toevoegen vanuit Google Drive
@@ -7807,8 +7943,21 @@ nl: &nl
       detailed: "%d %B %Y %H:%M:%S"
 
 ar:
+  webhook_url: عنوان URL للويب هوك
+  webhook_url_must_use_https: يجب أن يستخدم https
+  webhook_url_must_not_point_at_a_private_address: يجب ألا يشير إلى localhost أو إلى عنوان خاص/عنوان بيانات وصفية
+  templates_that_require_email_2fa_cannot_be_used_via_a_shared_link: لا يمكن استخدام القوالب التي تتطلب التحقق بخطوتين عبر البريد الإلكتروني من خلال رابط مشترك.
+  removing_product_name_branding_from_emails_and_signing_pages_is_available_on_the_paid_plan: 'إزالة علامة %{product_name} التجارية من رسائل البريد الإلكتروني وصفحات التوقيع متاحة في الخطة المدفوعة.'
+  custom_email_templates_are_available_on_the_paid_plan: قوالب البريد الإلكتروني المخصصة متاحة في الخطة المدفوعة.
+  automatic_reminders_are_available_on_the_paid_plan: التذكيرات التلقائية لطلبات التوقيع متاحة في الخطة المدفوعة.
+  saved_smtp_settings: إعدادات SMTP المحفوظة
+  these_smtp_settings_are_not_used_on_your_current_plan_upgrade_to_use_them_again_or_remove_them: تم حفظ إعدادات SMTP هذه في خطة مدفوعة وهي غير مستخدمة في خطتك الحالية. قم بالترقية لاستخدامها مرة أخرى، أو احذفها.
+  remove_smtp_settings: إزالة إعدادات SMTP
+  smtp_settings_have_been_removed: تمت إزالة إعدادات SMTP.
   this_feature_requires_a_paid_plan: تتطلب هذه الميزة خطة مدفوعة
   this_feature_is_not_available: هذه الميزة غير متاحة
+  email_invitation_required: الدعوة عبر البريد الإلكتروني مطلوبة
+  email_verification_shared_link_instructions: "يتطلب هذا النموذج دعوة عبر البريد الإلكتروني لأن التحقق من البريد الإلكتروني مفعّل. يمكن للمرسل إيقاف \"طلب المصادقة الثنائية عبر البريد الإلكتروني\" في تفضيلات القالب لمشاركة النموذج عبر رابط."
   feature_is_available_on_the_paid_plan: '%{feature} متاحة في الخطة المدفوعة.'
   upgrade_to_unlock_this_and_every_other_paid_feature: قم بترقية حسابك لفتح هذه الميزة وجميع الميزات المدفوعة الأخرى.
   upgrade_plan: ترقية الخطة
@@ -7916,8 +8065,21 @@ ar:
   too_many_requests_try_again_later: طلبات كثيرة جدًا. حاول مرة أخرى لاحقًا.
 
 ko:
+  webhook_url: 웹훅 URL
+  webhook_url_must_use_https: https를 사용해야 합니다
+  webhook_url_must_not_point_at_a_private_address: localhost 또는 사설/메타데이터 주소를 가리킬 수 없습니다
+  templates_that_require_email_2fa_cannot_be_used_via_a_shared_link: 이메일 2FA가 필요한 템플릿은 공유 링크로 사용할 수 없습니다.
+  removing_product_name_branding_from_emails_and_signing_pages_is_available_on_the_paid_plan: '이메일과 서명 페이지에서 %{product_name} 브랜딩 제거는 유료 플랜에서 사용할 수 있습니다.'
+  custom_email_templates_are_available_on_the_paid_plan: 사용자 지정 이메일 템플릿은 유료 플랜에서 사용할 수 있습니다.
+  automatic_reminders_are_available_on_the_paid_plan: 서명 요청 자동 알림은 유료 플랜에서 사용할 수 있습니다.
+  saved_smtp_settings: 저장된 SMTP 설정
+  these_smtp_settings_are_not_used_on_your_current_plan_upgrade_to_use_them_again_or_remove_them: 이 SMTP 설정은 유료 플랜에서 저장되었으며 현재 플랜에서는 사용되지 않습니다. 다시 사용하려면 업그레이드하거나 설정을 삭제하세요.
+  remove_smtp_settings: SMTP 설정 삭제
+  smtp_settings_have_been_removed: SMTP 설정이 삭제되었습니다.
   this_feature_requires_a_paid_plan: 이 기능은 유료 플랜이 필요합니다
   this_feature_is_not_available: 이 기능은 사용할 수 없습니다
+  email_invitation_required: 이메일 초대가 필요합니다
+  email_verification_shared_link_instructions: "이메일 인증이 활성화되어 있어 이 양식은 이메일로 받은 초대가 필요합니다. 발신자는 템플릿 환경설정에서 \"이메일 2FA 요구\"를 끄면 링크로 공유할 수 있습니다."
   feature_is_available_on_the_paid_plan: '%{feature}은(는) 유료 플랜에서 사용할 수 있습니다.'
   upgrade_to_unlock_this_and_every_other_paid_feature: 계정을 업그레이드하여 이 기능과 모든 유료 기능을 사용하세요.
   upgrade_plan: 플랜 업그레이드
@@ -8025,8 +8187,21 @@ ko:
   too_many_requests_try_again_later: 요청이 너무 많습니다. 나중에 다시 시도하세요.
 
 ja:
+  webhook_url: Webhook URL
+  webhook_url_must_use_https: は https を使用する必要があります
+  webhook_url_must_not_point_at_a_private_address: は localhost やプライベート/メタデータのアドレスを指すことはできません
+  templates_that_require_email_2fa_cannot_be_used_via_a_shared_link: メール2FAが必要なテンプレートは共有リンクでは使用できません。
+  removing_product_name_branding_from_emails_and_signing_pages_is_available_on_the_paid_plan: 'メールと署名ページからの%{product_name}ブランディングの削除は有料プランでご利用いただけます。'
+  custom_email_templates_are_available_on_the_paid_plan: カスタムメールテンプレートは有料プランでご利用いただけます。
+  automatic_reminders_are_available_on_the_paid_plan: 署名依頼の自動リマインダーは有料プランでご利用いただけます。
+  saved_smtp_settings: 保存済みのSMTP設定
+  these_smtp_settings_are_not_used_on_your_current_plan_upgrade_to_use_them_again_or_remove_them: このSMTP設定は有料プランで保存されたもので、現在のプランでは使用されません。再度使用するにはアップグレードするか、設定を削除してください。
+  remove_smtp_settings: SMTP設定を削除
+  smtp_settings_have_been_removed: SMTP設定を削除しました。
   this_feature_requires_a_paid_plan: この機能は有料プランが必要です
   this_feature_is_not_available: この機能は利用できません
+  email_invitation_required: メールでの招待が必要です
+  email_verification_shared_link_instructions: "メール認証が有効なため、このフォームにはメールでの招待が必要です。送信者はテンプレートの設定で「メール2FAを必須にする」をオフにすると、リンクで共有できます。"
   feature_is_available_on_the_paid_plan: '%{feature}は有料プランでご利用いただけます。'
   upgrade_to_unlock_this_and_every_other_paid_feature: アカウントをアップグレードすると、この機能とすべての有料機能が利用できます。
   upgrade_plan: プランをアップグレード

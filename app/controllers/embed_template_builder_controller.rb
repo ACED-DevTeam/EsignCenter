@@ -15,6 +15,19 @@ class EmbedTemplateBuilderController < ApplicationController
   before_action :validate_request_origin!, except: :show
   before_action :set_embed_frame_headers
 
+  # The builder token is minted by an entitled account, but the embed row is
+  # checked on every request too (validate_builder_session!), so a token from
+  # a paid period stops working the moment the account is downgraded. The
+  # iframe page itself renders a short refusal; every other action is called
+  # by the builder script and gets the usual 403 JSON.
+  rescue_from Entitlements::UpgradeRequired do |e|
+    if action_name == 'show' && !request.xhr?
+      render :upgrade_required, status: :forbidden
+    else
+      render json: { error: Entitlements.refusal_message(e.feature) }, status: :forbidden
+    end
+  end
+
   def show
     @template_data = Templates.serialize_for_builder(@template)
     @embed_builder_origin = @builder_preferences['origin']
@@ -120,6 +133,8 @@ class EmbedTemplateBuilderController < ApplicationController
 
     raise ActionController::RoutingError, I18n.t('not_found') if @builder_preferences['origin'].blank?
     raise ActionController::RoutingError, I18n.t('not_found') if expires_at&.past?
+
+    Entitlements.require!(@template.account, :embed)
   end
 
   def validate_request_origin!

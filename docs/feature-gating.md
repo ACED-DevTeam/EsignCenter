@@ -135,9 +135,9 @@ never purges):
 |---|---|---|
 | REST API tokens | `Api::ApiBaseController#authenticate_user!` → `refuse_unentitled_token_account!` — only when the request authenticated with `X-Auth-Token`. The same `/api/*` endpoints keep working over the browser session, because the in-app builder and dashboard use them. | 403 JSON, existing tokens included |
 | MCP tokens | `McpController#require_mcp_entitlement!` (`can?(:use, :mcp)`), before the enable-MCP toggle is even consulted | 403 JSON |
-| Webhooks | `WebhookSettingsController` create/update/resend require `:webhooks`; `WebhookUrls.for_account_id` returns no URLs for an unentitled account, so nothing is ever enqueued for it (stale rows included) | Redirect + alert; no deliveries |
+| Webhooks | `WebhookSettingsController` create/update/resend, `WebhookPreferencesController#update` (event toggles) and `WebhookSecretController#update` (secret header) require `:webhooks` — every write; viewing and deleting a URL stay open so a downgrade never blocks cleanup. `WebhookUrls.for_account_id` returns no URLs for an unentitled account, so nothing is ever enqueued for it (stale rows included), and both `SendWebhookRequest` and `SendTestWebhookRequestJob` make no request when the row's account is unentitled at delivery time | Redirect + alert; no deliveries |
 | Embedded signing sessions | `Api::SigningSessionsController` requires `:signing_sessions` for token and session callers alike (independent of the generic token refusal) | 403 JSON |
-| Embedded template builder | `Api::TemplateBuilderSessionsController` requires `:embed` | 403 JSON |
+| Embedded template builder | `Api::TemplateBuilderSessionsController` requires `:embed` to mint a builder token, and `EmbedTemplateBuilderController#validate_builder_session!` requires it again on every builder-token request — a token minted while paid stops working the moment the account is downgraded, not up to 24 h later | 403 JSON; the iframe page itself shows a short "requires a paid plan" notice |
 | Conditional logic | `Templates::AssertEntitledFields` on every path that assigns incoming fields: builder save (`TemplatesController#update`), embedded builder save (`EmbedTemplateBuilderController#update_template`), `Api::TemplatesController#update` (all three against the persisted template as baseline — only *introduced* conditions are refused), `Templates::CreateFromApi` (API template create, signing sessions, builder sessions) and every `Templates::Clone` (own account included; a clone is a new template). Per-submission field overrides (`fields[].preferences` / `conditions` on `/api/submissions`, `/api/submitters`, signing sessions) run the same check in `Submissions::CreateFromSubmitters` | 403 JSON; template unchanged |
 | Formulas (hidden) | Same check, refused for everyone including internal | 403 JSON for all plans |
 | SMS (hidden) | `Submitters.normalize_preferences` — the one seam every submission/submitter path funnels through — refuses a requested `send_sms` before anything is stored, HTML and API alike | Redirect + alert / 403 JSON "This feature is not available" (hidden features never say "paid plan") |
@@ -149,7 +149,10 @@ never purges):
 | Delivery tracking | Declared; enforced in Session 8 | — |
 
 Signer-page copy (`form_completed_button`, `form_completed_message`), policy
-links and the logo upload stay free.
+links and the logo upload stay free. So does *minting* an API token (rotate,
+reveal) or an MCP token (create, enable): the matrix row is enforced when the
+token is used, at the token doors above, and a token minted by a free account
+is simply inert until the account is paid.
 
 ### 1.7 The proof
 
@@ -308,7 +311,15 @@ the word only as an escaped regex, so the literal grep does not list it.
   `data-upgrade-cta` with a placeholder `#` link until Session 6 wires
   Checkout). Rendered on: API, MCP, Webhooks, Email SMTP, Notifications (BCC
   and reminders), Personalization (email templates and branding removal), the
-  template code modal and the template preferences API tab.
+  template code modal and the template preferences API tab. When a page has
+  two gated surfaces (Notifications, Personalization) the second one renders
+  the partial's `compact: true` variant — a one-line banner — so two identical
+  cards never stack.
+- **Downgraded SMTP settings**: a per-account SMTP pin saved during a paid
+  period is not used on the free plan (`MailConfigs.resolve` skips it) but it
+  is not hidden either — Settings → Email SMTP shows the CTA plus a read-only
+  summary (host, port, username, from address; never the password) with a
+  "Remove SMTP settings" button, so the owner can always see and drop it.
 - **Branding removal** now has a screen: Settings → Personalization →
   Branding shows the toggle to an entitled account and the CTA otherwise.
 - **Refusal copy** moved to locale keys with customer-friendly wording:
@@ -328,3 +339,29 @@ Two things worth knowing:
 - The "via phone" tab in the add-recipients modal is still there (a
   phone-only recipient can sign in person); only the SMS sending controls are
   gone.
+
+### 2.7 Phone 2FA and webhook URL safety
+
+Two Session 3 changes that are refusals rather than plan rows:
+
+- **Phone (SMS) 2FA is not offered.** Any API request that sets
+  `require_phone_2fa` to a truthy value — `true`, `"true"`, `1`, `"on"`,
+  `"yes"` or any other non-blank value that is not an explicit "false" — is
+  answered with `422 Phone (SMS) verification is not available. Use
+  require_email_2fa instead.` before anything is created or changed
+  (`Params::PhoneTwoFactorRejector`, applied to submissions, submitters and
+  signing sessions). Explicit false forms (`false`, `"false"`, `0`, `"0"`,
+  `"off"`) and blanks are ignored and never stored. The template preferences
+  form does not accept the flag at all, so it is stripped from the web form.
+  A flag stored before this change behaves as if it were unset — a shared
+  template carrying only a stale phone flag opens normally — so there is no
+  data migration. The public API docs no longer list the property.
+- **Customer webhook URLs are checked when they are saved.** A customer
+  account can only store a webhook URL that uses `https` and does not point at
+  localhost, a link-local address or a cloud metadata host; the form answers
+  "Webhook URL must use https" (or "…must not point at localhost or a
+  private/metadata address"). Internal accounts keep their `http://localhost`
+  URLs for self-hosted development. The check runs only when the URL is new
+  or changed, so a legacy row with an unsafe URL still saves its events and
+  headers; at delivery time such a row records a terminal error and is never
+  retried (`SendWebhookRequest`).

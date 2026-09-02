@@ -11,7 +11,7 @@
         <%= render 'submitter_completed_email_form' %>
       </div>
     <% else %>
-      <%= render 'shared/upgrade_cta', feature: t('email_templates') %>
+      <%= render 'shared/upgrade_cta', feature: t('email_templates'), body: safe_join([t('custom_email_templates_are_available_on_the_paid_plan'), t('upgrade_to_unlock_this_and_every_other_paid_feature')], ' ') %>
     <% end %>
     <p class="text-4xl font-bold mb-4 mt-8">
       <%= t('company_logo') %>

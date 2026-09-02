@@ -5,6 +5,30 @@
     <%# Per-account SMTP is a paid row: a free account sees the upgrade CTA (the controller refuses the POST regardless). %>
     <% if cannot?(:use, :account_smtp) %>
       <%= render 'shared/upgrade_cta', feature: 'Email SMTP' %>
+      <%# Settings pinned during a paid period stay stored but inert (MailConfigs.resolve skips them); the owner can still see and remove them. The password is never shown. %>
+      <% if @encrypted_config.persisted? %>
+        <% value = @encrypted_config.value || {} %>
+        <div class="card bg-base-100 border border-base-300 mt-6">
+          <div class="card-body p-5 md:p-6 space-y-4">
+            <div>
+              <h2 class="text-xl font-semibold"><%= t('saved_smtp_settings') %></h2>
+              <p class="text-sm text-base-content/70 mt-1" dir="auto"><%= t('these_smtp_settings_are_not_used_on_your_current_plan_upgrade_to_use_them_again_or_remove_them') %></p>
+            </div>
+            <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
+              <% { 'Host' => value['host'], 'Port' => value['port'], 'Username' => value['username'], t('send_from_email') => value['from_email'] }.each do |label, item| %>
+                <div class="min-w-0">
+                  <dt class="text-base-content/60"><%= label %></dt>
+                  <dd class="font-mono break-all"><%= item.presence || '—' %></dd>
+                </div>
+              <% end %>
+            </dl>
+            <%= button_to settings_email_path(@encrypted_config), method: :delete, class: 'btn btn-outline btn-error btn-sm w-full sm:w-auto gap-2', data: { turbo_confirm: t('are_you_sure_') } do %>
+              <%= svg_icon('trash', class: 'w-4 h-4') %>
+              <span><%= t('remove_smtp_settings') %></span>
+            <% end %>
+          </div>
+        </div>
+      <% end %>
     <% else %>
       <% value = @encrypted_config.value || {} %>
       <%= form_for @encrypted_config, url: settings_email_index_path, method: :post, html: { autocomplete: 'off', class: 'space-y-4' } do |f| %>

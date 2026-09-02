@@ -1,8 +1,8 @@
 {
   "ignored_warnings": [
     {
-      "fingerprint": "de39648cd3f79d51e95e45f05fc77da49b0ad68bf80458061151016c0ef78208",
-      "note": "Permitted parameters are necessary for creating submitters via API"
+      "fingerprint": "9de67476e01a041d37bbbe34d38ca08ed700cede0603507904d06a35ab822d0e",
+      "note": "Permitted parameters are necessary for creating submitters via API (fingerprint refreshed 2026-09-01: require_phone_2fa removed from the permit list \u2014 Session 3 D1)"
     },
     {
       "fingerprint": "645f2f352a813105b8b2eeadc68101d2e7ea04b8e839aa1336616be56f1108ca",

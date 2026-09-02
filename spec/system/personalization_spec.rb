@@ -1,7 +1,8 @@
 # frozen_string_literal: true
 
 RSpec.describe 'Personalization' do
-  let!(:account) { create(:account, :paid) } # email templates are paid-only; the free CTA path is asserted in spec/golden/gating_ui_spec.rb
+  # Email templates are paid-only; the free-account CTA path is asserted in spec/golden/gating_ui_spec.rb.
+  let!(:account) { create(:account, :paid) }
   let!(:user) { create(:user, account:) }
 
   before do

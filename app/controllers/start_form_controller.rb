@@ -15,11 +15,13 @@ class StartFormController < ApplicationController
   COOKIES_DEFAULTS = { httponly: true, secure: Rails.env.production? }.freeze
 
   def show
-    if @template.preferences['require_phone_2fa'] || @template.preferences['require_email_2fa']
-      raise ActionController::RoutingError, I18n.t('not_found')
-    end
-
     if @template.shared_link?
+      # A shared template that also requires email 2FA cannot be opened by
+      # link: explain that instead of a form that would fail. Non-shared
+      # templates keep the owner-private / anonymous-404 answers below, so
+      # the page never confirms a private template's existence.
+      return render :email_verification_required if @template.preferences['require_email_2fa']
+
       @submitter = @template.submissions.new(account_id: @template.account_id)
                             .submitters.new(account_id: @template.account_id,
                                             uuid: (filter_undefined_submitters(@template).first ||

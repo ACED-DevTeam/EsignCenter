@@ -16,6 +16,11 @@ class SendTestWebhookRequestJob
 
     return unless webhook_url
 
+    # Webhooks are paid-only. A test send queued for (or by) an account that
+    # is no longer entitled makes no request (D43 — the URL row stays, inert),
+    # the same as every real delivery in SendWebhookRequest.
+    return unless Entitlements.allowed?(webhook_url.account, :webhooks)
+
     uri = SendWebhookRequest.validate_webhook_uri!(webhook_url)
     body = {
       event_type: 'form.completed',

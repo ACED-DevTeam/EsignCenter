@@ -50,7 +50,19 @@ class WebhookUrl < ApplicationRecord
   before_validation :set_sha1
   before_validation :set_hmac_secret
 
+  # Only a NEW or CHANGED URL is validated: a legacy customer row with an
+  # http URL keeps saving its events, secret and headers (a downgrade never
+  # blocks cleanup, D43); delivery refuses the unsafe URL with a terminal
+  # error instead (SendWebhookRequest).
+  validate :url_deliverable_for_customer, if: -> { account&.customer? && (new_record? || will_save_change_to_url?) }
+
   encrypts :url, :secret, :hmac_secret
+
+  # Validation messages read "Webhook URL must use https" (the flash joins
+  # the attribute name and the message).
+  def self.human_attribute_name(attribute, options = {})
+    attribute.to_s == 'url' ? I18n.t('webhook_url') : super
+  end
 
   def set_sha1
     self.sha1 = Digest::SHA1.hexdigest(url)
@@ -58,5 +70,15 @@ class WebhookUrl < ApplicationRecord
 
   def set_hmac_secret
     self.hmac_secret ||= WebhookUrls::Signatures.generate_secret
+  end
+
+  private
+
+  def url_deliverable_for_customer
+    SendWebhookRequest.validate_url!(url, account)
+  rescue SendWebhookRequest::HttpsError
+    errors.add(:url, :invalid, message: I18n.t('webhook_url_must_use_https'))
+  rescue SendWebhookRequest::LocalhostError, SendWebhookRequest::MetadataHostError
+    errors.add(:url, :invalid, message: I18n.t('webhook_url_must_not_point_at_a_private_address'))
   end
 end

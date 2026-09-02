@@ -106,6 +106,44 @@ RSpec.describe 'Feature gating UI', type: :request do
     expect { get '/settings/sso' }.to raise_error(ActionController::RoutingError)
   end
 
+  describe 'SMTP settings saved on a paid plan' do
+    let(:smtp_value) do
+      { 'host' => 'smtp.example.com', 'port' => '587', 'username' => 'mailer',
+        'password' => 'p4ssw0rd-never-shown', 'from_email' => 'docs@example.com' }
+    end
+
+    # The pin is inert after a downgrade (MailConfigs.resolve skips it) but the
+    # owner must still be able to see and remove it — never the password.
+    it 'shows a downgraded account a read-only summary with a remove button, removes on request, and shows an ' \
+       'entitled account the real form' do
+      config = create(:encrypted_config, account: paid_account, key: EncryptedConfig::EMAIL_SMTP_KEY, value: smtp_value)
+
+      body = visit_as(paid_account, '/settings/email')
+
+      expect(body).to include('name="encrypted_config[value][host]"')
+      expect(body).not_to include(I18n.t('remove_smtp_settings'))
+
+      downgrade_to_free!(paid_account)
+
+      body = visit_as(paid_account, '/settings/email')
+
+      expect_cta(body)
+      expect(body).not_to include('name="encrypted_config[value][host]"')
+      %w[smtp.example.com 587 mailer docs@example.com].each { |value| expect(body).to include(value) }
+      expect(body).not_to include('p4ssw0rd-never-shown')
+      expect(body).to include(I18n.t('remove_smtp_settings'))
+      expect(body).to include("/settings/email/#{config.id}")
+
+      expect { delete "/settings/email/#{config.id}" }.to change(EncryptedConfig, :count).by(-1)
+      expect(response).to redirect_to('/settings/email')
+
+      body = visit_as(paid_account, '/settings/email')
+
+      expect_cta(body)
+      expect(body).not_to include(I18n.t('remove_smtp_settings'))
+    end
+  end
+
   describe 'attribution points' do
     def signing_page_for(account)
       submission = create(:submission, :with_submitters, template: template_for(account),
@@ -140,6 +178,44 @@ RSpec.describe 'Feature gating UI', type: :request do
       expect(paid_body).not_to include(I18n.t('powered_by'))
       expect(paid_body).to include("href=\"#{Docuseal::DOCUSEAL_URL}")
       expect(paid_body).to include('>DocuSeal</a>')
+    end
+
+    # The shared-link verification-code page (/d/:slug?email_verification=1).
+    def shared_link_verification_page_for(account)
+      template = template_for(account)
+      template.update!(shared_link: true)
+
+      get "/d/#{template.slug}", params: { email_verification: true }
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include('name="one_time_code"')
+
+      response.body
+    end
+
+    # The signer's email-2FA page (/s/:slug on a template that requires it).
+    def email_2fa_page_for(account)
+      template = template_for(account)
+      template.update!(preferences: template.preferences.merge('require_email_2fa' => true))
+      submission = create(:submission, :with_submitters, template:, created_by_user: admin_for(account))
+
+      get "/s/#{submission.submitters.first.slug}"
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include(I18n.t('send_verification_code'))
+
+      response.body
+    end
+
+    it 'renders the DocuSeal attribution on both signer-facing 2FA pages for free and paid-without-branding accounts' do
+      create(:account_config, account: paid_account, key: AccountConfig::REMOVE_BRANDING_KEY, value: true)
+
+      bodies = [free_account, paid_account].flat_map do |account|
+        [shared_link_verification_page_for(account), email_2fa_page_for(account)]
+      end
+
+      expect(bodies).to all(include("href=\"#{Docuseal::DOCUSEAL_URL}"))
+      expect(bodies).to all(include('>DocuSeal</a>'))
     end
 
     it 'renders the share-link QR attribution for free and paid-without-branding accounts alike' do

@@ -52,3 +52,4 @@
     <%= button_to t(:re_send_email), start_form_email_2fa_send_index_path, params: { slug: @template.slug, resend: true, submitter: { name: params[:name] || @submitter&.name, email: params[:email] || @submitter&.email, phone: params[:phone] || @submitter&.phone } }.compact, method: :post, id: 'resend_code', class: 'hidden' %>
   </div>
 </main>
+<%= render 'shared/attribution', link_path: '/start', account: @template.account %>

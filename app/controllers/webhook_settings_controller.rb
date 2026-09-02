@@ -38,19 +38,25 @@ class WebhookSettingsController < ApplicationController
 
   def create
     if @webhook_url.url.present?
-      @webhook_url.save!
-
-      redirect_to settings_webhooks_path, notice: I18n.t('webhook_url_has_been_saved')
+      if @webhook_url.save
+        redirect_to settings_webhooks_path, notice: I18n.t('webhook_url_has_been_saved')
+      else
+        redirect_back fallback_location: settings_webhooks_path,
+                      alert: @webhook_url.errors.full_messages.to_sentence
+      end
     else
       redirect_back fallback_location: settings_webhooks_path
     end
   end
 
   def update
-    @webhook_url.update!(update_params)
-
-    redirect_back(fallback_location: settings_webhook_path(@webhook_url),
-                  notice: I18n.t('webhook_url_has_been_updated'))
+    if @webhook_url.update(update_params)
+      redirect_back(fallback_location: settings_webhook_path(@webhook_url),
+                    notice: I18n.t('webhook_url_has_been_updated'))
+    else
+      redirect_back fallback_location: settings_webhook_path(@webhook_url),
+                    alert: @webhook_url.errors.full_messages.to_sentence
+    end
   end
 
   def destroy

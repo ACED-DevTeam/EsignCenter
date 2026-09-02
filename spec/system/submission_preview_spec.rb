@@ -1,7 +1,8 @@
 # frozen_string_literal: true
 
 RSpec.describe 'Submission Preview' do
-  let(:account) { create(:account) }
+  # Per-account SMTP (pinned below) is a paid-only surface; a free account's pin is inert.
+  let(:account) { create(:account, :paid) }
   let(:user) { create(:user, account:) }
   let(:template) { create(:template, account:, author: user) }
 

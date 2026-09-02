@@ -233,6 +233,47 @@ RSpec.describe 'Feature gating', type: :request do
         .not_to change(SendTestWebhookRequestJob.jobs, :size)
       expect_html_refusal
     end
+
+    it 'refuses a free account changing a URL\'s events or secret header (rows unchanged), keeps viewing and ' \
+       'deleting open, and lets an internal account write both' do
+      free_webhook = create(:webhook_url, account: free_account, events: ['form.completed'])
+      internal_webhook = create(:webhook_url, account: internal_account, events: ['form.completed'])
+      events = { webhook_url: { events: { 'form.viewed' => '1' } } }
+      secret = { webhook_url: { secret: { key: 'X-Key', value: 'value' } } }
+
+      end_session
+      sign_in(admin_for(free_account))
+
+      put "/webhook_preferences/#{free_webhook.id}", params: events
+
+      expect_html_refusal
+      expect(free_webhook.reload.events).to eq(['form.completed'])
+
+      put "/webhook_secret/#{free_webhook.id}", params: secret
+
+      expect_html_refusal
+      expect(free_webhook.reload.secret).to eq({})
+
+      # Reads and cleanup never need the entitlement.
+      get "/webhook_secret/#{free_webhook.id}"
+
+      expect(response).to have_http_status(:ok)
+      expect { delete "/settings/webhooks/#{free_webhook.id}" }.to change(WebhookUrl, :count).by(-1)
+
+      end_session
+      sign_in(admin_for(internal_account))
+
+      put "/webhook_preferences/#{internal_webhook.id}", params: events
+
+      expect(response).to have_http_status(:ok)
+      expect(internal_webhook.reload.events).to contain_exactly('form.completed', 'form.viewed')
+
+      put "/webhook_secret/#{internal_webhook.id}", params: secret
+
+      expect(response).to have_http_status(:redirect)
+      expect(flash[:alert]).to be_nil
+      expect(internal_webhook.reload.secret).to eq('X-Key' => 'value')
+    end
   end
 
   describe 'signing sessions' do
@@ -305,6 +346,37 @@ RSpec.describe 'Feature gating', type: :request do
 
       expect(response).to have_http_status(:ok)
       expect(response.parsed_body['builder_src']).to be_present
+    end
+
+    # D43 keeps in-flight SIGNING entitled, not an open builder: the embed row
+    # is checked on every builder-token request, so a token minted while paid
+    # (valid for up to 24 h) stops working the moment the account is downgraded.
+    it 'refuses a builder token minted while paid once the account is downgraded, without touching the template' do
+      template = create_builder_session(paid_account, token_headers(paid_account))
+      token = URI.parse(response.parsed_body['builder_src']).path.split('/').last
+      payload = { template: { name: 'Renamed after downgrade', schema: template.schema,
+                              submitters: template.submitters, fields: template.fields, variables_schema: {} } }
+
+      get "/embed/template_builder/#{token}"
+
+      expect(response).to have_http_status(:ok)
+
+      downgrade_to_free!(paid_account)
+
+      get "/embed/template_builder/#{token}"
+
+      expect(response).to have_http_status(:forbidden)
+      expect(response.body).to include(html_refusal)
+
+      put "/embed/template_builder/#{token}/templates/#{template.id}",
+          params: payload.to_json, headers: { 'CONTENT_TYPE' => 'application/json' }
+
+      expect_json_refusal
+      expect(template.reload.name).not_to eq('Renamed after downgrade')
+
+      get "/embed/template_builder/#{token}/templates/#{template.id}/documents"
+
+      expect_json_refusal
     end
   end
 
@@ -645,12 +717,16 @@ RSpec.describe 'Feature gating', type: :request do
       expect(response.body).to include("href=\"#{Docuseal::DOCUSEAL_URL}\"")
       expect(response.body).to include('>DocuSeal</a>')
 
+      # After the downgrade the builder token is refused (the embed row is
+      # re-checked on every request); the refusal page still carries the
+      # attribution, and the branding flag has gone inert with the plan.
       downgrade_to_free!(paid_account)
       get builder_path
 
-      expect(response).to have_http_status(:ok)
+      expect(response).to have_http_status(:forbidden)
       expect(response.body).to include(I18n.t('powered_by'))
       expect(response.body).to include("href=\"#{Docuseal::DOCUSEAL_URL}\"")
+      expect(response.body).to include('>DocuSeal</a>')
     end
   end
 

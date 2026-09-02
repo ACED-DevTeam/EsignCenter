@@ -99,7 +99,8 @@ RSpec.describe 'Webhook hardening' do
   end
 
   describe SendTestWebhookRequestJob do
-    let(:account) { create(:account) }
+    # Webhooks are paid-only: the free-account path is the "no request" example below.
+    let(:account) { create(:account, :paid) }
     let(:user) { create(:user, account:) }
     let(:template) { create(:template, account:, author: user) }
     let(:submission) { create(:submission, template:, created_by_user: user) }
@@ -123,6 +124,21 @@ RSpec.describe 'Webhook hardening' do
       end
     end
 
+    it 'makes no request for a free account (paid-only row; the URL row stays, inert)' do
+      free_account = create(:account)
+      free_user = create(:user, account: free_account)
+      free_template = create(:template, account: free_account, author: free_user)
+      free_submission = create(:submission, template: free_template, created_by_user: free_user)
+      free_submitter = create(:submitter, submission: free_submission,
+                                          uuid: free_template.submitters.first['uuid'], completed_at: Time.current)
+      free_webhook = create(:webhook_url, account: free_account)
+      stub_request(:post, free_webhook.url).to_return(status: 200)
+
+      described_class.new.perform('submitter_id' => free_submitter.id, 'webhook_url_id' => free_webhook.id)
+
+      expect(WebMock).not_to have_requested(:post, free_webhook.url)
+    end
+
     it 'blocks metadata hosts for internal accounts' do
       internal_account = create(:account, :internal)
       internal_user = create(:user, account: internal_account)
@@ -143,7 +159,8 @@ RSpec.describe 'Webhook hardening' do
     it 'requires HTTPS for customers even when allow_http is configured' do
       account = create(:account)
       create(:account_config, account:, key: :allow_http, value: true)
-      webhook_url = create(:webhook_url, account:, url: 'http://example.com/webhook')
+      webhook_url = create(:webhook_url, account:)
+      webhook_url.update_column(:url, 'http://example.com/webhook')
 
       expect do
         SendWebhookRequest.validate_webhook_uri!(webhook_url)
@@ -151,7 +168,8 @@ RSpec.describe 'Webhook hardening' do
     end
 
     it 'blocks localhost for customers' do
-      webhook_url = create(:webhook_url, url: 'https://localhost/webhook')
+      webhook_url = create(:webhook_url)
+      webhook_url.update_column(:url, 'https://localhost/webhook')
 
       expect do
         SendWebhookRequest.validate_webhook_uri!(webhook_url)
@@ -159,7 +177,8 @@ RSpec.describe 'Webhook hardening' do
     end
 
     it 'blocks metadata hosts for customers' do
-      webhook_url = create(:webhook_url, url: 'https://169.254.169.254/webhook')
+      webhook_url = create(:webhook_url)
+      webhook_url.update_column(:url, 'https://169.254.169.254/webhook')
 
       expect do
         SendWebhookRequest.validate_webhook_uri!(webhook_url)
@@ -181,8 +200,7 @@ RSpec.describe 'Webhook hardening' do
     # live inside SendWebhookRequest.call itself: if the call site stopped
     # validating, every example above would stay green while a customer's
     # webhook posted to localhost. So this drives the real delivery path and
-    # checks the two things that only happen after validation — the HTTP
-    # request and the WebhookEvent row.
+    # checks both the blocked HTTP request and the visible terminal event.
     def deliver(webhook_url, submitter)
       SendWebhookRequest.call(webhook_url, event_uuid: SecureRandom.uuid, event_type: 'submission.created',
                                            record: submitter, data: { id: submitter.id })
@@ -196,17 +214,24 @@ RSpec.describe 'Webhook hardening' do
       create(:submitter, submission:, uuid: template.submitters.first['uuid'])
     end
 
-    it 'refuses a customer localhost URL before any request or event exists' do
+    it 'records a customer localhost URL as a terminal error without sending a request' do
       account = create(:account, :paid)
       submitter = build_submitter(account)
-      webhook_url = create(:webhook_url, account:, url: 'http://localhost/webhook')
+      webhook_url = create(:webhook_url, account:)
+      webhook_url.update_column(:url, 'http://localhost/webhook')
 
-      expect do
-        deliver(webhook_url, submitter)
-      end.to raise_error(SendWebhookRequest::HttpsError, 'Only HTTPS is allowed.')
+      response = deliver(webhook_url, submitter)
 
+      expect(response.final).to be(true)
+      expect(response.status).to eq(0)
       expect(a_request(:post, 'http://localhost/webhook')).not_to have_been_made
-      expect(WebhookEvent.where(webhook_url:)).to be_empty
+
+      event = WebhookEvent.find_by!(webhook_url:)
+      attempt = event.webhook_attempts.sole
+
+      expect(event.status).to eq('error')
+      expect(attempt.response_status_code).to eq(0)
+      expect(attempt.response_body).to eq('Only HTTPS is allowed.')
     end
 
     it 'delivers the same localhost URL for an internal account' do

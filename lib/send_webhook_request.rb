@@ -12,6 +12,10 @@ module SendWebhookRequest
   LocalhostError = Class.new(StandardError)
   MetadataHostError = Class.new(StandardError)
 
+  NON_RETRYABLE_RESPONSE = Struct.new(:status, :final)
+                                 .new(0, true)
+                                 .freeze
+
   SIGNATURE_HEADERS = %w[X-Docuseal-Signature X-Esigncenter-Signature].freeze
 
   # Cloud instance-metadata / link-local targets are never a legitimate
@@ -32,14 +36,14 @@ module SendWebhookRequest
   def call(webhook_url, event_uuid:, event_type:, record:, data:, attempt: 0)
     # Webhooks are paid-only. Every webhook job lands here, so a delivery
     # queued before a downgrade makes no request and records nothing (D43 —
-    # the URL row stays, inert).
-    return unless Entitlements.allowed?(webhook_url.account, :webhooks)
-
-    uri = validate_webhook_uri!(webhook_url)
+    # the URL row stays, inert). The terminal response stops the job's retry.
+    return NON_RETRYABLE_RESPONSE unless Entitlements.allowed?(webhook_url.account, :webhooks)
 
     webhook_event = create_webhook_event(webhook_url, event_uuid:, event_type:, record:)
 
     return if AUTOMATED_RETRY_RANGE.cover?(attempt.to_i) && webhook_event&.status == 'success'
+
+    uri = validate_webhook_uri!(webhook_url)
 
     response = Faraday.post(uri) do |req|
       req.headers['Content-Type'] = 'application/json'
@@ -59,6 +63,10 @@ module SendWebhookRequest
     end
 
     handle_response(webhook_event, response:, attempt:)
+  rescue HttpsError, LocalhostError, MetadataHostError => e
+    handle_error(webhook_event, attempt:, error_message: e.message)
+
+    NON_RETRYABLE_RESPONSE
   rescue Faraday::SSLError, Faraday::TimeoutError, Faraday::ConnectionFailed => e
     handle_error(webhook_event, attempt:, error_message: e.class.name.split('::').last)
   rescue Faraday::Error => e
@@ -66,14 +74,16 @@ module SendWebhookRequest
   end
 
   def validate_webhook_uri!(webhook_url)
-    uri = parse_uri(webhook_url.url)
+    validate_url!(webhook_url.url, webhook_url.account)
+  end
+
+  def validate_url!(url, account)
+    uri = parse_uri(url)
     host = uri.host.to_s.downcase
 
     if host.in?(METADATA_HOSTS) || LINK_LOCAL_PREFIXES.any? { |prefix| host.start_with?(prefix) }
       raise MetadataHostError, "Can't send to a link-local/metadata address."
     end
-
-    account = webhook_url.account
 
     # infra-keep: the HTTPS/localhost rules already apply to every customer account (Session 1).
     return uri unless Docuseal.multitenant? || account.customer?

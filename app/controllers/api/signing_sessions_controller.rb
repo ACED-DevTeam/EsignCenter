@@ -18,6 +18,7 @@ module Api
     end
 
     def create
+      Params::PhoneTwoFactorRejector.call(params)
       Params::SigningSessionCreateValidator.call(params)
 
       authorize!(:create, Template.new(account_id: current_account.id, author: current_user))
@@ -66,7 +67,7 @@ module Api
           documents: [%i[name file]],
           submitters: [[:send_email, :send_sms, :completed_redirect_url, :uuid, :name, :email, :role,
                         :completed, :phone, :application_key, :external_id, :reply_to, :go_to_last,
-                        :require_phone_2fa, :require_email_2fa, :order, :index, :invite_by,
+                        :require_email_2fa, :order, :index, :invite_by,
                         { metadata: {}, values: {}, roles: [], readonly_fields: [], message: %i[subject body],
                           fields: [:name, :uuid, :default_value, :value, :title, :description,
                                    :readonly, :required, :validation_pattern, :invalid_message,

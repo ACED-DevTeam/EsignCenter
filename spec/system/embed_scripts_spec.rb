@@ -108,7 +108,8 @@ RSpec.describe 'Embed scripts', type: :system do
   end
 
   it 'relays the real embedded builder load event from the iframe' do
-    account = create(:account)
+    # The embedded builder is a paid-only surface (free accounts get the upgrade refusal, spec/golden/gating_spec.rb).
+    account = create(:account, :paid)
     author = create(:user, account:)
     template = create(:template, account:, author:, only_field_types: %w[signature])
 

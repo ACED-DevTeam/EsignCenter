@@ -1,4 +1,4 @@
-<%# Extension point kept for compatibility; the upgrade CTA below is what a free account sees instead of the reminder form. %>
+<%# Extension point kept for compatibility; the upgrade CTA below is what a free account sees instead of the reminder form. Compact: the BCC card above it is already the page's full CTA. %>
 <% if cannot?(:use, :reminders) %>
-  <%= render 'shared/upgrade_cta', feature: t('sign_request_email_reminders'), class: 'my-4' %>
+  <%= render 'shared/upgrade_cta', feature: t('sign_request_email_reminders'), body: t('automatic_reminders_are_available_on_the_paid_plan'), compact: true, class: 'my-4' %>
 <% end %>

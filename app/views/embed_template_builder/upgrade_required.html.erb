@@ -1,0 +1,14 @@
+<% content_for(:html_title, "#{@template.name} | EsignCenter") %>
+<%# The embedded builder's refusal page: the token was minted while the account was entitled and the account has since left the paid plan. Rendered inside the customer's iframe, so it stays short and self-contained. %>
+<main class="max-w-md mx-auto px-4 mt-16 mb-8">
+  <div class="card bg-base-200 border border-base-300">
+    <div class="card-body p-6 items-center text-center space-y-3">
+      <div class="w-12 h-12 rounded-2xl bg-neutral text-white flex items-center justify-center">
+        <%= svg_icon('sparkles', class: 'w-6 h-6') %>
+      </div>
+      <p class="text-lg font-semibold leading-tight"><%= t('this_feature_requires_a_paid_plan') %></p>
+      <p class="text-sm text-base-content/70" dir="auto"><%= t('feature_is_available_on_the_paid_plan', feature: t('api_and_embedding')) %></p>
+    </div>
+  </div>
+</main>
+<%= render 'shared/powered_by', account: @template.account %>

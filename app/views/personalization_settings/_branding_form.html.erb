@@ -11,5 +11,6 @@
     </div>
   <% end %>
 <% else %>
-  <%= render 'shared/upgrade_cta', feature: t('remove_product_name_branding_from_emails_and_signing_pages', product_name: Docuseal.product_name) %>
+  <%# Compact: the email-templates card above it is already the page's full CTA. %>
+  <%= render 'shared/upgrade_cta', feature: t('branding'), body: t('removing_product_name_branding_from_emails_and_signing_pages_is_available_on_the_paid_plan', product_name: Docuseal.product_name), compact: true %>
 <% end %>

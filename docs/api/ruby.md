@@ -364,14 +364,9 @@ Docuseal.create_submission({
                     "type": "integer",
                     "description": "The order of the submitter in the workflow (e.g., 0 for the first signer, 1 for the second, etc.). Use the same order number to create order groups. By default, submitters are ordered as in the submitters array."
                   },
-                  "require_phone_2fa": {
-                    "type": "boolean",
-                    "description": "Set to `true` to require phone 2FA verification via a one-time code sent to the phone number in order to access the documents.",
-                    "default": false
-                  },
                   "require_email_2fa": {
                     "type": "boolean",
-                    "description": "Set to `true` to require email 2FA verification via a one-time code sent to the email address in order to access the documents.",
+                    "description": "Set to `true` to require email 2FA verification via a one-time code sent to the email address in order to access the documents. Phone (SMS) verification is not offered: a truthy `require_phone_2fa` is rejected with 422 — use `require_email_2fa` instead.",
                     "default": false
                   },
                   "message": {
@@ -931,14 +926,9 @@ Docuseal.create_submission_from_pdf({
                     "type": "integer",
                     "description": "The order of the submitter in the workflow (e.g., 0 for the first signer, 1 for the second, etc.). Use the same order number to create order groups. By default, submitters are ordered as in the submitters array."
                   },
-                  "require_phone_2fa": {
-                    "type": "boolean",
-                    "description": "Set to `true` to require phone 2FA verification via a one-time code sent to the phone number in order to access the documents.",
-                    "default": false
-                  },
                   "require_email_2fa": {
                     "type": "boolean",
-                    "description": "Set to `true` to require email 2FA verification via a one-time code sent to the email address in order to access the documents.",
+                    "description": "Set to `true` to require email 2FA verification via a one-time code sent to the email address in order to access the documents. Phone (SMS) verification is not offered: a truthy `require_phone_2fa` is rejected with 422 — use `require_email_2fa` instead.",
                     "default": false
                   },
                   "invite_by": {
@@ -1408,14 +1398,9 @@ Docuseal.create_submission_from_docx({
                     "type": "integer",
                     "description": "The order of the submitter in the workflow (e.g., 0 for the first signer, 1 for the second, etc.). Use the same order number to create order groups. By default, submitters are ordered as in the submitters array."
                   },
-                  "require_phone_2fa": {
-                    "type": "boolean",
-                    "description": "Set to `true` to require phone 2FA verification via a one-time code sent to the phone number in order to access the documents.",
-                    "default": false
-                  },
                   "require_email_2fa": {
                     "type": "boolean",
-                    "description": "Set to `true` to require email 2FA verification via a one-time code sent to the email address in order to access the documents.",
+                    "description": "Set to `true` to require email 2FA verification via a one-time code sent to the email address in order to access the documents. Phone (SMS) verification is not offered: a truthy `require_phone_2fa` is rejected with 422 — use `require_email_2fa` instead.",
                     "default": false
                   },
                   "invite_by": {
@@ -1905,14 +1890,9 @@ and typesetting industry</p>
                     "type": "integer",
                     "description": "The order of the submitter in the workflow (e.g., 0 for the first signer, 1 for the second, etc.). Use the same order number to create order groups. By default, submitters are ordered as in the submitters array."
                   },
-                  "require_phone_2fa": {
-                    "type": "boolean",
-                    "description": "Set to `true` to require phone 2FA verification via a one-time code sent to the phone number in order to access the documents.",
-                    "default": false
-                  },
                   "require_email_2fa": {
                     "type": "boolean",
-                    "description": "Set to `true` to require email 2FA verification via a one-time code sent to the email address in order to access the documents.",
+                    "description": "Set to `true` to require email 2FA verification via a one-time code sent to the email address in order to access the documents. Phone (SMS) verification is not offered: a truthy `require_phone_2fa` is rejected with 422 — use `require_email_2fa` instead.",
                     "default": false
                   },
                   "invite_by": {
@@ -2464,11 +2444,6 @@ Docuseal.update_submitter(500001, {
             "completed_redirect_url": {
               "type": "string",
               "description": "Submitter specific URL to redirect to after the submission completion."
-            },
-            "require_phone_2fa": {
-              "type": "boolean",
-              "description": "Set to `true` to require phone 2FA verification via a one-time code sent to the phone number in order to access the documents.",
-              "default": false
             },
             "message": {
               "type": "object",

@@ -1,0 +1,22 @@
+<% content_for(:html_title, "#{@template.name} | EsignCenter") %>
+<% content_for(:html_description, t('email_verification_shared_link_instructions')) %>
+<main class="max-w-md mx-auto px-2 mt-12 mb-4">
+  <div class="space-y-6 mx-auto">
+    <div class="flex items-center justify-center">
+      <%= render 'banner' %>
+    </div>
+    <div class="flex items-center bg-base-200 rounded-xl p-4">
+      <div class="mr-3">
+        <%= svg_icon('mail', class: 'w-10 h-10') %>
+      </div>
+      <div dir="auto">
+        <p class="text-lg font-bold mb-1"><%= t('email_invitation_required') %></p>
+        <p class="text-sm"><%= @template.name %></p>
+      </div>
+    </div>
+    <p dir="auto" class="text-center text-base-content/80">
+      <%= t('email_verification_shared_link_instructions') %>
+    </p>
+  </div>
+</main>
+<%= render 'shared/attribution', link_path: '/start', account: @template.account %>

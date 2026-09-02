@@ -1,9 +1,8 @@
-<% require_phone_2fa = @template.preferences['require_phone_2fa'] == true %>
 <% require_email_2fa = @template.preferences['require_email_2fa'] == true %>
 <% prefillable_fields = @template.fields.select { |f| f['prefillable'] } %>
 <% default_tab = cookies.permanent[:add_recipients_tab].presence || 'email' %>
 <% recipient_form_fields = Accounts.load_recipient_form_fields(current_account) if prefillable_fields.blank? %>
-<% only_detailed = require_phone_2fa || require_email_2fa || prefillable_fields.present? || recipient_form_fields.present? %>
+<% only_detailed = require_email_2fa || prefillable_fields.present? || recipient_form_fields.present? %>
 <% variables_form = render 'variables_form', schema: @template.variables_schema if @template.variables_schema.present? && @template.variables_schema.any? { |_, v| !v['disabled'] } %>
 <%= render 'shared/turbo_modal_large', title: params[:selfsign] ? t('add_recipients') : t('add_new_recipients') do %>
   <% options = [only_detailed ? nil : [t('via_email'), 'email'], only_detailed ? nil : [t('via_phone'), 'phone'], [t('detailed'), 'detailed']].compact %>
@@ -31,7 +30,7 @@
       </div>
     <% end %>
     <div id="detailed" class="<%= 'hidden' if !only_detailed && default_tab != 'detailed' %>">
-      <%= render 'detailed_form', template: @template, require_phone_2fa:, require_email_2fa:, prefillable_fields:, recipient_form_fields:, variables_form: %>
+      <%= render 'detailed_form', template: @template, require_email_2fa:, prefillable_fields:, recipient_form_fields:, variables_form: %>
     </div>
     <%= render 'submissions/error' %>
   </div>

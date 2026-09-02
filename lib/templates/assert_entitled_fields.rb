@@ -23,38 +23,43 @@ module Templates
 
     def call(account, fields, schema: nil, baseline: nil)
       items = normalize_all([*fields, *schema])
-      persisted = baseline ? normalize_all([*baseline.fields, *baseline.schema]).index_by { |item| item_key(item) } : {}
+      persisted = baseline ? normalize_all([*baseline.fields, *baseline.schema]) : []
 
-      if items.any? { |item| introduces_formula?(item, persisted[item_key(item)]) }
-        Entitlements.require!(account, :formulas)
-      end
-
-      if items.any? { |item| introduces_conditions?(item, persisted[item_key(item)]) }
-        Entitlements.require!(account, :conditional_logic)
-      end
+      Entitlements.require!(account, :formulas) if introduces?(items, persisted, :formula)
+      Entitlements.require!(account, :conditional_logic) if introduces?(items, persisted, :conditions)
 
       true
     end
 
-    def introduces_formula?(item, persisted_item)
-      formula = formula_of(item)
+    # The incoming set introduces the feature when any carrying item differs
+    # from the persisted item of the same identity — or when identities cannot
+    # be trusted: a template does not validate uuid uniqueness, so two incoming
+    # items reusing one legacy uuid, or more carrying items than the baseline
+    # had, are treated as new rather than matched against the same row twice.
+    def introduces?(items, persisted, kind)
+      carrying = items.select { |item| content_of(item, kind).present? }
+      persisted_carrying = persisted.select { |item| content_of(item, kind).present? }
 
-      formula.present? && formula != formula_of(persisted_item)
+      return false if carrying.empty?
+      return true if carrying.size > persisted_carrying.size
+      return true if carrying.map { |item| item_key(item) }.tally.values.any? { |count| count > 1 }
+
+      persisted_by_key = persisted.index_by { |item| item_key(item) }
+
+      carrying.any? { |item| content_of(item, kind) != content_of(persisted_by_key[item_key(item)], kind) }
     end
 
-    def introduces_conditions?(item, persisted_item)
-      item['conditions'].present? && item['conditions'] != persisted_item&.dig('conditions')
-    end
-
-    def formula_of(item)
+    def content_of(item, kind)
       return if item.nil?
+      return item['conditions'].presence if kind == :conditions
 
       item['formula'].presence || item.dig('preferences', 'formula').presence
     end
 
-    # Fields carry `uuid`; schema items carry `attachment_uuid`.
+    # Fields carry `uuid`; schema items carry `attachment_uuid`. Namespaced so
+    # a field and a document can never share an identity.
     def item_key(item)
-      item['uuid'].presence || item['attachment_uuid']
+      item['uuid'].present? ? "field:#{item['uuid']}" : "schema:#{item['attachment_uuid']}"
     end
 
     def normalize_all(items)
