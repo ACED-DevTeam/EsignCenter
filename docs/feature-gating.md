@@ -90,7 +90,7 @@ has it*.
   "This feature requires a paid plan" (locale key
   `this_feature_requires_a_paid_plan`, translated for every language). Nothing
   is saved.
-- **Hidden features** (SMS, bulk send — UI only, see 1.3 —, SAML SSO, formulas) are not on any
+- **Hidden features** (SMS, bulk send UI — see 1.3 — SAML SSO, formulas) are not on any
   plan, so their refusal never promises an upgrade: the JSON error is
   `Entitlements::UNAVAILABLE_MESSAGE` ("This feature is not available") and
   the browser alert is the `this_feature_is_not_available` key. Both rescue
@@ -305,8 +305,9 @@ the word only as an escaped regex, so the literal grep does not list it.
   asks `Entitlements.allowed?` for the template's account); `withFormula` and
   `withPhone` are `false` for everyone. The conditions modal tells a free
   account "This feature requires a paid plan" (and refuses to save). The
-  Formula menu item is not offered in the field settings of any account,
-  internal included; a legacy formula field keeps a read-only formula icon
+  Formula item is not offered to any account, internal included — not in the
+  field settings menu, not in the payment price menu, and not in the
+  right-click context menu; a legacy formula field keeps a read-only formula icon
   whose modal says the feature is not available and refuses to save.
 - **Hidden for everyone**: no SMS or SSO settings routes; the "send SMS"
   controls are gone from the recipient forms and the submission page; the

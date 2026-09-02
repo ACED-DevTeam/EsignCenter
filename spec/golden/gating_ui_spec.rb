@@ -64,7 +64,9 @@ RSpec.describe 'Feature gating UI', type: :request do
       ->(t) { "/templates/#{t.id}/preferences" },
       ['name="template[preferences][bcc_completed]"', 'id="submitter_invitation_email_template_form"',
        'name="template[preferences][documents_copy_email_subject]"',
-       'name="template[preferences][completed_notification_email_subject]"']
+       'name="template[preferences][completed_notification_email_subject]"',
+       'form="submitter_invitation_email_template_form"', 'form="submitter_documents_copy_email_template_form"',
+       'form="submitter_completed_email_template_form"']
     ]
   }
 

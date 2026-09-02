@@ -28,6 +28,20 @@ RSpec.describe 'Template Builder' do
       expect(number_field).to have_css('.field-settings-description')
       expect(number_field).to have_no_css('.field-settings-formula', visible: :all)
     end
+
+    # The right-click context menu on the document page is a separate
+    # component (field_context_menu.vue) with its own Formula entry.
+    it 'does not offer the Formula item in the right-click context menu of a number field' do
+      # Areas on the page carry no field name until selected: clicking the
+      # list item selects its area, which then shows the "House number" title.
+      find('.list-field-number', match: :first).find('.fields-list-item').click
+
+      find('.field-area-container', text: 'House number', match: :first).right_click
+
+      expect(page).to have_css('.field-settings-remove')
+      expect(page).to have_css('.field-settings-description')
+      expect(page).to have_no_css('.field-settings-formula', visible: :all)
+    end
   end
 
   context 'when manage template documents' do

@@ -514,7 +514,7 @@ export default {
     ContextSubmenu,
     ContextModal
   },
-  inject: ['t', 'getFieldTypeIndex', 'template', 'withCustomFields', 'currencies', 'dateFormats', 'locale'],
+  inject: ['t', 'getFieldTypeIndex', 'template', 'withCustomFields', 'currencies', 'dateFormats', 'locale', 'withFormula'],
   props: {
     contextMenu: {
       type: Object,
@@ -609,7 +609,7 @@ export default {
       return this.withCondition && !['stamp', 'heading'].includes(this.field.type)
     },
     showFormula () {
-      return this.field.type === 'number' || this.field.type === 'payment'
+      return this.withFormula && (this.field.type === 'number' || this.field.type === 'payment')
     },
     showRequired () {
       return this.withRequired && !['phone', 'stamp', 'verification', 'strikethrough', 'heading'].includes(this.field.type)
@@ -716,11 +716,15 @@ export default {
       return this.field.preferences?.currency || 'USD'
     },
     priceTypeOptions () {
-      return [
-        { value: 'one_off', label: this.t('fixed') },
-        { value: 'formula', label: this.t('formula') },
-        { value: 'payment_link', label: this.t('payment_link') }
-      ]
+      const options = [{ value: 'one_off', label: this.t('fixed') }]
+
+      if (this.withFormula) {
+        options.push({ value: 'formula', label: this.t('formula') })
+      }
+
+      options.push({ value: 'payment_link', label: this.t('payment_link') })
+
+      return options
     },
     currentPriceType () {
       if (this.field.preferences?.formula) {
@@ -963,7 +967,7 @@ export default {
       } else if (type === 'payment_link') {
         this.paymentLinkValue = this.field.preferences.payment_link_id || ''
         this.isShowPaymentLinkModal = true
-      } else if (type === 'formula') {
+      } else if (type === 'formula' && this.withFormula) {
         this.openFormulaModal()
       }
     },
