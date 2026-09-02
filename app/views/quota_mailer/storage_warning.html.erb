@@ -1,0 +1,11 @@
+<p>Hello,</p>
+<p>Your EsignCenter account is using <%= @used %> of its <%= @limit %> of storage.</p>
+<p>When the space is used up, nobody on the account can upload new documents or a new logo until some room is freed. Sending and signing are never affected by storage: documents already uploaded can still be sent, and signers can still complete them.</p>
+<p>To free space, delete templates and documents you no longer need. Every file the account holds counts — uploaded documents, signed copies and their previews.</p>
+<% if @paid %>
+  <p>Storage grows with your team: every seat adds 10 GB.</p>
+<% else %>
+  <p>The paid plan includes 10 GB per user: $10 per user per month, with a 14-day free trial.</p>
+<% end %>
+<p><%= link_to 'See your usage', @usage_url %></p>
+<p>Thanks,<br>EsignCenter</p>

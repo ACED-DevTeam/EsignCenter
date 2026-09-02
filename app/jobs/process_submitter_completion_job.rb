@@ -6,7 +6,12 @@ class ProcessSubmitterCompletionJob
   def perform(params = {})
     submitter = Submitter.find(params['submitter_id'])
 
-    create_completed_submitter!(submitter)
+    completed_submitter = create_completed_submitter!(submitter)
+
+    # Metering (D41): a document counts the first time ANY signer completes
+    # it; later signers, corrections and resubmits never add. Internal and
+    # operator accounts are not metered.
+    Quotas.after_first_completion(submitter.account) if completed_submitter.is_first && submitter.account.customer?
 
     is_all_completed = !submitter.submission.submitters.exists?(completed_at: nil)
 

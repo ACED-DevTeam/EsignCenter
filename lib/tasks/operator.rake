@@ -122,3 +122,42 @@ namespace :operator do
     end
   end
 end
+
+namespace :operator do
+  desc 'Override one per-account limit: rake operator:limits[account_id,field,value] (value "" clears it)'
+  task :limits, %i[account_id field value] => :environment do |_, args|
+    account = Account.find(args[:account_id])
+    field = args[:field].to_s
+
+    abort "Account #{account.id} is #{account.account_kind}: it has no caps to override." unless account.customer?
+
+    unless AccountLimitOverride::FIELDS.include?(field)
+      abort "field must be one of: #{AccountLimitOverride::FIELDS.join(', ')}"
+    end
+
+    override = AccountLimitOverride.find_or_initialize_by(account:)
+    override.update!(field => args[:value].presence&.to_i)
+
+    limits = Quotas.limits_for(account)
+
+    puts "Account #{account.id} #{field}: #{override.public_send(field).inspect} " \
+         "(effective #{limits.public_send(field).inspect}; nil = plan default / unlimited)"
+  end
+
+  desc 'Lift the sending pause on an account after review: rake operator:resume_sending[account_id]'
+  task :resume_sending, %i[account_id] => :environment do |_, args|
+    account = Account.find(args[:account_id])
+    billing = Plans.billing_account(account)
+
+    if billing.sending_paused_at.blank?
+      puts "Account #{billing.id} is not paused."
+
+      next
+    end
+
+    reason = billing.sending_pause_reason
+    SendingPause.resume!(billing)
+
+    puts "Account #{billing.id} sending resumed (was paused: #{reason})."
+  end
+end

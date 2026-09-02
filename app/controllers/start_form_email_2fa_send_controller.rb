@@ -11,6 +11,12 @@ class StartFormEmail2faSendController < ApplicationController
 
     Templates.assert_documents_ready!(@template)
 
+    # No verification code for a form that cannot be started right now.
+    if (reason = Quotas.share_link_paused?(@template.account))
+      return render json: { error: Quotas.pause_message(@template.account, reason) },
+                    status: :unprocessable_content
+    end
+
     @submitter = @template.submissions.new(account_id: @template.account_id)
                           .submitters.new(**submitter_params, account_id: @template.account_id)
 

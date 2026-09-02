@@ -12,6 +12,7 @@ require 'rails/health_controller'
 
 require_relative '../lib/api_path_consider_json_middleware'
 require_relative '../lib/normalize_client_ip_middleware'
+require_relative '../lib/registration_gate_middleware'
 
 Bundler.require(*Rails.groups)
 
@@ -51,6 +52,8 @@ module DocuSeal
     config.middleware.insert_before ActionDispatch::Static, Rack::Deflater
     config.middleware.insert_before ActionDispatch::Static, NormalizeClientIpMiddleware
     config.middleware.insert_before ActionDispatch::Static, ApiPathConsiderJsonMiddleware
+    # Ahead of OmniAuth's strategy middleware (Devise appends that after the initializers).
+    config.middleware.use RegistrationGateMiddleware
 
     config.generators.system_tests = nil
 

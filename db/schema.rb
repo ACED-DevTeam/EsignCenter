@@ -10,10 +10,26 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_02_100100) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_02_120400) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gin"
   enable_extension "pg_catalog.plpgsql"
+
+  create_table "abuse_flags", force: :cascade do |t|
+    t.bigint "account_id", null: false
+    t.datetime "created_at", null: false
+    t.jsonb "details", default: {}, null: false
+    t.string "kind", null: false
+    t.string "period", default: "", null: false
+    t.datetime "resolved_at"
+    t.bigint "subject_id"
+    t.string "subject_type"
+    t.datetime "updated_at", null: false
+    t.index ["account_id", "kind", "period"], name: "index_abuse_flags_on_account_id_and_kind_and_period", unique: true, where: "((period)::text <> ''::text)"
+    t.index ["account_id"], name: "index_abuse_flags_on_account_id"
+    t.index ["resolved_at", "created_at"], name: "index_abuse_flags_on_resolved_at_and_created_at"
+    t.index ["subject_type", "subject_id"], name: "index_abuse_flags_on_subject_type_and_subject_id"
+  end
 
   create_table "access_tokens", force: :cascade do |t|
     t.datetime "created_at", null: false
@@ -54,6 +70,19 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_02_100100) do
     t.index ["account_id"], name: "index_account_counters_on_account_id"
   end
 
+  create_table "account_limit_overrides", force: :cascade do |t|
+    t.bigint "account_id", null: false
+    t.integer "completions_per_month"
+    t.datetime "created_at", null: false
+    t.integer "in_flight"
+    t.string "note"
+    t.integer "seats"
+    t.integer "sends_per_month"
+    t.bigint "storage_bytes"
+    t.datetime "updated_at", null: false
+    t.index ["account_id"], name: "index_account_limit_overrides_on_account_id", unique: true
+  end
+
   create_table "account_linked_accounts", force: :cascade do |t|
     t.bigint "account_id", null: false
     t.text "account_type", null: false
@@ -65,12 +94,35 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_02_100100) do
     t.index ["linked_account_id"], name: "index_account_linked_accounts_on_linked_account_id"
   end
 
+  create_table "account_subscriptions", force: :cascade do |t|
+    t.string "access_state", null: false
+    t.bigint "account_id", null: false
+    t.boolean "cancel_at_period_end", default: false, null: false
+    t.datetime "created_at", null: false
+    t.datetime "current_period_end"
+    t.datetime "current_period_start"
+    t.integer "quantity", default: 1, null: false
+    t.string "status"
+    t.string "stripe_customer_id"
+    t.string "stripe_item_id"
+    t.string "stripe_price_id"
+    t.string "stripe_product_id"
+    t.string "stripe_subscription_id"
+    t.datetime "trial_end"
+    t.datetime "updated_at", null: false
+    t.index ["account_id"], name: "index_account_subscriptions_on_account_id", unique: true
+    t.index ["stripe_customer_id"], name: "index_account_subscriptions_on_stripe_customer_id", unique: true, where: "(stripe_customer_id IS NOT NULL)"
+    t.index ["stripe_subscription_id"], name: "index_account_subscriptions_on_stripe_subscription_id", unique: true, where: "(stripe_subscription_id IS NOT NULL)"
+  end
+
   create_table "accounts", force: :cascade do |t|
     t.string "account_kind", default: "customer", null: false
     t.datetime "archived_at"
     t.datetime "created_at", null: false
     t.string "locale", null: false
     t.string "name", null: false
+    t.string "sending_pause_reason"
+    t.datetime "sending_paused_at"
     t.string "timezone", null: false
     t.datetime "updated_at", null: false
     t.string "uuid", null: false
@@ -604,12 +656,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_02_100100) do
     t.index ["sha1"], name: "index_webhook_urls_on_sha1"
   end
 
+  add_foreign_key "abuse_flags", "accounts"
   add_foreign_key "access_tokens", "users"
   add_foreign_key "account_accesses", "accounts"
   add_foreign_key "account_configs", "accounts"
   add_foreign_key "account_counters", "accounts"
+  add_foreign_key "account_limit_overrides", "accounts"
   add_foreign_key "account_linked_accounts", "accounts"
   add_foreign_key "account_linked_accounts", "accounts", column: "linked_account_id"
+  add_foreign_key "account_subscriptions", "accounts"
   add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
   add_foreign_key "document_generation_events", "submitters"

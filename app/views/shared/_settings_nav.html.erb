@@ -13,6 +13,9 @@
         <li>
           <%= link_to t('account'), settings_account_path, class: 'text-base hover:bg-base-300' %>
         </li>
+        <li>
+          <%= link_to t('usage'), settings_usage_path, class: 'text-base hover:bg-base-300' %>
+        </li>
       <% end %>
       <%# Per-account SMTP is a paid row: the entry stays discoverable for everyone who may read the config (the page renders the upgrade CTA when the plan lacks it). %>
       <% if can?(:read, EncryptedConfig.new(key: EncryptedConfig::EMAIL_SMTP_KEY, account: current_account)) && true_user == current_user %>

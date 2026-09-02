@@ -36,11 +36,15 @@ class SubmittersController < ApplicationController
     assign_submitter_attrs(@submitter, submitter_params)
 
     if @submitter.save
-      maybe_resend_email(@submitter, params)
+      resend = maybe_resend_email(@submitter, params)
 
       SearchEntries.enqueue_reindex(@submitter)
 
-      redirect_back fallback_location: submission_path(submission), notice: I18n.t('changes_have_been_saved')
+      # The one silent throttle in the product says so: a "saved" that
+      # quietly dropped the resend looked like a lost email.
+      notice = resend == :throttled ? I18n.t('invitation_already_sent_recently') : I18n.t('changes_have_been_saved')
+
+      redirect_back fallback_location: submission_path(submission), notice:
     else
       redirect_back fallback_location: submission_path(submission), alert: I18n.t('unable_to_save')
     end
@@ -50,6 +54,7 @@ class SubmittersController < ApplicationController
 
   # SMS is a hidden feature (no plan has it): `Submitters.normalize_preferences`
   # above already refuses `send_sms`, so only the e-mail resend exists here.
+  # Returns :sent, :throttled, or nil when no resend was asked for.
   def maybe_resend_email(submitter, params)
     return unless params[:send_email] == '1' && submitter.email.present?
 
@@ -60,7 +65,11 @@ class SubmittersController < ApplicationController
                                           event_type: 'send',
                                           created_at: 4.hours.ago..Time.current)
 
-    SendSubmitterInvitationEmailJob.perform_async('submitter_id' => submitter.id) unless is_sent_recently
+    return :throttled if is_sent_recently
+
+    SendSubmitterInvitationEmailJob.perform_async('submitter_id' => submitter.id)
+
+    :sent
   end
 
   def assign_submitter_attrs(submitter, attrs)

@@ -368,8 +368,9 @@ read" names the file so an engineer can confirm behaviour. Variables from
 `docs/render-deploy-checklist.md` "Session 1 additions" are folded in here.
 
 Variables you will see in the local `.env` file but that **no code reads
-yet** (Stripe, Turnstile, Google/Apple OAuth, Postmark stream ids) arrive in
-Sessions 5–6 and are listed there when they land.
+yet** (Stripe, Apple OAuth) arrive in Sessions 6 and later and are listed
+here when they land. Turnstile and Google OAuth landed with Session 5
+(`docs/signup.md`).
 
 | Variable | Required? | Where it is read | What happens when missing |
 | --- | --- | --- | --- |
@@ -402,6 +403,10 @@ Sessions 5–6 and are listed there when they land.
 | `SIDEKIQ_BASIC_AUTH_PASSWORD` | Optional | `config/initializers/sidekiq.rb` | Adds a browser username/password prompt in front of `/jobs` **in addition to** the operator + 2FA requirement. Not needed; the route already returns 404 to everyone else. |
 | `REGISTRATION_ENABLED` | Launch switch | `lib/docuseal.rb`, `app/controllers/concerns/launch_gates.rb` | Unset = off: sign-up and confirmation pages return 404. Set exactly `true` to open. |
 | `BILLING_ENABLED` | Launch switch | `lib/docuseal.rb`, `app/controllers/concerns/launch_gates.rb` | Unset = off: billing pages return 404. Set exactly `true` to open. |
+| `TURNSTILE_SITE_KEY` | **Required when `REGISTRATION_ENABLED=true`** (Session 5) | `app/views/devise/registrations/new.html.erb`, `lib/registration_config_guard.rb` | The public key the sign-up page hands to Cloudflare's widget. **Boot refuses to start** in production when sign-up is on and this is unset. The dev stack uses Cloudflare's always-passing test key. |
+| `TURNSTILE_SECRET_KEY` | **Required when `REGISTRATION_ENABLED=true`** (Session 5) | `lib/turnstile.rb`, `lib/registration_config_guard.rb` | The server-side key used to ask Cloudflare whether a sign-up token is genuine. **Boot refuses to start** in production when sign-up is on and this is unset; at runtime a blank key fails every email sign-up closed (*Please complete the verification*). Never bypassed by any environment setting. |
+| `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` | Optional (Session 5) | `config/initializers/devise.rb`, `lib/registrations.rb`, `lib/registration_config_guard.rb` | The Google OAuth app behind **Continue with Google**. With either unset the button is hidden on the sign-in and sign-up pages and a warning is reported at boot; email sign-up works regardless. Until the Google app is published it runs in Testing mode and only its listed test users can use the button (launch gate 4b). |
+| `POSTMARK_STREAM_PAID`, `POSTMARK_STREAM_FREE` | Optional (Session 5) | `lib/action_mailer_configs_interceptor.rb` (Phase D) | Postmark message-stream ids. When both are set, platform mail for free accounts goes out on the free stream and everything else (paid, internal, operator alerts) on the paid stream, so a spammy free tier cannot hurt paying customers' deliverability. Unset = no stream header, one shared stream. Accounts with their own pinned SMTP server never get the header. |
 | `CERTS` | **Gone (Session 4)** | — | The app no longer reads this variable anywhere; a leftover value on the service is inert. Signing identities come from the platform certificate on the operator account (section 8). A code gate fails the build if anything reads `CERTS` again. |
 | `MULTITENANT` | **Must stay unset** | `lib/docuseal.rb`, `config/puma.rb` | Setting it changes tenancy behaviour and stops the embedded Redis/Sidekiq from starting. |
 | `DEMO` | Must stay unset | `lib/docuseal.rb`, mail interceptor | Demo mode captures all mail and adds a demo queue. |
@@ -414,6 +419,34 @@ Sessions 5–6 and are listed there when they land.
 | One-off, for `rake email:pin`: `ACCOUNT_ID`, `SMTP_TOKEN_ENV`, `FROM_EMAIL`, `SMTP_HOST`, `SMTP_PIN_PORT`, plus one variable per internal app holding that app's Postmark server token (any name; `SMTP_TOKEN_ENV` names it) | Task-time only | `lib/tasks/email.rake` | The task aborts naming the missing one. `SMTP_HOST` defaults to `smtp.postmarkapp.com`, `SMTP_PIN_PORT` to `587`. |
 
 ---
+
+### 3.1 Postmark message streams by plan
+
+Platform mail carries an `X-PM-Message-Stream` header chosen by the sending
+account's plan: free accounts go out on `POSTMARK_STREAM_FREE`, and paid,
+internal and operator mail — including operator alerts and any mail with no
+account behind it — on `POSTMARK_STREAM_PAID`. Postmark tracks reputation
+per stream, so a burst of abuse from free sign-ups cannot drag down
+delivery for paying customers. The header is only set when *both* variables
+are present; with either missing every message uses the server's default
+stream. Accounts pinned to their own SMTP server (`rake email:pin`) never
+get the header — a pinned server is a different Postmark server with its own
+streams. Proof: `spec/golden/postmark_stream_spec.rb`.
+
+### 3.2 Operator alerts, reported documents and the abuse queue
+
+Two things email the operator automatically (`lib/operator_alert.rb`): a
+sending pause (docs/quotas-and-limits.md section 3) and a **reported
+document** — every signing page carries a small "Report this document" link
+to an anonymous form (`/report/<signer slug>`, four reasons plus free text,
+limited to 5 reports per hour per network and 3 per document). Each report
+is an `abuse_flags` row of kind `document_report` on the sending account,
+with the reason, details, reporter IP and browser, and the submission it
+points at. The alert goes to the `operator_alert_email` operator config when
+the Session 8 console has set one, else to the support mailbox
+(`Docuseal::SUPPORT_EMAIL`). Session 8's abuse queue lists these rows next to
+the fair-use, velocity, complaint and bounce flags; until then,
+`AbuseFlag.open.order(:created_at)` in a console is the queue.
 
 ## 4. Health check and scheduler heartbeat
 

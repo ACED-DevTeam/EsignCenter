@@ -168,7 +168,9 @@ RSpec.describe 'Account and user creation matrix', type: :request do
   end
 
   it 'does not permit platform-operator privilege through invitations' do
-    account = create(:account)
+    # A second seat, so the invitation itself is allowed (free accounts have
+    # one seat, spec/golden/quota_spec.rb); the invariant here is the role.
+    account = create(:account, :paid, seats: 2)
     admin = create(:user, account:)
     sign_in(admin)
 
@@ -398,14 +400,17 @@ RSpec.describe 'Account and user creation matrix', type: :request do
     expect(User.exists?(email: 'golden-setup-squatter@example.com')).to be(false)
   end
 
-  # Self-serve signup is off: Devise is mounted without :registrations, so no
-  # registration route may exist. Re-adding :registrations fails here.
-  it 'exposes no Devise registration route' do
+  # Self-serve sign-up (Session 5) is exactly new + create + the
+  # check-your-email page, drawn by hand inside the Devise scope. Devise's own
+  # :registrations bundle (edit / update / destroy / cancel) is never mounted:
+  # adding it to `devise_for ... only:` fails here.
+  it 'exposes only the sign-up routes, never Devise registration editing' do
     route_names = Rails.application.routes.routes.filter_map(&:name)
 
-    expect(route_names.grep(/registration/)).to be_empty
-    expect(User.devise_modules).not_to include(:registerable)
+    expect(route_names.grep(/registration/)).to match_array(%w[new_registration registration confirm_registration])
     expect(Rails.application.routes.url_helpers).not_to respond_to(:new_user_registration_path)
+    expect(Rails.application.routes.url_helpers).not_to respond_to(:edit_user_registration_path)
+    expect(Rails.application.routes.url_helpers).not_to respond_to(:user_registration_path)
   end
 
   # Devise :confirmations is mounted (a confirmed_at is required to sign in),

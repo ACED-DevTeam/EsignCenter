@@ -1,0 +1,115 @@
+<div class="flex-wrap space-y-4 md:flex md:flex-nowrap md:space-y-0 md:space-x-10">
+  <%= render 'shared/settings_nav' %>
+  <div class="md:flex-grow">
+    <div class="max-w-2xl">
+      <h1 class="text-4xl font-bold mb-2">
+        <%= t('usage') %>
+      </h1>
+      <p class="text-base-content/70 mb-5" dir="auto"><%= t('usage_page_intro') %></p>
+      <div class="flex flex-wrap items-center gap-2 mb-5" data-usage-plan="<%= @plan %>">
+        <% case @plan %>
+        <% when Plans::PAID %>
+          <span class="badge badge-neutral badge-lg"><%= t('usage_plan_paid') %></span>
+          <span class="badge badge-outline badge-lg"><%= t('seats_label', count: @limits.seats) %></span>
+        <% when Plans::INTERNAL %>
+          <span class="badge badge-neutral badge-lg"><%= t('usage_plan_internal') %></span>
+        <% else %>
+          <span class="badge badge-neutral badge-lg"><%= t('usage_plan_free') %></span>
+        <% end %>
+      </div>
+      <% if @paused %>
+        <div class="alert items-start bg-base-100 border border-red-400 text-red-400 mb-5" data-sending-paused-banner>
+          <%= svg_icon('alert_circle', class: 'stroke-current shrink-0 h-6 w-6 mt-0.5') %>
+          <p dir="auto" class="text-sm"><%= t('sending_paused_banner', email: @support_email) %></p>
+        </div>
+      <% end %>
+      <% if @plan == Plans::INTERNAL %>
+        <div class="card bg-base-200 border border-base-300">
+          <div class="card-body p-5 gap-3">
+            <p class="font-semibold" dir="auto"><%= t('no_limits_apply') %></p>
+            <dl class="grid grid-cols-1 sm:grid-cols-[auto_1fr] gap-x-6 gap-y-1 text-sm tabular-nums">
+              <dt class="text-base-content/70"><%= t('documents_completed_this_month') %></dt>
+              <dd><%= @completions %></dd>
+              <dt class="text-base-content/70"><%= t('documents_sent_this_month') %></dt>
+              <dd><%= @sends %></dd>
+              <dt class="text-base-content/70"><%= t('documents_awaiting_signatures') %></dt>
+              <dd><%= @in_flight %></dd>
+              <dt class="text-base-content/70"><%= t('storage_used') %></dt>
+              <dd><%= number_to_human_size(@storage_used) %></dd>
+              <dt class="text-base-content/70"><%= t('seats_used') %></dt>
+              <dd><%= @seats_used %></dd>
+            </dl>
+          </div>
+        </div>
+      <% else %>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <% completions_hint = @fair_use ? t('fair_use_per_seat', count: Quotas::Limits::PAID_COMPLETIONS_REVIEW_PER_SEAT) : nil %>
+          <% storage_limit_text = @limits.storage_bytes ? number_to_human_size(@limits.storage_bytes) : nil %>
+          <%= render 'usage_settings/meter',
+                     key: 'completions',
+                     icon: 'circle_check',
+                     title: t('documents_completed_this_month'),
+                     used: @completions,
+                     used_text: @completions,
+                     limit: @limits.completions_per_month,
+                     limit_text: @limits.completions_per_month,
+                     hint: completions_hint %>
+          <%= render 'usage_settings/meter',
+                     key: 'sends',
+                     icon: 'send',
+                     title: t('documents_sent_this_month'),
+                     used: @sends,
+                     used_text: @sends,
+                     limit: @limits.sends_per_month,
+                     limit_text: @limits.sends_per_month %>
+          <%= render 'usage_settings/meter',
+                     key: 'in_flight',
+                     icon: 'clock',
+                     title: t('documents_awaiting_signatures'),
+                     used: @in_flight,
+                     used_text: @in_flight,
+                     limit: @limits.in_flight,
+                     limit_text: @limits.in_flight %>
+          <%= render 'usage_settings/meter',
+                     key: 'storage',
+                     icon: 'files',
+                     title: t('storage_used'),
+                     used: @storage_used,
+                     used_text: number_to_human_size(@storage_used),
+                     limit: @limits.storage_bytes,
+                     limit_text: storage_limit_text %>
+          <%= render 'usage_settings/meter',
+                     key: 'seats',
+                     icon: 'users',
+                     title: t('seats_used'),
+                     used: @seats_used,
+                     used_text: @seats_used,
+                     limit: @limits.seats,
+                     limit_text: @limits.seats %>
+        </div>
+        <% local_reset = @resets_at.in_time_zone(current_account.timezone.presence || 'UTC') %>
+        <div class="mt-5 text-sm text-base-content/70 space-y-1" dir="auto" data-usage-reset>
+          <p><%= t('limits_reset_on_utc', date: l(@resets_at.to_date, format: :long)) %></p>
+          <p><%= t('limits_reset_in_your_timezone', time: l(local_reset, format: :long), zone: local_reset.zone) %></p>
+        </div>
+        <% if @plan == Plans::FREE %>
+          <%# Session 6: point [data-upgrade-cta] at the billing page; until then the anchor is the same placeholder shared/_upgrade_cta uses. %>
+          <div class="card bg-base-200 border border-base-300 mt-6" data-usage-upgrade>
+            <div class="card-body p-5 md:p-6 flex flex-col md:flex-row md:items-center gap-4 md:gap-6">
+              <div class="flex items-start md:items-center gap-4 flex-1 min-w-0">
+                <div class="flex-none w-12 h-12 rounded-2xl bg-neutral text-white flex items-center justify-center">
+                  <%= svg_icon('sparkles', class: 'w-6 h-6') %>
+                </div>
+                <p class="text-sm md:text-base" dir="auto"><%= t('usage_upgrade_hint') %></p>
+              </div>
+              <a href="#" class="btn btn-neutral text-white w-full md:w-auto flex-none gap-2" data-upgrade-cta>
+                <span><%= t('upgrade_plan') %></span>
+                <%= svg_icon('arrow_right', class: 'w-5 h-5') %>
+              </a>
+            </div>
+          </div>
+        <% end %>
+      <% end %>
+    </div>
+  </div>
+</div>

@@ -85,36 +85,51 @@ module Submissions
     submission
   end
 
+  # Readiness first, then the quota check for the whole batch, then the
+  # creations — all under the account's creation lock so concurrent senders
+  # serialise (lib/quotas.rb). A refusal raises before anything is saved. The
+  # expiry jobs are scheduled once the lock (and its transaction) is
+  # released, so a job can never run against a row that has not committed.
   def create_from_emails(template:, user:, emails:, source:, mark_as_sent: false, params: {})
-    Templates.assert_documents_ready!(template)
+    submissions = Quotas.with_creation_lock(template.account) do
+      Templates.assert_documents_ready!(template)
 
-    preferences = Submitters.normalize_preferences(user.account, user, params)
+      emails = parse_emails(emails, user).uniq
 
-    expire_at = params[:expire_at].presence || Templates.build_default_expire_at(template)
+      Quotas.assert_can_create_submissions!(template.account, count: emails.size)
 
-    parse_emails(emails, user).uniq.map do |email|
-      submission = template.submissions.new(created_by_user: user,
-                                            account_id: user.account_id,
-                                            source:,
-                                            expire_at:,
-                                            template_submitters: template.submitters)
+      preferences = Submitters.normalize_preferences(user.account, user, params)
 
-      submission.submitters.new(email: normalize_email(email),
-                                uuid: template.submitters.first['uuid'],
-                                account_id: user.account_id,
-                                preferences:,
-                                sent_at: mark_as_sent ? Time.current : nil)
+      expire_at = params[:expire_at].presence || Templates.build_default_expire_at(template)
 
-      Submissions::CreateFromSubmitters.maybe_set_dynamic_documents(submission)
+      saved = emails.map do |email|
+        submission = template.submissions.new(created_by_user: user,
+                                              account_id: user.account_id,
+                                              source:,
+                                              expire_at:,
+                                              template_submitters: template.submitters)
 
-      submission.save!
+        submission.submitters.new(email: normalize_email(email),
+                                  uuid: template.submitters.first['uuid'],
+                                  account_id: user.account_id,
+                                  preferences:,
+                                  sent_at: mark_as_sent ? Time.current : nil)
 
-      if submission.expire_at?
-        ProcessSubmissionExpiredJob.perform_at(submission.expire_at, 'submission_id' => submission.id)
+        Submissions::CreateFromSubmitters.maybe_set_dynamic_documents(submission)
+
+        submission.save!
+
+        submission
       end
 
-      submission
+      Quotas.record_paid_signals(template.account)
+
+      saved
     end
+
+    Submissions::CreateFromSubmitters.maybe_enqueue_expire_at(submissions)
+
+    submissions
   end
 
   def parse_emails(emails, _user)

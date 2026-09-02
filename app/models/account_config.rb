@@ -60,9 +60,6 @@ class AccountConfig < ApplicationRecord
   TEMPLATE_CUSTOM_FIELDS_KEY = 'template_custom_fields'
   POLICY_LINKS_KEY = 'policy_links'
   ENABLE_MCP_KEY = 'enable_mcp'
-  # Session 3 plan stub ('paid' or absent); read only through Plans.key_for,
-  # which Session 5 re-points at the real plan model.
-  PLAN_STUB_KEY = 'plan_stub'
   # Boolean: hide the "Powered by" / "Sent using" wording. Honored only while
   # the account is entitled to branding removal (Accounts.branding_removed?).
   REMOVE_BRANDING_KEY = 'remove_branding'

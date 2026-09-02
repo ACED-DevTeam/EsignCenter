@@ -52,3 +52,7 @@
   </div>
 </main>
 <%= render 'shared/attribution', link_path: '/start', account: @submitter.account %>
+<%# Not attribution: the signer's way to tell the operator about an abusive document (ReportsController). %>
+<p class="text-center text-xs mt-2 mb-4">
+  <%= link_to t('report_this_document'), report_path(@submitter.slug), class: 'link link-hover text-base-content/50', rel: 'nofollow' %>
+</p>

@@ -34,6 +34,7 @@ module ActionMailerConfigsInterceptor
     when :env
       deliver_via_smtp(message, result.smtp)
       rewrite_from(message, result.from) if result.from
+      set_message_stream(message, account)
     when :none
       message.delivery_method(null_delivery_method)
       report_missing_smtp(message, account)
@@ -69,6 +70,24 @@ module ActionMailerConfigsInterceptor
   # in directly.
   def null_delivery_method
     Rails.env.test? ? :test : NullMailDelivery
+  end
+
+  # Platform mail leaves on a Postmark message stream chosen by plan: free
+  # accounts on the free stream, everything else (paid, internal, operator
+  # alerts and other mail with no account) on the paid stream, so a spammy
+  # free tier cannot hurt paying customers' deliverability. Only the
+  # platform server (:env) gets the header — a pinned per-account server is
+  # a different Postmark server with its own streams. Both env vars must be
+  # set; with either missing, no header and one shared stream.
+  def set_message_stream(message, account)
+    paid_stream = ENV['POSTMARK_STREAM_PAID'].presence
+    free_stream = ENV['POSTMARK_STREAM_FREE'].presence
+
+    return if paid_stream.blank? || free_stream.blank?
+
+    free = account.present? && Plans.key_for(account) == Plans::FREE
+
+    message['X-PM-Message-Stream'] = free ? free_stream : paid_stream
   end
 
   def rewrite_from(message, smtp_from)

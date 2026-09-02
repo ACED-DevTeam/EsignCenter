@@ -456,9 +456,12 @@ RSpec.describe 'Public verify', type: :request do
       allow(ErrorReport).to receive(:warning).and_call_original
       other = GenerateCertificate.load_pkcs(GenerateCertificate.call('Elsewhere').transform_values(&:to_pem)
                                                                .stringify_keys)
-      bytes = with_unreadable_cms(pdf_signed_by(other))
+      signed = pdf_signed_by(other)
+      bytes = with_unreadable_cms(signed)
 
-      expect(bytes.bytesize).to eq(pdf_signed_by(other).bytesize)
+      # Same PDF, same size: the tamper only rewrites bytes inside the CMS.
+      # (Two separate signings can differ by a byte in DER integer encoding.)
+      expect(bytes.bytesize).to eq(signed.bytesize)
       expect { HexaPDF::Document.new(io: StringIO.new(bytes)).signatures.first.signature_handler }
         .to raise_error(HexaPDF::Error, /invalid/)
 

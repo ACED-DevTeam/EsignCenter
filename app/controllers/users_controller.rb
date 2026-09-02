@@ -40,30 +40,38 @@ class UsersController < ApplicationController
   def create
     existing_user = User.accessible_by(current_ability).find_by(email: @user.email)
 
-    if existing_user
-      if existing_user.archived_at? &&
-         current_ability.can?(:manage, existing_user) && current_ability.can?(:manage, @user.account)
-        existing_user.assign_attributes(@user.slice(:first_name, :last_name, :role, :account_id))
-        existing_user.archived_at = nil
-        @user = existing_user
-      else
-        @user.errors.add(:email, I18n.t('already_exists'))
+    if existing_user && !reactivatable?(existing_user)
+      @user.errors.add(:email, I18n.t('already_exists'))
 
-        return render turbo_stream: turbo_stream.replace(:modal, template: 'users/new'), status: :unprocessable_content
-      end
+      return render turbo_stream: turbo_stream.replace(:modal, template: 'users/new'), status: :unprocessable_content
     end
 
-    @user.password = SecureRandom.hex if @user.password.blank?
-    @user.role = User::ADMIN_ROLE unless role_valid?(@user.role)
-    @user.skip_confirmation!
+    # Seats: a free account has one, a paid account its subscription quantity.
+    # The check and the save share the account's creation lock so two invites
+    # for the last seat cannot both get in; reactivating an archived user
+    # fills a seat like a new invite does. Session 7 replaces the paid branch
+    # with the proration / pending-invite flow; the free refusal stays.
+    saved = Quotas.with_creation_lock(current_account) do
+      Quotas.assert_seat_available!(current_account)
 
-    if @user.save
+      @user = reactivate(existing_user) if existing_user
+
+      @user.password = SecureRandom.hex if @user.password.blank?
+      @user.role = User::ADMIN_ROLE unless role_valid?(@user.role)
+      @user.skip_confirmation!
+
+      @user.save
+    end
+
+    if saved
       UserMailer.invitation_email(@user).deliver_later!
 
       redirect_back fallback_location: settings_users_path, notice: I18n.t('user_has_been_invited')
     else
       render turbo_stream: turbo_stream.replace(:modal, template: 'users/new'), status: :unprocessable_content
     end
+  rescue Quotas::SeatLimitReached => e
+    redirect_to settings_users_path, alert: e.localized_message
   end
 
   def update
@@ -116,6 +124,18 @@ class UsersController < ApplicationController
 
   def role_valid?(role)
     User::ROLES.include?(role)
+  end
+
+  def reactivatable?(existing_user)
+    existing_user.archived_at? &&
+      current_ability.can?(:manage, existing_user) && current_ability.can?(:manage, @user.account)
+  end
+
+  def reactivate(existing_user)
+    existing_user.assign_attributes(@user.slice(:first_name, :last_name, :role, :account_id))
+    existing_user.archived_at = nil
+
+    existing_user
   end
 
   def build_user

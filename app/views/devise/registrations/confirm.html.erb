@@ -1,0 +1,20 @@
+<%= content_for(:html_title, "#{t('check_your_email')} | #{Docuseal.product_name}") %>
+<div class="max-w-lg mx-auto px-2 text-center">
+  <div class="flex justify-center mt-10">
+    <%= svg_icon('email_check', class: 'w-16 h-16 stroke-1') %>
+  </div>
+  <h1 class="text-4xl font-bold mt-6"><%= t('check_your_email') %></h1>
+  <p class="mt-4 text-lg" dir="auto">
+    <% if @signup_email.present? %>
+      <%= t('we_sent_a_confirmation_link_to_html', email: content_tag(:span, @signup_email, class: 'font-semibold break-all')) %>
+    <% else %>
+      <%= t('we_sent_a_confirmation_link_to_your_address') %>
+    <% end %>
+  </p>
+  <p class="mt-6 text-base-content/70" dir="auto">
+    <%= t('didnt_get_the_email_html', link: link_to(t('resend_it'), new_user_confirmation_path, class: 'link link-hover')) %>
+  </p>
+  <div class="mt-10">
+    <%= link_to t('back_to_sign_in'), new_user_session_path, class: 'btn btn-outline btn-sm normal-case' %>
+  </div>
+</div>

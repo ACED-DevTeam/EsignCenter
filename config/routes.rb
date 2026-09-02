@@ -16,10 +16,20 @@ Rails.application.routes.draw do
   get 'up' => 'health#show'
   get 'manifest' => 'pwa#manifest'
 
-  devise_for :users, path: '/', only: %i[sessions passwords confirmations],
-                     controllers: { sessions: 'sessions', passwords: 'passwords', confirmations: 'confirmations' }
+  # :registrations is deliberately NOT in `only:` — Devise would add edit /
+  # update / destroy / cancel, and the profile page owns those. Sign-up is
+  # exactly new + create (+ the check-your-email page), drawn below inside the
+  # Devise scope; the route names give the navbar and Devise's shared links
+  # their `registration_path` / `new_registration_path`.
+  devise_for :users, path: '/', only: %i[sessions passwords confirmations omniauth_callbacks],
+                     controllers: { sessions: 'sessions', passwords: 'passwords', confirmations: 'confirmations',
+                                    omniauth_callbacks: 'omniauth_callbacks' }
 
   devise_scope :user do
+    get 'sign_up' => 'registrations#new', as: :new_registration
+    post 'sign_up' => 'registrations#create', as: :registration
+    get 'sign_up/confirm' => 'registrations#confirm', as: :confirm_registration
+
     resource :invitation, only: %i[update] do
       get '' => :edit
     end
@@ -135,6 +145,10 @@ Rails.application.routes.draw do
   resource :submit_form_email_2fa, only: %i[create update]
   resources :start_form_email_2fa_send, only: :create
 
+  # Anonymous "Report this document" from the signing pages (ReportsController).
+  get 'report/:slug' => 'reports#new', as: :report
+  post 'report/:slug' => 'reports#create'
+
   resources :submit_form, only: %i[], path: '' do
     get :success, on: :collection
   end
@@ -182,6 +196,7 @@ Rails.application.routes.draw do
     resources :integration_users, only: %i[index], path: 'users/:status', controller: 'users',
                                   defaults: { status: :integration }
     resource :personalization, only: %i[show create], controller: 'personalization_settings'
+    resource :usage, only: %i[show], controller: 'usage_settings'
     resource :personalization_logo, only: %i[create destroy], controller: 'personalization_logo'
     resources :webhooks, only: %i[index show new create update destroy], controller: 'webhook_settings' do
       post :resend

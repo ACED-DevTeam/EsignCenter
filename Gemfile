@@ -25,6 +25,8 @@ gem 'jwt', require: false
 gem 'lograge'
 gem 'numo-narray-alt', require: false
 gem 'oj'
+gem 'omniauth-google-oauth2'
+gem 'omniauth-rails_csrf_protection'
 gem 'onnxruntime', require: false
 gem 'pagy'
 gem 'pg', require: false
@@ -51,6 +53,7 @@ gem 'trilogy', require: false
 gem 'turbo-rails'
 gem 'twitter_cldr', require: false
 gem 'tzinfo-data'
+gem 'valid_email2'
 
 group :development, :test do
   gem 'better_html'

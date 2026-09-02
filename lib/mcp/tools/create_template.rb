@@ -108,6 +108,10 @@ module Mcp
         template.destroy! if template.persisted?
 
         { content: [{ type: 'text', text: UNSUPPORTED_FORMAT_MESSAGE }], isError: true }
+      rescue Quotas::StorageLimitReached => e
+        template.destroy! if template.persisted?
+
+        { content: [{ type: 'text', text: e.message }], isError: true }
       end
       # rubocop:enable Metrics/AbcSize, Metrics/MethodLength
     end

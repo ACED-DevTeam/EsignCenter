@@ -1,14 +1,19 @@
 # frozen_string_literal: true
 
-# Which plan an account is on. Session 3 ships this as a STUB: internal and
-# operator accounts are always on the internal plan, and a customer account is
-# paid only when it carries the `plan_stub` account config (set with
-# `rake plans:stub[account_id,paid]` for manual testing; there is no UI).
+# Which plan an account is on. Internal and operator accounts are the platform
+# itself and always resolve to the internal plan; a customer account is paid
+# while its subscription row (AccountSubscription) sits in one of the
+# PAID_ACCESS_STATES, and free otherwise — no row, a cancelled row, a
+# suspended row all read as free. A downgrade never deletes the row (D43).
 #
-# Session 5 replaces the body of Plans.key_for with the real plan model
-# (AccountSubscription); spec/golden/gating_spec.rb must pass unmodified
-# afterwards. Nothing else in the codebase decides what plan an account is on —
-# every entitlement check goes through Entitlements, which goes through here.
+# Billing is per BILLING account: an account that exists as another account's
+# child (a testing child or a linked "team" account) is billed through its
+# parent, so the parent's subscription covers it and the parent's kind decides
+# the plan. `billing_account` is that resolution; Quotas counts usage against
+# the same account so a child's documents roll up to the parent's limits.
+#
+# Nothing else in the codebase decides what plan an account is on — every
+# entitlement check goes through Entitlements, which goes through here.
 module Plans
   FREE = 'free'
   PAID = 'paid'
@@ -19,22 +24,45 @@ module Plans
   # Plans that unlock every paid-only feature.
   PAID_OR_BETTER = [PAID, INTERNAL].freeze
 
+  # The app's own verdict on a subscription (AccountSubscription#access_state).
+  # Session 6 drives it from Stripe webhooks; `rake plans:grant` / `plans:revoke`
+  # set it by hand.
+  ACCESS_STATES = %w[trialing active canceling past_due suspended cancelled].freeze
+
+  # Access states under which the paid features stay on: a trial, a live
+  # subscription, one that cancels at period end, and one whose renewal is
+  # late but not yet given up on.
+  PAID_ACCESS_STATES = %w[trialing active canceling past_due].freeze
+
   module_function
 
-  # Internal and operator kinds are the platform itself, never a plan: they
-  # resolve to INTERNAL. A customer account reads the stub on itself first,
-  # then on its testing parent (Account#configuration_lookup_accounts, the
-  # inheritance walk every other account config uses). No row means FREE.
   def key_for(account)
     return FREE if account.nil?
-    return INTERNAL if account.internal? || account.operator?
 
-    stub = AccountConfigs.find_for_account(account, AccountConfig::PLAN_STUB_KEY)&.value
+    billing = billing_account(account)
 
-    stub == PAID ? PAID : FREE
+    return INTERNAL if billing.internal? || billing.operator?
+
+    paid_subscription?(billing) ? PAID : FREE
   end
 
   def paid_or_better?(account)
     PAID_OR_BETTER.include?(key_for(account))
+  end
+
+  # The account that is billed for `account`: itself, unless it is another
+  # account's child (testing or linked), in which case the parent.
+  def billing_account(account)
+    account.linked_account_account&.account || account
+  end
+
+  # How many seats the account may fill: nil means unlimited. One answer for
+  # the whole app — the quota engine's, override included.
+  def seats_for(account)
+    Quotas.limits_for(account).seats
+  end
+
+  def paid_subscription?(billing)
+    PAID_ACCESS_STATES.include?(billing.account_subscription&.access_state)
   end
 end

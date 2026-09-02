@@ -1,0 +1,4 @@
+<% if Registrations.google_enabled? %>
+  <div class="divider my-6 text-base-content/60"><%= t('or') %></div>
+  <%= render 'devise/shared/google_button' %>
+<% end %>

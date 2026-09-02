@@ -123,7 +123,10 @@ Devise.setup do |config|
   # It will change confirmation, password recovery and other workflows
   # to behave the same regardless if the e-mail provided was right or wrong.
   # Does not affect registerable.
-  # config.paranoid = true
+  #
+  # On: the confirmation and password forms answer the same way for a known
+  # and an unknown address, so nobody can list who has an account here.
+  config.paranoid = true
 
   # By default Devise will store the user in session. You can skip storage for
   # particular strategies by setting this option.
@@ -328,6 +331,15 @@ Devise.setup do |config|
   # so you need to do it manually. For the users scope, it would be:
   # config.omniauth_path_prefix = '/my_engine/users/auth'
 
+  # Google is the only sign-in provider (Apple Sign-In is a launch-gate item).
+  # Missing credentials do not break boot: the Google button hides and the
+  # authorize endpoint is never offered (Registrations.google_enabled?).
+  config.omniauth :google_oauth2,
+                  ENV.fetch('GOOGLE_OAUTH_CLIENT_ID', nil),
+                  ENV.fetch('GOOGLE_OAUTH_CLIENT_SECRET', nil),
+                  scope: 'email,profile',
+                  prompt: 'select_account'
+
   # ==> Hotwire/Turbo configuration
   # When using Devise with Hotwire/Turbo, the http status for error responses
   # and some redirects must match the following. The default in Devise for existing
@@ -345,4 +357,11 @@ Devise.setup do |config|
 
   ActiveSupport.run_load_hooks(:devise_config, config)
 end
+
+# The authorize endpoint accepts POST only (a GET link could be planted on a
+# third-party page); omniauth-rails_csrf_protection checks the CSRF token on
+# that POST. While REGISTRATION_ENABLED is off, RegistrationGateMiddleware
+# (config/application.rb) answers 404 for every /auth/* path before OmniAuth
+# can redirect anyone to Google.
+OmniAuth.config.allowed_request_methods = [:post]
 # rubocop:enable Metrics/BlockLength

@@ -1,7 +1,9 @@
 # frozen_string_literal: true
 
 RSpec.describe 'Team Settings' do
-  let(:account) { create(:account) }
+  # Seats to invite into: free accounts have one (spec/golden/quota_spec.rb
+  # proves the refusal); these examples are about the invitation UI itself.
+  let(:account) { create(:account, :paid, seats: 5) }
   let(:second_account) { create(:account) }
   let(:current_user) { create(:user, account:) }
 

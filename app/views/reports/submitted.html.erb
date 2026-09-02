@@ -1,0 +1,14 @@
+<% content_for(:html_title, "#{t('report_document_title')} | EsignCenter") %>
+<main class="max-w-xl mx-auto px-4 mt-10 md:mt-16 mb-8">
+  <div class="text-center space-y-4">
+    <div class="mx-auto w-16 h-16 rounded-full bg-base-200 flex items-center justify-center">
+      <%= svg_icon('circle_check', class: 'w-9 h-9') %>
+    </div>
+    <h1 dir="auto" class="text-3xl md:text-4xl font-bold">
+      <%= t('report_submitted') %>
+    </h1>
+    <p dir="auto" class="text-base-content/80 leading-relaxed">
+      <%= t('report_submitted_hint') %>
+    </p>
+  </div>
+</main>

@@ -24,6 +24,15 @@ class StartFormController < ApplicationController
       # the page never confirms a private template's existence.
       return render :email_verification_required if @template.preferences['require_email_2fa']
 
+      # A capped or paused account's link is closed for now: computed on
+      # every request, so it reopens by itself at month rollover. The owner
+      # is told once per month that a signer was turned away.
+      if !@template.archived_at? && (reason = Quotas.share_link_paused?(@template.account))
+        Quotas.notify_share_link_pause!(@template.account, reason) unless sender_viewing?
+
+        return render_paused(reason)
+      end
+
       @submitter = @template.submissions.new(account_id: @template.account_id)
                             .submitters.new(account_id: @template.account_id,
                                             uuid: (filter_undefined_submitters(@template).first ||
@@ -51,6 +60,12 @@ class StartFormController < ApplicationController
       end
 
       if (is_new_record = @submitter.new_record?)
+        # A closed link takes no new submission: refused here, before the
+        # email-2FA branch below could send a code for a form that cannot be
+        # started. The locked re-check in save_submitter still decides the
+        # race; a pending submitter found above is not a creation.
+        Quotas.assert_can_create_submissions!(@template.account)
+
         assign_submission_attributes(@submitter, @template)
 
         Submissions::AssignDefinedSubmitters.call(@submitter.submission)
@@ -60,7 +75,7 @@ class StartFormController < ApplicationController
 
       if @template.preferences['shared_link_2fa'] == true
         handle_require_2fa(@submitter, is_new_record:)
-      elsif @submitter.errors.blank? && @submitter.save
+      elsif @submitter.errors.blank? && save_submitter(@submitter, is_new_record:)
         enqueue_new_submitter_jobs(@submitter) if is_new_record
 
         redirect_to submit_form_path(@submitter.slug)
@@ -68,6 +83,10 @@ class StartFormController < ApplicationController
         render :show, status: :unprocessable_content
       end
     end
+  rescue Quotas::LimitReached => e
+    return render json: { error: e.localized_message }, status: :unprocessable_content unless request.format.html?
+
+    render_paused(e.reason, status: :unprocessable_content)
   end
 
   def completed
@@ -90,6 +109,42 @@ class StartFormController < ApplicationController
   end
 
   private
+
+  # A NEW submitter on a share link is a new Submission, so it is checked and
+  # saved under the account's creation lock (and a paid account's velocity
+  # signals recorded there); a pending submitter found by
+  # find_or_initialize_submitter already exists and is not a creation.
+  def save_submitter(submitter, is_new_record:)
+    return submitter.save unless is_new_record
+
+    Quotas.with_creation_lock(@template.account) do
+      Quotas.assert_can_create_submissions!(@template.account)
+
+      saved = submitter.save
+
+      Quotas.record_paid_signals(@template.account) if saved
+
+      saved
+    end
+  end
+
+  # The signer sees "not accepting responses"; the account's own signed-in
+  # user (selfsign, or opening their own link) sees what happened and where
+  # to go, since only they can act on it.
+  def render_paused(reason, status: :ok)
+    @quota_reason = reason
+
+    if sender_viewing?
+      @quota_sender_view = true
+      @quota_message = Quotas.pause_message(@template.account, reason)
+    end
+
+    render :paused, status:
+  end
+
+  def sender_viewing?
+    current_user.present? && current_user.account_id == @template.account_id
+  end
 
   def enqueue_new_submitter_jobs(submitter)
     WebhookUrls.enqueue_events(submitter.submission, 'submission.created')
@@ -263,7 +318,7 @@ class StartFormController < ApplicationController
     is_otp_verified = Submitters.verify_link_otp!(params[:one_time_code], submitter)
 
     if cookies.encrypted[:email_2fa_slug] == submitter.slug || is_otp_verified
-      if submitter.save
+      if save_submitter(submitter, is_new_record:)
         enqueue_new_submitter_jobs(submitter) if is_new_record
 
         if is_otp_verified

@@ -30,6 +30,18 @@ module Api
       render json: { error: Entitlements.refusal_message(e.feature) }, status: :forbidden
     end
 
+    # A quota or sending-pause refusal on any creation door (submissions,
+    # signing sessions): nothing was created, the message says why.
+    rescue_from Quotas::LimitReached do |e|
+      render json: { error: e.message }, status: :unprocessable_content
+    end
+
+    # The storage cap on every API door that stores a document (templates,
+    # signing sessions, builder sessions): nothing is created.
+    rescue_from Quotas::StorageLimitReached do |e|
+      render json: { error: e.message }, status: :unprocessable_content
+    end
+
     rescue_from RateLimit::LimitApproached do |e|
       ErrorReport.error(e)
 

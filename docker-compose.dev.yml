@@ -56,6 +56,12 @@ services:
       # public placeholder for localhost only — the app refuses dev_prov_
       # tokens in production; generate a real one there (openssl rand -hex 32).
       ADMIN_PROVISION_TOKEN: dev_prov_local_only_not_a_secret
+      # Dev stack only: self-serve signup is on so the staging walk can exercise
+      # it, and Cloudflare's official always-pass Turnstile TEST keys override
+      # the real esigncenter.com keys from the env file (those refuse localhost).
+      REGISTRATION_ENABLED: "true"
+      TURNSTILE_SITE_KEY: 1x00000000000000000000AA
+      TURNSTILE_SECRET_KEY: 1x0000000000000000000000000000000AA
     # On boot: put the ML model + signature font in place (the live mount hides
     # the image's copies), set up the database, then start the app. The app's
     # own Puma config starts Redis + background jobs inside this same container.

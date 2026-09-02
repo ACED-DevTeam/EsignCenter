@@ -30,7 +30,7 @@ describe Submitters::ScheduleReminders do
 
   it 'schedules nothing for an account whose plan lacks reminders, even with a reminders row' do
     configure_reminders('first_duration' => 'two_days')
-    account.account_configs.find_by(key: AccountConfig::PLAN_STUB_KEY).destroy!
+    downgrade_to_free!(account)
 
     expect { described_class.call(submitter) }
       .not_to change(SendSubmitterInvitationReminderEmailJob.jobs, :size)

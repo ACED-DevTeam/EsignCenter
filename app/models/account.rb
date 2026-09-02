@@ -4,15 +4,17 @@
 #
 # Table name: accounts
 #
-#  id           :bigint           not null, primary key
-#  account_kind :string           default("customer"), not null
-#  archived_at  :datetime
-#  locale       :string           not null
-#  name         :string           not null
-#  timezone     :string           not null
-#  uuid         :string           not null
-#  created_at   :datetime         not null
-#  updated_at   :datetime         not null
+#  id                   :bigint           not null, primary key
+#  account_kind         :string           default("customer"), not null
+#  archived_at          :datetime
+#  locale               :string           not null
+#  name                 :string           not null
+#  sending_pause_reason :string
+#  sending_paused_at    :datetime
+#  timezone             :string           not null
+#  uuid                 :string           not null
+#  created_at           :datetime         not null
+#  updated_at           :datetime         not null
 #
 # Indexes
 #
@@ -32,6 +34,9 @@ class Account < ApplicationRecord
 
   has_many :users, dependent: :destroy
   has_many :account_counters, dependent: :delete_all
+  has_one :account_subscription, dependent: :destroy
+  has_one :limit_override, class_name: 'AccountLimitOverride', dependent: :destroy
+  has_many :abuse_flags, dependent: :destroy
   has_many :encrypted_configs, dependent: :destroy
   has_many :account_configs, dependent: :destroy
   has_many :email_messages, dependent: :destroy

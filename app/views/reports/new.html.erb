@@ -1,0 +1,39 @@
+<% content_for(:html_title, "#{t('report_document_title')} | EsignCenter") %>
+<main class="max-w-xl mx-auto px-4 mt-10 md:mt-16 mb-8">
+  <div class="space-y-8">
+    <div class="text-center space-y-3">
+      <div class="mx-auto w-16 h-16 rounded-full bg-base-200 flex items-center justify-center">
+        <%= svg_icon('alert_circle', class: 'w-9 h-9') %>
+      </div>
+      <h1 dir="auto" class="text-3xl md:text-4xl font-bold">
+        <%= t('report_document_title') %>
+      </h1>
+      <p dir="auto" class="text-base-content/80 leading-relaxed">
+        <%= t('report_document_intro') %>
+      </p>
+      <p dir="auto" class="text-sm text-base-content/60 truncate">
+        <%= @submitter.submission.name || @submitter.submission.template&.name %>
+      </p>
+    </div>
+    <% if @error %>
+      <div class="alert items-start bg-base-100 border border-red-400 text-red-400" role="alert">
+        <%= svg_icon('info_circle', class: 'stroke-current shrink-0 h-6 w-6') %>
+        <p dir="auto" class="text-sm"><%= @error %></p>
+      </div>
+    <% end %>
+    <%= form_with url: report_path(@submitter.slug), method: :post, local: true, html: { class: 'space-y-5', id: 'report_form' } do |f| %>
+      <div class="form-control">
+        <%= f.label :reason, t('reason'), class: 'label font-medium' %>
+        <%= f.select :reason,
+                     ReportsController::REASONS.map { |reason| [t("report_reason_#{reason}"), reason] },
+                     { selected: params[:reason].presence, prompt: t('report_choose_reason') },
+                     class: 'select select-bordered w-full', required: true, dir: 'auto' %>
+      </div>
+      <div class="form-control">
+        <%= f.label :details, t('report_details'), class: 'label font-medium' %>
+        <%= f.text_area :details, value: params[:details], rows: 4, maxlength: ReportsController::DETAILS_LIMIT, class: 'textarea textarea-bordered w-full text-base', dir: 'auto' %>
+      </div>
+      <%= f.button button_title(title: t('send_report'), disabled_with: t('send_report')), class: 'base-button w-full' %>
+    <% end %>
+  </div>
+</main>

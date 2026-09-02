@@ -134,7 +134,7 @@ module Mcp
             }
           ]
         }
-      rescue Submissions::CreateFromSubmitters::BaseError, Templates::DocumentsNotReady => e
+      rescue Submissions::CreateFromSubmitters::BaseError, Templates::DocumentsNotReady, Quotas::LimitReached => e
         { content: [{ type: 'text', text: e.message }], isError: true }
       end
       # rubocop:enable Metrics/MethodLength

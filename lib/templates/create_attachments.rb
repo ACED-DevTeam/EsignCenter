@@ -50,16 +50,27 @@ module Templates
       "#{BASE_ACCEPT_FILE_TYPES}, #{DOCUMENT_EXTENSIONS.join(', ')}"
     end
 
+    # Every account-user upload path stores its files through here (dashboard
+    # upload, builder "add document", embedded builder, API, MCP, clone-and-
+    # replace, builder sessions), so the storage cap is asked once, here,
+    # after zip extraction and before any blob is created; what the answer
+    # is depends on the account, never on the door.
     def call(template, params, extract_fields: false, dynamic: false)
       documents = []
       dynamic_documents = []
 
-      extract_zip_files(params[:files].presence || params[:file]).each do |file|
+      files = extract_zip_files(params[:files].presence || params[:file])
+
+      Quotas::Storage.assert_available!(template.account, Quotas::Storage.incoming_bytes(files))
+
+      files.each do |file|
         docs, dynamic_docs = handle_file_types(template, file, params, extract_fields:, dynamic:)
 
         documents.push(*docs)
         dynamic_documents.push(*dynamic_docs)
       end
+
+      Quotas::Storage.after_upload(template.account) if documents.present?
 
       [documents, dynamic_documents]
     end
@@ -154,6 +165,9 @@ module Templates
     # The user-facing message for a refusal raised by `call`, or nil when the
     # error is not one the user can act on.
     def upload_error_message(error)
+      # The storage refusal carries its own numbers (used, limit).
+      return error.localized_message if error.is_a?(Quotas::StorageLimitReached)
+
       key = UPLOAD_ERROR_KEYS.find { |klass, _| error.is_a?(klass) }&.last
 
       # An oversized zip is a different problem from an unknown format.

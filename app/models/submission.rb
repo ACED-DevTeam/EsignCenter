@@ -192,7 +192,11 @@ class Submission < ApplicationRecord
 
   private
 
+  # Every submission ever created on any path is a "send" (D58): the month
+  # counter is the free plan's send cap, the day counter feeds the paid
+  # velocity warn-flag. Neither is ever decremented — deletion never resets.
   def increment_submissions_created_counter
     AccountCounters.increment!(account_id, 'submissions_created')
+    AccountCounters.increment!(account_id, 'submissions_created', period: AccountCounters.day_period)
   end
 end

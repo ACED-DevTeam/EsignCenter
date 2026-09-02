@@ -25,23 +25,32 @@ every row of the matrix.
 - **Internal** and **operator** accounts (the platform's own accounts) are
   always on the internal plan — they have every surface, they are not
   customers. "Operator has every surface" is how the plan reads it.
-- A **customer** account is paid only when it carries a `plan_stub` account
-  setting with the value `paid`. A testing child inherits its parent's answer,
-  the same way it inherits every other account setting. No row means free.
+- A **customer** account is paid while its subscription row
+  (`AccountSubscription`, one per account) is in a paid **access state**:
+  `trialing`, `active`, `canceling` (cancels at period end, still paid until
+  then) or `past_due` (renewal late, not yet given up on). `suspended` and
+  `cancelled` read as free, and so does having no row at all.
+- A downgrade never deletes the row (D43): it flips `access_state` and leaves
+  everything else — settings saved while paid stay in place but go inert.
+- **Children follow their parent.** An account that exists as another
+  account's testing child or linked "team" account is billed through that
+  parent (`Plans.billing_account`), so the parent's subscription covers it and
+  the parent's kind decides its plan. Usage counts (docs/quotas-and-limits.md)
+  roll up to the same billing account.
+- `Plans.seats_for(account)` is how many people may be in the account: one on
+  free, the subscription's `quantity` on paid, unlimited on internal.
 
-This is a **stub**. Real plans and billing arrive in Sessions 5 and 6. Session 5
-replaces the body of `Plans.key_for` with the real subscription model — that is
-the one and only seam — and must re-run `spec/golden/gating_spec.rb` unmodified
-to prove nothing else needs to change. Until then, for manual testing on the
-dev stack:
+Session 6 fills the subscription row's Stripe columns and drives
+`access_state` from Stripe webhooks. Until then the operator sets plans by
+hand on the dev stack or in production:
 
 ```
-bundle exec rake "plans:stub[ACCOUNT_ID,paid]"   # make a customer account paid
-bundle exec rake "plans:stub[ACCOUNT_ID,free]"   # back to free (removes the row)
+bundle exec rake "plans:grant[ACCOUNT_ID,SEATS]"   # paid, SEATS seats (status "manual")
+bundle exec rake "plans:revoke[ACCOUNT_ID]"        # back to free; the row stays
 ```
 
-There is deliberately no screen to set this; the operator console (Session 8)
-and real plans (Session 5) own that.
+Both refuse internal and operator accounts. There is deliberately no screen
+to set this; the operator console (Session 8) and Stripe (Session 6) own it.
 
 ### 1.3 The matrix as data (`lib/entitlements.rb`)
 
@@ -175,9 +184,6 @@ refusal copy in every declared language.
 
 ### 1.8 What later sessions owe
 
-- **Session 5** — replace the body of `Plans.key_for` (and the `:paid` factory
-  trait) with the real subscription model; re-run `spec/golden/gating_spec.rb`
-  unmodified.
 - **Session 6** — wire the upgrade call-to-action (Phase C's
   `shared/_upgrade_cta`, `data-upgrade-cta`) to the real Checkout link.
 - **Session 8** — enforce `delivery_tracking` when the EmailEvent projection

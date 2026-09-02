@@ -1,12 +1,11 @@
 # frozen_string_literal: true
 
 # The ONE place specs spell how a customer account stops being paid, mirroring
-# the account factory's :paid trait (spec/factories/accounts.rb). Session 5
-# re-points both at the real plan model; spec/golden/gating_spec.rb keeps
-# calling `downgrade_to_free!` unmodified.
+# the account factory's :paid trait (spec/factories/accounts.rb): the
+# subscription row flips to cancelled and stays (a downgrade never purges, D43).
 module PlanHelpers
   def downgrade_to_free!(account)
-    account.account_configs.where(key: AccountConfig::PLAN_STUB_KEY).destroy_all
+    account.account_subscription&.update!(access_state: 'cancelled', status: 'canceled', cancel_at_period_end: false)
   end
 end
 

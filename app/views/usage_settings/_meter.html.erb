@@ -1,0 +1,32 @@
+<%# One usage card: `used` and `limit` are numbers (limit nil = unlimited); `used_text`/`limit_text` are what the human reads. Over the cap the bar is full and the badge says so — the number is never clamped. %>
+<% limit = local_assigns[:limit] %>
+<% over = limit.present? && used >= limit %>
+<% percent = limit.present? && limit.positive? ? [(used * 100.0 / limit).round, 100].min : nil %>
+<div class="card bg-base-100 border border-base-300" data-usage-card="<%= key %>">
+  <div class="card-body p-5 gap-3">
+    <div class="flex items-start justify-between gap-3">
+      <div class="flex items-center gap-3 min-w-0">
+        <div class="flex-none w-10 h-10 rounded-xl bg-base-200 flex items-center justify-center">
+          <%= svg_icon(icon, class: 'w-5 h-5') %>
+        </div>
+        <p class="font-semibold leading-tight" dir="auto"><%= title %></p>
+      </div>
+      <% if over %>
+        <span class="badge badge-error badge-outline whitespace-nowrap flex-none" data-limit-reached><%= t('limit_reached') %></span>
+      <% end %>
+    </div>
+    <p class="text-3xl font-bold tabular-nums" dir="auto">
+      <% if limit.present? %>
+        <%= t('usage_of', used: used_text, limit: limit_text) %>
+      <% else %>
+        <%= used_text %>
+      <% end %>
+    </p>
+    <% if percent %>
+      <progress class="progress w-full <%= over ? 'progress-error' : 'progress-primary' %>" value="<%= percent %>" max="100" aria-label="<%= title %>"></progress>
+    <% end %>
+    <% if local_assigns[:hint].present? %>
+      <p class="text-sm text-base-content/70" dir="auto"><%= hint %></p>
+    <% end %>
+  </div>
+</div>

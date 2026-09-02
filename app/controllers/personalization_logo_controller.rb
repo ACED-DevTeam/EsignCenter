@@ -19,11 +19,19 @@ class PersonalizationLogoController < ApplicationController
 
     return redirect_with_alert('Logo must be smaller than 2MB.') if file.size > MAX_LOGO_SIZE
 
+    # The logo is an account-user upload: it counts against storage like a
+    # document does, and is refused the same way when the account is full.
+    Quotas::Storage.assert_available!(current_account, file.size)
+
     file.tempfile.rewind
 
     current_account.logo.attach(io: file.tempfile, filename: file.original_filename, content_type:)
 
+    Quotas::Storage.after_upload(current_account)
+
     redirect_back(fallback_location: settings_personalization_path, notice: I18n.t('settings_have_been_saved'))
+  rescue Quotas::StorageLimitReached => e
+    redirect_with_alert(e.localized_message)
   end
 
   def destroy

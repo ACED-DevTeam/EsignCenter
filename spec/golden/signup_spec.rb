@@ -1,0 +1,511 @@
+# frozen_string_literal: true
+
+# Self-serve registration exists only behind REGISTRATION_ENABLED, creates
+# exactly one customer account with an unconfirmed admin who cannot sign in
+# until confirmed, and is protected by Turnstile, a disposable-email blocklist
+# and per-IP limits; Google sign-up creates a confirmed user and never a
+# duplicate.
+RSpec.describe 'Self-serve registration', type: :request do
+  stash_env 'REGISTRATION_ENABLED', 'TURNSTILE_SITE_KEY', 'TURNSTILE_SECRET_KEY',
+            'GOOGLE_OAUTH_CLIENT_ID', 'GOOGLE_OAUTH_CLIENT_SECRET', clear: true
+
+  let(:google_button) { I18n.t('continue_with_google') }
+
+  # The instance is set up (the operator exists), so /sign_up is never the
+  # first-run setup redirect.
+  before do
+    create(:user, account: create(:account, :operator))
+    RateLimit.store.clear
+  end
+
+  after do
+    RateLimit.store.clear
+    OmniAuth.config.test_mode = false
+    OmniAuth.config.mock_auth[:google_oauth2] = nil
+  end
+
+  def enable_registration!
+    ENV['REGISTRATION_ENABLED'] = 'true'
+    ENV['TURNSTILE_SITE_KEY'] = 'turnstile-site-key'
+    ENV['TURNSTILE_SECRET_KEY'] = 'turnstile-secret-key'
+  end
+
+  def enable_google!
+    ENV['GOOGLE_OAUTH_CLIENT_ID'] = 'google-client-id'
+    ENV['GOOGLE_OAUTH_CLIENT_SECRET'] = 'google-client-secret'
+  end
+
+  def signup_params(email: 'ada@example.com', name: 'Ada Lovelace', password: 'a-long-password',
+                    token: 'turnstile-token', timezone: 'Europe/Paris')
+    { user: { name:, email:, password:, timezone: }, 'cf-turnstile-response' => token }
+  end
+
+  def sign_up(**)
+    post registration_path, params: signup_params(**)
+  end
+
+  def mock_google(email:, verified: true, name: 'Grace Hopper')
+    OmniAuth.config.test_mode = true
+    OmniAuth.config.mock_auth[:google_oauth2] =
+      OmniAuth::AuthHash.new(provider: 'google_oauth2', uid: '10769150350006150715113082367',
+                             info: { email:, name: }, extra: { raw_info: { email_verified: verified } })
+  end
+
+  # The real flow: the POST-only authorize endpoint (OmniAuth's request
+  # phase) redirects to the callback, which is where the controller runs.
+  def sign_in_with_google!
+    post user_google_oauth2_omniauth_authorize_path
+
+    expect(response).to have_http_status(:redirect)
+    expect(response.location).to include(user_google_oauth2_omniauth_callback_path)
+
+    follow_redirect!
+  end
+
+  # The root serves a landing page to visitors, so the probe is a page only
+  # a signed-in user can open.
+  def expect_signed_in
+    get settings_profile_index_path
+
+    expect(response).to have_http_status(:ok)
+  end
+
+  def expect_signed_out
+    get settings_profile_index_path
+
+    expect(response).to redirect_to(new_user_session_path)
+  end
+
+  def signed_up_user(email = 'ada@example.com')
+    User.find_by!(email:)
+  end
+
+  describe 'the REGISTRATION_ENABLED switch' do
+    it 'answers 404 on every sign-up surface and offers no link or button while off' do
+      enable_google!
+
+      expect { sign_up }.not_to change(Account, :count)
+      expect(response).to have_http_status(:not_found)
+
+      get new_registration_path
+      expect(response).to have_http_status(:not_found)
+
+      get confirm_registration_path
+      expect(response).to have_http_status(:not_found)
+
+      post user_google_oauth2_omniauth_authorize_path
+      expect(response).to have_http_status(:not_found)
+
+      get user_google_oauth2_omniauth_callback_path
+      expect(response).to have_http_status(:not_found)
+
+      get new_user_session_path
+      expect(response).to have_http_status(:ok)
+      expect(response.body).not_to include(google_button)
+      expect(response.body).not_to include(new_registration_path)
+      expect(response.body).not_to include(I18n.t('create_free_account'))
+      expect(User.count).to eq(1)
+    end
+
+    it 'serves the sign-up page, the link and the Google button while on' do
+      enable_registration!
+      enable_google!
+
+      get new_registration_path
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include('cf-turnstile')
+      expect(response.body).to include('data-sitekey="turnstile-site-key"')
+      expect(response.body).to include(google_button)
+      expect(response.body).to include(I18n.t('free_tier_summary'))
+
+      get new_user_session_path
+      expect(response.body).to include(google_button)
+      expect(response.body).to include(new_registration_path)
+    end
+  end
+
+  describe 'email and password sign-up' do
+    it 'creates one customer account with an unconfirmed admin who signs in only after confirming' do
+      enable_registration!
+      stub_turnstile(success: true)
+      mail_account_header = nil
+      allow(ActionMailerConfigsInterceptor).to receive(:delivering_email).and_wrap_original do |original, message|
+        mail_account_header = message['X-EC-Account-Id']&.value
+        original.call(message)
+      end
+
+      expect do
+        post registration_path, params: signup_params, headers: { 'HTTP_ACCEPT_LANGUAGE' => 'fr-FR,fr;q=0.9' }
+      end.to change(Account, :count).by(1).and change(User, :count).by(1)
+
+      expect(response).to redirect_to(confirm_registration_path)
+
+      user = signed_up_user
+      account = user.account
+      expect(account).to have_attributes(account_kind: Account::CUSTOMER_KIND, name: 'Ada Lovelace',
+                                         timezone: 'Paris', locale: 'fr-FR')
+      expect(account.users.count).to eq(1)
+      expect(user).to have_attributes(role: User::ADMIN_ROLE, first_name: 'Ada', last_name: 'Lovelace',
+                                      confirmed_at: nil)
+      expect(user.confirmation_token).to be_present
+
+      mail = ActionMailer::Base.deliveries.last
+      expect(mail.to).to eq(['ada@example.com'])
+      expect(mail.from).to eq(['noreply@esigncenter.com'])
+      expect(mail.html_part.decoded).to include("confirmation_token=#{user.confirmation_token}")
+      expect(mail.html_part.decoded).not_to include('DocuSeal')
+      expect(mail_account_header).to eq(account.id.to_s)
+
+      follow_redirect!
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include('ada@example.com')
+      expect(response.body).to include(new_user_confirmation_path)
+
+      # The handoff's negative assertion: an unconfirmed user is not signed in.
+      post user_session_path, params: { user: { email: 'ada@example.com', password: 'a-long-password' } }
+      expect(response).to redirect_to(new_user_session_path)
+      expect(flash[:alert]).to eq(I18n.t('devise.failure.unconfirmed'))
+      expect_signed_out
+
+      get user_confirmation_path(confirmation_token: user.confirmation_token)
+      expect(user.reload.confirmed_at).to be_present
+
+      post user_session_path, params: { user: { email: 'ada@example.com', password: 'a-long-password' } }
+      expect(response).to have_http_status(:redirect)
+      expect_signed_in
+
+      # The dashboard renders in the new account's own locale (fr-FR): a page
+      # served for that account, not the visitor's landing page.
+      get root_path
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include('lang="fr-FR"')
+      expect(response.body).to include(new_template_path)
+    end
+
+    it 'refuses a failed Turnstile check, a blank token and an outage, writing nothing' do
+      enable_registration!
+      stub_turnstile(success: false, error_codes: ['invalid-input-response'])
+
+      expect { sign_up }.not_to change(User, :count)
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.body).to include(I18n.t('please_complete_the_verification'))
+      expect(ActionMailer::Base.deliveries).to be_empty
+
+      stub_turnstile(success: true)
+      WebMock.reset_executed_requests!
+
+      expect { sign_up(token: '') }.not_to change(User, :count)
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(a_request(:post, Turnstile::VERIFY_URL)).not_to have_been_made
+
+      stub_turnstile_outage
+      allow(ErrorReport).to receive(:warning)
+
+      expect { sign_up }.not_to change(User, :count)
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(ErrorReport).to have_received(:warning).with(kind_of(Faraday::Error), remote_ip: '127.0.0.1')
+
+      ENV.delete('TURNSTILE_SECRET_KEY')
+      expect { sign_up }.not_to change(User, :count)
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(Account.count).to eq(1)
+    end
+
+    it 'refuses a disposable address at sign-up but not when an admin invites it' do
+      enable_registration!
+      stub_turnstile(success: true)
+
+      expect { sign_up(email: 'throwaway@mailinator.com') }.not_to change(User, :count)
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.body).to include(I18n.t('please_use_a_permanent_email_address'))
+      expect(Account.count).to eq(1)
+
+      admin = create(:user, account: create(:account, :internal))
+      sign_in(admin)
+
+      expect do
+        post users_path, params: { user: { email: 'throwaway@mailinator.com', first_name: 'Temp',
+                                           last_name: 'Box', role: User::ADMIN_ROLE } }
+      end.to change(User, :count).by(1)
+      expect(User.find_by(email: 'throwaway@mailinator.com').account).to eq(admin.account)
+    end
+
+    it 'refuses the sixth sign-up from one network within the hour and leaves invitations alone' do
+      enable_registration!
+      stub_turnstile(success: true)
+
+      5.times do |i|
+        sign_up(email: "person#{i}@example.com", name: "Person #{i}")
+        expect(response).to redirect_to(confirm_registration_path)
+      end
+
+      expect { sign_up(email: 'sixth@example.com', name: 'Sixth Person') }.not_to change(User, :count)
+      expect(response).to have_http_status(:too_many_requests)
+      expect(response.body).to include(I18n.t('too_many_sign_ups_from_this_network'))
+      expect(Account.count).to eq(6)
+
+      admin = create(:user, account: create(:account, :internal))
+      sign_in(admin)
+
+      expect do
+        post users_path, params: { user: { email: 'invited@example.com', first_name: 'In', last_name: 'Vited',
+                                           role: User::ADMIN_ROLE } }
+      end.to change(User, :count).by(1)
+    end
+
+    # Devise's registerable reveals a taken address ("has already been
+    # taken"); the paranoid setting covers confirmations and passwords, not
+    # this form. Accepted: the alternative is a silent success that leaves a
+    # real person waiting for mail that never comes.
+    it 'refuses an address that already has a user, whatever its case, and never makes a second account' do
+      enable_registration!
+      stub_turnstile(success: true)
+      create(:user, email: 'taken@example.com')
+
+      expect { sign_up(email: 'Taken@Example.com') }.not_to change(Account, :count)
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.body).to include('already been taken')
+      expect(User.where('lower(email) = ?', 'taken@example.com').count).to eq(1)
+    end
+  end
+
+  describe 'Google sign-up and sign-in' do
+    before do
+      enable_registration!
+      enable_google!
+    end
+
+    it 'creates one customer account with a confirmed admin for a new verified address and signs them in' do
+      mock_google(email: 'grace@example.com')
+
+      expect { sign_in_with_google! }.to change(Account, :count).by(1).and change(User, :count).by(1)
+      expect(response).to redirect_to(root_path)
+
+      user = signed_up_user('grace@example.com')
+      expect(user).to have_attributes(first_name: 'Grace', last_name: 'Hopper', role: User::ADMIN_ROLE)
+      expect(user.confirmed_at).to be_present
+      expect(user.account).to have_attributes(account_kind: Account::CUSTOMER_KIND, name: 'Grace Hopper')
+      expect(ActionMailer::Base.deliveries).to be_empty
+      expect_signed_in
+    end
+
+    it 'confirms an existing unconfirmed user and signs them in without a new account' do
+      user = create(:user, email: 'pending@example.com', confirmed_at: nil)
+      mock_google(email: 'pending@example.com')
+
+      expect { sign_in_with_google! }.not_to change(Account, :count)
+      expect(response).to redirect_to(root_path)
+      expect(user.reload.confirmed_at).to be_present
+      expect(User.where(email: 'pending@example.com').count).to eq(1)
+      expect_signed_in
+    end
+
+    it 'signs an existing confirmed user in without touching their account' do
+      user = create(:user, email: 'member@example.com')
+      mock_google(email: 'Member@example.com')
+
+      expect { sign_in_with_google! }.not_to change(User, :count)
+      expect(response).to redirect_to(root_path)
+      expect(user.reload.account.users.count).to eq(1)
+      expect_signed_in
+    end
+
+    it 'refuses an unverified Google address, a disposable one and a failed exchange, creating nothing' do
+      mock_google(email: 'unverified@example.com', verified: false)
+
+      expect { sign_in_with_google! }.not_to change(User, :count)
+      expect(response).to redirect_to(new_user_session_path)
+      expect(flash[:alert]).to eq(I18n.t('google_email_not_verified'))
+      expect_signed_out
+
+      mock_google(email: 'burner@mailinator.com')
+
+      expect { sign_in_with_google! }.not_to change(User, :count)
+      expect(response).to redirect_to(new_user_session_path)
+      expect(flash[:alert]).to eq(I18n.t('please_use_a_permanent_email_address'))
+      expect_signed_out
+
+      OmniAuth.config.mock_auth[:google_oauth2] = :invalid_credentials
+
+      expect { sign_in_with_google! }.not_to change(User, :count)
+      expect(response).to redirect_to(new_user_session_path)
+      expect(flash[:alert]).to eq(I18n.t('google_sign_in_failed'))
+      expect_signed_out
+      expect(Account.count).to eq(1)
+    end
+
+    it 'sends a two-factor user to the password form instead of bypassing their code' do
+      user = create(:user, email: 'careful@example.com', otp_required_for_login: true,
+                           otp_secret: User.generate_otp_secret)
+      mock_google(email: 'careful@example.com')
+
+      sign_in_with_google!
+
+      expect(response).to redirect_to(new_user_session_path)
+      expect(flash[:alert]).to eq(I18n.t('google_sign_in_not_available_with_2fa'))
+      expect(user.reload.sign_in_count).to eq(0)
+      expect_signed_out
+    end
+
+    it 'applies the per-network limit to Google sign-ups too' do
+      Quotas::Limits::SIGNUPS_PER_IP_PER_HOUR.times { Registrations.assert_ip_allowed!('127.0.0.1') }
+      mock_google(email: 'late@example.com')
+
+      expect { sign_in_with_google! }.not_to change(User, :count)
+      expect(response).to redirect_to(new_user_session_path)
+      expect(flash[:alert]).to eq(I18n.t('too_many_sign_ups_from_this_network'))
+      expect_signed_out
+    end
+
+    it 'answers 404 for the authorize and callback endpoints while the switch is off' do
+      ENV.delete('REGISTRATION_ENABLED')
+      mock_google(email: 'grace@example.com')
+
+      post user_google_oauth2_omniauth_authorize_path
+      expect(response).to have_http_status(:not_found)
+
+      get user_google_oauth2_omniauth_callback_path
+      expect(response).to have_http_status(:not_found)
+      expect(User.count).to eq(1)
+    end
+  end
+
+  describe 'routes' do
+    it 'draws only new, create and the check-your-email page — never Devise registration editing' do
+      route_names = Rails.application.routes.routes.filter_map(&:name).grep(/registration/)
+
+      expect(route_names).to match_array(%w[new_registration registration confirm_registration])
+      expect(Rails.application.routes.url_helpers).not_to respond_to(:edit_user_registration_path)
+      expect(Rails.application.routes.url_helpers).not_to respond_to(:user_registration_path)
+      expect(Rails.application.routes.url_helpers).not_to respond_to(:cancel_user_registration_path)
+
+      enable_registration!
+
+      expect { delete '/sign_up' }.to raise_error(ActionController::RoutingError)
+      expect { put '/sign_up' }.to raise_error(ActionController::RoutingError)
+      expect { get '/sign_up/edit' }.to raise_error(ActionController::RoutingError)
+    end
+  end
+
+  describe 'paranoid mode' do
+    it 'is on, and the confirmation and password forms answer alike for known and unknown addresses' do
+      expect(Devise.paranoid).to be(true)
+
+      get new_user_confirmation_path
+      expect(response).to have_http_status(:not_found)
+
+      enable_registration!
+      unconfirmed = create(:user, email: 'known@example.com', confirmed_at: nil)
+
+      get new_user_confirmation_path
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include('name="user[email]"')
+
+      expect do
+        post user_confirmation_path, params: { user: { email: 'known@example.com' } }
+      end.to change(ActionMailer::Base.deliveries, :count).by(1)
+      known_location = response.location
+      known_flash = flash[:notice]
+
+      expect do
+        post user_confirmation_path, params: { user: { email: 'nobody@example.com' } }
+      end.not_to change(ActionMailer::Base.deliveries, :count)
+      expect(response.location).to eq(known_location)
+      expect(flash[:notice]).to eq(known_flash)
+      expect(unconfirmed.reload.confirmation_sent_at).to be_present
+
+      post user_password_path, params: { user: { email: 'known@example.com' } }
+      known_location = response.location
+
+      expect do
+        post user_password_path, params: { user: { email: 'nobody@example.com' } }
+      end.not_to change(ActionMailer::Base.deliveries, :count)
+      expect(response.location).to eq(known_location)
+    end
+  end
+
+  describe 'content security policy' do
+    it 'allows the Turnstile host on the sign-up page only' do
+      enable_registration!
+
+      get new_registration_path
+      policy = response.headers['Content-Security-Policy']
+      expect(policy).to match(%r{script-src [^;]*https://challenges\.cloudflare\.com})
+      expect(policy).to match(%r{frame-src [^;]*https://challenges\.cloudflare\.com})
+
+      get new_user_session_path
+      expect(response.headers['Content-Security-Policy']).not_to include('challenges.cloudflare.com')
+
+      get confirm_registration_path
+      expect(response.headers['Content-Security-Policy']).to include('challenges.cloudflare.com')
+    end
+  end
+
+  describe Turnstile do
+    it 'fails closed on a blank token, a missing secret and a malformed answer' do
+      expect { described_class.verify!('', '127.0.0.1') }.to raise_error(Turnstile::VerificationFailed)
+      expect(described_class.enabled?).to be(false)
+      expect { described_class.verify!('token', '127.0.0.1') }.to raise_error(Turnstile::VerificationFailed)
+
+      ENV['TURNSTILE_SECRET_KEY'] = 'turnstile-secret-key'
+      stub_request(:post, Turnstile::VERIFY_URL).to_return(status: 200, body: 'not json')
+      allow(ErrorReport).to receive(:warning)
+
+      expect { described_class.verify!('token', '127.0.0.1') }.to raise_error(Turnstile::VerificationFailed)
+      expect(ErrorReport).to have_received(:warning).with(kind_of(JSON::ParserError), remote_ip: '127.0.0.1')
+
+      verification = stub_turnstile(success: true)
+
+      expect(described_class.verify!('token', '10.0.0.7')).to be(true)
+      expect(verification.with(body: hash_including('secret' => 'turnstile-secret-key', 'response' => 'token',
+                                                    'remoteip' => '10.0.0.7'))).to have_been_requested
+    end
+  end
+
+  describe RegistrationConfigGuard do
+    def production!
+      allow(Rails).to receive(:env).and_return(ActiveSupport::EnvironmentInquirer.new('production'))
+    end
+
+    before do
+      allow(ErrorReport).to receive(:warning)
+      allow(Rails.logger).to receive(:warn)
+    end
+
+    it 'refuses to boot in production with registration on and no Turnstile keys' do
+      ENV['REGISTRATION_ENABLED'] = 'true'
+      production!
+
+      expect { described_class.check! }.to raise_error(/TURNSTILE_SITE_KEY, TURNSTILE_SECRET_KEY/)
+
+      ENV['TURNSTILE_SITE_KEY'] = 'site'
+      expect { described_class.check! }.to raise_error(/TURNSTILE_SECRET_KEY/)
+    end
+
+    it 'only warns about missing Google credentials, and stays quiet with everything set' do
+      enable_registration!
+      production!
+
+      expect { described_class.check! }.not_to raise_error
+      expect(ErrorReport).to have_received(:warning).with(/GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET/)
+      expect(Rails.logger).to have_received(:warn).with(/GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET/)
+
+      enable_google!
+      RSpec::Mocks.space.proxy_for(ErrorReport).reset
+      allow(ErrorReport).to receive(:warning)
+
+      expect { described_class.check! }.not_to raise_error
+      expect(ErrorReport).not_to have_received(:warning)
+    end
+
+    it 'does nothing while registration is off or outside production' do
+      production!
+      expect { described_class.check! }.not_to raise_error
+
+      ENV['REGISTRATION_ENABLED'] = 'true'
+      allow(Rails).to receive(:env).and_call_original
+      expect { described_class.check! }.not_to raise_error
+      expect(ErrorReport).not_to have_received(:warning)
+    end
+  end
+end

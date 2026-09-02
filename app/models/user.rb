@@ -72,7 +72,8 @@ class User < ApplicationRecord
   has_many :encrypted_configs, dependent: :destroy, class_name: 'EncryptedUserConfig'
   has_many :email_messages, dependent: :destroy, foreign_key: :author_id, inverse_of: :author
 
-  devise :two_factor_authenticatable, :confirmable, :recoverable, :rememberable, :validatable, :trackable, :lockable
+  devise :two_factor_authenticatable, :confirmable, :recoverable, :rememberable, :validatable, :trackable, :lockable,
+         :registerable, :omniauthable, omniauth_providers: %i[google_oauth2]
 
   attribute :role, :string, default: ADMIN_ROLE
   attribute :uuid, :string, default: -> { SecureRandom.uuid }
@@ -82,6 +83,10 @@ class User < ApplicationRecord
   scope :admins, -> { where(role: ADMIN_ROLE) }
 
   validates :email, format: { with: /\A[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\z/ }
+  # Self-serve sign-up only (save with `context: :registration`): a throwaway
+  # mailbox cannot own a free account. Invitations and internal provisioning
+  # never run this — an admin may invite whoever they like.
+  validate :email_must_be_permanent, on: :registration
 
   def access_token
     super || build_access_token.tap(&:save!)
@@ -139,5 +144,13 @@ class User < ApplicationRecord
     else
       email
     end
+  end
+
+  private
+
+  def email_must_be_permanent
+    return unless Registrations.disposable_email?(email)
+
+    errors.add(:email, I18n.t('please_use_a_permanent_email_address'))
   end
 end

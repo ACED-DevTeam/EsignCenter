@@ -29,7 +29,7 @@ class SubmittersResubmitController < ApplicationController
       @new_submitter ||= new_submitter
     end
 
-    submission.save!
+    save_under_creation_lock!(submission)
 
     @submitter.submission.documents_attachments.each do |attachment|
       submission.documents_attachments.create!(uuid: attachment.uuid, blob_id: attachment.blob_id)
@@ -38,9 +38,24 @@ class SubmittersResubmitController < ApplicationController
     redirect_to submit_form_path(slug: @new_submitter.slug)
   rescue Templates::DocumentsNotReady => e
     redirect_to submit_form_path(slug: @submitter.slug), alert: e.message
+  rescue Quotas::LimitReached => e
+    redirect_back fallback_location: submit_form_path(slug: @submitter.slug), alert: e.localized_message
   end
 
   private
+
+  # A resubmit is a new document to sign: checked and saved under the
+  # account's creation lock like every other creation path, with a paid
+  # account's velocity signals recorded there too.
+  def save_under_creation_lock!(submission)
+    Quotas.with_creation_lock(@submitter.account) do
+      Quotas.assert_can_create_submissions!(@submitter.account)
+
+      submission.save!
+
+      Quotas.record_paid_signals(@submitter.account)
+    end
+  end
 
   def assign_submitter_values(new_submitter, submitter)
     attachments_index = submitter.attachments.index_by(&:uuid)
