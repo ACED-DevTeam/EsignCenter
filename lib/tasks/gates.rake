@@ -113,13 +113,17 @@ module Gates
     }
   ].freeze
   # The gate fails when the attribution disappears, not only when a banned
-  # literal appears: these snippets must survive in these files.
+  # literal appears: these snippets must survive in these files. Both halves
+  # of the branding gate are literal substring scans, not semantic ones: the
+  # ban catches a literal spelled out in source (not one assembled at runtime
+  # or percent-encoded), and the survival check looks for the snippets outside
+  # ERB and HTML comments (a commented-out attribution is not attribution).
   ATTRIBUTION_REQUIREMENTS = [
     {
       file: 'app/views/shared/_powered_by.html.erb',
       snippets: ['Docuseal::DOCUSEAL_URL', '>DocuSeal</a>', 'AGPL LICENSE_ADDITIONAL_TERMS'],
       # The anchor has to be rendered markup, not a mention: a line outside any
-      # ERB comment that opens the anchor with the attribution URL.
+      # ERB or HTML comment that opens the anchor with the attribution URL.
       rendered_anchor: '<a href="<%= Docuseal::DOCUSEAL_URL'
     },
     {
@@ -212,9 +216,15 @@ module Gates
       next ["#{file}: attribution file is missing"] unless File.file?(path)
 
       content = read(path)
+      visible = visible_markup(content)
 
-      failures = requirement.fetch(:snippets).reject { |snippet| content.include?(snippet) }
-                            .map { |snippet| "#{file}: attribution snippet missing: #{snippet}" }
+      # The AGPL marker is an ERB comment by design and is looked for in the
+      # raw file; every other snippet is attribution only when it is visible
+      # markup, so a copy parked inside an ERB or HTML comment does not count.
+      failures = requirement.fetch(:snippets).reject do |snippet|
+        (snippet.start_with?(AGPL_MARKER_PREFIX) ? content : visible).include?(snippet)
+      end
+      failures = failures.map { |snippet| "#{file}: attribution snippet missing: #{snippet}" }
 
       anchor = requirement[:rendered_anchor]
 
@@ -227,10 +237,21 @@ module Gates
   end
 
   ERB_COMMENT = /<%#.*?%>/m
+  HTML_COMMENT = /<!--.*?-->/m
+  AGPL_MARKER_PREFIX = 'AGPL LICENSE_ADDITIONAL_TERMS'
 
-  # True when some line outside every ERB comment carries the snippet.
+  # The file with every ERB comment and every HTML comment removed: what the
+  # browser can actually render. This is a literal substring scan, not a
+  # semantic one — it does not evaluate ERB, so an anchor assembled at runtime
+  # from pieces would pass; the gate is a tripwire for the realistic evasions
+  # (deleting the line, or commenting it out either way).
+  def visible_markup(content)
+    content.gsub(ERB_COMMENT, '').gsub(HTML_COMMENT, '')
+  end
+
+  # True when some line outside every ERB and HTML comment carries the snippet.
   def rendered?(content, snippet)
-    content.gsub(ERB_COMMENT, '').lines.any? { |line| line.include?(snippet) }
+    visible_markup(content).lines.any? { |line| line.include?(snippet) }
   end
 
   def support_email_failures

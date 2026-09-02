@@ -9,6 +9,27 @@ RSpec.describe 'Template Builder' do
     sign_in(author)
   end
 
+  # Formulas are hidden for everyone (Entitlements::HIDDEN, decision D47):
+  # the builder mounts with data-with-formula="false" and the field settings
+  # menu must not offer the item at all — not even to an internal account.
+  context 'when opening the settings of a number field' do
+    let(:account) { create(:account, :internal) }
+
+    before do
+      visit edit_template_path(template)
+    end
+
+    it 'does not offer the Formula menu item' do
+      number_field = find('.list-field-number', match: :first)
+
+      number_field.hover
+      number_field.find('.field-settings-dropdown label').click
+
+      expect(number_field).to have_css('.field-settings-description')
+      expect(number_field).to have_no_css('.field-settings-formula', visible: :all)
+    end
+  end
+
   context 'when manage template documents' do
     before do
       visit edit_template_path(template)

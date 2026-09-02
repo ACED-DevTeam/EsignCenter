@@ -52,7 +52,11 @@ and real plans (Session 5) own that.
 `bcc`, `delivery_tracking`.
 
 `Entitlements::HIDDEN` lists what nobody gets in v1, internal accounts
-included: `sms`, `bulk_send`, `saml_sso`, `formulas`.
+included: `sms`, `bulk_send`, `saml_sso`, `formulas`. "Hidden" means the
+surface is not offered, and where a server path exists it is refused; bulk
+send is the exception — the list-import tab is hidden in the UI, but sending
+one submission to several recipients over the API or the send dialog is not
+blocked (decision 13).
 
 `Entitlements.allowed?(account, feature)` is the single question everything
 asks. Hidden features are always "no"; paid-only features are "yes" for paid
@@ -86,7 +90,7 @@ has it*.
   "This feature requires a paid plan" (locale key
   `this_feature_requires_a_paid_plan`, translated for every language). Nothing
   is saved.
-- **Hidden features** (SMS, bulk send, SAML SSO, formulas) are not on any
+- **Hidden features** (SMS, bulk send — UI only, see 1.3 —, SAML SSO, formulas) are not on any
   plan, so their refusal never promises an upgrade: the JSON error is
   `Entitlements::UNAVAILABLE_MESSAGE` ("This feature is not available") and
   the browser alert is the `this_feature_is_not_available` key. Both rescue
@@ -135,10 +139,10 @@ never purges):
 |---|---|---|
 | REST API tokens | `Api::ApiBaseController#authenticate_user!` → `refuse_unentitled_token_account!` — only when the request authenticated with `X-Auth-Token`. The same `/api/*` endpoints keep working over the browser session, because the in-app builder and dashboard use them. | 403 JSON, existing tokens included |
 | MCP tokens | `McpController#require_mcp_entitlement!` (`can?(:use, :mcp)`), before the enable-MCP toggle is even consulted | 403 JSON |
-| Webhooks | `WebhookSettingsController` create/update/resend, `WebhookPreferencesController#update` (event toggles) and `WebhookSecretController#update` (secret header) require `:webhooks` — every write; viewing and deleting a URL stay open so a downgrade never blocks cleanup. `WebhookUrls.for_account_id` returns no URLs for an unentitled account, so nothing is ever enqueued for it (stale rows included), and both `SendWebhookRequest` and `SendTestWebhookRequestJob` make no request when the row's account is unentitled at delivery time | Redirect + alert; no deliveries |
+| Webhooks | `WebhookSettingsController` create/update/resend, `WebhookEventsController#resend` (event resend; the Resend button is only offered to an entitled account), `WebhookPreferencesController#update` (event toggles) and `WebhookSecretController#update` (secret header) require `:webhooks` — every write; viewing and deleting a URL stay open so a downgrade never blocks cleanup. `WebhookUrls.for_account_id` returns no URLs for an unentitled account, so nothing is ever enqueued for it (stale rows included), and both `SendWebhookRequest` and `SendTestWebhookRequestJob` make no request when the row's account is unentitled at delivery time | Redirect + alert; no deliveries |
 | Embedded signing sessions | `Api::SigningSessionsController` requires `:signing_sessions` for token and session callers alike (independent of the generic token refusal) | 403 JSON |
-| Embedded template builder | `Api::TemplateBuilderSessionsController` requires `:embed` to mint a builder token, and `EmbedTemplateBuilderController#validate_builder_session!` requires it again on every builder-token request — a token minted while paid stops working the moment the account is downgraded, not up to 24 h later | 403 JSON; the iframe page itself shows a short "requires a paid plan" notice |
-| Conditional logic | `Templates::AssertEntitledFields` on every path that assigns incoming fields: builder save (`TemplatesController#update`), embedded builder save (`EmbedTemplateBuilderController#update_template`), `Api::TemplatesController#update` (all three against the persisted template as baseline — only *introduced* conditions are refused), `Templates::CreateFromApi` (API template create, signing sessions, builder sessions) and every `Templates::Clone` (own account included; a clone is a new template). Per-submission field overrides (`fields[].preferences` / `conditions` on `/api/submissions`, `/api/submitters`, signing sessions) run the same check in `Submissions::CreateFromSubmitters` | 403 JSON; template unchanged |
+| Embedded template builder | `Api::TemplateBuilderSessionsController` requires `:embed` to mint a builder token, and `EmbedTemplateBuilderController#require_embed_entitlement!` requires it again on every builder-token request — a token minted while paid stops working the moment the account is downgraded, not up to 24 h later | 403 JSON; the iframe page itself shows a short "requires a paid plan" notice |
+| Conditional logic | `Templates::AssertEntitledFields` on every path that assigns incoming fields: builder save (`TemplatesController#update`), embedded builder save (`EmbedTemplateBuilderController#update_template`), `Api::TemplatesController#update` (all three against the persisted template as baseline — only *introduced* conditions are refused), `Templates::CreateFromApi` (API template create, signing sessions, builder sessions) and every `Templates::Clone` (own account included; a clone is a new template). Per-submission field overrides (`fields[].preferences.formula` on `/api/submissions`, `/api/submitters`, signing sessions; conditions are template-level only — no submission endpoint carries them) run the same check in `Submissions::CreateFromSubmitters` | 403 JSON; template unchanged |
 | Formulas (hidden) | Same check, refused for everyone including internal | 403 JSON for all plans |
 | SMS (hidden) | `Submitters.normalize_preferences` — the one seam every submission/submitter path funnels through — refuses a requested `send_sms` before anything is stored, HTML and API alike | Redirect + alert / 403 JSON "This feature is not available" (hidden features never say "paid plan") |
 | Automatic reminders | `NotificationsSettingsController#create` for the `submitter_reminders` setting; `Submitters::ScheduleReminders.call` schedules nothing for an unentitled account | Redirect + alert; no reminder jobs |
@@ -229,7 +233,7 @@ The listing below is every occurrence of `multitenant` in `app/`, `lib/` and
 | `app/views/accounts/show.html.erb:136,159` | Decline / delegate toggles were a cloud upsell | customer-ok | Toggles unconditional for everyone (D30); the disabled-toggle tooltip plumbing removed |
 | `app/views/accounts/show.html.erb:239,258` | "Always enforce signing order" and "direct file links" behind a cloud ability | customer-ok | Unconditional (signing order is a core row) |
 | `app/views/accounts/show.html.erb:275` | "Build search index" control | operator-only | `operator_access?` alone (already the operator gate; the tenancy half dropped) |
-| `app/views/accounts/show.html.erb:287` | Cloud-only "Delete my account" danger zone | hidden | Removed: it was not reachable in EsignCenter and Session 7 ships the recovery-window deletion flow |
+| `app/views/accounts/show.html.erb:287` | Cloud-only "Delete my account" danger zone | hidden | The button was removed; the `DELETE /settings/account` route still answers a hand-built request until Session 7 replaces the flow with the recovery-window deletion |
 | `app/views/devise/sessions/new.html.erb:3` | Cloud "select server" picker | hidden | Render removed; the (empty) partial deleted |
 | `app/views/email_smtp_settings/index.html.erb:38,53` | SMTP security radios / required from-address | customer-ok | Both unconditional. The page itself is a paid row: `can?(:use, :account_smtp)` shows the form, otherwise the upgrade CTA |
 | `app/views/esign_settings/show.html.erb:106` | Custom timestamp-server form | operator-only | Hidden from customer accounts (`!current_account.customer?`); internal/operator keep it until Session 4 |
@@ -300,8 +304,10 @@ the word only as an escaped regex, so the literal grep does not list it.
   `withConditions` = `can?(:use, :conditional_logic)` (the embedded builder
   asks `Entitlements.allowed?` for the template's account); `withFormula` and
   `withPhone` are `false` for everyone. The conditions modal tells a free
-  account "This feature requires a paid plan" (and refuses to save); the
-  formula modal says the feature is not available.
+  account "This feature requires a paid plan" (and refuses to save). The
+  Formula menu item is not offered in the field settings of any account,
+  internal included; a legacy formula field keeps a read-only formula icon
+  whose modal says the feature is not available and refuses to save.
 - **Hidden for everyone**: no SMS or SSO settings routes; the "send SMS"
   controls are gone from the recipient forms and the submission page; the
   bulk "upload list" tab is gone from the add-recipients modal; the Google

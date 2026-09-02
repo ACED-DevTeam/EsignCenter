@@ -125,13 +125,47 @@ RSpec.describe 'Branding gate' do
       end
     end
 
+    # ERB closes a comment at the first `%>`, so the `<%= … %>` inside the
+    # anchor ends the comment early and the tail ("…>DocuSeal</a> %>") is
+    # emitted as literal text — the gate mirrors that: the constant is inside
+    # the comment (missing), the anchor is not rendered, the tail is visible.
     it 'fails when the DocuSeal anchor survives only inside an ERB comment' do
       Dir.mktmpdir do |root|
         commented = "<%# AGPL LICENSE_ADDITIONAL_TERMS: #{rendered_anchor} %>\n<%= t('powered_by') %>\n"
         write_tree(root, powered_by_file => commented)
 
         expect(Gates.attribution_failures(root)).to contain_exactly(
+          "#{powered_by_file}: attribution snippet missing: Docuseal::DOCUSEAL_URL",
           "#{powered_by_file}: attribution anchor is not rendered markup: <a href=\"<%= Docuseal::DOCUSEAL_URL"
+        )
+      end
+    end
+
+    # The most realistic evasion: the anchor line wrapped in an HTML comment.
+    # The browser never renders it, so neither the anchor nor the snippets
+    # inside it count as attribution.
+    it 'fails when the DocuSeal anchor survives only inside an HTML comment' do
+      Dir.mktmpdir do |root|
+        commented = "<%# AGPL LICENSE_ADDITIONAL_TERMS: keep the attribution %>\n" \
+                    "<!-- #{rendered_anchor} -->\n<%= t('powered_by') %>\n"
+        write_tree(root, powered_by_file => commented)
+
+        expect(Gates.attribution_failures(root)).to contain_exactly(
+          "#{powered_by_file}: attribution snippet missing: Docuseal::DOCUSEAL_URL",
+          "#{powered_by_file}: attribution snippet missing: >DocuSeal</a>",
+          "#{powered_by_file}: attribution anchor is not rendered markup: <a href=\"<%= Docuseal::DOCUSEAL_URL"
+        )
+      end
+    end
+
+    it 'fails when the QR branding snippets survive only inside an HTML comment' do
+      Dir.mktmpdir do |root|
+        branding_file = 'app/views/templates_share_link_qr/_branding.html.erb'
+        requirement = Gates::ATTRIBUTION_REQUIREMENTS.find { |r| r.fetch(:file) == branding_file }
+        write_tree(root, branding_file => "<!--\n#{passing_content(requirement)}\n-->\n")
+
+        expect(Gates.attribution_failures(root)).to match_array(
+          requirement.fetch(:snippets).map { |snippet| "#{branding_file}: attribution snippet missing: #{snippet}" }
         )
       end
     end
@@ -155,6 +189,20 @@ RSpec.describe 'Branding gate' do
 
         expect(Gates.attribution_failures(root))
           .to contain_exactly('app/views/templates_share_link_qr/_branding.html.erb: attribution file is missing')
+      end
+    end
+
+    describe 'Gates.rendered?' do
+      it 'is true for the anchor as plain markup and false inside an ERB or HTML comment, single- or multi-line' do
+        expect(Gates.rendered?("<div>\n  #{rendered_anchor}\n</div>\n", rendered_anchor)).to be(true)
+        expect(Gates.rendered?("<%# #{rendered_anchor} %>\n", rendered_anchor)).to be(false)
+        expect(Gates.rendered?("<!-- #{rendered_anchor} -->\n", rendered_anchor)).to be(false)
+        expect(Gates.rendered?("<!--\n  #{rendered_anchor}\n-->\n", rendered_anchor)).to be(false)
+        expect(Gates.rendered?("<%#\n  #{rendered_anchor}\n%>\n", rendered_anchor)).to be(false)
+      end
+
+      it 'still sees an anchor that follows a closed comment on the same line' do
+        expect(Gates.rendered?("<!-- note --> #{rendered_anchor}\n", rendered_anchor)).to be(true)
       end
     end
 

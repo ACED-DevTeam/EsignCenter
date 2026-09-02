@@ -6,6 +6,19 @@
   <% if is_custom_template_email || @template.preferences['submitters'].to_a.any? %>
     <%= button_to nil, template_preferences_path(@template), id: 'submitter_invitation_email_reset_link', method: :delete, class: 'hidden', params: { config_key: AccountConfig::SUBMITTER_INVITATION_EMAIL_KEY }, data: { turbo_confirm: t('are_you_sure_') }, form: { data: { close_on_submit: false } } %>
   <% end %>
+  <%# Custom email copy is a paid row: the subject/body form for an entitled account, the compact upgrade CTA otherwise. The reset link stays so a downgraded account can still clear its legacy copy. %>
+  <% can_edit_copy = can?(:use, :custom_email_templates) %>
+  <% unless can_edit_copy %>
+    <%= render 'shared/upgrade_cta', feature: t('signature_request_email'), body: t('custom_email_templates_are_available_on_the_paid_plan'), compact: true, class: 'mt-1 mb-2' %>
+    <% if is_custom_template_email || @template.preferences['submitters'].to_a.any? %>
+      <div class="flex justify-end px-1">
+        <label for="submitter_invitation_email_reset_link" class="label underline cursor-pointer">
+          <%= t('reset_default') %>
+        </label>
+      </div>
+    <% end %>
+  <% end %>
+  <% if can_edit_copy %>
   <%= form_for @template, url: template_preferences_path(@template), method: :post, html: { autocomplete: 'off', class: 'mt-1', id: 'submitter_invitation_email_template_form' }, data: { close_on_submit: false } do |f| %>
     <toggle-on-submit data-element-id="email_saved_alert1"></toggle-on-submit>
     <%= tag.input id: 'request_email_per_submitter', value: '1', name: 'request_email_per_submitter', class: 'peer', type: 'checkbox', hidden: true, checked: @template.preferences['submitters'].to_a.size > 1 %>
@@ -71,6 +84,7 @@
       </div>
     <% end %>
   <% end %>
+  <% end %>
   <%= form_for @template, url: template_preferences_path(@template), method: :post, html: { autocomplete: 'off', class: 'mt-1' }, data: { close_on_submit: false } do |f| %>
     <toggle-on-submit data-element-id="email_saved_alert1"></toggle-on-submit>
     <%= f.fields_for :preferences, Struct.new(:request_email_enabled).new(@template.preferences['request_email_enabled']) do |ff| %>
@@ -85,7 +99,9 @@
     <% end %>
   <% end %>
   <div class="form-control pt-2">
-    <%= button_tag button_title(title: t('save'), disabled_with: t('saving')), form: 'submitter_invitation_email_template_form', class: 'base-button' %>
+    <% if can_edit_copy %>
+      <%= button_tag button_title(title: t('save'), disabled_with: t('saving')), form: 'submitter_invitation_email_template_form', class: 'base-button' %>
+    <% end %>
     <div class="flex justify-center">
       <span id="email_saved_alert1" class="text-sm invisible font-normal mt-0.5"><%= t('changes_have_been_saved') %></span>
     </div>

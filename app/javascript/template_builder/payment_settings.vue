@@ -196,6 +196,7 @@
         </form>
       </div>
       <li
+        v-if="withFormula"
         class="field-settings-formula mb-1"
       >
         <label
@@ -282,7 +283,7 @@ export default {
     IconInnerShadowTop,
     IconBrandStripe
   },
-  inject: ['backgroundColor', 'save', 'currencies', 't', 'isPaymentConnected'],
+  inject: ['backgroundColor', 'save', 'currencies', 't', 'isPaymentConnected', 'withFormula'],
   props: {
     field: {
       type: Object,

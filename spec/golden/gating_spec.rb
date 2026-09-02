@@ -234,6 +234,44 @@ RSpec.describe 'Feature gating', type: :request do
       expect_html_refusal
     end
 
+    def webhook_event_for(account)
+      webhook_url = create(:webhook_url, account:, events: ['form.completed'])
+      submission = create(:submission, :with_submitters, template: template_for(account),
+                                                         created_by_user: admin_for(account))
+
+      event = WebhookEvent.create!(webhook_url:, account:, record: submission.submitters.first,
+                                   event_type: 'form.completed', status: 'error')
+      event.webhook_attempts.create!(attempt: 1, response_status_code: 500, response_body: 'boom')
+
+      event
+    end
+
+    def resend_event(event)
+      post "/settings/webhooks/#{event.webhook_url_id}/events/#{event.uuid}/resend", params: { button_id: 'x' }
+    end
+
+    # Resending a single event is a webhook write like the URL-level resend:
+    # a free account (a downgraded one with history included) enqueues nothing.
+    it 'refuses a free account resending a stored webhook event and enqueues the manual attempt for internal' do
+      free_event = webhook_event_for(free_account)
+      internal_event = webhook_event_for(internal_account)
+
+      end_session
+      sign_in(admin_for(free_account))
+
+      expect { resend_event(free_event) }.not_to change(SendFormCompletedWebhookRequestJob.jobs, :size)
+      expect_html_refusal
+
+      end_session
+      sign_in(admin_for(internal_account))
+
+      expect { resend_event(internal_event) }.to change(SendFormCompletedWebhookRequestJob.jobs, :size).by(1)
+      expect(response).to have_http_status(:ok)
+      expect(SendFormCompletedWebhookRequestJob.jobs.last['args'].first)
+        .to include('event_uuid' => internal_event.uuid, 'webhook_url_id' => internal_event.webhook_url_id,
+                    'attempt' => SendWebhookRequest::MANUAL_ATTEMPT)
+    end
+
     it 'refuses a free account changing a URL\'s events or secret header (rows unchanged), keeps viewing and ' \
        'deleting open, and lets an internal account write both' do
       free_webhook = create(:webhook_url, account: free_account, events: ['form.completed'])

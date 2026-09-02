@@ -5,6 +5,19 @@
   <% if is_custom_template_email %>
     <%= button_to nil, template_preferences_path(@template), id: 'submitter_completed_email_reset_link', method: :delete, class: 'hidden', params: { config_key: AccountConfig::SUBMITTER_COMPLETED_EMAIL_KEY }, data: { turbo_confirm: t('are_you_sure_') }, form: { data: { close_on_submit: false } } %>
   <% end %>
+  <%# Custom email copy is a paid row: the subject/body form for an entitled account, the compact upgrade CTA otherwise. The reset link stays so a downgraded account can still clear its legacy copy. %>
+  <% can_edit_copy = can?(:use, :custom_email_templates) %>
+  <% unless can_edit_copy %>
+    <%= render 'shared/upgrade_cta', feature: t('completed_notification_email'), body: t('custom_email_templates_are_available_on_the_paid_plan'), compact: true, class: 'mt-1 mb-2' %>
+    <% if is_custom_template_email %>
+      <div class="flex justify-end px-1">
+        <label for="submitter_completed_email_reset_link" class="label underline cursor-pointer">
+          <%= t('reset_default') %>
+        </label>
+      </div>
+    <% end %>
+  <% end %>
+  <% if can_edit_copy %>
   <%= form_for @template, url: template_preferences_path(@template), method: :post, html: { autocomplete: 'off', class: 'mt-1', id: 'submitter_completed_email_template_form' }, data: { close_on_submit: false } do |f| %>
     <toggle-on-submit data-element-id="email_saved_alert3"></toggle-on-submit>
     <%= f.fields_for :preferences, Struct.new(:completed_notification_email_subject, :completed_notification_email_body).new(@template.preferences['completed_notification_email_subject'].presence || configs['subject'], @template.preferences['completed_notification_email_body'].presence || configs['body']) do |ff| %>
@@ -24,6 +37,7 @@
         <%= render 'personalization_settings/markdown_editor', name: ff.field_name(:completed_notification_email_body), value: ff.object.completed_notification_email_body, variables: AccountConfig::EMAIL_VARIABLES[AccountConfig::SUBMITTER_COMPLETED_EMAIL_KEY] %>
       </div>
     <% end %>
+  <% end %>
   <% end %>
   <%= form_for @template, url: template_preferences_path(@template), method: :post, html: { autocomplete: 'off', class: 'mt-1' }, data: { close_on_submit: false } do |f| %>
     <toggle-on-submit data-element-id="email_saved_alert3"></toggle-on-submit>
@@ -55,7 +69,9 @@
     <% end %>
   <% end %>
   <div class="form-control pt-2">
-    <%= button_tag button_title(title: t('save'), disabled_with: t('saving')), form: 'submitter_completed_email_template_form', class: 'base-button' %>
+    <% if can_edit_copy %>
+      <%= button_tag button_title(title: t('save'), disabled_with: t('saving')), form: 'submitter_completed_email_template_form', class: 'base-button' %>
+    <% end %>
     <div class="flex justify-center">
       <span id="email_saved_alert3" class="text-sm invisible font-normal mt-0.5"><%= t('changes_have_been_saved') %></span>
     </div>

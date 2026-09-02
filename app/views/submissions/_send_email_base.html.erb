@@ -58,7 +58,8 @@
         <%= f.label :message, t('body'), class: 'label' %>
         <% body_variables = AccountConfig::EMAIL_VARIABLES[AccountConfig::SUBMITTER_INVITATION_EMAIL_KEY] %>
         <%= render 'personalization_settings/markdown_editor', name: f.field_name(:body), value: local_assigns[:submitter_email_message]&.body.presence || submitter_preferences_index.dig(local_assigns[:submitter]&.uuid, 'request_email_body').presence || template&.preferences&.dig('request_email_body').presence || config.value['body'], variables: body_variables %>
-        <% unless local_assigns.fetch(:disable_save_as_default_template_option, false) %>
+        <%# Saving the message onto the template is a paid row (custom email templates); the checkbox is only offered to an entitled account. SubmissionsController refuses a hand-built save_message=1 regardless. %>
+        <% if !local_assigns.fetch(:disable_save_as_default_template_option, false) && can?(:use, :custom_email_templates) %>
           <label for="<%= uuid = SecureRandom.uuid %>" class="flex items-center cursor-pointer">
             <%= check_box_tag :save_message, id: uuid, class: 'base-checkbox', checked: false %>
             <span class="label"><%= t('save_as_default_template_message') %></span>

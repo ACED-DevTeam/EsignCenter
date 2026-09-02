@@ -59,7 +59,13 @@ RSpec.describe 'Feature gating UI', type: :request do
       ['name="account_config[value][subject]"', "value=\"#{AccountConfig::REMOVE_BRANDING_KEY}\""]
     ],
     'Template code modal (embed)' => [->(t) { "/templates/#{t.id}/code_modal" }, ['id="embedding_url"']],
-    'Template preferences API tab (embed)' => [->(t) { "/templates/#{t.id}/preferences" }, ['id="embedding_url"']]
+    'Template preferences API tab (embed)' => [->(t) { "/templates/#{t.id}/preferences" }, ['id="embedding_url"']],
+    'Template preferences (BCC + per-template email copy)' => [
+      ->(t) { "/templates/#{t.id}/preferences" },
+      ['name="template[preferences][bcc_completed]"', 'id="submitter_invitation_email_template_form"',
+       'name="template[preferences][documents_copy_email_subject]"',
+       'name="template[preferences][completed_notification_email_subject]"']
+    ]
   }
 
   gated_pages.each do |name, (path_for, real_form_markers)|
@@ -82,6 +88,92 @@ RSpec.describe 'Feature gating UI', type: :request do
     expect(body).to include('/settings/personalization_logo')
     expect(body).to include("value=\"#{AccountConfig::FORM_COMPLETED_MESSAGE_KEY}\"")
     expect(body).to include("value=\"#{AccountConfig::POLICY_LINKS_KEY}\"")
+  end
+
+  it 'keeps the free toggles on the template preferences page for a free account' do
+    body = visit_as(free_account, "/templates/#{template_for(free_account).id}/preferences")
+
+    expect(body).to include('name="template[preferences][request_email_enabled]"')
+    expect(body).to include('name="template[preferences][documents_copy_email_enabled]"')
+    expect(body).to include('name="template[preferences][completed_notification_email_enabled]"')
+  end
+
+  it 'keeps the "reset to default" link on the template preferences page for a downgraded account with legacy ' \
+     'custom email copy (cleanup never needs the entitlement)' do
+    template = template_for(paid_account)
+    template.update!(preferences: template.preferences.merge('request_email_subject' => 'Legacy subject',
+                                                             'request_email_body' => 'Legacy body'))
+    downgrade_to_free!(paid_account)
+
+    body = visit_as(paid_account, "/templates/#{template.id}/preferences")
+
+    expect_cta(body)
+    expect(body).not_to include('id="submitter_invitation_email_template_form"')
+    expect(body).to include('id="submitter_invitation_email_reset_link"')
+    expect(body).to include(I18n.t('reset_default'))
+  end
+
+  it 'send dialog offers "save as default template message" only to an entitled account' do
+    free_body = visit_as(free_account, "/templates/#{template_for(free_account).id}/submissions/new")
+
+    expect(free_body).to include('name="subject"')
+    expect(free_body).not_to include('name="save_message"')
+
+    internal_body = visit_as(internal_account, "/templates/#{template_for(internal_account).id}/submissions/new")
+
+    expect(internal_body).to include('name="save_message"')
+  end
+
+  describe 'webhook event resend' do
+    def webhook_event_for(account)
+      webhook_url = create(:webhook_url, account:, events: ['form.completed'])
+      submission = create(:submission, :with_submitters, template: template_for(account),
+                                                         created_by_user: admin_for(account))
+
+      event = WebhookEvent.create!(webhook_url:, account:, record: submission.submitters.first,
+                                   event_type: 'form.completed', status: 'error')
+      event.webhook_attempts.create!(attempt: 1, response_status_code: 500, response_body: 'boom')
+
+      event
+    end
+
+    it 'offers the Resend button on the event list and the event drawer only while the account is entitled ' \
+       '(the history itself stays visible after a downgrade)' do
+      event = webhook_event_for(paid_account)
+      resend_path = "/settings/webhooks/#{event.webhook_url_id}/events/#{event.uuid}/resend"
+      event_path = "/settings/webhooks/#{event.webhook_url_id}/events/#{event.uuid}"
+
+      expect(visit_as(paid_account, '/settings/webhooks')).to include(resend_path)
+      expect(visit_as(paid_account, event_path)).to include(resend_path)
+      expect(refreshed_rows_for(paid_account, event)).to include(resend_path)
+
+      downgrade_to_free!(paid_account)
+
+      expect(visit_as(paid_account, '/settings/webhooks')).not_to include(resend_path)
+
+      drawer_body = visit_as(paid_account, event_path)
+
+      expect(drawer_body).to include(event.event_type)
+      expect(drawer_body).not_to include(resend_path)
+
+      # The 3-second poll a still-open page keeps sending re-renders both
+      # partials; a downgraded account must not get the button back that way.
+      refreshed = refreshed_rows_for(paid_account, event)
+
+      expect(refreshed).to include(event.event_type)
+      expect(refreshed).not_to include(resend_path)
+    end
+
+    def refreshed_rows_for(account, event)
+      sign_out(:user)
+      reset!
+      sign_in(admin_for(account))
+      post "/settings/webhooks/#{event.webhook_url_id}/events/#{event.uuid}/refresh", params: { last_attempt_id: 0 }
+
+      expect(response).to have_http_status(:ok)
+
+      response.body
+    end
   end
 
   it 'shows the API tab in template preferences to a free account (discoverable, with the CTA)' do
@@ -145,6 +237,16 @@ RSpec.describe 'Feature gating UI', type: :request do
   end
 
   describe 'attribution points' do
+    # DOM lookups, never substring checks: an anchor parked inside an HTML
+    # comment is still a substring of the body but is not attribution.
+    def docuseal_attribution_links(body)
+      Nokogiri::HTML(body).css("a[href^='#{Docuseal::DOCUSEAL_URL}']").select { |a| a.text.strip == 'DocuSeal' }
+    end
+
+    def product_attribution_links(body)
+      Nokogiri::HTML(body).css("a[href='#{Docuseal::PRODUCT_URL}']").select { |a| a.text.strip == Docuseal.product_name }
+    end
+
     def signing_page_for(account)
       submission = create(:submission, :with_submitters, template: template_for(account),
                                                          created_by_user: admin_for(account))
@@ -170,14 +272,12 @@ RSpec.describe 'Feature gating UI', type: :request do
       free_body = signing_page_for(free_account)
 
       expect(free_body).to include(I18n.t('powered_by'))
-      expect(free_body).to include("href=\"#{Docuseal::DOCUSEAL_URL}")
-      expect(free_body).to include('>DocuSeal</a>')
+      expect(docuseal_attribution_links(free_body)).not_to be_empty
 
       paid_body = signing_page_for(paid_account)
 
       expect(paid_body).not_to include(I18n.t('powered_by'))
-      expect(paid_body).to include("href=\"#{Docuseal::DOCUSEAL_URL}")
-      expect(paid_body).to include('>DocuSeal</a>')
+      expect(docuseal_attribution_links(paid_body)).not_to be_empty
     end
 
     # The shared-link verification-code page (/d/:slug?email_verification=1).
@@ -214,8 +314,7 @@ RSpec.describe 'Feature gating UI', type: :request do
         [shared_link_verification_page_for(account), email_2fa_page_for(account)]
       end
 
-      expect(bodies).to all(include("href=\"#{Docuseal::DOCUSEAL_URL}"))
-      expect(bodies).to all(include('>DocuSeal</a>'))
+      bodies.each { |body| expect(docuseal_attribution_links(body)).not_to be_empty }
     end
 
     it 'renders the share-link QR attribution for free and paid-without-branding accounts alike' do
@@ -225,8 +324,7 @@ RSpec.describe 'Feature gating UI', type: :request do
         body = qr_page_for(account)
 
         expect(body).to include(I18n.t('powered_by'))
-        expect(body).to include("href=\"#{Docuseal::PRODUCT_URL}\"")
-        expect(body).to include(Docuseal.product_name)
+        expect(product_attribution_links(body)).not_to be_empty
       end
     end
   end

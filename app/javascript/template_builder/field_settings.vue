@@ -500,7 +500,7 @@
     </label>
   </li>
   <li
-    v-if="field.type == 'number'"
+    v-if="withFormula && field.type == 'number'"
     class="field-settings-formula"
   >
     <label
@@ -610,7 +610,7 @@ export default {
     IconTypography,
     IconX
   },
-  inject: ['template', 't', 'dateFormats', 'locale'],
+  inject: ['template', 't', 'dateFormats', 'locale', 'withFormula'],
   props: {
     field: {
       type: Object,
