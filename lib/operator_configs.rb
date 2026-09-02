@@ -11,10 +11,13 @@ module OperatorConfigs
   # The real operator account only. Test mode clones the operator account
   # into a testing child that carries the same account_kind, so the kind
   # alone is ambiguous: the child is excluded by its testing link.
-  def account
+  def candidates
     Account.where(account_kind: Account::OPERATOR_KIND)
            .where.not(id: AccountLinkedAccount.testing.select(:linked_account_id))
-           .take
+  end
+
+  def account
+    candidates.take
   end
 
   def fetch(key)

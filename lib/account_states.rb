@@ -3,7 +3,8 @@
 # Account lifecycle states and what they refuse. Session sign-in for an
 # archived account already fails through User#active_for_authentication?;
 # this module is the request-time guard for everything authenticated by a
-# token instead (API keys, MCP tokens, signing sessions).
+# token instead (API keys, MCP tokens, signing sessions, embed
+# template-builder tokens).
 module AccountStates
   # Timestamp columns that, when set, make every token of the account refuse.
   # Extension point: Session 7 adds :suspended_at here (billing suspension)

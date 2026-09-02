@@ -691,5 +691,6 @@ Render env vars.
   heartbeat job; future recurring jobs are added to that file.
 - **API tokens are checked against account state at request time.** An
   archived account's still-valid API token or MCP key gets
-  `401 {"error": "Account is not active"}`. Session 7 adds suspension to the
-  same guard (`lib/account_states.rb`).
+  `401 {"error": "Account is not active"}`; an embedded template-builder
+  token (minted through the API) gets a plain 404. Session 7 adds suspension
+  to the same guard (`lib/account_states.rb`).

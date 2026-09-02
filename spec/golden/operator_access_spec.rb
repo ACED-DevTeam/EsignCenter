@@ -174,6 +174,7 @@ RSpec.describe 'Operator access', type: :request do
 
       expect(testing_child.account_kind).to eq(Account::OPERATOR_KIND)
       expect(testing_child.users.sole.platform_operator).to be(false)
+      expect(OperatorConfigs.candidates.pluck(:id)).to eq([operator_account.id])
 
       get '/jobs'
 
@@ -233,12 +234,14 @@ RSpec.describe 'Operator access', type: :request do
 
       testing_child = operator_account.testing_accounts.reload.sole
 
-      expect(Account.where(account_kind: Account::OPERATOR_KIND).count).to eq(2)
       expect(testing_child.testing?).to be(true)
 
-      # Rewriting the parent row puts its current version after the child's
-      # on disk, which is the order an unscoped kind lookup used to follow.
-      operator_account.update!(name: 'EsignCenter Operations (renamed)')
+      # Set-based, so the pin holds whichever row the database would hand a
+      # bare LIMIT 1 first: both rows match the kind, only the parent is a
+      # candidate.
+      expect(Account.where(account_kind: Account::OPERATOR_KIND).pluck(:id))
+        .to contain_exactly(operator_account.id, testing_child.id)
+      expect(OperatorConfigs.candidates.pluck(:id)).to eq([operator_account.id])
 
       expect(OperatorConfigs.account).to eq(operator_account)
       expect(OperatorConfigs.enabled?(:fulltext_search)).to be(false)

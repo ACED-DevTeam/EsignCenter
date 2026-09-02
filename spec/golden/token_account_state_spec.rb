@@ -169,6 +169,51 @@ RSpec.describe 'Token account state', type: :request do
     end
   end
 
+  describe 'GET/PUT /embed/template_builder/:token' do
+    # The builder token is minted by an API-key call and opens the embedded
+    # builder without a login, so it is a token door like the others: the
+    # refusal is the same 404 an invalid token gets.
+    def builder_payload(name)
+      { template: { name:, schema: template.schema, submitters: template.submitters,
+                    fields: template.fields, variables_schema: {} } }.to_json
+    end
+
+    def update_builder_template(token, name)
+      put "/embed/template_builder/#{token}/templates/#{template.id}",
+          params: builder_payload(name), headers: { 'CONTENT_TYPE' => 'application/json' }
+    end
+
+    it 'opens and saves before the archive and is a 404 without saving after it' do
+      post '/api/template_builder_sessions', headers: api_headers, params: {
+        template_id: template.id,
+        embed_origin: 'https://crm.example.com'
+      }.to_json
+
+      expect(response).to have_http_status(:ok)
+
+      token = URI.parse(response.parsed_body['builder_src']).path.split('/').last
+
+      get "/embed/template_builder/#{token}"
+
+      expect(response).to have_http_status(:ok)
+
+      update_builder_template(token, 'Before archive')
+
+      expect(response).to have_http_status(:ok)
+      expect(template.reload.name).to eq('Before archive')
+
+      archive!(account)
+
+      expect { get "/embed/template_builder/#{token}" }.to raise_error(ActionController::RoutingError)
+      expect { update_builder_template(token, 'After archive') }.to raise_error(ActionController::RoutingError)
+      expect do
+        post "/embed/template_builder/#{token}/templates/#{template.id}/documents", params: { files: [] }
+      end.to raise_error(ActionController::RoutingError)
+
+      expect(template.reload.name).to eq('Before archive')
+    end
+  end
+
   describe 'testing-child tokens' do
     let(:account) { create(:account, :internal) }
 

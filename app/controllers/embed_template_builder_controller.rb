@@ -95,6 +95,11 @@ class EmbedTemplateBuilderController < ApplicationController
 
   def load_template
     @template = Template.find_signed!(params[:token], purpose: :embed_builder)
+
+    # A builder token is minted through the API key, so it is refused with the
+    # other token doors once the account leaves the active state — the same
+    # 404 an invalid token gets, before any action runs.
+    raise ActionController::RoutingError, I18n.t('not_found') unless AccountStates.tokens_allowed?(@template.account)
   rescue ActiveSupport::MessageVerifier::InvalidSignature
     raise ActionController::RoutingError, I18n.t('not_found')
   end
