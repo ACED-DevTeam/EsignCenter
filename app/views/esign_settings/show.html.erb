@@ -103,7 +103,8 @@
       </table>
     </div>
     <% encrypted_config = EncryptedConfig.find_or_initialize_by(account: current_account, key: EncryptedConfig::TIMESTAMP_SERVER_URL_KEY) %>
-    <% if !Docuseal.multitenant? && can?(:manage, encrypted_config) %>
+    <%# Custom timestamp server: hidden from customer accounts (Session 4 makes signing certs/TSA operator-only). %>
+    <% if !current_account.customer? && can?(:manage, encrypted_config) %>
       <div class="flex-grow max-w-xl">
         <div class="flex justify-between items-end mb-4 mt-8">
           <h2 class="text-3xl font-bold">

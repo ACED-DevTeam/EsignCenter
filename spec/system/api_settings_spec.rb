@@ -1,7 +1,9 @@
 # frozen_string_literal: true
 
 RSpec.describe 'API Settings' do
-  let!(:account) { create(:account) }
+  # The REST API is a paid row: a free account sees the upgrade CTA instead of
+  # the token card (spec/golden/gating_ui_spec.rb), so the token flows run on a paid account.
+  let!(:account) { create(:account, :paid) }
   let!(:user) { create(:user, account:) }
 
   before do

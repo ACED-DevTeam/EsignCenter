@@ -1,4 +1,7 @@
 <%= render 'shared/turbo_modal', title: t('api_and_embedding'), close_after_submit: false do %>
+  <% if cannot?(:use, :embed) %>
+    <%= render 'shared/upgrade_cta', feature: t('api_and_embedding'), class: 'mt-2 mb-4' %>
+  <% else %>
   <div>
     <label class="text-sm font-semibold" for="template_id">
       <%= t('template_id') %>
@@ -34,5 +37,5 @@
     </div>
   <% end %>
   <%= render 'templates_code_modal/preferences' %>
-  <%= render 'templates_code_modal/placeholder' %>
+  <% end %>
 <% end %>

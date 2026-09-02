@@ -28,6 +28,8 @@ module Docuseal
       end
   end
 
+  # Never flipped in EsignCenter (decision-locked); kept only as the guard the
+  # remaining infra-keep branches read. See docs/feature-gating.md section 2.
   def multitenant?
     ENV['MULTITENANT'] == 'true'
   end
@@ -40,6 +42,7 @@ module Docuseal
     ENV['BILLING_ENABLED'] == 'true'
   end
 
+  # infra-keep: Session 4 decouples Word/.doc uploads from this flag.
   def advanced_formats?
     multitenant?
   end

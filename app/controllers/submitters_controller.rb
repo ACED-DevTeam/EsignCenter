@@ -50,8 +50,8 @@ class SubmittersController < ApplicationController
 
   def maybe_resend_email_sms(submitter, params)
     if params[:send_email] == '1' && submitter.email.present?
-      is_sent_recently = Docuseal.multitenant? &&
-                         EmailEvent.exists?(email: submitter.email,
+      # Anti-abuse: an invitation sent to this address within 4 hours is not repeated.
+      is_sent_recently = EmailEvent.exists?(email: submitter.email,
                                             tag: 'submitter_invitation',
                                             emailable: submitter,
                                             event_type: 'send',

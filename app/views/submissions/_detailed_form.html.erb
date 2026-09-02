@@ -93,9 +93,6 @@
   <div>
     <%= render('submitters_order', f:, template:) if Accounts.can_send_emails?(current_account) %>
     <%= render 'send_email', f:, template: %>
-    <% if has_phone_field %>
-      <%= render 'send_sms', f: %>
-    <% end %>
     <%= render 'extra_fields', f: %>
   </div>
   <div class="form-control">

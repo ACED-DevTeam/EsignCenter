@@ -106,7 +106,8 @@ RSpec.describe 'Account and user creation matrix', type: :request do
     post testing_account_path, headers: { 'HTTP_REFERER' => root_url }
 
     expect(response).to have_http_status(:redirect)
-    expect(flash[:alert]).to eq('Test mode is unavailable for customer accounts')
+    expect(flash[:alert]).to eq(I18n.t('test_mode_is_not_available_on_this_account'))
+    expect(flash[:alert]).to eq('Test mode is not available on this account')
     expect([Account.count, User.count]).to eq(original_counts)
     expect(account.testing_accounts).to be_empty
   end

@@ -23,7 +23,8 @@
     </div>
   <% elsif submitters.size == 1 %>
     <submitter-item class="form-control">
-      <emails-textarea data-bulk-enabled="<%= Docuseal.demo? || !Docuseal.multitenant? || can?(:manage, :bulk_send) %>" data-limit="<%= Docuseal.multitenant? ? (can?(:manage, :bulk_send) ? 40 : 1) : nil %>">
+      <%# Bulk send is hidden for everyone (no limit is set, so several recipients in one send are never blocked). %>
+      <emails-textarea data-bulk-enabled="false">
         <submitters-autocomplete data-field="email" class="block relative">
           <autoresize-textarea>
             <%= f.text_area :emails, required: true, class: 'base-textarea w-full !text-lg', placeholder: "#{t('type_emails_here')}...", rows: 2 %>

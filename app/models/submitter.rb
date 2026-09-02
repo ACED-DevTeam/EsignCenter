@@ -59,6 +59,7 @@ class Submitter < ApplicationRecord
   has_many_attached :attachments
   has_many_attached :preview_documents
   has_many :template_accesses, through: :submission
+  # infra-keep (Session 8 owns the EmailEvent projection and decides destroy-vs-anonymize).
   has_many :email_events, as: :emailable, dependent: (Docuseal.multitenant? ? nil : :destroy)
 
   has_many :document_generation_events, dependent: :destroy

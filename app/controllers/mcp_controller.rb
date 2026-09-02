@@ -51,9 +51,8 @@ class McpController < ActionController::API
     render json: { error: Entitlements::REFUSAL_MESSAGE }, status: :forbidden
   end
 
+  # The account's enable-MCP toggle governs, for every plan.
   def verify_mcp_enabled!
-    return if Docuseal.multitenant?
-
     return if AccountConfig.exists?(account_id: current_user.account_id,
                                     key: AccountConfig::ENABLE_MCP_KEY,
                                     value: true)

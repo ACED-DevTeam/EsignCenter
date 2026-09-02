@@ -1,0 +1,15 @@
+<%# Branding removal is a paid row: the toggle writes AccountConfig::REMOVE_BRANDING_KEY (refused server-side for a free account); only the "Powered by" / "Sent using" wording goes away, never the DocuSeal attribution. %>
+<% if can?(:use, :branding_removal) %>
+  <% account_config = AccountConfigs.find_or_initialize_for_key(current_account, AccountConfig::REMOVE_BRANDING_KEY) %>
+  <%= form_for account_config, url: settings_personalization_path, method: :post, html: { autocomplete: 'off' } do |f| %>
+    <%= f.hidden_field :key %>
+    <div class="flex items-center justify-between gap-4 py-2.5">
+      <span class="text-left"><%= t('remove_product_name_branding_from_emails_and_signing_pages', product_name: Docuseal.product_name) %></span>
+      <submit-form data-on="change" class="flex">
+        <%= f.check_box :value, { class: 'toggle', checked: account_config.value == true }, 'true', 'false' %>
+      </submit-form>
+    </div>
+  <% end %>
+<% else %>
+  <%= render 'shared/upgrade_cta', feature: t('remove_product_name_branding_from_emails_and_signing_pages', product_name: Docuseal.product_name) %>
+<% end %>

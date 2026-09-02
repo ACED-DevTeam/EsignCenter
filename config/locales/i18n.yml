@@ -1,4 +1,13 @@
 en: &en
+  this_feature_requires_a_paid_plan: This feature requires a paid plan
+  feature_is_available_on_the_paid_plan: '%{feature} is available on the paid plan.'
+  upgrade_to_unlock_this_and_every_other_paid_feature: Upgrade your account to unlock this and every other paid feature.
+  upgrade_plan: Upgrade plan
+  paid_plan: Paid plan
+  branding: Branding
+  remove_product_name_branding_from_emails_and_signing_pages: 'Remove %{product_name} branding from emails and signing pages'
+  test_mode_is_not_available_on_this_account: Test mode is not available on this account
+  started_building_the_search_index_visit_url_to_check_progress: 'Started building the search index. Visit %{url} to check progress.'
   language_en: English
   language_en-US: English (US)
   language_en-GB: English (UK)
@@ -243,7 +252,6 @@ en: &en
   save: Save
   saving: Saving
   changes_have_been_saved: Changes have been saved.
-  unlock_with_docuseal_pro: Not available in this edition
   use_your_own_certificates_to_sign_and_verify_pdf_files: Use your own certificates to sign and verify PDF files.
   upload_certificate: Upload Certificate
   name: Name
@@ -1062,6 +1070,15 @@ en: &en
       detailed: "%B %d, %Y %H:%M:%S"
 
 es: &es
+  this_feature_requires_a_paid_plan: Esta función requiere un plan de pago
+  feature_is_available_on_the_paid_plan: '%{feature} está disponible en el plan de pago.'
+  upgrade_to_unlock_this_and_every_other_paid_feature: Mejora tu cuenta para desbloquear esta y todas las demás funciones de pago.
+  upgrade_plan: Mejorar plan
+  paid_plan: Plan de pago
+  branding: Marca
+  remove_product_name_branding_from_emails_and_signing_pages: 'Eliminar la marca %{product_name} de los correos y páginas de firma'
+  test_mode_is_not_available_on_this_account: El modo de prueba no está disponible en esta cuenta
+  started_building_the_search_index_visit_url_to_check_progress: 'Se inició la creación del índice de búsqueda. Visita %{url} para ver el progreso.'
   knowledge_based_authentication: Autenticación basada en el conocimiento
   kba_field: KBA
   passed: Aprobado
@@ -1288,7 +1305,6 @@ es: &es
   save: Guardar
   saving: Guardando
   changes_have_been_saved: Los cambios han sido guardados.
-  unlock_with_docuseal_pro: No disponible en esta edición
   use_your_own_certificates_to_sign_and_verify_pdf_files: Usa tus propios certificados para firmar y verificar archivos PDF.
   upload_certificate: Subir certificado
   name: Nombre
@@ -2104,6 +2120,15 @@ es: &es
       detailed: "%-d de %B de %Y %H:%M:%S"
 
 it: &it
+  this_feature_requires_a_paid_plan: Questa funzione richiede un piano a pagamento
+  feature_is_available_on_the_paid_plan: '%{feature} è disponibile nel piano a pagamento.'
+  upgrade_to_unlock_this_and_every_other_paid_feature: Aggiorna il tuo account per sbloccare questa e tutte le altre funzioni a pagamento.
+  upgrade_plan: Aggiorna piano
+  paid_plan: Piano a pagamento
+  branding: Branding
+  remove_product_name_branding_from_emails_and_signing_pages: 'Rimuovi il branding %{product_name} da email e pagine di firma'
+  test_mode_is_not_available_on_this_account: La modalità di test non è disponibile per questo account
+  started_building_the_search_index_visit_url_to_check_progress: 'Creazione dell''indice di ricerca avviata. Visita %{url} per verificare l''avanzamento.'
   knowledge_based_authentication: Autenticazione basata sulla conoscenza
   kba_field: KBA
   passed: Superato
@@ -2330,7 +2355,6 @@ it: &it
   save: Salva
   saving: Salvataggio in corso
   changes_have_been_saved: Le modifiche sono state salvate.
-  unlock_with_docuseal_pro: Non disponibile in questa edizione
   use_your_own_certificates_to_sign_and_verify_pdf_files: Usa i tuoi certificati per firmare e verificare i file PDF.
   upload_certificate: Carica certificato
   name: Nome
@@ -3146,6 +3170,15 @@ it: &it
       detailed: "%d %B %Y %H:%M:%S"
 
 fr: &fr
+  this_feature_requires_a_paid_plan: Cette fonctionnalité nécessite un abonnement payant
+  feature_is_available_on_the_paid_plan: '%{feature} est disponible avec l''abonnement payant.'
+  upgrade_to_unlock_this_and_every_other_paid_feature: Passez à un abonnement payant pour débloquer cette fonctionnalité et toutes les autres.
+  upgrade_plan: 'Changer d''abonnement'
+  paid_plan: Abonnement payant
+  branding: Marque
+  remove_product_name_branding_from_emails_and_signing_pages: 'Retirer la marque %{product_name} des e-mails et des pages de signature'
+  test_mode_is_not_available_on_this_account: 'Le mode test n''est pas disponible sur ce compte'
+  started_building_the_search_index_visit_url_to_check_progress: 'Création de l''index de recherche lancée. Consultez %{url} pour suivre l''avancement.'
   knowledge_based_authentication: Authentification basée sur la connaissance
   kba_field: KBA
   passed: Réussi
@@ -3372,7 +3405,6 @@ fr: &fr
   save: Enregistrer
   saving: Enregistrement
   changes_have_been_saved: Les modifications ont été enregistrées.
-  unlock_with_docuseal_pro: Non disponible dans cette édition
   use_your_own_certificates_to_sign_and_verify_pdf_files: Utilisez vos propres certificats pour signer et vérifier des fichiers PDF.
   upload_certificate: Téléverser un certificat
   name: Nom
@@ -4185,6 +4217,15 @@ fr: &fr
       detailed: "%A %d %B %Y %Hh%Mm%Ss"
 
 pt: &pt
+  this_feature_requires_a_paid_plan: Este recurso requer um plano pago
+  feature_is_available_on_the_paid_plan: '%{feature} está disponível no plano pago.'
+  upgrade_to_unlock_this_and_every_other_paid_feature: Atualize a sua conta para desbloquear este e todos os outros recursos pagos.
+  upgrade_plan: Atualizar plano
+  paid_plan: Plano pago
+  branding: Marca
+  remove_product_name_branding_from_emails_and_signing_pages: 'Remover a marca %{product_name} dos e-mails e páginas de assinatura'
+  test_mode_is_not_available_on_this_account: O modo de teste não está disponível nesta conta
+  started_building_the_search_index_visit_url_to_check_progress: 'A criação do índice de pesquisa foi iniciada. Visite %{url} para acompanhar o progresso.'
   knowledge_based_authentication: Autenticação baseada em conhecimento
   kba_field: KBA
   passed: Aprovado
@@ -4411,7 +4452,6 @@ pt: &pt
   save: Salvar
   saving: Salvando
   changes_have_been_saved: As alterações foram salvas.
-  unlock_with_docuseal_pro: Não disponível nesta edição
   use_your_own_certificates_to_sign_and_verify_pdf_files: Use seus próprios certificados para assinar e verificar arquivos PDF.
   upload_certificate: Enviar certificado
   name: Nome
@@ -5227,6 +5267,15 @@ pt: &pt
       detailed: "%A, %d de %B de %Y, %H:%M:%Sh"
 
 de: &de
+  this_feature_requires_a_paid_plan: Diese Funktion erfordert einen kostenpflichtigen Tarif
+  feature_is_available_on_the_paid_plan: '%{feature} ist im kostenpflichtigen Tarif verfügbar.'
+  upgrade_to_unlock_this_and_every_other_paid_feature: 'Wechseln Sie den Tarif, um diese und alle weiteren kostenpflichtigen Funktionen freizuschalten.'
+  upgrade_plan: Tarif wechseln
+  paid_plan: Kostenpflichtiger Tarif
+  branding: Branding
+  remove_product_name_branding_from_emails_and_signing_pages: '%{product_name}-Branding aus E-Mails und Signaturseiten entfernen'
+  test_mode_is_not_available_on_this_account: Der Testmodus ist für dieses Konto nicht verfügbar
+  started_building_the_search_index_visit_url_to_check_progress: 'Der Suchindex wird erstellt. Den Fortschritt sehen Sie unter %{url}.'
   knowledge_based_authentication: Wissensbasierte Authentifizierung
   kba_field: KBA
   passed: Bestanden
@@ -5453,7 +5502,6 @@ de: &de
   save: Speichern
   saving: Wird gespeichert
   changes_have_been_saved: Änderungen wurden gespeichert.
-  unlock_with_docuseal_pro: In dieser Edition nicht verfügbar
   use_your_own_certificates_to_sign_and_verify_pdf_files: Verwenden Sie Ihre eigenen Zertifikate, um PDF-Dateien zu signieren und zu verifizieren.
   upload_certificate: Zertifikat hochladen
   name: Name
@@ -6269,6 +6317,15 @@ de: &de
       detailed: "%A, %d. %B %Y, %H:%M:%S Uhr"
 
 pl:
+  this_feature_requires_a_paid_plan: Ta funkcja wymaga płatnego planu
+  feature_is_available_on_the_paid_plan: '%{feature} jest dostępna w płatnym planie.'
+  upgrade_to_unlock_this_and_every_other_paid_feature: 'Zmień plan, aby odblokować tę i wszystkie inne płatne funkcje.'
+  upgrade_plan: Zmień plan
+  paid_plan: Płatny plan
+  branding: Branding
+  remove_product_name_branding_from_emails_and_signing_pages: 'Usuń branding %{product_name} z e-maili i stron podpisywania'
+  test_mode_is_not_available_on_this_account: Tryb testowy nie jest dostępny na tym koncie
+  started_building_the_search_index_visit_url_to_check_progress: 'Rozpoczęto budowanie indeksu wyszukiwania. Postęp sprawdzisz pod adresem %{url}.'
   require_phone_2fa_to_open: Wymagaj uwierzytelniania telefonicznego 2FA do otwarcia
   the_sender_has_requested_a_two_factor_authentication_via_one_time_password_sent_to_your_html: Nadawca zażądał uwierzytelnienia dwuskładnikowego poprzez jednorazowe hasło wysłane na Twój numer telefonu <b>%{phone}</b>.
   send_verification_code: Wyślij kod weryfikacyjny
@@ -6368,6 +6425,15 @@ pl:
   too_many_requests_try_again_later: Zbyt wiele żądań. Spróbuj ponownie później.
 
 uk:
+  this_feature_requires_a_paid_plan: Ця функція доступна лише в платному плані
+  feature_is_available_on_the_paid_plan: '%{feature} доступна в платному плані.'
+  upgrade_to_unlock_this_and_every_other_paid_feature: 'Оновіть план, щоб розблокувати цю та всі інші платні функції.'
+  upgrade_plan: Оновити план
+  paid_plan: Платний план
+  branding: Брендинг
+  remove_product_name_branding_from_emails_and_signing_pages: 'Прибрати брендинг %{product_name} з листів і сторінок підписання'
+  test_mode_is_not_available_on_this_account: Тестовий режим недоступний для цього облікового запису
+  started_building_the_search_index_visit_url_to_check_progress: 'Розпочато побудову пошукового індексу. Перевірити прогрес можна за адресою %{url}.'
   require_phone_2fa_to_open: Вимагати двофакторну автентифікацію через телефон для відкриття
   the_sender_has_requested_a_two_factor_authentication_via_one_time_password_sent_to_your_html: Відправник запитав двофакторну автентифікацію за допомогою одноразового пароля, надісланого на ваш номер телефону <b>%{phone}</b>.
   send_verification_code: Надіслати код перевірки
@@ -6467,6 +6533,15 @@ uk:
   too_many_requests_try_again_later: Забагато запитів. Спробуйте пізніше.
 
 cs:
+  this_feature_requires_a_paid_plan: Tato funkce vyžaduje placený plán
+  feature_is_available_on_the_paid_plan: '%{feature} je k dispozici v placeném plánu.'
+  upgrade_to_unlock_this_and_every_other_paid_feature: Přejděte na placený plán a odemkněte tuto i všechny ostatní placené funkce.
+  upgrade_plan: Změnit plán
+  paid_plan: Placený plán
+  branding: Branding
+  remove_product_name_branding_from_emails_and_signing_pages: 'Odstranit branding %{product_name} z e-mailů a podpisových stránek'
+  test_mode_is_not_available_on_this_account: Testovací režim není pro tento účet k dispozici
+  started_building_the_search_index_visit_url_to_check_progress: 'Vytváření vyhledávacího indexu bylo spuštěno. Průběh zkontrolujete na %{url}.'
   require_phone_2fa_to_open: Vyžadovat otevření pomocí telefonního 2FA
   the_sender_has_requested_a_two_factor_authentication_via_one_time_password_sent_to_your_html: Odesílatel požádal o dvoufaktorové ověření pomocí jednorázového hesla zaslaného na vaše telefonní číslo <b>%{phone}</b>.
   send_verification_code: Odeslat ověřovací kód
@@ -6566,6 +6641,15 @@ cs:
   too_many_requests_try_again_later: Příliš mnoho požadavků. Zkuste to později.
 
 he:
+  this_feature_requires_a_paid_plan: תכונה זו דורשת תוכנית בתשלום
+  feature_is_available_on_the_paid_plan: '%{feature} זמין בתוכנית בתשלום.'
+  upgrade_to_unlock_this_and_every_other_paid_feature: שדרגו את החשבון כדי לפתוח תכונה זו ואת כל שאר התכונות בתשלום.
+  upgrade_plan: שדרוג תוכנית
+  paid_plan: תוכנית בתשלום
+  branding: מיתוג
+  remove_product_name_branding_from_emails_and_signing_pages: 'הסרת מיתוג %{product_name} מהודעות הדוא"ל ומדפי החתימה'
+  test_mode_is_not_available_on_this_account: מצב בדיקה אינו זמין בחשבון זה
+  started_building_the_search_index_visit_url_to_check_progress: 'בניית אינדקס החיפוש החלה. בקרו בכתובת %{url} כדי לעקוב אחר ההתקדמות.'
   require_phone_2fa_to_open: דרוש אימות דו-שלבי באמצעות טלפון לפתיחה
   the_sender_has_requested_a_two_factor_authentication_via_one_time_password_sent_to_your_html: השולח ביקש אימות דו-שלבי באמצעות סיסמה חד פעמית שנשלחה למספר הטלפון שלך <b>%{phone}</b>.
   send_verification_code: שלח קוד אימות
@@ -6665,6 +6749,15 @@ he:
   too_many_requests_try_again_later: יותר מדי בקשות. נסה שוב מאוחר יותר.
 
 nl: &nl
+  this_feature_requires_a_paid_plan: Deze functie vereist een betaald abonnement
+  feature_is_available_on_the_paid_plan: '%{feature} is beschikbaar in het betaalde abonnement.'
+  upgrade_to_unlock_this_and_every_other_paid_feature: Upgrade je account om deze en alle andere betaalde functies te ontgrendelen.
+  upgrade_plan: Abonnement upgraden
+  paid_plan: Betaald abonnement
+  branding: Branding
+  remove_product_name_branding_from_emails_and_signing_pages: '%{product_name}-branding verwijderen uit e-mails en ondertekenpagina''s'
+  test_mode_is_not_available_on_this_account: Testmodus is niet beschikbaar voor dit account
+  started_building_the_search_index_visit_url_to_check_progress: 'Het opbouwen van de zoekindex is gestart. Bekijk de voortgang op %{url}.'
   knowledge_based_authentication: Kennisgebaseerde authenticatie
   kba_field: KBA
   passed: Geslaagd
@@ -6892,7 +6985,6 @@ nl: &nl
   save: Opslaan
   saving: Opslaan
   changes_have_been_saved: Wijzigingen zijn opgeslagen.
-  unlock_with_docuseal_pro: Niet beschikbaar in deze editie
   use_your_own_certificates_to_sign_and_verify_pdf_files: Gebruik uw eigen certificaten om PDF-bestanden te ondertekenen en te verifiëren.
   upload_certificate: Certificaat uploaden
   name: Naam
@@ -7704,6 +7796,15 @@ nl: &nl
       detailed: "%d %B %Y %H:%M:%S"
 
 ar:
+  this_feature_requires_a_paid_plan: تتطلب هذه الميزة خطة مدفوعة
+  feature_is_available_on_the_paid_plan: '%{feature} متاحة في الخطة المدفوعة.'
+  upgrade_to_unlock_this_and_every_other_paid_feature: قم بترقية حسابك لفتح هذه الميزة وجميع الميزات المدفوعة الأخرى.
+  upgrade_plan: ترقية الخطة
+  paid_plan: الخطة المدفوعة
+  branding: العلامة التجارية
+  remove_product_name_branding_from_emails_and_signing_pages: 'إزالة علامة %{product_name} من رسائل البريد وصفحات التوقيع'
+  test_mode_is_not_available_on_this_account: وضع الاختبار غير متاح لهذا الحساب
+  started_building_the_search_index_visit_url_to_check_progress: 'بدأ إنشاء فهرس البحث. تفضل بزيارة %{url} لمتابعة التقدم.'
   require_phone_2fa_to_open: "يتطلب المصادقة الثنائية عبر الهاتف للفتح"
   the_sender_has_requested_a_two_factor_authentication_via_one_time_password_sent_to_your_html: "طلب المرسل المصادقة الثنائية عبر كلمة مرور لمرة واحدة مرسلة إلى رقم هاتفك <b>%{phone}</b>."
   send_verification_code: "إرسال رمز التحقق"
@@ -7803,6 +7904,15 @@ ar:
   too_many_requests_try_again_later: طلبات كثيرة جدًا. حاول مرة أخرى لاحقًا.
 
 ko:
+  this_feature_requires_a_paid_plan: 이 기능은 유료 플랜이 필요합니다
+  feature_is_available_on_the_paid_plan: '%{feature}은(는) 유료 플랜에서 사용할 수 있습니다.'
+  upgrade_to_unlock_this_and_every_other_paid_feature: 계정을 업그레이드하여 이 기능과 모든 유료 기능을 사용하세요.
+  upgrade_plan: 플랜 업그레이드
+  paid_plan: 유료 플랜
+  branding: 브랜딩
+  remove_product_name_branding_from_emails_and_signing_pages: '이메일과 서명 페이지에서 %{product_name} 브랜딩 제거'
+  test_mode_is_not_available_on_this_account: 이 계정에서는 테스트 모드를 사용할 수 없습니다
+  started_building_the_search_index_visit_url_to_check_progress: '검색 인덱스 생성을 시작했습니다. 진행 상황은 %{url}에서 확인하세요.'
   require_phone_2fa_to_open: 열려면 휴대폰 2FA 요구
   the_sender_has_requested_a_two_factor_authentication_via_one_time_password_sent_to_your_html: 발신자가 <b>%{phone}</b> 전화번호로 전송된 일회용 비밀번호를 통해 2단계 인증을 요청했습니다.
   send_verification_code: 인증 코드 보내기
@@ -7902,6 +8012,15 @@ ko:
   too_many_requests_try_again_later: 요청이 너무 많습니다. 나중에 다시 시도하세요.
 
 ja:
+  this_feature_requires_a_paid_plan: この機能は有料プランが必要です
+  feature_is_available_on_the_paid_plan: '%{feature}は有料プランでご利用いただけます。'
+  upgrade_to_unlock_this_and_every_other_paid_feature: アカウントをアップグレードすると、この機能とすべての有料機能が利用できます。
+  upgrade_plan: プランをアップグレード
+  paid_plan: 有料プラン
+  branding: ブランディング
+  remove_product_name_branding_from_emails_and_signing_pages: 'メールと署名ページから%{product_name}のブランディングを削除する'
+  test_mode_is_not_available_on_this_account: このアカウントではテストモードは利用できません
+  started_building_the_search_index_visit_url_to_check_progress: '検索インデックスの作成を開始しました。進行状況は %{url} で確認できます。'
   require_phone_2fa_to_open: 電話による2段階認証が必要です
   the_sender_has_requested_a_two_factor_authentication_via_one_time_password_sent_to_your_html: 送信者は、<b>%{phone}</b> に送信されたワンタイムパスワードによる2段階認証を要求しました。
   send_verification_code: 認証コードを送信

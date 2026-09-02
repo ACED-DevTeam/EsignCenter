@@ -147,3 +147,156 @@ refusal copy in every declared language.
   `shared/_upgrade_cta`, `data-upgrade-cta`) to the real Checkout link.
 - **Session 8** — enforce `delivery_tracking` when the EmailEvent projection
   lands, with its row assertion added to the golden spec.
+
+## 2. What happened to the `Docuseal.multitenant?` branches
+
+The app we forked ran in two modes: a hosted cloud (`MULTITENANT=true`) and a
+self-hosted install. Dozens of `if Docuseal.multitenant?` branches chose
+between the two. EsignCenter runs in exactly one mode — the flag is never
+switched on — so every branch was a hidden decision about what customers get.
+Session 3 (Phase C) read each one and replaced it with the decision the
+entitlement matrix actually makes:
+
+- **customer-ok** — the behaviour is right for every account; the branch is
+  gone and that behaviour is simply what the app does.
+- **operator-only** — a platform surface; it now asks `operator_access?`
+  (the operator's own login with 2FA).
+- **paid-only** — a matrix row; the view asks `can?(:use, :feature)` and shows
+  the upgrade call-to-action (`app/views/shared/_upgrade_cta.html.erb`) to a
+  free account. The server refuses the matching POST regardless (section 1).
+- **hidden** — nobody gets it in v1 (SMS, bulk send, SAML SSO, formulas, plus
+  cloud-only upsells); the code is deleted, routes answer 404.
+- **infra-keep** — pure infrastructure where the flag's value changes
+  nothing for a customer; left in place with a one-line justification at the
+  site.
+
+The listing below is every occurrence of `multitenant` in `app/`, `lib/` and
+`config/` at the start of Phase C (commit `6c08c826`, `git grep -n multitenant
+6c08c826 -- app lib config`). Line numbers are from that commit.
+
+### 2.1 Controllers, jobs, mailers, models
+
+| Site | What it guarded | Class | Action |
+|---|---|---|---|
+| `app/controllers/dashboard_controller.rb:23` | Signed-out visit to `/` redirected to the marketing URL | customer-ok | Redirect and its `before_action` removed; a signed-out `/` renders the landing page (`maybe_render_landing`, unchanged) |
+| `app/controllers/mcp_controller.rb:55` | Cloud skipped the per-account "enable MCP" toggle | customer-ok | Branch removed; the account's toggle governs for every plan (the paid-row refusal runs before it) |
+| `app/controllers/passwords_controller.rb:16` | Self-hosted cleared "email not found" errors on password reset | customer-ok (protective) | Errors are always cleared: an unknown address gets the same "instructions sent" answer as a known one, so the form never reveals which emails exist |
+| `app/controllers/sessions_controller.rb:11` | Cloud redirected an unknown email at sign-in to a sign-up page | customer-ok (protective) | Branch removed. The redirect named a registration route that does not exist here, and it revealed which emails exist; Devise's generic "invalid email or password" is the protective answer (see note below) |
+| `app/controllers/submissions_resend_email_controller.rb:14` | Cloud skipped recipients emailed in the last 10 hours on "resend all" | customer-ok (anti-abuse) | Throttle is always on |
+| `app/controllers/submitters_controller.rb:53` | Cloud skipped an invitation already sent to that address in the last 4 hours | customer-ok (anti-abuse) | Throttle is always on |
+| `app/controllers/submitters_send_email_controller.rb:9` | Cloud refused a second invitation email within 10 hours | customer-ok (anti-abuse) | Throttle is always on ("Email has been sent already") |
+| `app/controllers/templates_dashboard_controller.rb:52,54` | Which shared templates a dashboard lists | customer-ok | Self-hosted behaviour kept: linked accounts see their own plus templates shared with everyone (not in test mode); branch removed |
+| `app/controllers/timestamp_server_controller.rb:12` | Cloud answered 404 to custom timestamp-server saves | customer-ok (today) | Branch removed; Session 4 makes the TSA operator-only (the form is already hidden from customers, see `esign_settings/show`) |
+| `app/jobs/application_job.rb:4` | Job retry policy | infra-keep | Retry policy is unconditional in the shipped configuration; justified at the site |
+| `app/mailers/submitter_mailer.rb:271` | Per-account custom email domain | customer-ok | No custom domains in v1: `maybe_set_custom_domain` and `@custom_domain` removed; email links use `EMAIL_HOST` (unchanged fallback) |
+| `app/models/submitter.rb:62,71` | Whether deleting a submitter destroys or anonymizes its email events | infra-keep | Session 8 owns the EmailEvent projection and decides; justified at the site |
+
+### 2.2 Views
+
+| Site | What it guarded | Class | Action |
+|---|---|---|---|
+| `app/views/accounts/show.html.erb:136,159` | Decline / delegate toggles were a cloud upsell | customer-ok | Toggles unconditional for everyone (D30); the disabled-toggle tooltip plumbing removed |
+| `app/views/accounts/show.html.erb:239,258` | "Always enforce signing order" and "direct file links" behind a cloud ability | customer-ok | Unconditional (signing order is a core row) |
+| `app/views/accounts/show.html.erb:275` | "Build search index" control | operator-only | `operator_access?` alone (already the operator gate; the tenancy half dropped) |
+| `app/views/accounts/show.html.erb:287` | Cloud-only "Delete my account" danger zone | hidden | Removed: it was not reachable in EsignCenter and Session 7 ships the recovery-window deletion flow |
+| `app/views/devise/sessions/new.html.erb:3` | Cloud "select server" picker | hidden | Render removed; the (empty) partial deleted |
+| `app/views/email_smtp_settings/index.html.erb:38,53` | SMTP security radios / required from-address | customer-ok | Both unconditional. The page itself is a paid row: `can?(:use, :account_smtp)` shows the form, otherwise the upgrade CTA |
+| `app/views/esign_settings/show.html.erb:106` | Custom timestamp-server form | operator-only | Hidden from customer accounts (`!current_account.customer?`); internal/operator keep it until Session 4 |
+| `app/views/notifications_settings/_reminder_form.html.erb:5` | Cloud dropped the 1-hour / 2-hour reminder options | customer-ok | Full duration list for everyone. The reminder section is a paid row: form for entitled accounts, CTA otherwise (`_reminder_banner`); the BCC form likewise (`:bcc`) |
+| `app/views/personalization_settings/_documents_copy_email_form.html.erb:36,44` | "BCC recipients" and "send automatically" toggles inside the documents-copy email template | customer-ok | Unconditional inside the form; the whole email-templates section is a paid row (`:custom_email_templates`) with the CTA for free accounts |
+| `app/views/personalization_settings/_form_policy_links_form.html.erb:1` | Policy links form hidden in cloud | customer-ok | Wrapper removed (policy links are free) |
+| `app/views/shared/_navbar.html.erb:73` | Cloud showed a "create free account" button to visitors | customer-ok | Gated on `Docuseal.registration_enabled?` instead (see note below) |
+| `app/views/shared/_settings_nav.html.erb:17` | Email (SMTP) and SMS entries | paid-only / hidden | Email entry shown to everyone who may read the config (page shows the CTA); SMS entry removed. The `ENV['SMTP_ADDRESS'].blank?` guard went with it: it hid per-account SMTP whenever the platform has its own SMTP, which is always true in production |
+| `app/views/shared/_settings_nav.html.erb:50` | API entry | paid-only | Shown to everyone (`can?(:read, AccessToken)`); page shows the CTA when the plan lacks `:api` |
+| `app/views/shared/_settings_nav.html.erb:57` | Webhooks entry | paid-only | Shown to everyone (`can?(:read, WebhookUrl)`); page shows the CTA when the plan lacks `:webhooks` |
+| `app/views/shared/_settings_nav.html.erb:65` | SSO entry | hidden | Removed |
+| `app/views/shared/_settings_nav.html.erb:70` | MCP entry | paid-only | Shown to admins (`:manage, :mcp`); page shows the CTA when the plan lacks `:mcp` |
+| `app/views/shared/_settings_nav.html.erb:93` | Support channels block | customer-ok | Always rendered |
+| `app/views/shared/_settings_nav.html.erb:108` | Running-version badge | operator-only | `operator_access?` |
+| `app/views/start_form/completed.html.erb:24`, `submissions_preview/completed.html.erb:25`, `submit_form/completed.html.erb:22`, `templates_share_link/show.html.erb:84` | "Send copy to email" / email-2FA controls assumed mail always works in cloud | customer-ok | `Accounts.can_send_emails?` alone (true whenever mail is configured) |
+| `app/views/submissions/_email_form.html.erb:26` | Bulk-send enablement and recipient limit | hidden | `data-bulk-enabled="false"` for all, no `data-limit` (several recipients in one send are never blocked) |
+| `app/views/submissions/_send_email_base.html.erb:25` | "SMTP not configured" alert | customer-ok | Shown whenever mail is not configured |
+| `app/views/templates/_dropzone.html.erb:8,18` | Google Drive import upsell | hidden | Removed |
+| `app/views/templates_preferences/show.html.erb:2` | Whether the API/embed tab is shown | paid-only | Shown to everyone; the tab renders the CTA when the plan lacks `:embed`, the real content otherwise. `templates_code_modal/show` does the same |
+| `app/views/users/_form.html.erb:27` | Initial password field when inviting a colleague | customer-ok | Unconditional (the invitation email still goes out; a blank password is randomised) |
+| `app/javascript/application.js:284`, `app/javascript/template_builder/import_list.vue:153,160,246` | Cloud truncated bulk imports at 1000 rows | customer-ok | Prop and truncation removed (the bulk surface itself is hidden) |
+
+### 2.3 Routes and configuration
+
+| Site | What it guarded | Class | Action |
+|---|---|---|---|
+| `config/routes.rb:66` | `timestamp_server` mounted only self-hosted | customer-ok (today) | Mounted unconditionally (same behaviour as before); Session 4 makes it operator-only |
+| `config/routes.rb:105` | `detect_fields` mounted only self-hosted | customer-ok | Mounted unconditionally. It needs the ONNX model at `tmp/model.onnx`; the embedded builder already exposes `detect_fields` for everyone, so this adds no new dependency |
+| `config/routes.rb:127-136` | Legacy blob proxy, custom ActiveStorage disk/direct-upload routes, `multitenant_routes` hook | hidden (dead) | Deleted together with `Api::ActiveStorageBlobsProxyLegacyController` (nothing referenced them; ActiveStorage draws its own routes because `config.active_storage.draw_routes` is true here). The golden spec that listed the legacy controller now lists the live controllers only |
+| `config/routes.rb:180` | `search_entries_reindex`, `sms`, `mcp` settings routes | operator-only / hidden / paid-only | Reindex mounted (its controller is the operator gate); SMS route, controller and views deleted (404 for all); MCP mounted for all (page shows CTA) |
+| `config/routes.rb:185` | `api` and `reveal_access_token` settings routes | paid-only | Mounted for all (page shows CTA) |
+| `config/routes.rb` (`sso` route, not tenancy-guarded) | SAML SSO placeholder page | hidden | Route, controller and views deleted (404 for all) |
+| `config/application.rb:26` | `config.active_storage.draw_routes = ENV['MULTITENANT'] != 'true'` | infra-keep | Reads the raw environment variable (not `Docuseal.multitenant?`), always true here; left as is |
+
+### 2.4 lib/
+
+| Site | What it guarded | Class | Action |
+|---|---|---|---|
+| `lib/accounts.rb:102,129,144` | Signing certificate / trusted certs / timestamp-server resolution | infra-keep | Session 4 makes certificates operator-only and rewrites these; justified at each site |
+| `lib/docuseal.rb:31` | The predicate itself | infra-keep | Stays, never flipped (decision-locked); comment names this document |
+| `lib/docuseal.rb:44` | `advanced_formats?` (Word/.doc uploads) | infra-keep | Session 4 decouples it |
+| `lib/docuseal.rb:74` | Fulltext search toggle | infra-keep | Operator toggle already governs (`OperatorConfigs`); the tenancy half is inert |
+| `lib/download_utils.rb:38,60` | Default for URL validation | infra-keep | Every caller that fetches a user-supplied URL passes `validate: true` explicitly; justified at the site |
+| `lib/replace_email_variables.rb:162` | Per-account custom email domain | customer-ok | Removed (no custom domains in v1) |
+| `lib/send_webhook_request.rb:73` | HTTPS/localhost rules for webhook targets | infra-keep | Already unconditional for every customer account (Session 1); justified at the site |
+| `lib/submitters/form_configs.rb:21` | Policy links in signer-page config | customer-ok | Always included |
+| `lib/tasks/gates.rake:58,60,63` | The gate's own banned patterns | infra-keep | Gate definition (it necessarily spells the word) |
+| `lib/templates/image_to_fields.rb:527` | ONNX memory-arena tuning | infra-keep | Justified at the site |
+
+Phase B had already replaced three branches at the lines it was editing, all
+customer-ok: `personalization_settings_controller.rb` (policy links allowed
+for everyone), `lib/webhook_urls.rb` (webhook fan-out now keyed on the
+`:webhooks` entitlement), `email_smtp_settings_controller.rb` (the SMTP
+"setup successful" mail is sent for everyone).
+
+### 2.5 Survivors
+
+After the rewrite, `grep -rn "multitenant?" app lib config` returns exactly
+the infra-keep rows above: `app/models/submitter.rb` (2), `app/jobs/application_job.rb`,
+`lib/accounts.rb` (3), `lib/docuseal.rb` (3), `lib/download_utils.rb` (2),
+`lib/send_webhook_request.rb`, `lib/templates/image_to_fields.rb` (14 lines,
+one of them a comment). The gate definition in `lib/tasks/gates.rake` spells
+the word only as an escaped regex, so the literal grep does not list it.
+
+### 2.6 Feature switches and the upgrade call-to-action
+
+- **Builder flags** (`templates/edit`, `embed_template_builder/show`):
+  `withConditions` = `can?(:use, :conditional_logic)` (the embedded builder
+  asks `Entitlements.allowed?` for the template's account); `withFormula` and
+  `withPhone` are `false` for everyone. The conditions modal tells a free
+  account "This feature requires a paid plan" (and refuses to save); the
+  formula modal says the feature is not available.
+- **Hidden for everyone**: no SMS or SSO settings routes; the "send SMS"
+  controls are gone from the recipient forms and the submission page; the
+  bulk "upload list" tab is gone from the add-recipients modal; the Google
+  Drive import link is gone from the upload dropzone.
+- **Upgrade CTA** (`shared/_upgrade_cta`): one partial (title, "%{feature}
+  is available on the paid plan", an "Upgrade plan" button carrying
+  `data-upgrade-cta` with a placeholder `#` link until Session 6 wires
+  Checkout). Rendered on: API, MCP, Webhooks, Email SMTP, Notifications (BCC
+  and reminders), Personalization (email templates and branding removal), the
+  template code modal and the template preferences API tab.
+- **Branding removal** now has a screen: Settings → Personalization →
+  Branding shows the toggle to an entitled account and the CTA otherwise.
+- **Refusal copy** moved to locale keys with customer-friendly wording:
+  `test_mode_is_not_available_on_this_account` (was "Test mode is unavailable
+  for customer accounts") and the operator's reindex notice
+  `started_building_the_search_index_visit_url_to_check_progress`. The reindex
+  *refusal* itself was already a 404 (`not_found`).
+- `spec/golden/gating_ui_spec.rb` proves the CTA/real-form split for each
+  gated page (free vs internal) and that both attribution points render for a
+  free account and a paid account with branding switched off.
+
+Two things worth knowing:
+
+- The navbar sign-up button now follows `Docuseal.registration_enabled?`. The
+  registration routes it links to arrive with the signup session; turning the
+  flag on before then would make the button reference a missing route.
+- The "via phone" tab in the add-recipients modal is still there (a
+  phone-only recipient can sign in person); only the SMS sending controls are
+  gone.

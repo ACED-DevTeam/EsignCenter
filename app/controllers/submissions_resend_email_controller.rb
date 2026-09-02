@@ -11,14 +11,13 @@ class SubmissionsResendEmailController < ApplicationController
   def create
     submitters = @submission.submitters.reject(&:completed_at?).select { |s| s.email.present? && !s.declined_at? }
 
-    if Docuseal.multitenant?
-      recent_submitter_ids =
-        SubmissionEvent.where(submitter_id: submitters.map(&:id),
-                              event_type: 'send_email',
-                              created_at: 10.hours.ago..Time.current).pluck(:submitter_id).to_set
+    # Anti-abuse: a recipient emailed within the last 10 hours is skipped.
+    recent_submitter_ids =
+      SubmissionEvent.where(submitter_id: submitters.map(&:id),
+                            event_type: 'send_email',
+                            created_at: 10.hours.ago..Time.current).pluck(:submitter_id).to_set
 
-      submitters = submitters.reject { |s| recent_submitter_ids.include?(s.id) }
-    end
+    submitters = submitters.reject { |s| recent_submitter_ids.include?(s.id) }
 
     submitters.each do |submitter|
       SendSubmitterInvitationEmailJob.perform_async('submitter_id' => submitter.id)

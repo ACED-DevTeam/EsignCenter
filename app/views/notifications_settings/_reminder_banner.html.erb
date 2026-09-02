@@ -1,1 +1,4 @@
-<%= render 'reminder_placeholder' %>
+<%# Extension point kept for compatibility; the upgrade CTA below is what a free account sees instead of the reminder form. %>
+<% if cannot?(:use, :reminders) %>
+  <%= render 'shared/upgrade_cta', feature: t('sign_request_email_reminders'), class: 'my-4' %>
+<% end %>

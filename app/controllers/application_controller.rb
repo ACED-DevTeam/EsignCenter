@@ -122,7 +122,7 @@ class ApplicationController < ActionController::Base
     return false if test_mode_available?
 
     if request.format.html?
-      redirect_back fallback_location: root_path, alert: 'Test mode is unavailable for customer accounts'
+      redirect_back fallback_location: root_path, alert: I18n.t('test_mode_is_not_available_on_this_account')
     else
       head :forbidden
     end

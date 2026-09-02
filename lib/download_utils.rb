@@ -35,6 +35,8 @@ module DownloadUtils
 
   module_function
 
+  # infra-keep: every caller that fetches a user-supplied URL passes validate: true explicitly;
+  # the default only decides the behaviour for internal callers.
   def call(url, validate: Docuseal.multitenant?)
     uri = begin
       URI(url)

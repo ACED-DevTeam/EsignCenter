@@ -96,6 +96,7 @@ module Accounts
     []
   end
 
+  # infra-keep (certs): Session 4 makes signing certificates operator-only and rewrites these branches.
   def load_signing_pkcs(account)
     encrypted_config = esign_certs_config_for(account)
 
@@ -125,6 +126,7 @@ module Accounts
   # Own row, then a testing parent's row (Account#configuration_lookup_accounts,
   # the same walk certs, account configs and SMTP pins use), then the
   # environment value. Never another tenant's row.
+  # infra-keep (certs/TSA): Session 4 owns the timestamp-server policy.
   def load_timeserver_url(account)
     return Docuseal::TIMESERVER_URL.presence if Docuseal.multitenant?
 
@@ -137,6 +139,7 @@ module Accounts
     Docuseal::TIMESERVER_URL.presence
   end
 
+  # infra-keep (certs): Session 4 makes signing certificates operator-only and rewrites these branches.
   def load_trusted_certs(account)
     encrypted_config = esign_certs_config_for(account)
 

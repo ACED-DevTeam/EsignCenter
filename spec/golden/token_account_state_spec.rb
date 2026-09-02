@@ -152,12 +152,12 @@ RSpec.describe 'Token account state', type: :request do
       expect(response).to have_http_status(:ok)
     end
 
-    # The legacy proxy route is only mounted in a mode the test environment
-    # does not run in, so its guard is asserted on the callback chain: every
-    # API controller that skips authenticate_user! keeps the state guard.
+    # Every API controller that skips authenticate_user! keeps the state guard
+    # on its callback chain. (The legacy blob proxy controller was removed in
+    # Session 3 together with its never-mounted route.)
     it 'keeps the state guard on every API controller that skips authenticate_user!' do
       controllers = [
-        Api::ActiveStorageBlobsProxyController, Api::ActiveStorageBlobsProxyLegacyController,
+        Api::ActiveStorageBlobsProxyController,
         Api::SubmitterFormViewsController, Api::SubmitterEmailClicksController, Api::Admin::AccountsController
       ]
 

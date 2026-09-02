@@ -158,11 +158,10 @@ module ReplaceEmailVariables
     end
   end
 
-  def build_url_options_for(submitter, is_email: true)
-    if Docuseal.multitenant? &&
-       (config = AccountConfig.find_by(account_id: submitter.account_id, key: :custom_domain))
-      { host: config.value, protocol: 'https' }
-    elsif is_email && EMAIL_HOST.present?
+  # No per-account custom domains in v1: email links use EMAIL_HOST, everything
+  # else the application URL.
+  def build_url_options_for(_submitter, is_email: true)
+    if is_email && EMAIL_HOST.present?
       { host: EMAIL_HOST, protocol: Docuseal.force_ssl? ? 'https' : 'http' }
     else
       Docuseal.default_url_options

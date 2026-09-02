@@ -17,6 +17,7 @@ class SearchEntriesReindexController < ApplicationController
     Docuseal.refresh_fulltext_search!
 
     redirect_back(fallback_location: settings_account_path,
-                  notice: "Started building search index. Visit #{root_url}jobs/busy to check progress.")
+                  notice: I18n.t('started_building_the_search_index_visit_url_to_check_progress',
+                                 url: "#{root_url}jobs/busy"))
   end
 end

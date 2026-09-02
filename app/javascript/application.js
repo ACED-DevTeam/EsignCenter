@@ -281,7 +281,6 @@ safeRegisterElement('import-list', class extends HTMLElement {
 
     this.app = createApp(ImportList, {
       template: JSON.parse(this.dataset.template),
-      multitenant: this.dataset.multitenant === 'true',
       authenticityToken: document.querySelector('meta[name="csrf-token"]')?.content,
       i18n: JSON.parse(this.dataset.i18n || '{}')
     })

@@ -5,6 +5,9 @@
       <h1 class="text-4xl font-bold">API</h1>
       <%= render 'shared/test_mode_toggle' %>
     </div>
+    <% if cannot?(:use, :api) %>
+      <%= render 'shared/upgrade_cta', feature: 'REST API' %>
+    <% else %>
     <div class="card bg-base-200">
       <div class="card-body p-6">
         <label for="api_key" class="text-sm font-semibold">X-Auth-Token</label>
@@ -117,6 +120,7 @@
         </div>
       </div>
     </div>
+    <% end %>
     <div class="text-center">
       <%= link_to t('open_full_api_reference'), "#{Docuseal::GITHUB_URL}/tree/master/docs/api", class: 'btn btn-warning text-base mt-4 px-8', target: '_blank', rel: 'noopener' %>
     </div>

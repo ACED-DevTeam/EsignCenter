@@ -18,6 +18,9 @@
   data-with-payment="false"
   data-with-replace-and-clone-upload="false"
   data-with-download="false"
+  data-with-conditions="<%= Entitlements.allowed?(@template.account, :conditional_logic) %>"
+  data-with-formula="false"
+  data-with-phone="false"
   data-locale="<%= I18n.locale %>"></template-builder>
 
 <div class="py-3 text-xs text-base-content/70">

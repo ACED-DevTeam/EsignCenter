@@ -8,13 +8,8 @@ class SessionsController < Devise::SessionsController
   def create
     email = sign_in_params[:email].to_s.downcase
 
-    if Docuseal.multitenant? && !User.exists?(email:)
-      ErrorReport.warning('Sign in new user')
-
-      return redirect_to new_registration_path(sign_up: true, user: sign_in_params.slice(:email)),
-                         notice: I18n.t('create_a_new_account')
-    end
-
+    # An unknown email falls through to Devise's generic "invalid email or
+    # password" answer, so sign-in never reveals which addresses exist.
     if User.exists?(email:, otp_required_for_login: true) && sign_in_params[:otp_attempt].blank?
       return render :otp, locals: { resource: User.new(sign_in_params) }, status: :unprocessable_content
     end

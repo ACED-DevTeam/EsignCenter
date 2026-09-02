@@ -63,7 +63,7 @@ Rails.application.routes.draw do
   resources :account_custom_fields, only: %i[create]
   resources :user_configs, only: %i[create]
   resources :encrypted_user_configs, only: %i[destroy]
-  resources :timestamp_server, only: %i[create] unless Docuseal.multitenant?
+  resources :timestamp_server, only: %i[create]
   resources :dashboard, only: %i[index]
   resources :setup, only: %i[index create]
   resources :users, only: %i[new create edit update destroy] do
@@ -102,7 +102,7 @@ Rails.application.routes.draw do
     resource :debug, only: %i[show], controller: 'templates_debug' if Rails.env.development?
     resources :documents, only: %i[index create], controller: 'template_documents'
     resources :clone_and_replace, only: %i[create], controller: 'templates_clone_and_replace'
-    resources :detect_fields, only: %i[create], controller: 'templates_detect_fields' unless Docuseal.multitenant?
+    resources :detect_fields, only: %i[create], controller: 'templates_detect_fields'
     resources :restore, only: %i[create], controller: 'templates_restore'
     resources :archived, only: %i[index], controller: 'templates_archived_submissions'
     resources :submissions, only: %i[new create]
@@ -123,18 +123,6 @@ Rails.application.routes.draw do
                          controller: 'api/active_storage_blobs_proxy'
   resource :blobs_proxy, only: %i[show], path: '/blobs_proxy/:signed_uuid/*filename',
                          controller: 'api/active_storage_blobs_proxy'
-
-  if Docuseal.multitenant?
-    resource :blobs_proxy_legacy, only: %i[show],
-                                  path: '/blobs/proxy/:signed_id/*filename',
-                                  controller: 'api/active_storage_blobs_proxy_legacy',
-                                  as: :rails_blob
-    get '/disk/:encoded_key/*filename' => 'active_storage/disk#show', as: :rails_disk_service
-    put '/disk/:encoded_token' => 'active_storage/disk#update', as: :update_rails_disk_service
-    post '/direct_uploads' => 'active_storage/direct_uploads#create', as: :rails_direct_uploads
-
-    ActiveSupport.run_load_hooks(:multitenant_routes, self)
-  end
 
   resources :start_form, only: %i[show update], path: 'd', param: 'slug' do
     get :completed
@@ -177,17 +165,12 @@ Rails.application.routes.draw do
   end
 
   scope '/settings', as: :settings do
-    unless Docuseal.multitenant?
-      resources :search_entries_reindex, only: %i[create]
-      resources :sms, only: %i[index], controller: 'sms_settings'
-      resources :mcp, only: %i[index new create destroy], controller: 'mcp_settings'
-    end
-    if Docuseal.demo? || !Docuseal.multitenant?
-      resources :api, only: %i[index create], controller: 'api_settings'
-      resource :reveal_access_token, only: %i[show create], controller: 'reveal_access_token'
-    end
+    # SMS and SAML SSO have no routes: hidden for everyone in v1 (404).
+    resources :search_entries_reindex, only: %i[create]
+    resources :mcp, only: %i[index new create destroy], controller: 'mcp_settings'
+    resources :api, only: %i[index create], controller: 'api_settings'
+    resource :reveal_access_token, only: %i[show create], controller: 'reveal_access_token'
     resources :email, only: %i[index create], controller: 'email_smtp_settings'
-    resources :sso, only: %i[index], controller: 'sso_settings'
     resources :notifications, only: %i[index create], controller: 'notifications_settings'
     resource :esign, only: %i[show create new update destroy], controller: 'esign_settings'
     resources :users, only: %i[index]

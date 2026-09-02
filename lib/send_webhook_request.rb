@@ -70,6 +70,7 @@ module SendWebhookRequest
 
     account = webhook_url.account
 
+    # infra-keep: the HTTPS/localhost rules already apply to every customer account (Session 1).
     return uri unless Docuseal.multitenant? || account.customer?
 
     invalid_https = uri.scheme != 'https' || [443, nil].exclude?(uri.port)

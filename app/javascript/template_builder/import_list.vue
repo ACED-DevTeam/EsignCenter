@@ -150,16 +150,13 @@
         <input
           name="submissions_json"
           hidden
-          :value="multitenant ? JSON.stringify(submissionsData.slice(0, 1100)) : JSON.stringify(submissionsData)"
+          :value="JSON.stringify(submissionsData)"
         >
       </div>
       <div
         class="px-3 border-y py-2 border-base-300 text-center w-full text-sm font-semibold"
       >
         {{ t('total_entries') }}: {{ submissionsData.length }}
-        <template v-if="multitenant && submissionsData.length >= 1000">
-          / 1000
-        </template>
       </div>
     </div>
     <div
@@ -242,11 +239,6 @@ export default {
     template: {
       type: Object,
       required: true
-    },
-    multitenant: {
-      type: Boolean,
-      required: false,
-      default: false
     },
     authenticityToken: {
       type: String,

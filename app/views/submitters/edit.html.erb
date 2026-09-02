@@ -18,7 +18,6 @@
       </div>
       <div>
         <%= render 'submissions/send_email', f:, template: @submitter.template, submitter: @submitter, resend_email: @submitter.sent_at?, submitter_email_message: @submitter_email_message, disable_save_as_default_template_option: true, message_per_submitter: false %>
-        <%= render 'submissions/send_sms', f:, resend_sms: @submitter.sent_at? %>
       </div>
       <div class="form-control mt-4">
         <%= f.button button_title(title: t('update_recipient'), disabled_with: t('updating')), class: 'base-button' %>

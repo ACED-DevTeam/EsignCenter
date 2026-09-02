@@ -6,9 +6,10 @@ class SubmittersSendEmailController < ApplicationController
   def create
     authorize!(:update, @submitter)
 
-    if Docuseal.multitenant? && SubmissionEvent.exists?(submitter: @submitter,
-                                                        event_type: 'send_email',
-                                                        created_at: 10.hours.ago..Time.current)
+    # Anti-abuse: one invitation email per recipient per 10 hours.
+    if SubmissionEvent.exists?(submitter: @submitter,
+                               event_type: 'send_email',
+                               created_at: 10.hours.ago..Time.current)
       ErrorReport.warning("Already sent: #{@submitter.id}")
 
       return redirect_back(fallback_location: submission_path(@submitter.submission),
