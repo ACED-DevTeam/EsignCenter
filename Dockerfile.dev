@@ -93,7 +93,7 @@ ENV CHROME_PATH=/usr/bin/chromium-browser
 
 # LibreOffice Writer (headless) for Word (.docx/.doc) -> PDF conversion, same
 # packages as the production image (Session 4, D48).
-RUN apk add --no-cache libreoffice-writer font-liberation font-carlito font-dejavu
+RUN apk add --no-cache libreoffice-writer font-liberation font-carlito font-dejavu && fc-cache -f
 
 EXPOSE 3000
 
