@@ -39,7 +39,10 @@ module Templates
   # the builder's add-document flow lists the item CLIENT-SIDE after the
   # upload response and saves the schema on its next autosave, so a brand
   # new unlisted attachment is still on its way in: it keeps blocking (and
-  # its job keeps running) for this long after its blob was stored.
+  # its job keeps running) for this long after the attachment record was
+  # created. The record's own timestamp is the clock, not the blob's: the
+  # job swaps a fresh PDF blob into the attachment half-way through, and a
+  # document the user already removed must not start blocking again then.
   CONVERSION_UNLISTED_GRACE = 2.minutes
 
   # Raised wherever a submission would be built from a template that still
@@ -91,7 +94,7 @@ module Templates
   end
 
   def within_unlisted_grace?(document)
-    document.blob.created_at > CONVERSION_UNLISTED_GRACE.ago
+    document.created_at > CONVERSION_UNLISTED_GRACE.ago
   end
 
   def flagged_documents(template)
@@ -119,10 +122,22 @@ module Templates
   end
 
   def conversion_progress_at(document)
-    started_at = document.metadata['conversion_started_at'].presence
-    started_at = Time.zone.parse(started_at.to_s) if started_at
+    [conversion_started_at(document), document.blob.created_at].compact.max
+  end
 
-    [started_at, document.blob.created_at].compact.max
+  # The stamp the job wrote, or nil when it is missing or unreadable: a
+  # value that cannot be parsed (an out-of-range date raises, junk parses to
+  # nil) must never break readiness checks, so the blob timestamp decides.
+  def conversion_started_at(document)
+    value = document.metadata['conversion_started_at'].presence
+
+    return if value.nil?
+
+    Time.zone.parse(value.to_s)
+  rescue ArgumentError, TypeError => e
+    ErrorReport.warning(e, attachment_uuid: document.uuid, conversion_started_at: value.to_s)
+
+    nil
   end
 
   # Re-derives every schema item's `converting` / `conversion_failed` flag
@@ -132,12 +147,14 @@ module Templates
   # stop the polling after a reload.
   #
   # The `pending_fields` marker (fields a conversion found, not yet merged
-  # into template.fields by any builder) is carried over from the persisted
-  # schema item when the client did not send it — a builder that autosaves
-  # with an older copy of the schema must not lose the fields — and dropped
-  # as soon as a field area claims the attachment (the builder merged them).
-  # A client that sends the key explicitly decides (the "Remove" choice
-  # sends false).
+  # into template.fields by any builder) is only ever ARMED by the job: the
+  # persisted schema item decides whether it stays — a builder that
+  # autosaves with an older copy of the schema must not lose the fields —
+  # and it is dropped as soon as a field area claims the attachment (the
+  # builder merged them). The one thing a client can say is an explicit
+  # `false` (the "Remove" choice), which drops it; a client `true` counts
+  # for nothing, so a builder still carrying the marker after "Keep" can
+  # never re-arm it once the user deletes the merged fields.
   def refresh_conversion_flags(template)
     flagged = flagged_documents(template).index_by(&:uuid)
     persisted_pending = persisted_pending_fields_uuids(template)
@@ -156,15 +173,14 @@ module Templates
 
   def refresh_pending_fields(item, persisted_pending:, claimed:)
     uuid = item['attachment_uuid']
+    removed = item.key?('pending_fields') &&
+              ActiveModel::Type::Boolean.new.cast(item['pending_fields']) == false
 
-    if claimed.include?(uuid)
-      item.delete('pending_fields')
-    elsif item.key?('pending_fields')
-      explicit = ActiveModel::Type::Boolean.new.cast(item.delete('pending_fields'))
-      item['pending_fields'] = true if explicit
-    elsif persisted_pending.include?(uuid)
-      item['pending_fields'] = true
-    end
+    item.delete('pending_fields')
+
+    return item if removed || claimed.include?(uuid)
+
+    item['pending_fields'] = true if persisted_pending.include?(uuid)
 
     item
   end

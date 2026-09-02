@@ -44,8 +44,6 @@ class ConvertWordDocumentJob
     # A retry after the blob swap: the PDF is there, only the rest is owed.
     return finish_conversion(template, attachment) if attachment.metadata['conversion_stage'] == STAGE_PDF_STORED
 
-    stamp_started_at!(attachment)
-
     busy_retries = params['busy_retries'].to_i
 
     if busy_retries >= MAX_BUSY_RETRIES
@@ -56,7 +54,11 @@ class ConvertWordDocumentJob
     word_blob = attachment.blob
     filename = attachment.metadata['original_filename'].presence || word_blob.filename.to_s
 
-    pdf_data = WordConverter.with_slot { WordConverter.call(word_blob.download, filename:) }
+    pdf_data = WordConverter.with_slot do
+      stamp_started_at!(attachment)
+
+      WordConverter.call(word_blob.download, filename:)
+    end
 
     store_pdf(attachment, pdf_data, filename:, word_blob:)
 
@@ -92,9 +94,11 @@ class ConvertWordDocumentJob
     [template, attachment]
   end
 
-  # The first run stamps when the conversion actually started, so the stale
-  # clock (Templates.stale_conversion?) does not count the time the job spent
-  # queued or waiting for a slot.
+  # Stamped inside the conversion slot, right before LibreOffice is started
+  # (the first time only): the stale clock (Templates.stale_conversion?)
+  # counts the conversion itself and nothing before it — neither the time
+  # the job spent queued nor the busy retries it spent waiting for a free
+  # slot (a Busy run returns before this line and leaves no stamp).
   def stamp_started_at!(attachment)
     return if attachment.metadata['conversion_started_at'].present?
 

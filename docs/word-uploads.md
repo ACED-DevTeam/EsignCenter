@@ -28,9 +28,10 @@ back — and a conversion is not.
    then finds nothing to do and skips the conversion (a job already
    converting finishes, but the result belongs to nothing). A document still
    marked converting **30 minutes** after its conversion last showed
-   progress — the job starting, or the half-way PDF being stored; time
-   spent waiting in the queue does not count — has lost its job; the app
-   treats it as failed from then on, so a template is never blocked forever.
+   progress — LibreOffice being started on it, or the half-way PDF being
+   stored; time spent waiting in the queue or waiting for a free conversion
+   slot does not count — has lost its job; the app treats it as failed from
+   then on, so a template is never blocked forever.
 4. If the conversion finished while nobody had the builder open, the form
    fields found in the Word file are added the next time the builder opens
    (with the same keep-or-remove prompt), not lost — and they survive an

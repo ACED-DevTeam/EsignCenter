@@ -89,48 +89,68 @@ RSpec.describe 'Word upload' do
   end
 
   # "Remove" on the keep-or-remove prompt must take only the fields found in
-  # the Word file: a field that already lived on another document stays.
-  it 'removes only the fields found in the Word file when Remove is chosen, keeping the other document fields' do
-    stub_found_fields
+  # the Word file: a field that already lived on another document stays —
+  # minus every condition of its (and of any document) that pointed at a
+  # removed field, even two side by side, so nothing on the template refers
+  # to a field that no longer exists. Conditions are a paid feature, so this
+  # runs on a paid account: a dangling condition would then be SAVED and
+  # caught below rather than refused by the plan check on the way in.
+  context 'with a paid account' do
+    let!(:account) { create(:account, :paid) }
 
-    template = create(:template, account:, author: user, only_field_types: %w[text])
-    pdf_uuid = template.schema.sole['attachment_uuid']
-    expect(template.fields.sole).to include('name' => 'First Name')
+    it 'removes only the fields found in the Word file when Remove is chosen, keeping the other document fields' do
+      stub_found_fields
 
-    # The builder's add-document flow, minus the browser: store the Word
-    # file, list it in the schema, let the job convert it while nobody is
-    # looking.
-    docx = ActionDispatch::Http::UploadedFile.new(tempfile: File.open(docx_path), filename: 'fieldtags.docx',
-                                                  type: docx_type)
-    documents, = Templates::CreateAttachments.call(template, { files: [docx] }, extract_fields: true)
-    template.update!(schema: template.schema + documents.map { |d| Templates::CreateAttachments.schema_item(d) })
+      template = create(:template, account:, author: user, only_field_types: %w[text])
+      pdf_uuid = template.schema.sole['attachment_uuid']
+      expect(template.fields.sole).to include('name' => 'First Name')
 
-    Sidekiq::Worker.drain_all
+      # The builder's add-document flow, minus the browser: store the Word
+      # file, list it in the schema, let the job convert it while nobody is
+      # looking.
+      docx = ActionDispatch::Http::UploadedFile.new(tempfile: File.open(docx_path), filename: 'fieldtags.docx',
+                                                    type: docx_type)
+      documents, = Templates::CreateAttachments.call(template, { files: [docx] }, extract_fields: true)
+      template.update!(schema: template.schema + documents.map { |d| Templates::CreateAttachments.schema_item(d) })
 
-    word_uuid = documents.sole.uuid
-    template.reload
-    expect(template.schema.find { |item| item['attachment_uuid'] == word_uuid }).to include('pending_fields' => true)
-    expect(template.fields.sole).to include('name' => 'First Name')
+      Sidekiq::Worker.drain_all
 
-    visit edit_template_path(template)
+      word_uuid = documents.sole.uuid
+      template.reload
+      expect(template.schema.find { |item| item['attachment_uuid'] == word_uuid }).to include('pending_fields' => true)
+      expect(template.fields.sole).to include('name' => 'First Name')
 
-    prompt = find('.alert', text: 'Keep or remove them?', wait: 20)
-    expect(page).to have_content('Full name', wait: 20)
-    expect(page).to have_content('First Name')
+      # Two adjacent conditions pointing at the field the Word file brought,
+      # on the surviving field and on the PDF document alike.
+      found_uuid = documents.sole.reload.metadata.dig('pdf', 'fields').sole['uuid']
+      conditions = [{ 'field_uuid' => found_uuid, 'action' => 'not_empty' },
+                    { 'field_uuid' => found_uuid, 'action' => 'equal', 'value' => 'yes', 'operation' => 'or' }]
+      pdf_item, word_item = template.schema
+      template.update!(fields: [template.fields.sole.merge('conditions' => conditions)],
+                       schema: [pdf_item.merge('conditions' => conditions), word_item])
 
-    within(prompt) { click_button 'Remove' }
+      visit edit_template_path(template)
 
-    expect(page).to have_no_css('.alert', text: 'Keep or remove them?')
-    expect(page).to have_content('First Name')
-    expect(page).to have_no_content('Full name')
+      prompt = find('.alert', text: 'Keep or remove them?', wait: 20)
+      expect(page).to have_content('Full name', wait: 20)
+      expect(page).to have_content('First Name')
 
-    deadline = 10.seconds.from_now
-    sleep 0.2 until template.reload.fields.none? { |f| f['name'] == 'Full name' } || Time.current > deadline
+      within(prompt) { click_button 'Remove' }
 
-    template.reload
-    expect(template.fields.pluck('name')).to eq(['First Name'])
-    expect(template.fields.sole['areas'].sole['attachment_uuid']).to eq(pdf_uuid)
-    expect(template.schema.pluck('attachment_uuid')).to eq([pdf_uuid, word_uuid])
-    expect(template.schema.find { |item| item['attachment_uuid'] == word_uuid }).not_to have_key('pending_fields')
+      expect(page).to have_no_css('.alert', text: 'Keep or remove them?')
+      expect(page).to have_content('First Name')
+      expect(page).to have_no_content('Full name')
+
+      deadline = 10.seconds.from_now
+      sleep 0.2 until template.reload.fields.none? { |f| f['name'] == 'Full name' } || Time.current > deadline
+
+      template.reload
+      expect(template.fields.pluck('name')).to eq(['First Name'])
+      expect(template.fields.sole['areas'].sole['attachment_uuid']).to eq(pdf_uuid)
+      expect(template.fields.sole['conditions']).to be_blank
+      expect(template.schema.pluck('attachment_uuid')).to eq([pdf_uuid, word_uuid])
+      expect(template.schema.find { |item| item['attachment_uuid'] == pdf_uuid }['conditions']).to be_blank
+      expect(template.schema.find { |item| item['attachment_uuid'] == word_uuid }).not_to have_key('pending_fields')
+    end
   end
 end

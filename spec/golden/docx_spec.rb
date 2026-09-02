@@ -396,6 +396,47 @@ RSpec.describe 'Word document uploads', type: :request do
       expect(template.fields.sole['name']).to eq('Full name')
     end
 
+    # After "Keep" the builder's copy of the schema item may still say
+    # `pending_fields: true` on every autosave. When the user then deletes
+    # the merged fields, that stale `true` must count for nothing: only the
+    # job arms the marker, so the deleted fields stay deleted on the next
+    # mount instead of being merged again with a fresh keep-or-remove prompt.
+    it 'never lets a client-sent pending_fields: true re-arm the marker once the merged fields are deleted' do
+      stub_found_fields
+
+      upload_to_dashboard
+      template = Template.sole
+      attachment = template.documents.sole
+      ConvertWordDocumentJob.drain
+
+      expect(template.reload.schema.sole).to include('pending_fields' => true)
+
+      schema_item = { attachment_uuid: attachment.uuid, name: 'fieldtags', pending_fields: true }
+      field = { uuid: SecureRandom.uuid, name: 'Full name', type: 'text', required: true,
+                submitter_uuid: template.submitters.first['uuid'],
+                areas: [{ attachment_uuid: attachment.uuid, page: 0, x: 0.1, y: 0.1, w: 0.3, h: 0.05 }] }
+
+      # "Keep": the merged field claims the document, the marker goes.
+      put "/templates/#{template.id}", as: :json, params: { template: { schema: [schema_item], fields: [field] } }
+
+      expect(response).to have_http_status(:ok)
+      expect(template.reload.schema.sole).not_to have_key('pending_fields')
+
+      # The user deletes the merged field; the builder still sends `true`.
+      put "/templates/#{template.id}", as: :json, params: { template: { schema: [schema_item], fields: [] } }
+
+      expect(response).to have_http_status(:ok)
+      expect(template.reload.schema.sole).to eq('attachment_uuid' => attachment.uuid, 'name' => 'fieldtags')
+      expect(template.fields).to be_blank
+      # The found fields are still in the document's metadata: only the
+      # marker keeps a later mount from merging them, and it is gone.
+      expect(attachment.reload.metadata.dig('pdf', 'fields')).to be_present
+
+      get "/templates/#{template.id}/documents/#{attachment.uuid}/status"
+
+      expect(response.parsed_body['schema_item']).not_to have_key('pending_fields')
+    end
+
     it 'marks the document failed when Sidekiq gives up retrying a transient error' do
       allow(ErrorReport).to receive(:warning).and_call_original
 
@@ -806,6 +847,38 @@ RSpec.describe 'Word document uploads', type: :request do
       expect(Templates.documents_status(template.reload)).to be_nil
     end
 
+    # The stamp is only ever written by the job, but a corrupt one must not
+    # turn every readiness check into a 500 and defeat the stale rule: the
+    # blob timestamp decides instead, and the problem is reported.
+    it 'falls back to the blob timestamp when the started-at stamp cannot be parsed' do
+      allow(ErrorReport).to receive(:warning).and_call_original
+
+      # An out-of-range date: junk parses to nil, this one raises.
+      expect { Time.zone.parse('2026-99-99') }.to raise_error(ArgumentError)
+
+      attachment = template.documents.sole
+      attachment.metadata['conversion_started_at'] = '2026-99-99'
+      attachment.save!
+
+      expect(Templates.documents_status(template.reload)).to eq('converting')
+      expect(ErrorReport).to have_received(:warning)
+        .with(an_instance_of(ArgumentError), hash_including(attachment_uuid: attachment.uuid)).at_least(:once)
+
+      post_api_submission
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body).to eq('error' => converting_message)
+
+      attachment.blob.update_columns(created_at: (Templates::CONVERSION_STALE_AFTER + 1.minute).ago)
+
+      expect(Templates.documents_status(template.reload)).to eq('failed')
+
+      get "/templates/#{template.id}/documents/#{attachment.uuid}/status"
+
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body).to include('status' => 'failed')
+    end
+
     it 'refuses to clone the template from the dashboard and the API while converting' do
       expect do
         post "/templates/#{template.id}/clone", params: { template: { name: 'Copy' } }
@@ -858,7 +931,7 @@ RSpec.describe 'Word document uploads', type: :request do
 
       # The timed-out card appears after five minutes: a listed document
       # blocks however old it is.
-      attachment.blob.update_columns(created_at: 5.minutes.ago)
+      attachment.update_columns(created_at: 5.minutes.ago)
 
       expect(Templates.documents_status(template.reload)).to eq('converting')
 
@@ -888,7 +961,14 @@ RSpec.describe 'Word document uploads', type: :request do
 
       expect(response).to have_http_status(:unprocessable_content)
 
-      attachment.blob.update_columns(created_at: (Templates::CONVERSION_UNLISTED_GRACE + 1.second).ago)
+      attachment.update_columns(created_at: (Templates::CONVERSION_UNLISTED_GRACE + 1.second).ago)
+
+      expect(Templates.documents_status(template.reload)).to be_nil
+
+      # The grace runs from the attachment record, not its blob: the job
+      # swapping a brand-new PDF blob into a removed document (half-way
+      # through, before its final save fails) must not block sending again.
+      attachment.blob.update_columns(created_at: Time.current)
 
       expect(Templates.documents_status(template.reload)).to be_nil
 
@@ -901,7 +981,7 @@ RSpec.describe 'Word document uploads', type: :request do
       removed = add_word_document
       removed_args = ConvertWordDocumentJob.jobs.sole['args'].first
       ConvertWordDocumentJob.jobs.clear
-      removed.blob.update_columns(created_at: (Templates::CONVERSION_UNLISTED_GRACE + 1.second).ago)
+      removed.update_columns(created_at: (Templates::CONVERSION_UNLISTED_GRACE + 1.second).ago)
 
       ConvertWordDocumentJob.new.perform(removed_args)
 
@@ -920,11 +1000,10 @@ RSpec.describe 'Word document uploads', type: :request do
     end
 
     # The stale clock (30 minutes, then "failed") runs from the last sign of
-    # progress: the job starting, or the half-way PDF being stored — not
-    # from an upload that sat in a backed-up queue.
-    it 'measures the stale clock from when the job started rather than from the upload' do
-      allow(WordConverter).to receive(:call).and_raise(WordConverter::Busy)
-
+    # progress: LibreOffice being started on the document, or the half-way
+    # PDF being stored — not from an upload that sat in a backed-up queue,
+    # and not from the busy retries spent waiting for a conversion slot.
+    it 'measures the stale clock from when the conversion started, not the upload or the slot wait' do
       attachment = add_word_document
       job_args = ConvertWordDocumentJob.jobs.sole['args'].first
       ConvertWordDocumentJob.jobs.clear
@@ -936,8 +1015,26 @@ RSpec.describe 'Word document uploads', type: :request do
 
       expect(Templates.documents_status(template.reload)).to eq('failed')
 
-      # The first run stamps the start (and here waits for a slot).
+      # Every slot taken: the run is a busy retry and leaves no stamp.
+      WordConverter.slot_keys.each { |key| RateLimit.store.write(key, 'another-worker', expires_in: 1.minute) }
+
       ConvertWordDocumentJob.new.perform(job_args)
+
+      expect(ConvertWordDocumentJob.jobs.sole['args'].first).to include('busy_retries' => 1)
+      expect(attachment.reload.metadata['conversion_started_at']).to be_nil
+      expect(Templates.documents_status(template.reload)).to eq('failed')
+
+      # A slot is free: the stamp is written inside it, right before
+      # LibreOffice runs — here the run dies with a transient error after
+      # that, so Sidekiq retries it and the stamp stays.
+      RateLimit.store.clear
+      allow(WordConverter).to receive(:call) do
+        expect(attachment.reload.metadata['conversion_started_at']).to be_present
+
+        raise IOError, 'storage hiccup'
+      end
+
+      expect { ConvertWordDocumentJob.new.perform(job_args) }.to raise_error(IOError, 'storage hiccup')
 
       attachment.reload
       expect(Time.zone.parse(attachment.metadata['conversion_started_at'])).to be_within(1.minute).of(Time.current)

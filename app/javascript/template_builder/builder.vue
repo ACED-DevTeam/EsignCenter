@@ -2261,24 +2261,20 @@ export default {
         this.save()
       }
     },
+    // Every condition on any field or document that points at the removed
+    // field goes: rebuilt with filter rather than spliced while iterating,
+    // which skipped the neighbour of a removed entry and left a condition
+    // pointing at a field that no longer exists.
     removeFieldConditions (field) {
       this.template.fields.forEach((f) => {
         if (f.conditions) {
-          f.conditions.forEach((c) => {
-            if (c.field_uuid === field.uuid) {
-              f.conditions.splice(f.conditions.indexOf(c), 1)
-            }
-          })
+          f.conditions = f.conditions.filter((c) => c.field_uuid !== field.uuid)
         }
       })
 
       this.template.schema.forEach((item) => {
         if (item.conditions) {
-          item.conditions.forEach((c) => {
-            if (c.field_uuid === field.uuid) {
-              item.conditions.splice(item.conditions.indexOf(c), 1)
-            }
-          })
+          item.conditions = item.conditions.filter((c) => c.field_uuid !== field.uuid)
         }
       })
     },
@@ -3366,6 +3362,10 @@ export default {
           this.insertField(field)
         })
 
+        // Merged: the marker has done its job. Only the server arms it, so
+        // it must not ride along on every later autosave.
+        delete item.pending_fields
+
         merged.push(item.attachment_uuid)
       })
 
@@ -3413,6 +3413,11 @@ export default {
             this.insertField(field)
           })
         }
+
+        // The status payload carries the server's `pending_fields` marker;
+        // once the fields are merged here it must not be sent back on every
+        // later autosave (only the server arms it).
+        delete nextItem.pending_fields
 
         // save() clears the keep-or-remove prompt, so the prompt is raised
         // after it — the same order the upload flow uses.
