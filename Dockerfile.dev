@@ -91,6 +91,10 @@ RUN apk add --no-cache chromium nss freetype harfbuzz ca-certificates ttf-freefo
 ENV BROWSER_PATH=/usr/bin/chromium-browser
 ENV CHROME_PATH=/usr/bin/chromium-browser
 
+# LibreOffice Writer (headless) for Word (.docx/.doc) -> PDF conversion, same
+# packages as the production image (Session 4, D48).
+RUN apk add --no-cache libreoffice-writer font-liberation font-carlito font-dejavu
+
 EXPOSE 3000
 
 # Sensible default if run standalone; docker-compose.dev.yml overrides this with

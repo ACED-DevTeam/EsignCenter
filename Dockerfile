@@ -51,6 +51,11 @@ WORKDIR /app
 RUN apk add --no-cache libpq vips redis onnxruntime && \
     rm -f /usr/bin/onnx_test_runner /usr/bin/onnxruntime_test
 
+# LibreOffice Writer (headless) converts Word uploads (.docx/.doc) to PDF in a
+# dedicated Sidekiq queue (Session 4, D48). Metric-compatible fonts keep the
+# layout faithful: Liberation (Times/Arial/Courier), Carlito (Calibri), DejaVu.
+RUN apk add --no-cache libreoffice-writer font-liberation font-carlito font-dejavu
+
 RUN addgroup -g 2000 docuseal && adduser -u 2000 -G docuseal -s /bin/sh -D -h /home/docuseal docuseal
 
 RUN echo $'.include = /etc/ssl/openssl.cnf\n\
