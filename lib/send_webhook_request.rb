@@ -9,6 +9,7 @@ module SendWebhookRequest
   AUTOMATED_RETRY_RANGE = 1..(MANUAL_ATTEMPT - 1)
 
   HttpsError = Class.new(StandardError)
+  InvalidUrlError = Class.new(StandardError)
   LocalhostError = Class.new(StandardError)
   MetadataHostError = Class.new(StandardError)
 
@@ -63,7 +64,7 @@ module SendWebhookRequest
     end
 
     handle_response(webhook_event, response:, attempt:)
-  rescue HttpsError, LocalhostError, MetadataHostError => e
+  rescue HttpsError, InvalidUrlError, LocalhostError, MetadataHostError => e
     handle_error(webhook_event, attempt:, error_message: e.message)
 
     NON_RETRYABLE_RESPONSE
@@ -80,6 +81,13 @@ module SendWebhookRequest
   def validate_url!(url, account)
     uri = parse_uri(url)
     host = uri.host.to_s.downcase
+
+    # A URL nothing can be posted to ("https:/path" parses as HTTPS with no
+    # host; "not a url" has neither) is refused for every account before the
+    # scheme rules, so a non-deliverable row is never saved or attempted.
+    if host.blank? || %w[http https].exclude?(uri.scheme.to_s.downcase)
+      raise InvalidUrlError, 'Not a valid http(s) URL.'
+    end
 
     if host.in?(METADATA_HOSTS) || LINK_LOCAL_PREFIXES.any? { |prefix| host.start_with?(prefix) }
       raise MetadataHostError, "Can't send to a link-local/metadata address."
@@ -109,9 +117,13 @@ module SendWebhookRequest
   end
 
   def parse_uri(url)
-    URI(url)
+    URI(url.to_s)
   rescue URI::Error
-    Addressable::URI.parse(url).normalize
+    begin
+      Addressable::URI.parse(url.to_s).normalize
+    rescue Addressable::URI::InvalidURIError
+      raise InvalidUrlError, 'Not a valid http(s) URL.'
+    end
   end
 
   def create_webhook_event(webhook_url, event_uuid:, event_type:, record:)

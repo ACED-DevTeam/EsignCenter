@@ -2,6 +2,7 @@ en: &en
   webhook_url: Webhook URL
   webhook_url_must_use_https: must use https
   webhook_url_must_not_point_at_a_private_address: must not point at localhost or a private/metadata address
+  webhook_url_must_be_a_full_url: must be a full URL with a host, such as https://example.com/webhook
   templates_that_require_email_2fa_cannot_be_used_via_a_shared_link: Templates that require email 2FA cannot be used via a shared link.
   removing_product_name_branding_from_emails_and_signing_pages_is_available_on_the_paid_plan: 'Removing %{product_name} branding from emails and signing pages is available on the paid plan.'
   custom_email_templates_are_available_on_the_paid_plan: Custom email templates are available on the paid plan.
@@ -1086,6 +1087,7 @@ es: &es
   webhook_url: URL del webhook
   webhook_url_must_use_https: debe usar https
   webhook_url_must_not_point_at_a_private_address: no debe apuntar a localhost ni a una dirección privada o de metadatos
+  webhook_url_must_be_a_full_url: debe ser una URL completa con host, por ejemplo https://example.com/webhook
   templates_that_require_email_2fa_cannot_be_used_via_a_shared_link: Las plantillas que requieren 2FA por correo electrónico no se pueden usar mediante un enlace compartido.
   removing_product_name_branding_from_emails_and_signing_pages_is_available_on_the_paid_plan: 'Eliminar la marca %{product_name} de los correos y las páginas de firma está disponible en el plan de pago.'
   custom_email_templates_are_available_on_the_paid_plan: Las plantillas de correo personalizadas están disponibles en el plan de pago.
@@ -2149,6 +2151,7 @@ it: &it
   webhook_url: URL del webhook
   webhook_url_must_use_https: deve usare https
   webhook_url_must_not_point_at_a_private_address: non deve puntare a localhost o a un indirizzo privato/di metadati
+  webhook_url_must_be_a_full_url: deve essere un URL completo con host, ad esempio https://example.com/webhook
   templates_that_require_email_2fa_cannot_be_used_via_a_shared_link: I modelli che richiedono 2FA via email non possono essere utilizzati tramite un link condiviso.
   removing_product_name_branding_from_emails_and_signing_pages_is_available_on_the_paid_plan: 'La rimozione del marchio %{product_name} da email e pagine di firma è disponibile nel piano a pagamento.'
   custom_email_templates_are_available_on_the_paid_plan: I modelli email personalizzati sono disponibili nel piano a pagamento.
@@ -3212,6 +3215,7 @@ fr: &fr
   webhook_url: URL du webhook
   webhook_url_must_use_https: doit utiliser https
   webhook_url_must_not_point_at_a_private_address: ne doit pas pointer vers localhost ni vers une adresse privée ou de métadonnées
+  webhook_url_must_be_a_full_url: doit être une URL complète avec un hôte, par exemple https://example.com/webhook
   templates_that_require_email_2fa_cannot_be_used_via_a_shared_link: Les modèles nécessitant une authentification à deux facteurs par e-mail ne peuvent pas être utilisés via un lien partagé.
   removing_product_name_branding_from_emails_and_signing_pages_is_available_on_the_paid_plan: 'La suppression de la marque %{product_name} des e-mails et des pages de signature est disponible avec l''abonnement payant.'
   custom_email_templates_are_available_on_the_paid_plan: 'Les modèles d''e-mail personnalisés sont disponibles avec l''abonnement payant.'
@@ -4272,6 +4276,7 @@ pt: &pt
   webhook_url: URL do webhook
   webhook_url_must_use_https: deve usar https
   webhook_url_must_not_point_at_a_private_address: não deve apontar para localhost nem para um endereço privado/de metadados
+  webhook_url_must_be_a_full_url: deve ser um URL completo com host, por exemplo https://example.com/webhook
   templates_that_require_email_2fa_cannot_be_used_via_a_shared_link: Modelos que exigem 2FA por e-mail não podem ser usados por meio de um link compartilhado.
   removing_product_name_branding_from_emails_and_signing_pages_is_available_on_the_paid_plan: 'Remover a marca %{product_name} dos e-mails e das páginas de assinatura está disponível no plano pago.'
   custom_email_templates_are_available_on_the_paid_plan: Modelos de e-mail personalizados estão disponíveis no plano pago.
@@ -5335,6 +5340,7 @@ de: &de
   webhook_url: Webhook-URL
   webhook_url_must_use_https: muss https verwenden
   webhook_url_must_not_point_at_a_private_address: darf nicht auf localhost oder eine private/Metadaten-Adresse verweisen
+  webhook_url_must_be_a_full_url: muss eine vollständige URL mit Host sein, z. B. https://example.com/webhook
   templates_that_require_email_2fa_cannot_be_used_via_a_shared_link: Vorlagen, die eine Zwei-Faktor-Authentifizierung per E-Mail erfordern, können nicht über einen geteilten Link verwendet werden.
   removing_product_name_branding_from_emails_and_signing_pages_is_available_on_the_paid_plan: 'Das Entfernen des %{product_name}-Brandings aus E-Mails und Signaturseiten ist im kostenpflichtigen Tarif verfügbar.'
   custom_email_templates_are_available_on_the_paid_plan: Eigene E-Mail-Vorlagen sind im kostenpflichtigen Tarif verfügbar.
@@ -6398,6 +6404,7 @@ pl:
   webhook_url: Adres URL webhooka
   webhook_url_must_use_https: musi używać https
   webhook_url_must_not_point_at_a_private_address: nie może wskazywać na localhost ani na adres prywatny/metadanych
+  webhook_url_must_be_a_full_url: musi być pełnym adresem URL z hostem, np. https://example.com/webhook
   templates_that_require_email_2fa_cannot_be_used_via_a_shared_link: Szablony wymagające uwierzytelniania e-mail 2FA nie mogą być używane za pomocą udostępnionego linku.
   removing_product_name_branding_from_emails_and_signing_pages_is_available_on_the_paid_plan: 'Usunięcie brandingu %{product_name} z e-maili i stron podpisywania jest dostępne w płatnym planie.'
   custom_email_templates_are_available_on_the_paid_plan: Własne szablony e-maili są dostępne w płatnym planie.
@@ -6520,6 +6527,7 @@ uk:
   webhook_url: URL вебхука
   webhook_url_must_use_https: має використовувати https
   webhook_url_must_not_point_at_a_private_address: не може вказувати на localhost або приватну адресу/адресу метаданих
+  webhook_url_must_be_a_full_url: має бути повною URL-адресою з хостом, наприклад https://example.com/webhook
   templates_that_require_email_2fa_cannot_be_used_via_a_shared_link: Шаблони, які вимагають 2FA електронною поштою, не можна використовувати через спільне посилання.
   removing_product_name_branding_from_emails_and_signing_pages_is_available_on_the_paid_plan: 'Видалення брендингу %{product_name} з електронних листів і сторінок підписання доступне в платному плані.'
   custom_email_templates_are_available_on_the_paid_plan: Власні шаблони електронних листів доступні в платному плані.
@@ -6642,6 +6650,7 @@ cs:
   webhook_url: URL webhooku
   webhook_url_must_use_https: musí používat https
   webhook_url_must_not_point_at_a_private_address: nesmí odkazovat na localhost ani na privátní adresu / adresu metadat
+  webhook_url_must_be_a_full_url: musí být úplná URL adresa s hostitelem, např. https://example.com/webhook
   templates_that_require_email_2fa_cannot_be_used_via_a_shared_link: Šablony vyžadující e-mailové 2FA nelze používat prostřednictvím sdíleného odkazu.
   removing_product_name_branding_from_emails_and_signing_pages_is_available_on_the_paid_plan: 'Odstranění brandingu %{product_name} z e-mailů a podpisových stránek je k dispozici v placeném plánu.'
   custom_email_templates_are_available_on_the_paid_plan: Vlastní e-mailové šablony jsou k dispozici v placeném plánu.
@@ -6764,6 +6773,7 @@ he:
   webhook_url: כתובת ה-Webhook
   webhook_url_must_use_https: חייבת להשתמש ב-https
   webhook_url_must_not_point_at_a_private_address: אינה יכולה להפנות ל-localhost או לכתובת פרטית/כתובת מטא-נתונים
+  webhook_url_must_be_a_full_url: חייבת להיות כתובת URL מלאה עם מארח, לדוגמה https://example.com/webhook
   templates_that_require_email_2fa_cannot_be_used_via_a_shared_link: תבניות הדורשות אימות דו-שלבי באימייל אינן ניתנות לשימוש באמצעות קישור משותף.
   removing_product_name_branding_from_emails_and_signing_pages_is_available_on_the_paid_plan: 'הסרת המיתוג של %{product_name} מאימיילים ומעמודי החתימה זמינה בתוכנית בתשלום.'
   custom_email_templates_are_available_on_the_paid_plan: תבניות אימייל מותאמות אישית זמינות בתוכנית בתשלום.
@@ -6886,6 +6896,7 @@ nl: &nl
   webhook_url: Webhook-URL
   webhook_url_must_use_https: moet https gebruiken
   webhook_url_must_not_point_at_a_private_address: mag niet naar localhost of een privé-/metadata-adres verwijzen
+  webhook_url_must_be_a_full_url: moet een volledige URL met host zijn, bijvoorbeeld https://example.com/webhook
   templates_that_require_email_2fa_cannot_be_used_via_a_shared_link: Sjablonen waarvoor e-mail-2FA vereist is, kunnen niet via een gedeelde link worden gebruikt.
   removing_product_name_branding_from_emails_and_signing_pages_is_available_on_the_paid_plan: 'Het verwijderen van %{product_name}-branding uit e-mails en ondertekeningspagina''s is beschikbaar in het betaalde abonnement.'
   custom_email_templates_are_available_on_the_paid_plan: Aangepaste e-mailsjablonen zijn beschikbaar in het betaalde abonnement.
@@ -7946,6 +7957,7 @@ ar:
   webhook_url: عنوان URL للويب هوك
   webhook_url_must_use_https: يجب أن يستخدم https
   webhook_url_must_not_point_at_a_private_address: يجب ألا يشير إلى localhost أو إلى عنوان خاص/عنوان بيانات وصفية
+  webhook_url_must_be_a_full_url: يجب أن يكون عنوان URL كاملاً يتضمن مضيفاً، مثل https://example.com/webhook
   templates_that_require_email_2fa_cannot_be_used_via_a_shared_link: لا يمكن استخدام القوالب التي تتطلب التحقق بخطوتين عبر البريد الإلكتروني من خلال رابط مشترك.
   removing_product_name_branding_from_emails_and_signing_pages_is_available_on_the_paid_plan: 'إزالة علامة %{product_name} التجارية من رسائل البريد الإلكتروني وصفحات التوقيع متاحة في الخطة المدفوعة.'
   custom_email_templates_are_available_on_the_paid_plan: قوالب البريد الإلكتروني المخصصة متاحة في الخطة المدفوعة.
@@ -8068,6 +8080,7 @@ ko:
   webhook_url: 웹훅 URL
   webhook_url_must_use_https: https를 사용해야 합니다
   webhook_url_must_not_point_at_a_private_address: localhost 또는 사설/메타데이터 주소를 가리킬 수 없습니다
+  webhook_url_must_be_a_full_url: '호스트가 포함된 전체 URL이어야 합니다(예: https://example.com/webhook)'
   templates_that_require_email_2fa_cannot_be_used_via_a_shared_link: 이메일 2FA가 필요한 템플릿은 공유 링크로 사용할 수 없습니다.
   removing_product_name_branding_from_emails_and_signing_pages_is_available_on_the_paid_plan: '이메일과 서명 페이지에서 %{product_name} 브랜딩 제거는 유료 플랜에서 사용할 수 있습니다.'
   custom_email_templates_are_available_on_the_paid_plan: 사용자 지정 이메일 템플릿은 유료 플랜에서 사용할 수 있습니다.
@@ -8190,6 +8203,7 @@ ja:
   webhook_url: Webhook URL
   webhook_url_must_use_https: は https を使用する必要があります
   webhook_url_must_not_point_at_a_private_address: は localhost やプライベート/メタデータのアドレスを指すことはできません
+  webhook_url_must_be_a_full_url: 'はホストを含む完全な URL である必要があります（例: https://example.com/webhook）'
   templates_that_require_email_2fa_cannot_be_used_via_a_shared_link: メール2FAが必要なテンプレートは共有リンクでは使用できません。
   removing_product_name_branding_from_emails_and_signing_pages_is_available_on_the_paid_plan: 'メールと署名ページからの%{product_name}ブランディングの削除は有料プランでご利用いただけます。'
   custom_email_templates_are_available_on_the_paid_plan: カスタムメールテンプレートは有料プランでご利用いただけます。

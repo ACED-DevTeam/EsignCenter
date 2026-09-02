@@ -76,6 +76,8 @@ class WebhookUrl < ApplicationRecord
 
   def url_deliverable_for_customer
     SendWebhookRequest.validate_url!(url, account)
+  rescue SendWebhookRequest::InvalidUrlError
+    errors.add(:url, :invalid, message: I18n.t('webhook_url_must_be_a_full_url'))
   rescue SendWebhookRequest::HttpsError
     errors.add(:url, :invalid, message: I18n.t('webhook_url_must_use_https'))
   rescue SendWebhookRequest::LocalhostError, SendWebhookRequest::MetadataHostError

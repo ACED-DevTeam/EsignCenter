@@ -360,6 +360,8 @@ RSpec.describe 'Feature gating', type: :request do
       get "/embed/template_builder/#{token}"
 
       expect(response).to have_http_status(:ok)
+      expect(response.headers['X-Frame-Options']).to be_nil
+      expect(response.headers['Content-Security-Policy']).to include("frame-ancestors 'self' https://crm.example.com")
 
       downgrade_to_free!(paid_account)
 
@@ -367,6 +369,11 @@ RSpec.describe 'Feature gating', type: :request do
 
       expect(response).to have_http_status(:forbidden)
       expect(response.body).to include(html_refusal)
+      # The refusal is shown inside the customer's iframe, so it carries the
+      # same frame headers as the builder it replaces — otherwise the browser
+      # blanks the frame and the customer never sees why.
+      expect(response.headers['X-Frame-Options']).to be_nil
+      expect(response.headers['Content-Security-Policy']).to include("frame-ancestors 'self' https://crm.example.com")
 
       put "/embed/template_builder/#{token}/templates/#{template.id}",
           params: payload.to_json, headers: { 'CONTENT_TYPE' => 'application/json' }

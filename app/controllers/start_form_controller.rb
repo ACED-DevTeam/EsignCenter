@@ -9,6 +9,7 @@ class StartFormController < ApplicationController
   around_action :with_browser_locale, only: %i[show update completed]
   before_action :load_resubmit_submitter, only: :update
   before_action :load_template
+  before_action :refuse_email_2fa_shared_link!, except: :show
   before_action :authorize_start!, only: :update
 
   COOKIES_TTL = 12.hours
@@ -97,6 +98,25 @@ class StartFormController < ApplicationController
     return unless submitter.submission.expire_at?
 
     ProcessSubmissionExpiredJob.perform_at(submitter.submission.expire_at, 'submission_id' => submitter.submission_id)
+  end
+
+  # The share link of an email-2FA template is closed to anonymous writes as
+  # well as to the page (show explains it): a PUT with a self-supplied email
+  # would otherwise create a link submission nobody invited. Refused before
+  # any submitter is looked up or built; the anonymous completed lookup and a
+  # resubmit of a link-source submission go through the same door. Two flows
+  # are not the anonymous link start and pass: the sender who can manage the
+  # template (e.g. "Sign it yourself" / selfsign), and a resubmit by the holder
+  # of an invited submitter's slug - that slug is the emailed invitation, so a
+  # non-link source is proof of it. Non-shared templates keep
+  # authorize_start!'s answers.
+  def refuse_email_2fa_shared_link!
+    return unless @template.shared_link? && @template.preferences['require_email_2fa']
+    return if current_user && current_ability.can?(:update, @template)
+    return if @resubmit_submitter && !@resubmit_submitter.submission.source_link?
+    return head :forbidden unless request.format.html?
+
+    render :email_verification_required, status: :forbidden
   end
 
   def load_resubmit_submitter

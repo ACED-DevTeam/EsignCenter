@@ -12,8 +12,12 @@ class EmbedTemplateBuilderController < ApplicationController
   before_action :load_template
   before_action :validate_template_param!, except: :show
   before_action :validate_builder_session!
-  before_action :validate_request_origin!, except: :show
+  # Frame headers before the entitlement check: the branded refusal page is
+  # shown inside the customer's iframe too, so it needs the same
+  # X-Frame-Options removal and frame-ancestors as a successful show.
   before_action :set_embed_frame_headers
+  before_action :require_embed_entitlement!
+  before_action :validate_request_origin!, except: :show
 
   # The builder token is minted by an entitled account, but the embed row is
   # checked on every request too (validate_builder_session!), so a token from
@@ -133,7 +137,9 @@ class EmbedTemplateBuilderController < ApplicationController
 
     raise ActionController::RoutingError, I18n.t('not_found') if @builder_preferences['origin'].blank?
     raise ActionController::RoutingError, I18n.t('not_found') if expires_at&.past?
+  end
 
+  def require_embed_entitlement!
     Entitlements.require!(@template.account, :embed)
   end
 

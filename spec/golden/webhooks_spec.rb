@@ -185,6 +185,21 @@ RSpec.describe 'Webhook hardening' do
       end.to raise_error(SendWebhookRequest::MetadataHostError)
     end
 
+    it 'refuses a hostless or malformed URL for every account before the scheme rules' do
+      undeliverable_urls = ['https:/path', 'https://', 'not a url']
+
+      [create(:account), create(:account, :internal)].each do |account|
+        undeliverable_urls.each do |url|
+          webhook_url = create(:webhook_url, account:)
+          webhook_url.update_column(:url, url)
+
+          expect do
+            SendWebhookRequest.validate_webhook_uri!(webhook_url)
+          end.to raise_error(SendWebhookRequest::InvalidUrlError, 'Not a valid http(s) URL.')
+        end
+      end
+    end
+
     it 'allows HTTP localhost URLs for internal accounts when multitenancy is disabled' do
       webhook_url = create(:webhook_url, account: create(:account, :internal),
                                          url: 'http://localhost:3000/webhook')
@@ -232,6 +247,24 @@ RSpec.describe 'Webhook hardening' do
       expect(event.status).to eq('error')
       expect(attempt.response_status_code).to eq(0)
       expect(attempt.response_body).to eq('Only HTTPS is allowed.')
+    end
+
+    it 'records a hostless URL as a terminal error without attempting a request' do
+      account = create(:account, :paid)
+      submitter = build_submitter(account)
+      webhook_url = create(:webhook_url, account:)
+      webhook_url.update_column(:url, 'https:/path')
+
+      response = deliver(webhook_url, submitter)
+
+      expect(response.final).to be(true)
+      expect(response.status).to eq(0)
+      expect(a_request(:any, /.*/)).not_to have_been_made
+
+      event = WebhookEvent.find_by!(webhook_url:)
+
+      expect(event.status).to eq('error')
+      expect(event.webhook_attempts.sole.response_body).to eq('Not a valid http(s) URL.')
     end
 
     it 'delivers the same localhost URL for an internal account' do
