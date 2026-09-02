@@ -42,9 +42,11 @@ module Docuseal
     ENV['BILLING_ENABLED'] == 'true'
   end
 
-  # infra-keep: Session 4 decouples Word/.doc uploads from this flag.
+  # Word (.docx/.doc) uploads are offered whenever the converter can run:
+  # LibreOffice on PATH and the WORD_CONVERSION_ENABLED kill switch not set to
+  # 'false'. See docs/word-uploads.md.
   def advanced_formats?
-    multitenant?
+    WordConverter.enabled?
   end
 
   def demo?

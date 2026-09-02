@@ -199,7 +199,8 @@ safeRegisterElement('template-builder', class extends HTMLElement {
       withReplaceAndCloneUpload: this.dataset.withReplaceAndCloneUpload !== 'false',
       withDownload: this.dataset.withDownload !== 'false',
       currencies: (this.dataset.currencies || '').split(',').filter(Boolean),
-      acceptFileTypes: this.dataset.acceptFileTypes,
+      // An empty attribute means "the builder's default list" (Word off).
+      acceptFileTypes: this.dataset.acceptFileTypes || undefined,
       showTourStartForm: this.dataset.showTourStartForm === 'true',
       onChange: (nextTemplate) => notifyEmbedParent('change', {
         template: this.buildEmbedTemplateDetail(nextTemplate)

@@ -1,4 +1,23 @@
 en: &en
+  documents_still_converting: "This template has a document that is still being converted. Try again in a moment."
+  document_conversion_failed: "A document in this template could not be converted. Remove it or upload it as a PDF."
+  document_not_ready: "Document not ready"
+  word_conversion_unavailable: "Word documents can't be converted right now. Save the file as a PDF and upload it again."
+  word_file_too_large: "This Word document is too large. The limit is %{limit_mb} MB — save it as a PDF or split it up."
+  too_many_word_conversions: "Too many Word documents were converted in the last hour. Try again later or upload a PDF."
+  unsupported_document_format: "This file format isn't supported. Upload a PDF, an image, or a Word document (.docx, .doc)."
+  esign_consent_checkbox_label: "I agree to use electronic records and signatures."
+  esign_consent_disclosure_link: "Electronic Signature Disclosure"
+  esign_consent_disclosure_title: "Electronic Records and Signatures Disclosure"
+  esign_consent_version_label: "Version %{version}"
+  esign_consent_required: "Please agree to use electronic records and signatures to continue."
+  consented_to_electronic_signatures: "Consented to electronic signatures"
+  esign_consent_disclosure_body_html: |-
+    <p>By checking the box, you agree to use electronic records and electronic signatures for this document instead of paper and ink. Your electronic signature will be as valid as a handwritten one, and the completed document will be delivered to you electronically.</p>
+    <p><strong>What you need.</strong> A current web browser, an internet connection and software that can open PDF files. If you can read this page, your device meets these requirements.</p>
+    <p><strong>Withdrawing consent.</strong> You may withdraw your consent at any time before you complete the document by not signing it and letting the sender know. Withdrawing consent does not affect documents you have already signed.</p>
+    <p><strong>Paper copies.</strong> You may request a paper copy of this document at any time by contacting the sender.</p>
+    <p><strong>What we record.</strong> Your agreement is recorded together with the date, time and internet (IP) address from which you gave it, and it appears in the document's audit trail.</p>
   webhook_url: Webhook URL
   webhook_url_must_use_https: must use https
   webhook_url_must_not_point_at_a_private_address: must not point at localhost or a private/metadata address
@@ -967,6 +986,7 @@ en: &en
     link: Link
     mcp: MCP
   submission_event_names:
+    esign_consent_by_html: "<b>Consented to electronic signatures (%{version})</b> by %{submitter_name}"
     send_email_to_html: '<b>Email sent</b> to %{submitter_name}'
     bounce_email_html: '<b>Email bounced</b> %{submitter_name}'
     complaint_email_html: '<b>Spam complaint</b> %{submitter_name}'
@@ -1084,6 +1104,25 @@ en: &en
       detailed: "%B %d, %Y %H:%M:%S"
 
 es: &es
+  documents_still_converting: "Esta plantilla tiene un documento que todavía se está convirtiendo. Inténtelo de nuevo en un momento."
+  document_conversion_failed: "No se pudo convertir un documento de esta plantilla. Elimínelo o súbalo como PDF."
+  document_not_ready: "Documento no disponible"
+  word_conversion_unavailable: "Los documentos de Word no se pueden convertir en este momento. Guarde el archivo como PDF y súbalo de nuevo."
+  word_file_too_large: "Este documento de Word es demasiado grande. El límite es de %{limit_mb} MB: guárdelo como PDF o divídalo."
+  too_many_word_conversions: "Se han convertido demasiados documentos de Word en la última hora. Inténtelo más tarde o suba un PDF."
+  unsupported_document_format: "Este formato de archivo no es compatible. Suba un PDF, una imagen o un documento de Word (.docx, .doc)."
+  esign_consent_checkbox_label: "Acepto usar registros y firmas electrónicos."
+  esign_consent_disclosure_link: "Divulgación sobre firma electrónica"
+  esign_consent_disclosure_title: "Divulgación sobre registros y firmas electrónicos"
+  esign_consent_version_label: "Versión %{version}"
+  esign_consent_required: "Para continuar, acepte usar registros y firmas electrónicos."
+  consented_to_electronic_signatures: "Consintió el uso de firmas electrónicas"
+  esign_consent_disclosure_body_html: |-
+    <p>Al marcar la casilla, acepta usar registros y firmas electrónicos para este documento en lugar de papel y tinta. Su firma electrónica tendrá la misma validez que una firma manuscrita, y el documento completado se le entregará por medios electrónicos.</p>
+    <p><strong>Lo que necesita.</strong> Un navegador web actual, conexión a internet y un programa que pueda abrir archivos PDF. Si puede leer esta página, su dispositivo cumple estos requisitos.</p>
+    <p><strong>Retirar el consentimiento.</strong> Puede retirar su consentimiento en cualquier momento antes de completar el documento: basta con no firmarlo e informar al remitente. Retirar el consentimiento no afecta a los documentos que ya haya firmado.</p>
+    <p><strong>Copias en papel.</strong> Puede solicitar una copia en papel de este documento en cualquier momento poniéndose en contacto con el remitente.</p>
+    <p><strong>Lo que registramos.</strong> Su aceptación se registra junto con la fecha, la hora y la dirección de internet (IP) desde la que la otorgó, y aparece en el registro de auditoría del documento.</p>
   webhook_url: URL del webhook
   webhook_url_must_use_https: debe usar https
   webhook_url_must_not_point_at_a_private_address: no debe apuntar a localhost ni a una dirección privada o de metadatos
@@ -2031,6 +2070,7 @@ es: &es
     link: Enlace
     mcp: MCP
   submission_event_names:
+    esign_consent_by_html: "<b>Consintió el uso de firmas electrónicas (%{version})</b> por %{submitter_name}"
     send_email_to_html: '<b>Correo electrónico enviado</b> a %{submitter_name}'
     bounce_email_html: '<b>Correo electrónico rebotado</b> %{submitter_name}'
     complaint_email_html: '<b>Queja de spam</b> %{submitter_name}'
@@ -2148,6 +2188,25 @@ es: &es
       detailed: "%-d de %B de %Y %H:%M:%S"
 
 it: &it
+  documents_still_converting: "Questo modello contiene un documento ancora in fase di conversione. Riprova tra un momento."
+  document_conversion_failed: "Un documento di questo modello non è stato convertito. Rimuovilo o caricalo come PDF."
+  document_not_ready: "Documento non pronto"
+  word_conversion_unavailable: "Al momento non è possibile convertire i documenti Word. Salva il file come PDF e caricalo di nuovo."
+  word_file_too_large: "Questo documento Word è troppo grande. Il limite è di %{limit_mb} MB: salvalo come PDF o dividilo."
+  too_many_word_conversions: "Troppi documenti Word convertiti nell'ultima ora. Riprova più tardi o carica un PDF."
+  unsupported_document_format: "Questo formato di file non è supportato. Carica un PDF, un'immagine o un documento Word (.docx, .doc)."
+  esign_consent_checkbox_label: "Accetto di utilizzare documenti e firme elettronici."
+  esign_consent_disclosure_link: "Informativa sulla firma elettronica"
+  esign_consent_disclosure_title: "Informativa su documenti e firme elettronici"
+  esign_consent_version_label: "Versione %{version}"
+  esign_consent_required: "Per continuare, accetta di utilizzare documenti e firme elettronici."
+  consented_to_electronic_signatures: "Ha acconsentito alle firme elettroniche"
+  esign_consent_disclosure_body_html: |-
+    <p>Selezionando la casella, accetti di utilizzare documenti e firme elettronici per questo documento al posto di carta e inchiostro. La tua firma elettronica avrà la stessa validità di una firma autografa e il documento completato ti sarà consegnato in formato elettronico.</p>
+    <p><strong>Cosa ti serve.</strong> Un browser web aggiornato, una connessione a internet e un programma in grado di aprire file PDF. Se riesci a leggere questa pagina, il tuo dispositivo soddisfa questi requisiti.</p>
+    <p><strong>Revoca del consenso.</strong> Puoi revocare il consenso in qualsiasi momento prima di completare il documento, semplicemente non firmandolo e informando il mittente. La revoca non riguarda i documenti che hai già firmato.</p>
+    <p><strong>Copie cartacee.</strong> Puoi richiedere in qualsiasi momento una copia cartacea di questo documento contattando il mittente.</p>
+    <p><strong>Cosa registriamo.</strong> Il tuo consenso viene registrato insieme a data, ora e indirizzo internet (IP) da cui è stato prestato, e compare nel registro di audit del documento.</p>
   webhook_url: URL del webhook
   webhook_url_must_use_https: deve usare https
   webhook_url_must_not_point_at_a_private_address: non deve puntare a localhost o a un indirizzo privato/di metadati
@@ -3095,6 +3154,7 @@ it: &it
     link: Link
     mcp: MCP
   submission_event_names:
+    esign_consent_by_html: "<b>Consenso alle firme elettroniche (%{version})</b> da %{submitter_name}"
     send_email_to_html: '<b>Email inviata</b> a %{submitter_name}'
     bounce_email_html: '<b>Email respinta</b> %{submitter_name}'
     complaint_email_html: '<b>Segnalazione spam</b> %{submitter_name}'
@@ -3212,6 +3272,25 @@ it: &it
       detailed: "%d %B %Y %H:%M:%S"
 
 fr: &fr
+  documents_still_converting: "Ce modèle contient un document encore en cours de conversion. Réessayez dans un instant."
+  document_conversion_failed: "Un document de ce modèle n'a pas pu être converti. Supprimez-le ou téléversez-le en PDF."
+  document_not_ready: "Document pas encore prêt"
+  word_conversion_unavailable: "Les documents Word ne peuvent pas être convertis pour le moment. Enregistrez le fichier en PDF et téléversez-le à nouveau."
+  word_file_too_large: "Ce document Word est trop volumineux. La limite est de %{limit_mb} Mo : enregistrez-le en PDF ou divisez-le."
+  too_many_word_conversions: "Trop de documents Word ont été convertis au cours de la dernière heure. Réessayez plus tard ou téléversez un PDF."
+  unsupported_document_format: "Ce format de fichier n'est pas pris en charge. Téléversez un PDF, une image ou un document Word (.docx, .doc)."
+  esign_consent_checkbox_label: "J'accepte d'utiliser des documents et des signatures électroniques."
+  esign_consent_disclosure_link: "Information sur la signature électronique"
+  esign_consent_disclosure_title: "Information sur les documents et signatures électroniques"
+  esign_consent_version_label: "Version %{version}"
+  esign_consent_required: "Pour continuer, veuillez accepter d'utiliser des documents et des signatures électroniques."
+  consented_to_electronic_signatures: "A consenti aux signatures électroniques"
+  esign_consent_disclosure_body_html: |-
+    <p>En cochant la case, vous acceptez d'utiliser des documents et des signatures électroniques pour ce document, à la place du papier et de l'encre. Votre signature électronique aura la même valeur qu'une signature manuscrite, et le document finalisé vous sera remis par voie électronique.</p>
+    <p><strong>Ce dont vous avez besoin.</strong> Un navigateur web récent, une connexion internet et un logiciel capable d'ouvrir les fichiers PDF. Si vous pouvez lire cette page, votre appareil répond à ces exigences.</p>
+    <p><strong>Retrait du consentement.</strong> Vous pouvez retirer votre consentement à tout moment avant de finaliser le document, en ne le signant pas et en prévenant l'expéditeur. Le retrait n'affecte pas les documents que vous avez déjà signés.</p>
+    <p><strong>Copies papier.</strong> Vous pouvez demander à tout moment une copie papier de ce document en contactant l'expéditeur.</p>
+    <p><strong>Ce que nous enregistrons.</strong> Votre accord est enregistré avec la date, l'heure et l'adresse internet (IP) depuis laquelle vous l'avez donné, et il figure dans la piste d'audit du document.</p>
   webhook_url: URL du webhook
   webhook_url_must_use_https: doit utiliser https
   webhook_url_must_not_point_at_a_private_address: ne doit pas pointer vers localhost ni vers une adresse privée ou de métadonnées
@@ -4156,6 +4235,7 @@ fr: &fr
     link: Lien
     mcp: MCP
   submission_event_names:
+    esign_consent_by_html: "<b>Consentement aux signatures électroniques (%{version})</b> par %{submitter_name}"
     send_email_to_html: "<b>E‑mail envoyé</b> à %{submitter_name}"
     bounce_email_html: "<b>E‑mail rejeté</b> %{submitter_name}"
     complaint_email_html: "<b>Plainte spam</b> %{submitter_name}"
@@ -4273,6 +4353,25 @@ fr: &fr
       detailed: "%A %d %B %Y %Hh%Mm%Ss"
 
 pt: &pt
+  documents_still_converting: "Este modelo tem um documento que ainda está sendo convertido. Tente novamente em instantes."
+  document_conversion_failed: "Um documento deste modelo não pôde ser convertido. Remova-o ou envie-o como PDF."
+  document_not_ready: "Documento não está pronto"
+  word_conversion_unavailable: "Os documentos do Word não podem ser convertidos no momento. Salve o arquivo como PDF e envie novamente."
+  word_file_too_large: "Este documento do Word é muito grande. O limite é de %{limit_mb} MB: salve-o como PDF ou divida-o."
+  too_many_word_conversions: "Muitos documentos do Word foram convertidos na última hora. Tente novamente mais tarde ou envie um PDF."
+  unsupported_document_format: "Este formato de arquivo não é compatível. Envie um PDF, uma imagem ou um documento do Word (.docx, .doc)."
+  esign_consent_checkbox_label: "Concordo em utilizar registos e assinaturas eletrónicos."
+  esign_consent_disclosure_link: "Divulgação sobre assinatura eletrónica"
+  esign_consent_disclosure_title: "Divulgação sobre registos e assinaturas eletrónicos"
+  esign_consent_version_label: "Versão %{version}"
+  esign_consent_required: "Para continuar, concorde em utilizar registos e assinaturas eletrónicos."
+  consented_to_electronic_signatures: "Consentiu assinaturas eletrónicas"
+  esign_consent_disclosure_body_html: |-
+    <p>Ao marcar a caixa, concorda em utilizar registos e assinaturas eletrónicos para este documento, em vez de papel e tinta. A sua assinatura eletrónica terá a mesma validade de uma assinatura manuscrita, e o documento concluído ser-lhe-á entregue por via eletrónica.</p>
+    <p><strong>O que precisa.</strong> Um navegador web atual, uma ligação à internet e um programa capaz de abrir ficheiros PDF. Se consegue ler esta página, o seu dispositivo cumpre estes requisitos.</p>
+    <p><strong>Retirar o consentimento.</strong> Pode retirar o seu consentimento a qualquer momento antes de concluir o documento, bastando não o assinar e informar o remetente. A retirada não afeta os documentos que já assinou.</p>
+    <p><strong>Cópias em papel.</strong> Pode solicitar a qualquer momento uma cópia em papel deste documento contactando o remetente.</p>
+    <p><strong>O que registamos.</strong> O seu consentimento é registado juntamente com a data, a hora e o endereço de internet (IP) a partir do qual foi dado, e consta do registo de auditoria do documento.</p>
   webhook_url: URL do webhook
   webhook_url_must_use_https: deve usar https
   webhook_url_must_not_point_at_a_private_address: não deve apontar para localhost nem para um endereço privado/de metadados
@@ -5220,6 +5319,7 @@ pt: &pt
     link: Link
     mcp: MCP
   submission_event_names:
+    esign_consent_by_html: "<b>Consentiu assinaturas eletrónicas (%{version})</b> por %{submitter_name}"
     send_email_to_html: '<b>Email enviado</b> para %{submitter_name}'
     bounce_email_html: '<b>Email não entregue</b> %{submitter_name}'
     complaint_email_html: '<b>Reclamação de spam</b> %{submitter_name}'
@@ -5337,6 +5437,25 @@ pt: &pt
       detailed: "%A, %d de %B de %Y, %H:%M:%Sh"
 
 de: &de
+  documents_still_converting: "Diese Vorlage enthält ein Dokument, das noch konvertiert wird. Versuchen Sie es gleich noch einmal."
+  document_conversion_failed: "Ein Dokument in dieser Vorlage konnte nicht konvertiert werden. Entfernen Sie es oder laden Sie es als PDF hoch."
+  document_not_ready: "Dokument noch nicht bereit"
+  word_conversion_unavailable: "Word-Dokumente können derzeit nicht konvertiert werden. Speichern Sie die Datei als PDF und laden Sie sie erneut hoch."
+  word_file_too_large: "Dieses Word-Dokument ist zu groß. Das Limit beträgt %{limit_mb} MB – speichern Sie es als PDF oder teilen Sie es auf."
+  too_many_word_conversions: "In der letzten Stunde wurden zu viele Word-Dokumente konvertiert. Versuchen Sie es später erneut oder laden Sie ein PDF hoch."
+  unsupported_document_format: "Dieses Dateiformat wird nicht unterstützt. Laden Sie ein PDF, ein Bild oder ein Word-Dokument (.docx, .doc) hoch."
+  esign_consent_checkbox_label: "Ich stimme der Verwendung elektronischer Dokumente und Signaturen zu."
+  esign_consent_disclosure_link: "Hinweis zur elektronischen Signatur"
+  esign_consent_disclosure_title: "Hinweis zu elektronischen Dokumenten und Signaturen"
+  esign_consent_version_label: "Version %{version}"
+  esign_consent_required: "Bitte stimmen Sie der Verwendung elektronischer Dokumente und Signaturen zu, um fortzufahren."
+  consented_to_electronic_signatures: "Elektronischen Signaturen zugestimmt"
+  esign_consent_disclosure_body_html: |-
+    <p>Mit dem Setzen des Häkchens stimmen Sie zu, für dieses Dokument elektronische Dokumente und elektronische Signaturen anstelle von Papier und Tinte zu verwenden. Ihre elektronische Signatur ist genauso gültig wie eine handschriftliche, und das fertige Dokument wird Ihnen elektronisch zugestellt.</p>
+    <p><strong>Was Sie benötigen.</strong> Einen aktuellen Webbrowser, eine Internetverbindung und ein Programm, das PDF-Dateien öffnen kann. Wenn Sie diese Seite lesen können, erfüllt Ihr Gerät diese Anforderungen.</p>
+    <p><strong>Widerruf der Zustimmung.</strong> Sie können Ihre Zustimmung jederzeit vor dem Abschluss des Dokuments widerrufen, indem Sie es nicht unterschreiben und den Absender informieren. Der Widerruf betrifft keine Dokumente, die Sie bereits unterschrieben haben.</p>
+    <p><strong>Papierkopien.</strong> Sie können jederzeit eine Papierkopie dieses Dokuments anfordern, indem Sie sich an den Absender wenden.</p>
+    <p><strong>Was wir aufzeichnen.</strong> Ihre Zustimmung wird zusammen mit Datum, Uhrzeit und der Internetadresse (IP) aufgezeichnet, von der aus Sie sie erteilt haben, und erscheint im Prüfprotokoll des Dokuments.</p>
   webhook_url: Webhook-URL
   webhook_url_must_use_https: muss https verwenden
   webhook_url_must_not_point_at_a_private_address: darf nicht auf localhost oder eine private/Metadaten-Adresse verweisen
@@ -6284,6 +6403,7 @@ de: &de
     link: Link
     mcp: MCP
   submission_event_names:
+    esign_consent_by_html: "<b>Elektronischen Signaturen zugestimmt (%{version})</b> von %{submitter_name}"
     send_email_to_html: '<b>E-Mail gesendet</b> an %{submitter_name}'
     bounce_email_html: '<b>E-Mail unzustellbar</b> %{submitter_name}'
     complaint_email_html: '<b>Spam-Beschwerde</b> %{submitter_name}'
@@ -6401,6 +6521,28 @@ de: &de
       detailed: "%A, %d. %B %Y, %H:%M:%S Uhr"
 
 pl:
+  documents_still_converting: "Ten szablon zawiera dokument, który jest jeszcze konwertowany. Spróbuj ponownie za chwilę."
+  document_conversion_failed: "Nie udało się przekonwertować dokumentu w tym szablonie. Usuń go lub prześlij jako PDF."
+  document_not_ready: "Dokument nie jest gotowy"
+  word_conversion_unavailable: "Dokumentów Word nie można teraz przekonwertować. Zapisz plik jako PDF i prześlij go ponownie."
+  word_file_too_large: "Ten dokument Word jest za duży. Limit wynosi %{limit_mb} MB – zapisz go jako PDF lub podziel."
+  too_many_word_conversions: "W ciągu ostatniej godziny przekonwertowano zbyt wiele dokumentów Word. Spróbuj ponownie później lub prześlij PDF."
+  unsupported_document_format: "Ten format pliku nie jest obsługiwany. Prześlij PDF, obraz lub dokument Word (.docx, .doc)."
+  esign_consent_checkbox_label: "Zgadzam się na korzystanie z dokumentów i podpisów elektronicznych."
+  esign_consent_disclosure_link: "Informacja o podpisie elektronicznym"
+  esign_consent_disclosure_title: "Informacja o dokumentach i podpisach elektronicznych"
+  esign_consent_version_label: "Wersja %{version}"
+  esign_consent_required: "Aby kontynuować, wyraź zgodę na korzystanie z dokumentów i podpisów elektronicznych."
+  consented_to_electronic_signatures: "Wyrażono zgodę na podpisy elektroniczne"
+  close: "Zamknij"
+  esign_consent_disclosure_body_html: |-
+    <p>Zaznaczając pole, zgadzasz się na korzystanie z dokumentów i podpisów elektronicznych w odniesieniu do tego dokumentu zamiast papieru i długopisu. Twój podpis elektroniczny będzie tak samo ważny jak podpis odręczny, a gotowy dokument zostanie dostarczony Ci drogą elektroniczną.</p>
+    <p><strong>Czego potrzebujesz.</strong> Aktualnej przeglądarki internetowej, połączenia z internetem oraz programu otwierającego pliki PDF. Jeśli możesz przeczytać tę stronę, Twoje urządzenie spełnia te wymagania.</p>
+    <p><strong>Wycofanie zgody.</strong> Możesz wycofać zgodę w dowolnym momencie przed ukończeniem dokumentu – wystarczy go nie podpisywać i poinformować nadawcę. Wycofanie zgody nie dotyczy dokumentów, które już zostały podpisane.</p>
+    <p><strong>Kopie papierowe.</strong> W każdej chwili możesz poprosić o papierową kopię tego dokumentu, kontaktując się z nadawcą.</p>
+    <p><strong>Co rejestrujemy.</strong> Twoja zgoda jest zapisywana wraz z datą, godziną i adresem internetowym (IP), z którego została udzielona, i pojawia się w dzienniku audytu dokumentu.</p>
+  submission_event_names:
+    esign_consent_by_html: "<b>Wyrażono zgodę na podpisy elektroniczne (%{version})</b> przez %{submitter_name}"
   webhook_url: Adres URL webhooka
   webhook_url_must_use_https: musi używać https
   webhook_url_must_not_point_at_a_private_address: nie może wskazywać na localhost ani na adres prywatny/metadanych
@@ -6524,6 +6666,28 @@ pl:
   too_many_requests_try_again_later: Zbyt wiele żądań. Spróbuj ponownie później.
 
 uk:
+  documents_still_converting: "Цей шаблон містить документ, який ще конвертується. Спробуйте ще раз за хвилину."
+  document_conversion_failed: "Документ у цьому шаблоні не вдалося конвертувати. Видаліть його або завантажте як PDF."
+  document_not_ready: "Документ не готовий"
+  word_conversion_unavailable: "Документи Word наразі не можна конвертувати. Збережіть файл як PDF і завантажте його знову."
+  word_file_too_large: "Цей документ Word завеликий. Обмеження — %{limit_mb} МБ: збережіть його як PDF або розділіть."
+  too_many_word_conversions: "За останню годину конвертовано забагато документів Word. Спробуйте пізніше або завантажте PDF."
+  unsupported_document_format: "Цей формат файлу не підтримується. Завантажте PDF, зображення або документ Word (.docx, .doc)."
+  esign_consent_checkbox_label: "Я погоджуюся використовувати електронні документи та підписи."
+  esign_consent_disclosure_link: "Інформація про електронний підпис"
+  esign_consent_disclosure_title: "Інформація про електронні документи та підписи"
+  esign_consent_version_label: "Версія %{version}"
+  esign_consent_required: "Щоб продовжити, погодьтеся використовувати електронні документи та підписи."
+  consented_to_electronic_signatures: "Надано згоду на електронні підписи"
+  close: "Закрити"
+  esign_consent_disclosure_body_html: |-
+    <p>Установлюючи прапорець, ви погоджуєтеся використовувати для цього документа електронні документи та електронні підписи замість паперу й чорнила. Ваш електронний підпис матиме таку саму силу, як і власноручний, а завершений документ буде надіслано вам в електронному вигляді.</p>
+    <p><strong>Що вам потрібно.</strong> Сучасний веббраузер, підключення до інтернету та програма, яка відкриває файли PDF. Якщо ви можете прочитати цю сторінку, ваш пристрій відповідає цим вимогам.</p>
+    <p><strong>Відкликання згоди.</strong> Ви можете відкликати згоду в будь-який момент до завершення документа: просто не підписуйте його та повідомте відправника. Відкликання не стосується документів, які ви вже підписали.</p>
+    <p><strong>Паперові копії.</strong> Ви можете будь-коли запросити паперову копію цього документа, звернувшись до відправника.</p>
+    <p><strong>Що ми записуємо.</strong> Ваша згода фіксується разом із датою, часом та інтернет-адресою (IP), з якої її було надано, і відображається в журналі аудиту документа.</p>
+  submission_event_names:
+    esign_consent_by_html: "<b>Надано згоду на електронні підписи (%{version})</b> користувачем %{submitter_name}"
   webhook_url: URL вебхука
   webhook_url_must_use_https: має використовувати https
   webhook_url_must_not_point_at_a_private_address: не може вказувати на localhost або приватну адресу/адресу метаданих
@@ -6647,6 +6811,28 @@ uk:
   too_many_requests_try_again_later: Забагато запитів. Спробуйте пізніше.
 
 cs:
+  documents_still_converting: "Tato šablona obsahuje dokument, který se stále převádí. Zkuste to za chvíli znovu."
+  document_conversion_failed: "Dokument v této šabloně se nepodařilo převést. Odeberte jej nebo jej nahrajte jako PDF."
+  document_not_ready: "Dokument není připraven"
+  word_conversion_unavailable: "Dokumenty Word nyní nelze převést. Uložte soubor jako PDF a nahrajte jej znovu."
+  word_file_too_large: "Tento dokument Word je příliš velký. Limit je %{limit_mb} MB – uložte jej jako PDF nebo jej rozdělte."
+  too_many_word_conversions: "Za poslední hodinu bylo převedeno příliš mnoho dokumentů Word. Zkuste to později nebo nahrajte PDF."
+  unsupported_document_format: "Tento formát souboru není podporován. Nahrajte PDF, obrázek nebo dokument Word (.docx, .doc)."
+  esign_consent_checkbox_label: "Souhlasím s používáním elektronických dokumentů a podpisů."
+  esign_consent_disclosure_link: "Informace o elektronickém podpisu"
+  esign_consent_disclosure_title: "Informace o elektronických dokumentech a podpisech"
+  esign_consent_version_label: "Verze %{version}"
+  esign_consent_required: "Pro pokračování prosím souhlaste s používáním elektronických dokumentů a podpisů."
+  consented_to_electronic_signatures: "Udělen souhlas s elektronickými podpisy"
+  close: "Zavřít"
+  esign_consent_disclosure_body_html: |-
+    <p>Zaškrtnutím políčka souhlasíte s tím, že pro tento dokument budou místo papíru a inkoustu použity elektronické dokumenty a elektronické podpisy. Váš elektronický podpis bude stejně platný jako vlastnoruční a dokončený dokument vám bude doručen elektronicky.</p>
+    <p><strong>Co potřebujete.</strong> Aktuální webový prohlížeč, připojení k internetu a program, který otevře soubory PDF. Pokud dokážete přečíst tuto stránku, vaše zařízení tyto požadavky splňuje.</p>
+    <p><strong>Odvolání souhlasu.</strong> Souhlas můžete kdykoli před dokončením dokumentu odvolat tak, že dokument nepodepíšete a informujete odesílatele. Odvolání se netýká dokumentů, které jste již podepsali.</p>
+    <p><strong>Papírové kopie.</strong> O papírovou kopii tohoto dokumentu můžete kdykoli požádat odesílatele.</p>
+    <p><strong>Co zaznamenáváme.</strong> Váš souhlas je zaznamenán spolu s datem, časem a internetovou adresou (IP), ze které byl udělen, a je uveden v auditní stopě dokumentu.</p>
+  submission_event_names:
+    esign_consent_by_html: "<b>Souhlas s elektronickými podpisy udělen (%{version})</b> uživatelem %{submitter_name}"
   webhook_url: URL webhooku
   webhook_url_must_use_https: musí používat https
   webhook_url_must_not_point_at_a_private_address: nesmí odkazovat na localhost ani na privátní adresu / adresu metadat
@@ -6770,6 +6956,28 @@ cs:
   too_many_requests_try_again_later: Příliš mnoho požadavků. Zkuste to později.
 
 he:
+  documents_still_converting: "תבנית זו מכילה מסמך שעדיין בהמרה. נסו שוב בעוד רגע."
+  document_conversion_failed: "לא ניתן היה להמיר מסמך בתבנית זו. הסירו אותו או העלו אותו כ-PDF."
+  document_not_ready: "המסמך אינו מוכן"
+  word_conversion_unavailable: "לא ניתן להמיר מסמכי Word כרגע. שמרו את הקובץ כ-PDF והעלו אותו שוב."
+  word_file_too_large: "מסמך ה-Word הזה גדול מדי. המגבלה היא %{limit_mb} MB – שמרו אותו כ-PDF או פצלו אותו."
+  too_many_word_conversions: "הומרו יותר מדי מסמכי Word בשעה האחרונה. נסו שוב מאוחר יותר או העלו PDF."
+  unsupported_document_format: "פורמט הקובץ הזה אינו נתמך. העלו PDF, תמונה או מסמך Word ‏(.docx, .doc)."
+  esign_consent_checkbox_label: "אני מסכים/ה להשתמש ברשומות ובחתימות אלקטרוניות."
+  esign_consent_disclosure_link: "גילוי נאות בנושא חתימה אלקטרונית"
+  esign_consent_disclosure_title: "גילוי נאות בנושא רשומות וחתימות אלקטרוניות"
+  esign_consent_version_label: "גרסה %{version}"
+  esign_consent_required: "כדי להמשיך, יש להסכים להשתמש ברשומות ובחתימות אלקטרוניות."
+  consented_to_electronic_signatures: "ניתנה הסכמה לחתימות אלקטרוניות"
+  close: "סגור"
+  esign_consent_disclosure_body_html: |-
+    <p>בסימון התיבה, את/ה מסכים/ה להשתמש במסמך זה ברשומות אלקטרוניות ובחתימות אלקטרוניות במקום נייר ועט. החתימה האלקטרונית שלך תהיה תקפה כמו חתימה בכתב יד, והמסמך המושלם יימסר לך באופן אלקטרוני.</p>
+    <p><strong>מה נדרש.</strong> דפדפן עדכני, חיבור לאינטרנט ותוכנה שיכולה לפתוח קובצי PDF. אם ניתן לקרוא דף זה, המכשיר שלך עומד בדרישות אלה.</p>
+    <p><strong>ביטול ההסכמה.</strong> ניתן לבטל את ההסכמה בכל עת לפני השלמת המסמך, על ידי אי-חתימה עליו ויידוע השולח. ביטול ההסכמה אינו משפיע על מסמכים שכבר נחתמו.</p>
+    <p><strong>עותקים מודפסים.</strong> ניתן לבקש עותק מודפס של מסמך זה בכל עת בפנייה לשולח.</p>
+    <p><strong>מה אנחנו מתעדים.</strong> ההסכמה שלך נרשמת יחד עם התאריך, השעה וכתובת האינטרנט (IP) שממנה ניתנה, ומופיעה ביומן הביקורת של המסמך.</p>
+  submission_event_names:
+    esign_consent_by_html: "<b>ניתנה הסכמה לחתימות אלקטרוניות (%{version})</b> על ידי %{submitter_name}"
   webhook_url: כתובת ה-Webhook
   webhook_url_must_use_https: חייבת להשתמש ב-https
   webhook_url_must_not_point_at_a_private_address: אינה יכולה להפנות ל-localhost או לכתובת פרטית/כתובת מטא-נתונים
@@ -6893,6 +7101,25 @@ he:
   too_many_requests_try_again_later: יותר מדי בקשות. נסה שוב מאוחר יותר.
 
 nl: &nl
+  documents_still_converting: "Deze sjabloon bevat een document dat nog wordt geconverteerd. Probeer het zo meteen opnieuw."
+  document_conversion_failed: "Een document in deze sjabloon kon niet worden geconverteerd. Verwijder het of upload het als PDF."
+  document_not_ready: "Document nog niet gereed"
+  word_conversion_unavailable: "Word-documenten kunnen op dit moment niet worden geconverteerd. Sla het bestand op als PDF en upload het opnieuw."
+  word_file_too_large: "Dit Word-document is te groot. De limiet is %{limit_mb} MB – sla het op als PDF of splits het op."
+  too_many_word_conversions: "Er zijn het afgelopen uur te veel Word-documenten geconverteerd. Probeer het later opnieuw of upload een PDF."
+  unsupported_document_format: "Dit bestandsformaat wordt niet ondersteund. Upload een PDF, een afbeelding of een Word-document (.docx, .doc)."
+  esign_consent_checkbox_label: "Ik ga akkoord met het gebruik van elektronische documenten en handtekeningen."
+  esign_consent_disclosure_link: "Toelichting elektronische handtekening"
+  esign_consent_disclosure_title: "Toelichting elektronische documenten en handtekeningen"
+  esign_consent_version_label: "Versie %{version}"
+  esign_consent_required: "Ga akkoord met het gebruik van elektronische documenten en handtekeningen om verder te gaan."
+  consented_to_electronic_signatures: "Akkoord gegaan met elektronische handtekeningen"
+  esign_consent_disclosure_body_html: |-
+    <p>Door het vakje aan te vinken gaat u ermee akkoord om voor dit document elektronische documenten en elektronische handtekeningen te gebruiken in plaats van papier en pen. Uw elektronische handtekening is even geldig als een handgeschreven handtekening, en het voltooide document wordt elektronisch aan u bezorgd.</p>
+    <p><strong>Wat u nodig heeft.</strong> Een actuele webbrowser, een internetverbinding en software waarmee u PDF-bestanden kunt openen. Als u deze pagina kunt lezen, voldoet uw apparaat aan deze eisen.</p>
+    <p><strong>Toestemming intrekken.</strong> U kunt uw toestemming op elk moment vóór het voltooien van het document intrekken door het niet te ondertekenen en de afzender hiervan op de hoogte te stellen. Intrekken heeft geen gevolgen voor documenten die u al heeft ondertekend.</p>
+    <p><strong>Papieren kopieën.</strong> U kunt op elk moment een papieren kopie van dit document aanvragen door contact op te nemen met de afzender.</p>
+    <p><strong>Wat wij vastleggen.</strong> Uw akkoord wordt vastgelegd samen met de datum, het tijdstip en het internetadres (IP) van waaruit u het heeft gegeven, en verschijnt in het audittrail van het document.</p>
   webhook_url: Webhook-URL
   webhook_url_must_use_https: moet https gebruiken
   webhook_url_must_not_point_at_a_private_address: mag niet naar localhost of een privé-/metadata-adres verwijzen
@@ -7837,6 +8064,7 @@ nl: &nl
     link: Link
     mcp: MCP
   submission_event_names:
+    esign_consent_by_html: "<b>Akkoord gegaan met elektronische handtekeningen (%{version})</b> door %{submitter_name}"
     send_email_to_html: "<b>E-mail verzonden</b> naar %{submitter_name}"
     bounce_email_html: "<b>E-mail geretourneerd</b> %{submitter_name}"
     complaint_email_html: "<b>Spamklacht</b> %{submitter_name}"
@@ -7954,6 +8182,28 @@ nl: &nl
       detailed: "%d %B %Y %H:%M:%S"
 
 ar:
+  documents_still_converting: "يحتوي هذا القالب على مستند لا يزال قيد التحويل. حاول مرة أخرى بعد قليل."
+  document_conversion_failed: "تعذّر تحويل مستند في هذا القالب. احذفه أو ارفعه بصيغة PDF."
+  document_not_ready: "المستند غير جاهز"
+  word_conversion_unavailable: "لا يمكن تحويل مستندات Word في الوقت الحالي. احفظ الملف بصيغة PDF وارفعه مرة أخرى."
+  word_file_too_large: "مستند Word هذا كبير جدًا. الحد الأقصى هو %{limit_mb} ميغابايت – احفظه بصيغة PDF أو قسّمه."
+  too_many_word_conversions: "تم تحويل عدد كبير جدًا من مستندات Word خلال الساعة الماضية. حاول مرة أخرى لاحقًا أو ارفع ملف PDF."
+  unsupported_document_format: "تنسيق الملف هذا غير مدعوم. ارفع ملف PDF أو صورة أو مستند Word ‏(.docx, .doc)."
+  esign_consent_checkbox_label: "أوافق على استخدام السجلات والتوقيعات الإلكترونية."
+  esign_consent_disclosure_link: "إفصاح التوقيع الإلكتروني"
+  esign_consent_disclosure_title: "إفصاح السجلات والتوقيعات الإلكترونية"
+  esign_consent_version_label: "الإصدار %{version}"
+  esign_consent_required: "للمتابعة، يرجى الموافقة على استخدام السجلات والتوقيعات الإلكترونية."
+  consented_to_electronic_signatures: "تمت الموافقة على التوقيعات الإلكترونية"
+  close: "إغلاق"
+  esign_consent_disclosure_body_html: |-
+    <p>بتحديد المربع، فإنك توافق على استخدام السجلات الإلكترونية والتوقيعات الإلكترونية لهذا المستند بدلاً من الورق والحبر. سيكون توقيعك الإلكتروني صالحًا مثل التوقيع بخط اليد، وسيتم تسليم المستند المكتمل إليك إلكترونيًا.</p>
+    <p><strong>ما تحتاج إليه.</strong> متصفح ويب حديث، واتصال بالإنترنت، وبرنامج يمكنه فتح ملفات PDF. إذا كان بإمكانك قراءة هذه الصفحة، فإن جهازك يستوفي هذه المتطلبات.</p>
+    <p><strong>سحب الموافقة.</strong> يمكنك سحب موافقتك في أي وقت قبل إكمال المستند بعدم توقيعه وإبلاغ المرسل. لا يؤثر سحب الموافقة على المستندات التي وقعتها بالفعل.</p>
+    <p><strong>النسخ الورقية.</strong> يمكنك طلب نسخة ورقية من هذا المستند في أي وقت عبر التواصل مع المرسل.</p>
+    <p><strong>ما نسجله.</strong> يتم تسجيل موافقتك مع التاريخ والوقت وعنوان الإنترنت (IP) الذي منحتها منه، وتظهر في سجل التدقيق الخاص بالمستند.</p>
+  submission_event_names:
+    esign_consent_by_html: "<b>تمت الموافقة على التوقيعات الإلكترونية (%{version})</b> بواسطة %{submitter_name}"
   webhook_url: عنوان URL للويب هوك
   webhook_url_must_use_https: يجب أن يستخدم https
   webhook_url_must_not_point_at_a_private_address: يجب ألا يشير إلى localhost أو إلى عنوان خاص/عنوان بيانات وصفية
@@ -8077,6 +8327,28 @@ ar:
   too_many_requests_try_again_later: طلبات كثيرة جدًا. حاول مرة أخرى لاحقًا.
 
 ko:
+  documents_still_converting: "이 템플릿에는 아직 변환 중인 문서가 있습니다. 잠시 후 다시 시도하세요."
+  document_conversion_failed: "이 템플릿의 문서를 변환할 수 없습니다. 문서를 제거하거나 PDF로 업로드하세요."
+  document_not_ready: "문서가 준비되지 않았습니다"
+  word_conversion_unavailable: "지금은 Word 문서를 변환할 수 없습니다. 파일을 PDF로 저장한 후 다시 업로드하세요."
+  word_file_too_large: "이 Word 문서는 너무 큽니다. 제한은 %{limit_mb}MB입니다. PDF로 저장하거나 문서를 나누세요."
+  too_many_word_conversions: "지난 한 시간 동안 너무 많은 Word 문서가 변환되었습니다. 나중에 다시 시도하거나 PDF를 업로드하세요."
+  unsupported_document_format: "이 파일 형식은 지원되지 않습니다. PDF, 이미지 또는 Word 문서(.docx, .doc)를 업로드하세요."
+  esign_consent_checkbox_label: "전자 기록 및 전자 서명 사용에 동의합니다."
+  esign_consent_disclosure_link: "전자 서명 고지"
+  esign_consent_disclosure_title: "전자 기록 및 전자 서명 고지"
+  esign_consent_version_label: "버전 %{version}"
+  esign_consent_required: "계속하려면 전자 기록 및 전자 서명 사용에 동의해 주세요."
+  consented_to_electronic_signatures: "전자 서명에 동의함"
+  close: "닫기"
+  esign_consent_disclosure_body_html: |-
+    <p>확인란을 선택하면 이 문서에 종이와 잉크 대신 전자 기록과 전자 서명을 사용하는 데 동의하게 됩니다. 귀하의 전자 서명은 자필 서명과 동일한 효력을 가지며, 완료된 문서는 전자적으로 전달됩니다.</p>
+    <p><strong>필요한 것.</strong> 최신 웹 브라우저, 인터넷 연결, PDF 파일을 열 수 있는 프로그램입니다. 이 페이지를 읽을 수 있다면 귀하의 기기는 이 요건을 충족합니다.</p>
+    <p><strong>동의 철회.</strong> 문서를 완료하기 전에는 언제든지 서명하지 않고 발신자에게 알리는 방법으로 동의를 철회할 수 있습니다. 동의 철회는 이미 서명한 문서에는 영향을 미치지 않습니다.</p>
+    <p><strong>종이 사본.</strong> 발신자에게 연락하여 언제든지 이 문서의 종이 사본을 요청할 수 있습니다.</p>
+    <p><strong>기록되는 내용.</strong> 귀하의 동의는 동의한 날짜, 시간, 인터넷(IP) 주소와 함께 기록되며 문서의 감사 추적에 표시됩니다.</p>
+  submission_event_names:
+    esign_consent_by_html: "<b>전자 서명에 동의함 (%{version})</b> - %{submitter_name}"
   webhook_url: 웹훅 URL
   webhook_url_must_use_https: https를 사용해야 합니다
   webhook_url_must_not_point_at_a_private_address: localhost 또는 사설/메타데이터 주소를 가리킬 수 없습니다
@@ -8200,6 +8472,28 @@ ko:
   too_many_requests_try_again_later: 요청이 너무 많습니다. 나중에 다시 시도하세요.
 
 ja:
+  documents_still_converting: "このテンプレートには変換中の文書があります。しばらくしてからもう一度お試しください。"
+  document_conversion_failed: "このテンプレートの文書を変換できませんでした。削除するか、PDFとしてアップロードしてください。"
+  document_not_ready: "文書の準備ができていません"
+  word_conversion_unavailable: "現在、Word文書を変換できません。ファイルをPDFとして保存し、もう一度アップロードしてください。"
+  word_file_too_large: "このWord文書は大きすぎます。上限は%{limit_mb}MBです。PDFとして保存するか、分割してください。"
+  too_many_word_conversions: "過去1時間にWord文書の変換回数が多すぎます。しばらくしてから再試行するか、PDFをアップロードしてください。"
+  unsupported_document_format: "このファイル形式はサポートされていません。PDF、画像、またはWord文書（.docx、.doc）をアップロードしてください。"
+  esign_consent_checkbox_label: "電子記録および電子署名の使用に同意します。"
+  esign_consent_disclosure_link: "電子署名に関する開示"
+  esign_consent_disclosure_title: "電子記録および電子署名に関する開示"
+  esign_consent_version_label: "バージョン %{version}"
+  esign_consent_required: "続行するには、電子記録および電子署名の使用に同意してください。"
+  consented_to_electronic_signatures: "電子署名に同意済み"
+  close: "閉じる"
+  esign_consent_disclosure_body_html: |-
+    <p>チェックボックスをオンにすると、この文書について紙とインクの代わりに電子記録および電子署名を使用することに同意したことになります。お客様の電子署名は手書きの署名と同じ効力を持ち、完成した文書は電子的にお届けします。</p>
+    <p><strong>必要なもの。</strong> 最新のウェブブラウザ、インターネット接続、PDFファイルを開けるソフトウェアです。このページを読めていれば、お使いの端末はこれらの要件を満たしています。</p>
+    <p><strong>同意の撤回。</strong> 文書を完了する前であれば、署名せずに送信者に連絡することで、いつでも同意を撤回できます。同意の撤回は、すでに署名した文書には影響しません。</p>
+    <p><strong>紙のコピー。</strong> 送信者に連絡すれば、いつでもこの文書の紙のコピーを請求できます。</p>
+    <p><strong>記録される内容。</strong> お客様の同意は、同意した日時およびインターネット（IP）アドレスとともに記録され、文書の監査証跡に表示されます。</p>
+  submission_event_names:
+    esign_consent_by_html: "<b>電子署名に同意 (%{version})</b> - %{submitter_name}"
   webhook_url: Webhook URL
   webhook_url_must_use_https: は https を使用する必要があります
   webhook_url_must_not_point_at_a_private_address: は localhost やプライベート/メタデータのアドレスを指すことはできません

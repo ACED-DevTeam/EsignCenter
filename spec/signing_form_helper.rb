@@ -50,6 +50,15 @@ module SigningFormHelper
     sleep 0.1
   end
 
+  # Ticks the ESIGN consent box when the form shows one (a signer who has not
+  # consented yet). Completion buttons stay disabled until it is ticked. Call it
+  # with the form expanded (after "Sign now" / "Start now" on collapsed steps).
+  def agree_to_esign_consent
+    return unless page.has_css?('#esign_consent', wait: 5)
+
+    check 'esign_consent'
+  end
+
   def field_value(submitter, field_name)
     field = template_field(submitter.template, field_name)
 

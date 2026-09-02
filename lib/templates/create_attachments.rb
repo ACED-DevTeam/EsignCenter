@@ -6,23 +6,39 @@ module Templates
     ZIP_CONTENT_TYPE = 'application/zip'
     X_ZIP_CONTENT_TYPE = 'application/x-zip-compressed'
     JSON_CONTENT_TYPE = 'application/json'
-    DOCUMENT_EXTENSIONS = %w[.docx .doc .xlsx .xls .odt .rtf].freeze
+    # Word documents are the only non-PDF, non-image format accepted; they
+    # are converted to PDF in the background (WordConverter, docs/word-uploads.md).
+    DOCUMENT_EXTENSIONS = %w[.docx .doc].freeze
 
     DOCUMENT_CONTENT_TYPES = %w[
       application/vnd.openxmlformats-officedocument.wordprocessingml.document
       application/msword
-      application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
-      application/vnd.ms-excel
-      application/vnd.oasis.opendocument.text
-      application/rtf
     ].freeze
 
     ANNOTATIONS_SIZE_LIMIT = 6.megabytes
     MAX_ZIP_SIZE = 100.megabytes
+    WORD_CONVERSIONS_PER_HOUR = 30
     InvalidFileType = Class.new(StandardError)
     PdfEncrypted = Class.new(StandardError)
 
+    # Refusals a user can act on, keyed by the i18n message they get. Anything
+    # else that goes wrong stays a generic "unable to upload" error.
+    UPLOAD_ERROR_KEYS = {
+      WordConverter::Unavailable => 'word_conversion_unavailable',
+      WordConverter::FileTooLarge => 'word_file_too_large',
+      RateLimit::LimitApproached => 'too_many_word_conversions',
+      InvalidFileType => 'unsupported_document_format'
+    }.freeze
+
+    BASE_ACCEPT_FILE_TYPES = 'image/*, application/pdf, application/zip, application/json'
+
     module_function
+
+    # The `accept` list for the builder's own upload inputs once Word is on
+    # (the dashboard forms build the same list inline).
+    def builder_accept_file_types
+      "#{BASE_ACCEPT_FILE_TYPES}, #{DOCUMENT_EXTENSIONS.join(', ')}"
+    end
 
     def call(template, params, extract_fields: false, dynamic: false)
       documents = []
@@ -41,30 +57,96 @@ module Templates
     def handle_pdf_or_image(template, file, document_data = nil, params = {}, extract_fields: false, metadata: {})
       document_data ||= file.read
 
-      if file.content_type == PDF_CONTENT_TYPE
-        document_data = maybe_decrypt_pdf_or_raise(document_data, params)
+      document_data = maybe_decrypt_pdf_or_raise(document_data, params) if file.content_type == PDF_CONTENT_TYPE
 
+      blob = build_document_blob(document_data, filename: file.original_filename,
+                                                content_type: file.content_type, metadata:)
+
+      document = template.documents.create!(blob:)
+
+      process_pdf_attachment(document, document_data, extract_fields:)
+    end
+
+    # The blob a PDF or image document is stored as: annotations are read up
+    # front for PDFs (the builder draws them), and every blob carries its
+    # sha256. Shared with the Word conversion job, which stores its PDF the
+    # same way.
+    def build_document_blob(document_data, filename:, content_type:, metadata: {})
+      if content_type == PDF_CONTENT_TYPE
         annotations =
           document_data.size < ANNOTATIONS_SIZE_LIMIT ? Templates::BuildAnnotations.call(document_data) : []
       end
 
       sha256 = Base64.urlsafe_encode64(Digest::SHA256.digest(document_data))
 
+      ActiveStorage::Blob.create_and_upload!(
+        io: StringIO.new(document_data),
+        filename:,
+        metadata: {
+          **metadata,
+          identified: content_type == PDF_CONTENT_TYPE,
+          analyzed: content_type == PDF_CONTENT_TYPE,
+          pdf: { annotations: }.compact_blank, sha256:
+        }.compact_blank,
+        content_type:
+      )
+    end
+
+    # Page count, preview images and (optionally) the form fields found in the
+    # file. Runs inline for PDF and image uploads and from the conversion job
+    # once a Word document has become a PDF.
+    def process_pdf_attachment(attachment, document_data, extract_fields: false)
+      Templates::ProcessDocument.call(attachment, document_data, extract_fields:)
+    end
+
+    # A Word document is stored as uploaded and handed to the conversion
+    # queue; the attachment is returned in the same position a PDF would be,
+    # flagged `converting` until the job swaps the PDF in.
+    def handle_word_document(template, file, document_data, content_type:)
+      raise WordConverter::Unavailable unless WordConverter.enabled?
+      raise WordConverter::FileTooLarge if document_data.bytesize > WordConverter::MAX_FILE_SIZE
+
+      RateLimit.call("word-conversion-#{template.account_id}", limit: WORD_CONVERSIONS_PER_HOUR, ttl: 1.hour)
+
       blob = ActiveStorage::Blob.create_and_upload!(
         io: StringIO.new(document_data),
         filename: file.original_filename,
+        content_type:,
         metadata: {
-          **metadata,
-          identified: file.content_type == PDF_CONTENT_TYPE,
-          analyzed: file.content_type == PDF_CONTENT_TYPE,
-          pdf: { annotations: }.compact_blank, sha256:
-        }.compact_blank,
-        content_type: file.content_type
+          identified: true,
+          analyzed: true,
+          'converting' => true,
+          'original_filename' => file.original_filename,
+          sha256: Base64.urlsafe_encode64(Digest::SHA256.digest(document_data))
+        }
       )
 
-      document = template.documents.create!(blob:)
+      attachment = template.documents.create!(blob:)
 
-      Templates::ProcessDocument.call(document, document_data, extract_fields:)
+      ConvertWordDocumentJob.perform_async('template_id' => template.id, 'attachment_uuid' => attachment.uuid)
+
+      attachment
+    end
+
+    # The schema entry a freshly stored document gets; a Word document still
+    # being converted carries `converting: true` so every reader (builder,
+    # send page) shows a placeholder instead of pages.
+    def schema_item(document)
+      item = { attachment_uuid: document.uuid, name: document.filename.base }
+      item[:converting] = true if document.metadata['converting']
+
+      item
+    end
+
+    # The user-facing message for a refusal raised by `call`, or nil when the
+    # error is not one the user can act on.
+    def upload_error_message(error)
+      key = UPLOAD_ERROR_KEYS.find { |klass, _| error.is_a?(klass) }&.last
+
+      # An oversized zip is a different problem from an unknown format.
+      return if key.nil? || (error.is_a?(InvalidFileType) && error.message == 'zip_too_large')
+
+      I18n.t(key, limit_mb: WordConverter::MAX_FILE_SIZE / 1.megabyte)
     end
 
     def maybe_decrypt_pdf_or_raise(data, params)
@@ -120,6 +202,14 @@ module Templates
     def handle_file_types(template, file, params, extract_fields:, dynamic: false)
       if file.content_type.include?('image') || file.content_type == PDF_CONTENT_TYPE
         return [handle_pdf_or_image(template, file, file.read, params, extract_fields:), []]
+      end
+
+      document_data = file.read
+      content_type = Marcel::MimeType.for(StringIO.new(document_data), name: file.original_filename,
+                                                                       declared_type: file.content_type)
+
+      if WordConverter.word?(content_type:, filename: file.original_filename)
+        return [handle_word_document(template, file, document_data, content_type:), []]
       end
 
       raise InvalidFileType, "#{file.content_type}/#{dynamic}"

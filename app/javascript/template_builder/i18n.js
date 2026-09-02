@@ -1,4 +1,9 @@
 const en = {
+  documents_still_converting: 'This template has a document that is still being converted. Try again in a moment.',
+  document_conversion_failed: 'A document in this template could not be converted. Remove it or upload it as a PDF.',
+  converting_word_document_: 'Converting Word document...',
+  word_conversion_taking_longer_refresh_later: 'This is taking longer than expected. Refresh the page later.',
+  word_conversion_failed_save_as_pdf: 'We couldn\'t convert this Word document. Save it as a PDF and upload again.',
   fixed: 'Fixed',
   default: 'Default',
   save_as_custom_field: 'Save as custom field',
@@ -224,6 +229,11 @@ const en = {
 }
 
 const es = {
+  documents_still_converting: 'Esta plantilla tiene un documento que todavía se está convirtiendo. Inténtelo de nuevo en un momento.',
+  document_conversion_failed: 'No se pudo convertir un documento de esta plantilla. Elimínelo o súbalo como PDF.',
+  converting_word_document_: 'Convirtiendo el documento de Word...',
+  word_conversion_taking_longer_refresh_later: 'Esto está tardando más de lo esperado. Actualice la página más tarde.',
+  word_conversion_failed_save_as_pdf: 'No pudimos convertir este documento de Word. Guárdelo como PDF y súbalo de nuevo.',
   fixed: 'Fijo',
   default: 'Predeterminado',
   save_as_custom_field: 'Guardar como personalizado',
@@ -449,6 +459,11 @@ const es = {
 }
 
 const it = {
+  documents_still_converting: 'Questo modello contiene un documento ancora in fase di conversione. Riprova tra un momento.',
+  document_conversion_failed: 'Un documento di questo modello non è stato convertito. Rimuovilo o caricalo come PDF.',
+  converting_word_document_: 'Conversione del documento Word in corso...',
+  word_conversion_taking_longer_refresh_later: 'Sta richiedendo più tempo del previsto. Aggiorna la pagina più tardi.',
+  word_conversion_failed_save_as_pdf: 'Non siamo riusciti a convertire questo documento Word. Salvalo come PDF e caricalo di nuovo.',
   fixed: 'Fisso',
   default: 'Predefinito',
   save_as_custom_field: 'Salva come personalizzato',
@@ -674,6 +689,11 @@ const it = {
 }
 
 const pt = {
+  documents_still_converting: 'Este modelo tem um documento que ainda está sendo convertido. Tente novamente em instantes.',
+  document_conversion_failed: 'Um documento deste modelo não pôde ser convertido. Remova-o ou envie-o como PDF.',
+  converting_word_document_: 'Convertendo o documento do Word...',
+  word_conversion_taking_longer_refresh_later: 'Isso está demorando mais do que o esperado. Atualize a página mais tarde.',
+  word_conversion_failed_save_as_pdf: 'Não foi possível converter este documento do Word. Salve-o como PDF e envie novamente.',
   fixed: 'Fixo',
   default: 'Padrão',
   save_as_custom_field: 'Salvar como personalizado',
@@ -899,6 +919,11 @@ const pt = {
 }
 
 const fr = {
+  documents_still_converting: 'Ce modèle contient un document encore en cours de conversion. Réessayez dans un instant.',
+  document_conversion_failed: 'Un document de ce modèle n\'a pas pu être converti. Supprimez-le ou téléversez-le en PDF.',
+  converting_word_document_: 'Conversion du document Word...',
+  word_conversion_taking_longer_refresh_later: 'Cela prend plus de temps que prévu. Actualisez la page plus tard.',
+  word_conversion_failed_save_as_pdf: 'Impossible de convertir ce document Word. Enregistrez-le en PDF et téléversez-le à nouveau.',
   fixed: 'Fixe',
   default: 'Par défaut',
   save_as_custom_field: 'Enregistrer comme personnalisé',
@@ -1124,6 +1149,11 @@ const fr = {
 }
 
 const de = {
+  documents_still_converting: 'Diese Vorlage enthält ein Dokument, das noch konvertiert wird. Versuchen Sie es gleich noch einmal.',
+  document_conversion_failed: 'Ein Dokument in dieser Vorlage konnte nicht konvertiert werden. Entfernen Sie es oder laden Sie es als PDF hoch.',
+  converting_word_document_: 'Word-Dokument wird konvertiert...',
+  word_conversion_taking_longer_refresh_later: 'Das dauert länger als erwartet. Laden Sie die Seite später neu.',
+  word_conversion_failed_save_as_pdf: 'Dieses Word-Dokument konnte nicht konvertiert werden. Speichern Sie es als PDF und laden Sie es erneut hoch.',
   fixed: 'Fest',
   default: 'Standard',
   save_as_custom_field: 'Als benutzerdefiniert speichern',
@@ -1349,6 +1379,11 @@ const de = {
 }
 
 const nl = {
+  documents_still_converting: 'Deze sjabloon bevat een document dat nog wordt geconverteerd. Probeer het zo meteen opnieuw.',
+  document_conversion_failed: 'Een document in deze sjabloon kon niet worden geconverteerd. Verwijder het of upload het als PDF.',
+  converting_word_document_: 'Word-document wordt geconverteerd...',
+  word_conversion_taking_longer_refresh_later: 'Dit duurt langer dan verwacht. Vernieuw de pagina later.',
+  word_conversion_failed_save_as_pdf: 'We konden dit Word-document niet converteren. Sla het op als PDF en upload het opnieuw.',
   fixed: 'Vast',
   default: 'Standaard',
   save_as_custom_field: 'Opslaan als aangepast',

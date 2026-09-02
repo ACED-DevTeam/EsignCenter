@@ -26,7 +26,44 @@ module Templates
     three_months: 3.months
   }.with_indifferent_access.freeze
 
+  # Raised wherever a submission would be built from a template that still
+  # has a Word document converting (or one that failed to convert): the PDF
+  # pipeline needs a PDF behind every schema entry. `status` is 'converting'
+  # or 'failed'; the message is the user-facing one for that state.
+  class DocumentsNotReady < StandardError
+    attr_reader :status
+
+    def initialize(status)
+      @status = status
+
+      super(I18n.t(status == 'failed' ? 'document_conversion_failed' : 'documents_still_converting'))
+    end
+  end
+
   module_function
+
+  # nil when every document is ready, otherwise 'converting' or 'failed'
+  # (a failed document outranks a converting one: it needs the user's action).
+  def documents_status(template)
+    items = template.schema.to_a
+
+    return 'failed' if items.any? { |item| item['conversion_failed'] || item[:conversion_failed] }
+    return 'converting' if items.any? { |item| item['converting'] || item[:converting] }
+
+    nil
+  end
+
+  def documents_ready?(template)
+    documents_status(template).nil?
+  end
+
+  def assert_documents_ready!(template)
+    status = documents_status(template)
+
+    raise DocumentsNotReady, status if status
+
+    true
+  end
 
   def build_field_areas_index(fields)
     hash = {}

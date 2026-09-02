@@ -10,6 +10,7 @@ class StartFormController < ApplicationController
   before_action :load_resubmit_submitter, only: :update
   before_action :load_template
   before_action :refuse_email_2fa_shared_link!, except: :show
+  before_action :refuse_unready_documents!, only: %i[show update]
   before_action :authorize_start!, only: :update
 
   COOKIES_TTL = 12.hours
@@ -117,6 +118,22 @@ class StartFormController < ApplicationController
     return head :forbidden unless request.format.html?
 
     render :email_verification_required, status: :forbidden
+  end
+
+  # A template with a Word document still converting (or failed) has no PDF
+  # to sign yet: the shared link and the sender's own "sign yourself" start
+  # get an explanation instead of a form. Only for templates the visitor may
+  # open anyway, so a private template's existence is not confirmed.
+  def refuse_unready_documents!
+    status = Templates.documents_status(@template)
+
+    return if status.nil?
+    return unless @template.shared_link? || (current_user && current_ability.can?(:update, @template))
+    return head :unprocessable_content unless request.format.html?
+
+    @documents_not_ready = Templates::DocumentsNotReady.new(status)
+
+    render :documents_not_ready, status: :unprocessable_content
   end
 
   def load_resubmit_submitter

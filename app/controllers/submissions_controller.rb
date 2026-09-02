@@ -59,7 +59,7 @@ class SubmissionsController < ApplicationController
     SearchEntries.enqueue_reindex(submissions)
 
     redirect_to template_path(@template), notice: I18n.t('new_recipients_have_been_added')
-  rescue Submissions::CreateFromSubmitters::BaseError => e
+  rescue Submissions::CreateFromSubmitters::BaseError, Templates::DocumentsNotReady => e
     render turbo_stream: turbo_stream.replace(:submitters_error, partial: 'submissions/error',
                                                                  locals: { error: e.message }),
            status: :unprocessable_content

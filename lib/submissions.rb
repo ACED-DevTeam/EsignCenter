@@ -86,6 +86,8 @@ module Submissions
   end
 
   def create_from_emails(template:, user:, emails:, source:, mark_as_sent: false, params: {})
+    Templates.assert_documents_ready!(template)
+
     preferences = Submitters.normalize_preferences(user.account, user, params)
 
     expire_at = params[:expire_at].presence || Templates.build_default_expire_at(template)

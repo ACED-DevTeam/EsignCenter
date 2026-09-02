@@ -100,7 +100,9 @@ Rails.application.routes.draw do
   resources :templates, only: %i[new create edit update show destroy] do
     resources :clone, only: %i[new create], controller: 'templates_clone'
     resource :debug, only: %i[show], controller: 'templates_debug' if Rails.env.development?
-    resources :documents, only: %i[index create], controller: 'template_documents'
+    resources :documents, only: %i[index create], controller: 'template_documents' do
+      get :status, on: :member
+    end
     resources :clone_and_replace, only: %i[create], controller: 'templates_clone_and_replace'
     resources :detect_fields, only: %i[create], controller: 'templates_detect_fields'
     resources :restore, only: %i[create], controller: 'templates_restore'
@@ -204,6 +206,8 @@ Rails.application.routes.draw do
   put '/embed/template_builder/:token/templates/:template_id', to: 'embed_template_builder#update_template'
   get '/embed/template_builder/:token/templates/:template_id/documents', to: 'embed_template_builder#documents'
   post '/embed/template_builder/:token/templates/:template_id/documents', to: 'embed_template_builder#create_documents'
+  get '/embed/template_builder/:token/templates/:template_id/documents/:id/status',
+      to: 'embed_template_builder#document_status'
   post '/embed/template_builder/:token/templates/:template_id/detect_fields', to: 'embed_template_builder#detect_fields'
 
   ActiveSupport.run_load_hooks(:routes, self)

@@ -397,6 +397,8 @@ Sessions 5–6 and are listed there when they land.
 | `ACTIVE_STORAGE_PUBLIC` | Leave unset | `config/environments/production.rb`, `lib/docuseal.rb` | Unset = files are served through the app with expiring links (correct). `true` would assume a public bucket. |
 | `PRESIGNED_URLS_EXPIRE_MINUTES`, `FILE_URLS_EXPIRE_MINUTES` | Optional | `config/environments/production.rb`, `lib/accounts.rb` | Download-link lifetimes; defaults 240 and 40 minutes. |
 | `TRUSTED_CERTS` | Optional | `lib/docuseal.rb` | Extra root certificates trusted by `/verify`. Unset is fine. |
+| `WORD_CONVERSION_ENABLED` | Optional (Session 4) | `lib/word_converter.rb` | Unset = Word (.docx/.doc) uploads are on whenever LibreOffice is in the image. Set to exactly `false` to switch them off: the upload forms stop offering Word files and any Word file sent is refused with a clear message. The kill switch for LibreOffice trouble. See `docs/word-uploads.md`. |
+| `SOFFICE_PATH` | Optional (Session 4) | `lib/word_converter.rb` | Full path to the LibreOffice binary when `soffice` is not on `PATH`. Leave unset for the shipped image. |
 | One-off, for `rake email:pin`: `ACCOUNT_ID`, `SMTP_TOKEN_ENV`, `FROM_EMAIL`, `SMTP_HOST`, `SMTP_PIN_PORT`, plus one variable per internal app holding that app's Postmark server token (any name; `SMTP_TOKEN_ENV` names it) | Task-time only | `lib/tasks/email.rake` | The task aborts naming the missing one. `SMTP_HOST` defaults to `smtp.postmarkapp.com`, `SMTP_PIN_PORT` to `587`. |
 
 ---
@@ -518,6 +520,14 @@ Redis. Session 4's guards (low-concurrency queue, hard timeout, size cap)
 reduce the odds; they do not change what is lost when it happens. The
 Render plan's memory limit for the Standard tier: **confirm at launch-gate
 review** (the checklist notes the PDF work already needs Standard).
+
+What shipped (Session 4 D): conversions run on the `documents` Sidekiq queue
+with one worker thread, at most **two** LibreOffice processes at once
+(`WordConverter::MAX_CONCURRENT`), a 120-second hard timeout that kills the
+whole process group, a 20 MB file cap, and 30 conversions per account per
+hour. Budget a few hundred megabytes per running conversion on top of the
+web server's working set when choosing the tier. `WORD_CONVERSION_ENABLED=false`
+turns the feature off without a deploy. Details in `docs/word-uploads.md`.
 
 ### Cost of Render managed Redis
 

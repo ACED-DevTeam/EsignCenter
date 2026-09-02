@@ -21,7 +21,8 @@
   data-with-conditions="<%= Entitlements.allowed?(@template.account, :conditional_logic) %>"
   data-with-formula="false"
   data-with-phone="false"
-  data-locale="<%= I18n.locale %>"></template-builder>
+  data-locale="<%= I18n.locale %>"
+  data-accept-file-types="<%= Templates::CreateAttachments.builder_accept_file_types if Docuseal.advanced_formats? %>"></template-builder>
 
 <div class="py-3 text-xs text-base-content/70">
   <%= render 'shared/powered_by', account: @template.account %>

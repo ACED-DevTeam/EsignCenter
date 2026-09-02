@@ -9,6 +9,8 @@ class StartFormEmail2faSendController < ApplicationController
   def create
     @template = Template.find_by!(slug: params[:slug])
 
+    Templates.assert_documents_ready!(@template)
+
     @submitter = @template.submissions.new(account_id: @template.account_id)
                           .submitters.new(**submitter_params, account_id: @template.account_id)
 
@@ -21,6 +23,8 @@ class StartFormEmail2faSendController < ApplicationController
   rescue Submitters::UnableToSendCode => e
     redirect_to start_form_path(@template.slug, params: submitter_params.merge(email_verification: true)),
                 alert: e.message
+  rescue Templates::DocumentsNotReady => e
+    redirect_to start_form_path(@template.slug), alert: e.message
   end
 
   private

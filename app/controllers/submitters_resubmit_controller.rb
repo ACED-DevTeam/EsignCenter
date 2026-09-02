@@ -6,6 +6,8 @@ class SubmittersResubmitController < ApplicationController
   def update
     return redirect_to submit_form_path(slug: @submitter.slug) if @submitter.email != current_user.email
 
+    Templates.assert_documents_ready!(@submitter.template)
+
     submission = @submitter.account.submissions.new(created_by_user: current_user,
                                                     submitters_order: :preserved,
                                                     **@submitter.submission.slice(:template_fields,
@@ -34,6 +36,8 @@ class SubmittersResubmitController < ApplicationController
     end
 
     redirect_to submit_form_path(slug: @new_submitter.slug)
+  rescue Templates::DocumentsNotReady => e
+    redirect_to submit_form_path(slug: @submitter.slug), alert: e.message
   end
 
   private

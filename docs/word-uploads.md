@@ -1,0 +1,97 @@
+# Word uploads (.docx / .doc)
+
+EsignCenter accepts Word documents wherever a PDF can be uploaded from the
+web app: the dashboard upload button and drop zone, and the template builder's
+"Add document" and "Replace" buttons. The file is converted to PDF in the
+background with LibreOffice; the template then works exactly like one built
+from a PDF.
+
+The public API, the MCP tools and signing sessions keep accepting **PDF and
+images only** (a Word document gets the usual `422 Unsupported document
+format`). Their contract is synchronous — the caller gets a finished template
+back — and a conversion is not.
+
+## What users see
+
+1. The upload finishes at once. The builder opens and the Word document shows
+   a **"Converting Word document…"** card (spinner and the file name) where its
+   pages will be. Nothing can be dropped or drawn on that card.
+2. The builder checks every 3 seconds. When the PDF is ready the pages appear
+   in place — no reload. If the Word file contained form fields, the usual
+   "keep or remove them" prompt appears, as it does for a PDF.
+3. If the conversion fails, the card says **"We couldn't convert this Word
+   document. Save it as a PDF and upload again."** with the normal Remove
+   button. A conversion that is still running after 5 minutes shows "This is
+   taking longer than expected. Refresh the page later." (the job keeps
+   running; a later page load shows the result).
+
+**Nothing can be sent while a document is converting.** A template whose
+document is still converting — or failed to convert — is not ready for
+signing: the builder's Send and Sign-yourself buttons are held back with a
+tooltip, and every way of starting a signing (the send dialog, the API, the
+MCP tools, signing sessions, the shared link, "sign yourself", resubmit) is
+refused with "This template has a document that is still being converted.
+Try again in a moment." or, for a failed document, "A document in this
+template could not be converted. Remove it or upload it as a PDF." The API
+answers `422` with the same message.
+
+A file that cannot be accepted is refused straight away with a specific
+message — no template or document is created:
+
+| Situation | Message |
+|---|---|
+| Not a PDF, image or Word file (a spreadsheet, for instance) | "This file format isn't supported. Upload a PDF, an image, or a Word document (.docx, .doc)." |
+| Word file larger than 20 MB | "This Word document is too large. The limit is 20 MB — save it as a PDF or split it up." |
+| More than 30 Word conversions from one account in an hour | "Too many Word documents were converted in the last hour. Try again later or upload a PDF." |
+| Conversion switched off, or LibreOffice missing | "Word documents can't be converted right now. Save the file as a PDF and upload it again." |
+
+While the file is being converted it is stored as uploaded. Once the PDF is
+in place the original Word file is deleted from storage; only the PDF is kept.
+
+## Limits and guards
+
+| Guard | Value | Where |
+|---|---|---|
+| File size | 20 MB | `WordConverter::MAX_FILE_SIZE` |
+| Time per conversion | 120 seconds, then the LibreOffice process group is killed | `WordConverter::TIMEOUT_SECONDS` |
+| Conversions running at once (whole instance) | 2 | `WordConverter::MAX_CONCURRENT` |
+| Conversions per account | 30 per hour | `Templates::CreateAttachments::WORD_CONVERSIONS_PER_HOUR` |
+| Queue | `documents`, one worker thread | `config/sidekiq.yml` |
+
+Each conversion runs in its own temporary directory with its own LibreOffice
+profile and is removed afterwards. LibreOffice is started directly (never
+through a shell) with the file's bytes written to disk under a fixed name, so
+the file name a user chose never reaches the command line. A cold first
+launch of LibreOffice on a fresh container can die before producing anything;
+the converter retries once with a fresh directory before giving up.
+
+When every slot is busy the job waits 15 seconds and tries again, for up to
+about 10 minutes, before marking the document failed. A document that
+LibreOffice cannot convert, or that times out, is marked failed at once and
+reported to Sentry as a warning; it is not retried (the result would be the
+same). Storage or database errors are retried by Sidekiq as usual (3 tries).
+
+## Operator switches
+
+| Variable | Default | Effect |
+|---|---|---|
+| `WORD_CONVERSION_ENABLED` | unset (on) | Set to exactly `false` to switch Word uploads off. The upload forms stop offering `.docx`/`.doc`, and a Word file sent anyway is refused with the "can't be converted right now" message. Jobs already queued still run. This is the kill switch to reach for if LibreOffice misbehaves in production. |
+| `SOFFICE_PATH` | `soffice` (found on `PATH`) | Full path to the LibreOffice binary when it is not on `PATH`. If the binary cannot be found, Word uploads behave as if the switch were off. |
+
+Both are optional; nothing else needs configuring.
+
+## Resources (launch-gate 3)
+
+- **Image size.** LibreOffice Writer plus the metric-compatible fonts
+  (Liberation, Carlito, DejaVu) add roughly **800 MB** to the Docker image.
+  Accepted as decision D48; expect longer image pulls and builds on Render.
+- **Memory.** A conversion can take a few hundred megabytes for the duration
+  of the LibreOffice process, and two may run at once. The conversion runs
+  inside the same container as the web server, the job worker and the
+  embedded Redis, so a container that hits its memory limit takes all of them
+  down with it (see `docs/operations.md` section 5, "Memory contention with
+  LibreOffice"). Plan for the Standard tier at least and confirm the limit at
+  launch-gate 3.
+- **CPU.** Conversions are CPU-bound for a few seconds each; the single
+  worker thread on the `documents` queue and the two-slot cap keep them from
+  crowding out signing traffic.

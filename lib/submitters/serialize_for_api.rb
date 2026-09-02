@@ -55,7 +55,8 @@ module Submitters
     def serialize_events(events)
       events.map do |event|
         event.as_json(only: %i[id submitter_id event_type event_timestamp])
-             .merge('data' => event.data.slice('reason', 'firstname', 'lastname', 'method', 'country', 'idcode'))
+             .merge('data' => event.data.slice('reason', 'firstname', 'lastname', 'method', 'country', 'idcode',
+                                               'version'))
       end
     end
   end

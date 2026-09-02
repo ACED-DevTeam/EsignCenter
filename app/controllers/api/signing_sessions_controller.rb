@@ -30,6 +30,13 @@ module Api
       submission = SigningSessions::Create.call(user: current_user, ability: current_ability,
                                                 attrs: signing_session_params)
 
+      # Mirror Api::SubmissionsController#create: a submitter created with
+      # `completed: true` is sender-attested, so its completion is recorded as
+      # an API completion (never an ESIGN consent event — docs/esign-consent.md).
+      submission.submitters.each do |submitter|
+        SubmissionEvents.create_with_tracking_data(submitter, 'api_complete_form', request) if submitter.completed_at?
+      end
+
       render json: SigningSessions::SerializeForApi.call(submission)
     rescue Templates::CreateAttachments::PdfEncrypted
       render json: { error: 'The PDF is password-protected. Upload an unencrypted PDF.' },
@@ -40,7 +47,7 @@ module Api
     rescue ActiveRecord::RecordNotFound
       render json: { error: 'Template not found' }, status: :unprocessable_content
     rescue Submitters::NormalizeValues::BaseError, Submissions::CreateFromSubmitters::BaseError,
-           DownloadUtils::UnableToDownload => e
+           DownloadUtils::UnableToDownload, Templates::DocumentsNotReady => e
       ErrorReport.warning(e)
 
       render json: { error: e.message }, status: :unprocessable_content

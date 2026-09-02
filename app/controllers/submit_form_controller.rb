@@ -16,6 +16,12 @@ class SubmitFormController < ApplicationController
 
   CONFIG_KEYS = [].freeze
 
+  # The Vue form maps this error key to the required message at the consent
+  # checkbox (see app/javascript/submission_form/form.vue).
+  rescue_from EsignConsent::ConsentRequiredError do
+    render json: { error: 'esign_consent_required' }, status: :unprocessable_content
+  end
+
   def show
     submission = @submitter.submission
 

@@ -274,7 +274,7 @@ The listing below is every occurrence of `multitenant` in `app/`, `lib/` and
 |---|---|---|---|
 | `lib/accounts.rb:102,129,144` | Signing certificate / trusted certs / timestamp-server resolution | infra-keep | Session 4 makes certificates operator-only and rewrites these; justified at each site |
 | `lib/docuseal.rb:31` | The predicate itself | infra-keep | Stays, never flipped (decision-locked); comment names this document |
-| `lib/docuseal.rb:44` | `advanced_formats?` (Word/.doc uploads) | infra-keep | Session 4 decouples it |
+| `lib/docuseal.rb:44` | `advanced_formats?` (Word/.doc uploads) | customer-ok | Session 4 decoupled it: now `WordConverter.enabled?` (LibreOffice present and `WORD_CONVERSION_ENABLED` not `false`), for every account — see `docs/word-uploads.md` |
 | `lib/docuseal.rb:74` | Fulltext search toggle | infra-keep | Operator toggle already governs (`OperatorConfigs`); the tenancy half is inert |
 | `lib/download_utils.rb:38,60` | Default for URL validation | infra-keep | Every caller that fetches a user-supplied URL passes `validate: true` explicitly; justified at the site |
 | `lib/replace_email_variables.rb:162` | Per-account custom email domain | customer-ok | Removed (no custom domains in v1) |
@@ -293,9 +293,10 @@ for everyone), `lib/webhook_urls.rb` (webhook fan-out now keyed on the
 
 After the rewrite, `grep -rn "multitenant?" app lib config` returns exactly
 the infra-keep rows above: `app/models/submitter.rb` (2), `app/jobs/application_job.rb`,
-`lib/accounts.rb` (3), `lib/docuseal.rb` (3), `lib/download_utils.rb` (2),
-`lib/send_webhook_request.rb`, `lib/templates/image_to_fields.rb` (14 lines,
-one of them a comment). The gate definition in `lib/tasks/gates.rake` spells
+`lib/accounts.rb` (3), `lib/docuseal.rb` (2 — the predicate and the fulltext
+toggle; `advanced_formats?` no longer reads it since Session 4),
+`lib/download_utils.rb` (2), `lib/send_webhook_request.rb`,
+`lib/templates/image_to_fields.rb` (13 lines, one of them a comment). The gate definition in `lib/tasks/gates.rake` spells
 the word only as an escaped regex, so the literal grep does not list it.
 
 ### 2.6 Feature switches and the upgrade call-to-action

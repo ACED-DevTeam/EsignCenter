@@ -64,9 +64,7 @@ class EmbedTemplateBuilderController < ApplicationController
 
     documents, = Templates::CreateAttachments.call(@template, params, extract_fields: true)
 
-    schema = documents.map do |doc|
-      { attachment_uuid: doc.uuid, name: doc.filename.base }
-    end
+    schema = documents.map { |doc| Templates::CreateAttachments.schema_item(doc) }
 
     render json: {
       schema:,
@@ -81,6 +79,22 @@ class EmbedTemplateBuilderController < ApplicationController
     }
   rescue Templates::CreateAttachments::PdfEncrypted
     render json: { error: 'PDF encrypted', status: 'pdf_encrypted' }, status: :unprocessable_content
+  rescue StandardError => e
+    message = Templates::CreateAttachments.upload_error_message(e)
+
+    raise if message.nil?
+
+    render json: { error: message }, status: :unprocessable_content
+  end
+
+  # The embedded builder's copy of TemplateDocumentsController#status, under
+  # the builder token; `id` is the attachment uuid.
+  def document_status
+    result = Templates::ConversionStatus.call(@template, params[:id])
+
+    return render json: { error: I18n.t('not_found') }, status: :not_found if result.nil?
+
+    render json: result
   end
 
   def detect_fields

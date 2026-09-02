@@ -61,7 +61,10 @@ safeRegisterElement('submission-form', class extends HTMLElement {
       requireSigningReason: this.dataset.requireSigningReason === 'true',
       withConfetti: this.dataset.withConfetti === 'true',
       withFieldLabels: this.dataset.withFieldLabels !== 'false',
-      withDisclosure: this.dataset.withDisclosure === 'true',
+      // ESIGN consent contract from the Rails partial (strings included, so
+      // i18n.yml stays the single source). A mount without the attribute never
+      // blocks; every real mount carries it (asserted by the system spec).
+      esignConsent: JSON.parse(this.dataset.esignConsent || '{"consented": true}'),
       reuseSignature: this.dataset.reuseSignature !== 'false',
       withTypedSignature: this.dataset.withTypedSignature !== 'false',
       authenticityToken: document.querySelector('meta[name="csrf-token"]')?.content,

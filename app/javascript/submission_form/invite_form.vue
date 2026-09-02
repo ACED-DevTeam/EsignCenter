@@ -11,6 +11,12 @@
       name="authenticity_token"
       :value="authenticityToken"
     >
+    <input
+      v-if="esignConsent"
+      type="hidden"
+      name="esign_consent"
+      value="true"
+    >
     <div
       v-for="(submitter, index) in [...submitters, ...optionalSubmitters]"
       :key="submitter.uuid"
@@ -99,6 +105,13 @@ export default {
     submitterSlug: {
       type: String,
       required: true
+    },
+    // The signer ticked the ESIGN consent box during this signing: the invite
+    // request (the last one of an invite-then-complete flow) carries it too.
+    esignConsent: {
+      type: Boolean,
+      required: false,
+      default: false
     }
   },
   emits: ['success'],

@@ -315,20 +315,6 @@
       {{ t('scan_the_qr_code_with_the_camera_app_to_open_the_form_on_mobile_and_draw_your_signature') }}
     </div>
     <div
-      v-else-if="withDisclosure"
-      dir="auto"
-      class="text-base-content/60 text-xs text-center w-full mt-1 select-none"
-    >
-      {{ t('by_clicking_you_agree_to_the').replace('{button}', buttonText.charAt(0).toUpperCase() + buttonText.slice(1)) }} <span>
-        <span class="inline md:hidden">
-          {{ t('esignature_disclosure') }}
-        </span>
-        <span class="hidden md:inline">
-          {{ t('electronic_signature_disclosure') }}
-        </span>
-      </span>
-    </div>
-    <div
       v-else
       class="mt-5 md:mt-7"
     />
@@ -389,11 +375,6 @@ export default {
       default: true
     },
     dryRun: {
-      type: Boolean,
-      required: false,
-      default: false
-    },
-    withDisclosure: {
       type: Boolean,
       required: false,
       default: false

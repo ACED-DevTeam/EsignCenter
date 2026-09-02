@@ -7,7 +7,12 @@ pointed at it (step 5).
 ## 1. Create the services on Render
 
 - **Web service** — build from this repo's `Dockerfile`. Plan: at least
-  **Standard** (the PDF work needs the memory).
+  **Standard** (the PDF work needs the memory, and Word-to-PDF conversion
+  runs LibreOffice inside the same container — see `docs/word-uploads.md`).
+  The image is about **800 MB larger** since LibreOffice Writer and its fonts
+  were added (Session 4, decision D48): expect slower builds and first
+  deploys. `WORD_CONVERSION_ENABLED=false` switches Word uploads off without
+  a rebuild.
 - **PostgreSQL database** — Render managed Postgres (Basic is fine to start).
   Copy its **Internal Database URL**.
 - **File storage** — Render's disk is wiped on every deploy, so signed PDFs

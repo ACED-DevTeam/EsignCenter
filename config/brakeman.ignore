@@ -23,6 +23,10 @@
     {
       "fingerprint": "dbbfb4a4ace7f43d8247cbb44afa8b628e005e6194ca5552e029b200f725a2d5",
       "message": "Unescaped find_by!(uuid: params[:id]) is not risky"
+    },
+    {
+      "fingerprint": "6c8d70d7577d3caed29a5c16c8c40f6a0d4adbbd9ba687fb62282df4067a7b2c",
+      "note": "WordConverter spawns LibreOffice with Process.spawn as an argument array (no shell); the only variable parts are the operator-set SOFFICE_PATH env and paths inside a fresh mktmpdir (Session 4 D)"
     }
   ]
 }

@@ -28,6 +28,8 @@ module Submitters
         WebhookUrls.enqueue_events(submitter, 'form.started')
       end
 
+      EsignConsent.record!(submitter, request) if params[:esign_consent].to_s == 'true'
+
       update_submitter!(submitter, params, request, validate_required:)
 
       submitter.submission.save!
@@ -43,7 +45,11 @@ module Submitters
       submitter.values.merge!(values)
       submitter.opened_at ||= Time.current
 
-      assign_completed_attributes(submitter, request, validate_required:) if params[:completed] == 'true'
+      if params[:completed] == 'true'
+        EsignConsent.require!(submitter)
+
+        assign_completed_attributes(submitter, request, validate_required:)
+      end
 
       ApplicationRecord.transaction do
         reason_field = maybe_set_signature_reason!(values, submitter, params)

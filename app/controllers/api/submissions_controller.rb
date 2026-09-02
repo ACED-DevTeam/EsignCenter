@@ -55,6 +55,10 @@ module Api
 
       return render json: { error: 'Template not found' }, status: :unprocessable_content if @template.nil?
 
+      # Before the fields check: a Word document still converting has no
+      # fields yet, and "still converting" is the answer the caller can act on.
+      Templates.assert_documents_ready!(@template)
+
       if @template.fields.blank?
         ErrorReport.warning("Template does not contain fields: #{@template.id}")
 
@@ -82,7 +86,7 @@ module Api
 
       render json: build_create_json(submissions)
     rescue Submitters::NormalizeValues::BaseError, Submissions::CreateFromSubmitters::BaseError,
-           DownloadUtils::UnableToDownload => e
+           DownloadUtils::UnableToDownload, Templates::DocumentsNotReady => e
       ErrorReport.warning(e)
 
       render json: { error: e.message }, status: :unprocessable_content

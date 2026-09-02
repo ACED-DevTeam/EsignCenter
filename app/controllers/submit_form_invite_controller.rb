@@ -1,6 +1,10 @@
 # frozen_string_literal: true
 
 class SubmitFormInviteController < ApplicationController
+  rescue_from EsignConsent::ConsentRequiredError do
+    render json: { error: 'esign_consent_required' }, status: :unprocessable_content
+  end
+
   skip_before_action :authenticate_user!
   skip_authorization_check
 
@@ -32,7 +36,7 @@ class SubmitFormInviteController < ApplicationController
     @submitter.submission.submitters.reload
 
     if invite_submitters.all? { |s| @submitter.submission.submitters.any? { |e| e.uuid == s['uuid'] } }
-      Submitters::SubmitValues.call(@submitter, ActionController::Parameters.new(completed: 'true'), request)
+      complete_submitter!(@submitter)
 
       head :ok
     else
@@ -41,6 +45,15 @@ class SubmitFormInviteController < ApplicationController
   end
 
   private
+
+  # The invite form is the last request of an invite-then-complete signing, so
+  # it carries the signer's ESIGN consent the same way a form step does.
+  def complete_submitter!(submitter)
+    Submitters::SubmitValues.call(submitter,
+                                  ActionController::Parameters.new(completed: 'true',
+                                                                   esign_consent: params[:esign_consent]),
+                                  request)
+  end
 
   def can_invite?(submitter)
     !submitter.declined_at? &&

@@ -15,7 +15,7 @@ class TemplatesUploadsController < ApplicationController
     save_template!(@template, url_params)
 
     documents, = Templates::CreateAttachments.call(@template, url_params || params, extract_fields: true)
-    schema = documents.map { |doc| { attachment_uuid: doc.uuid, name: doc.filename.base } }
+    schema = documents.map { |doc| Templates::CreateAttachments.schema_item(doc) }
 
     if @template.fields.blank?
       @template.fields = Templates::ProcessDocument.normalize_attachment_fields(@template, documents)
@@ -33,6 +33,14 @@ class TemplatesUploadsController < ApplicationController
   rescue Templates::CreateAttachments::PdfEncrypted
     render turbo_stream: turbo_stream.append(params[:form_id], html: helpers.tag.prompt_password)
   rescue StandardError => e
+    # The template is saved before its file is stored; a refused file must not
+    # leave that empty template behind on the dashboard.
+    discard_empty_template!
+
+    message = Templates::CreateAttachments.upload_error_message(e)
+
+    return redirect_to(root_path, alert: message) if message
+
     ErrorReport.error(e)
 
     raise if Rails.env.local?
@@ -41,6 +49,14 @@ class TemplatesUploadsController < ApplicationController
   end
 
   private
+
+  def discard_empty_template!
+    return unless @template.persisted? && @template.schema.blank? && @template.documents.none?
+
+    @template.destroy!
+  rescue StandardError => e
+    ErrorReport.warning(e, template_id: @template.id)
+  end
 
   def save_template!(template, url_params)
     template.account = current_account

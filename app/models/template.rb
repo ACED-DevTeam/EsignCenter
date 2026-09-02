@@ -68,6 +68,10 @@ class Template < ApplicationRecord
            class_name: 'ActiveStorage::Attachment', dependent: :destroy, as: :record, inverse_of: :record
 
   has_many :submissions, dependent: :destroy
+
+  def documents_ready?
+    Templates.documents_ready?(self)
+  end
   has_many :template_sharings, dependent: :destroy
   has_many :template_accesses, dependent: :destroy
   has_many :template_versions, dependent: :destroy

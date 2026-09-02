@@ -1,0 +1,22 @@
+<% content_for(:html_title, "#{@template.name} | EsignCenter") %>
+<% content_for(:html_description, @documents_not_ready.message) %>
+<main class="max-w-md mx-auto px-2 mt-12 mb-4">
+  <div class="space-y-6 mx-auto">
+    <div class="flex items-center justify-center">
+      <%= render 'banner' %>
+    </div>
+    <div class="flex items-center bg-base-200 rounded-xl p-4">
+      <div class="mr-3">
+        <%= svg_icon(@documents_not_ready.status == 'failed' ? 'alert_circle' : 'loader', class: "w-10 h-10#{' animate-spin' unless @documents_not_ready.status == 'failed'}") %>
+      </div>
+      <div dir="auto">
+        <p class="text-lg font-bold mb-1"><%= t('document_not_ready') %></p>
+        <p class="text-sm"><%= @template.name %></p>
+      </div>
+    </div>
+    <p dir="auto" class="text-center text-base-content/80">
+      <%= @documents_not_ready.message %>
+    </p>
+  </div>
+</main>
+<%= render 'shared/attribution', link_path: '/start', account: @template.account %>

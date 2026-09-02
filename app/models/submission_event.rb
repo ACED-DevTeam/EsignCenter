@@ -65,7 +65,8 @@ class SubmissionEvent < ApplicationRecord
     complete_form: 'complete_form',
     decline_form: 'decline_form',
     delegate_form: 'delegate_form',
-    api_complete_form: 'api_complete_form'
+    api_complete_form: 'api_complete_form',
+    esign_consent: 'esign_consent'
   }, scope: false
 
   private

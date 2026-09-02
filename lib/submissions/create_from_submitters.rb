@@ -9,6 +9,8 @@ module Submissions
     # rubocop:disable Metrics
     def call(template:, user:, submissions_attrs:, source:, submitters_order:, params: {}, with_template: true,
              new_fields: nil)
+      Templates.assert_documents_ready!(template)
+
       preferences = Submitters.normalize_preferences(user.account, user, params)
 
       submissions = Array.wrap(submissions_attrs).filter_map do |attrs|

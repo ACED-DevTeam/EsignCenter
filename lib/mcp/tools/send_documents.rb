@@ -134,7 +134,7 @@ module Mcp
             }
           ]
         }
-      rescue Submissions::CreateFromSubmitters::BaseError => e
+      rescue Submissions::CreateFromSubmitters::BaseError, Templates::DocumentsNotReady => e
         { content: [{ type: 'text', text: e.message }], isError: true }
       end
       # rubocop:enable Metrics/MethodLength

@@ -1,0 +1,9 @@
+#!/bin/sh
+# Stands in for soffice in specs: never produces output, just waits. Records
+# its own pid and its child's so the spec can prove the whole group was killed.
+sleep 30 &
+child=$!
+if [ -n "$FAKE_SOFFICE_PID_FILE" ]; then
+  printf '%s\n%s\n' "$$" "$child" > "$FAKE_SOFFICE_PID_FILE"
+fi
+wait "$child"

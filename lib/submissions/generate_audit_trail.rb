@@ -263,6 +263,8 @@ module Submissions
 
         verify_phone_event = submission_events.find(&:phone_verified?)
 
+        consent_event = submission_events.find(&:esign_consent?)
+
         is_id_verified = submission_events.any?(&:complete_verification?)
 
         is_kba_passed = submission_events.any?(&:complete_kba?)
@@ -292,6 +294,12 @@ module Submissions
                 },
                 is_kba_passed && {
                   text: "#{I18n.t('knowledge_based_authentication')}: #{I18n.t('passed')}\n"
+                },
+                consent_event && {
+                  text: "#{I18n.t('consented_to_electronic_signatures')} (#{consent_event.data['version']}): " \
+                        "#{I18n.l(consent_event.event_timestamp.in_time_zone(timezone),
+                                  format: with_timestamp_seconds ? :detailed : :long, locale: account.locale)} " \
+                        "#{TimeUtils.timezone_abbr(timezone, consent_event.event_timestamp)}\n"
                 },
                 completed_event.data['ip'] && { text: "IP: #{completed_event.data['ip']}\n" },
                 completed_event.data['sid'] && { text: "#{I18n.t('session_id')}: #{completed_event.data['sid']}\n" },
@@ -485,6 +493,8 @@ module Submissions
             from = event.data['old_email'].presence ||
                    versions.rfind { |v| v.created_at <= event.event_timestamp }&.then { |v| v.name || v.phone }
             I18n.t('submission_event_names.delegate_form_by_html', from:, to: event.data['email'])
+          elsif event.event_type == 'esign_consent'
+            I18n.t('submission_event_names.esign_consent_by_html', version: event.data['version'], submitter_name:)
           elsif event.event_type.include?('send_')
             I18n.t("submission_event_names.#{event.event_type}_to_html", submitter_name:)
           else

@@ -38,5 +38,25 @@ class TemplatesCloneAndReplaceController < ApplicationController
       f.html { render turbo_stream: turbo_stream.append(params[:form_id], html: helpers.tag.prompt_password) }
       f.json { render json: { error: 'PDF encrypted', status: 'pdf_encrypted' }, status: :unprocessable_content }
     end
+  rescue StandardError => e
+    refuse_upload!(e, cloned_template)
+  end
+
+  private
+
+  # A refused file (unsupported format, Word limits) gets its specific
+  # message; anything else propagates. The clone is saved before its files
+  # are checked, so a refusal must not leave a half-built copy behind.
+  def refuse_upload!(error, cloned_template)
+    message = Templates::CreateAttachments.upload_error_message(error)
+
+    raise error if message.nil?
+
+    cloned_template.destroy! if cloned_template&.persisted?
+
+    respond_to do |f|
+      f.html { redirect_to root_path, alert: message }
+      f.json { render json: { error: message }, status: :unprocessable_content }
+    end
   end
 end
