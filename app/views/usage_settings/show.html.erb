@@ -102,7 +102,7 @@
         <% if @plan == Plans::FREE %>
           <%# The one upgrade card the app has (Session 6 wires its [data-upgrade-cta] to the billing page), with this page's own sentence. %>
           <div class="mt-6" data-usage-upgrade>
-            <%= render 'shared/upgrade_cta', feature: t('usage_plan_paid'), body: t('usage_upgrade_hint') %>
+            <%= render 'shared/upgrade_cta', feature: t('usage_plan_paid'), title: t('usage_upgrade_title'), body: t('usage_upgrade_hint') %>
           </div>
         <% end %>
       <% end %>

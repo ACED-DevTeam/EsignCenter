@@ -126,5 +126,17 @@ RSpec.describe 'Postmark stream by plan', type: :lib do
     ENV['POSTMARK_STREAM_FREE'] = 'outbound-free'
     expect(stream_of(build_message(account_id: free.id))).to be_nil
   end
+
+  it 'keeps the first pass stream when the interceptor runs twice on one message (dev reload re-registration)' do
+    streams!
+    account = create(:account)
+    create(:user, account:)
+
+    message = QuotaMailer.completions_warning(account).message
+    ActionMailerConfigsInterceptor.delivering_email(message)
+    ActionMailerConfigsInterceptor.delivering_email(message)
+
+    expect(message['X-PM-Message-Stream']&.value).to eq('outbound-free')
+  end
 end
 # rubocop:enable RSpec/DescribeClass
