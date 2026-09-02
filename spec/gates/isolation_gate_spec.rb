@@ -81,6 +81,31 @@ RSpec.describe 'Isolation gate' do
       end
     end
 
+    # The CERTS environment escape hatch is gone: reading a signing identity out
+    # of the environment must never come back. Only source files under
+    # app/lib/config are scanned, so these fixtures are inert here.
+    it 'catches every spelling of the removed CERTS environment escape hatch' do
+      [
+        'load_pkcs(Docuseal::CERTS)',
+        "return if Docuseal::CERTS['enabled'] == false",
+        "certs = ENV['CERTS']",
+        'certs = ENV["CERTS"]',
+        "certs = JSON.parse(ENV.fetch('CERTS', '{}'))",
+        'certs = JSON.parse(ENV.fetch("CERTS", "{}"))'
+      ].each do |snippet|
+        expect(Gates.isolation_violations("#{snippet}\n", 'lib/probe.rb')).to have_attributes(size: 1), snippet
+      end
+    end
+
+    it 'leaves the TRUSTED_CERTS environment variable alone' do
+      [
+        "ENV['TRUSTED_CERTS'].to_s",
+        'ENV.fetch("TRUSTED_CERTS", nil)'
+      ].each do |snippet|
+        expect(Gates.isolation_violations("#{snippet}\n", 'lib/probe.rb')).to be_empty, snippet
+      end
+    end
+
     it 'reports each occurrence with its line number' do
       content = "ok = AccountConfig.find_by(account:, key: 'x')\nbad = AccountConfig.find_by(key: 'x')\n"
 

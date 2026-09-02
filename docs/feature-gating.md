@@ -221,7 +221,7 @@ The listing below is every occurrence of `multitenant` in `app/`, `lib/` and
 | `app/controllers/submitters_controller.rb:53` | Cloud skipped an invitation already sent to that address in the last 4 hours | customer-ok (anti-abuse) | Throttle is always on |
 | `app/controllers/submitters_send_email_controller.rb:9` | Cloud refused a second invitation email within 10 hours | customer-ok (anti-abuse) | Throttle is always on ("Email has been sent already") |
 | `app/controllers/templates_dashboard_controller.rb:52,54` | Which shared templates a dashboard lists | customer-ok | Self-hosted behaviour kept: linked accounts see their own plus templates shared with everyone (not in test mode); branch removed |
-| `app/controllers/timestamp_server_controller.rb:12` | Cloud answered 404 to custom timestamp-server saves | customer-ok (today) | Branch removed; Session 4 makes the TSA operator-only (the form is already hidden from customers, see `esign_settings/show`) |
+| `app/controllers/timestamp_server_controller.rb:12` | Cloud answered 404 to custom timestamp-server saves | operator-only | **Done (Session 4):** the controller is gated by `require_operator_access!` — everyone else gets the 404. The timestamp authority is platform policy; customer accounts always use `TIMESERVER_URL` |
 | `app/jobs/application_job.rb:4` | Job retry policy | infra-keep | Retry policy is unconditional in the shipped configuration; justified at the site |
 | `app/mailers/submitter_mailer.rb:271` | Per-account custom email domain | customer-ok | No custom domains in v1: `maybe_set_custom_domain` and `@custom_domain` removed; email links use `EMAIL_HOST` (unchanged fallback) |
 | `app/models/submitter.rb:62,71` | Whether deleting a submitter destroys or anonymizes its email events | infra-keep | Session 8 owns the EmailEvent projection and decides; justified at the site |
@@ -236,7 +236,7 @@ The listing below is every occurrence of `multitenant` in `app/`, `lib/` and
 | `app/views/accounts/show.html.erb:287` | Cloud-only "Delete my account" danger zone | hidden | The button was removed; the `DELETE /settings/account` route still answers a hand-built request until Session 7 replaces the flow with the recovery-window deletion |
 | `app/views/devise/sessions/new.html.erb:3` | Cloud "select server" picker | hidden | Render removed; the (empty) partial deleted |
 | `app/views/email_smtp_settings/index.html.erb:38,53` | SMTP security radios / required from-address | customer-ok | Both unconditional. The page itself is a paid row: `can?(:use, :account_smtp)` shows the form, otherwise the upgrade CTA |
-| `app/views/esign_settings/show.html.erb:106` | Custom timestamp-server form | operator-only | Hidden from customer accounts (`!current_account.customer?`); internal/operator keep it until Session 4 |
+| `app/views/esign_settings/show.html.erb:106` | Custom timestamp-server form | operator-only | **Done (Session 4):** the timestamp-server form, the certificate table, the certificate upload button and the verify-PDF box all render only for `operator_access?`. Every admin still sees the signing preferences on the same page |
 | `app/views/notifications_settings/_reminder_form.html.erb:5` | Cloud dropped the 1-hour / 2-hour reminder options | customer-ok | Full duration list for everyone. The reminder section is a paid row: form for entitled accounts, CTA otherwise (`_reminder_banner`); the BCC form likewise (`:bcc`) |
 | `app/views/personalization_settings/_documents_copy_email_form.html.erb:36,44` | "BCC recipients" and "send automatically" toggles inside the documents-copy email template | customer-ok | Unconditional inside the form; the whole email-templates section is a paid row (`:custom_email_templates`) with the CTA for free accounts |
 | `app/views/personalization_settings/_form_policy_links_form.html.erb:1` | Policy links form hidden in cloud | customer-ok | Wrapper removed (policy links are free) |
@@ -260,7 +260,7 @@ The listing below is every occurrence of `multitenant` in `app/`, `lib/` and
 
 | Site | What it guarded | Class | Action |
 |---|---|---|---|
-| `config/routes.rb:66` | `timestamp_server` mounted only self-hosted | customer-ok (today) | Mounted unconditionally (same behaviour as before); Session 4 makes it operator-only |
+| `config/routes.rb:66` | `timestamp_server` mounted only self-hosted | operator-only | **Done (Session 4):** the route stays mounted for everyone and the controller answers 404 to anyone who is not the platform operator |
 | `config/routes.rb:105` | `detect_fields` mounted only self-hosted | customer-ok | Mounted unconditionally. It needs the ONNX model at `tmp/model.onnx`; the embedded builder already exposes `detect_fields` for everyone, so this adds no new dependency |
 | `config/routes.rb:127-136` | Legacy blob proxy, custom ActiveStorage disk/direct-upload routes, `multitenant_routes` hook | hidden (dead) | Deleted together with `Api::ActiveStorageBlobsProxyLegacyController` (nothing referenced them; ActiveStorage draws its own routes because `config.active_storage.draw_routes` is true here). The golden spec that listed the legacy controller now lists the live controllers only |
 | `config/routes.rb:180` | `search_entries_reindex`, `sms`, `mcp` settings routes | operator-only / hidden / paid-only | Reindex mounted (its controller is the operator gate); SMS route, controller and views deleted (404 for all); MCP mounted for all (page shows CTA) |
@@ -272,7 +272,7 @@ The listing below is every occurrence of `multitenant` in `app/`, `lib/` and
 
 | Site | What it guarded | Class | Action |
 |---|---|---|---|
-| `lib/accounts.rb:102,129,144` | Signing certificate / trusted certs / timestamp-server resolution | infra-keep | Session 4 makes certificates operator-only and rewrites these; justified at each site |
+| `lib/accounts.rb:102,129,144` | Signing certificate / trusted certs / timestamp-server resolution | operator-only | **Done (Session 4):** rewritten by account kind — customers sign with the one platform certificate (`lib/platform_certificate.rb`) and their own certificate/timestamp rows are ignored; internal accounts keep their own rows; the operator falls back to the platform certificate. The `CERTS` environment escape hatch is deleted and banned by `rake gates:isolation`. See section 8 of `docs/operations.md` |
 | `lib/docuseal.rb:31` | The predicate itself | infra-keep | Stays, never flipped (decision-locked); comment names this document |
 | `lib/docuseal.rb:44` | `advanced_formats?` (Word/.doc uploads) | customer-ok | Session 4 decoupled it: now `WordConverter.enabled?` (LibreOffice present and `WORD_CONVERSION_ENABLED` not `false`), for every account — see `docs/word-uploads.md` |
 | `lib/docuseal.rb:74` | Fulltext search toggle | infra-keep | Operator toggle already governs (`OperatorConfigs`); the tenancy half is inert |

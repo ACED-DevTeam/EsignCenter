@@ -255,8 +255,7 @@ RSpec.describe 'Signing Form' do
     end
 
     it 'completes the form when identity verification with a 2FA code is enabled', sidekiq: :inline do
-      create(:encrypted_config, account:, key: EncryptedConfig::ESIGN_CERTS_KEY,
-                                value: GenerateCertificate.call.transform_values(&:to_pem))
+      platform_certificate!
 
       template.update(preferences: { link_form_fields: %w[email name], shared_link_2fa: true })
 
@@ -1270,8 +1269,7 @@ RSpec.describe 'Signing Form' do
 
     before do
       template.update(preferences: { require_email_2fa: true })
-      create(:encrypted_config, account:, key: EncryptedConfig::ESIGN_CERTS_KEY,
-                                value: GenerateCertificate.call.transform_values(&:to_pem))
+      platform_certificate!
     end
 
     it 'completes the form if the one-time password is filled correctly' do

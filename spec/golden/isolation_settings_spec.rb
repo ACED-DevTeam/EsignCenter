@@ -1,42 +1,83 @@
 # frozen_string_literal: true
 
 RSpec.describe 'Tenant-isolated settings', type: :request do
+  # Session 4: a customer account never signs with a certificate row of its
+  # own — the platform certificate is the ONE customer signing identity — while
+  # an internal account keeps its own row and can never reach another
+  # account's. The same split governs the timestamp server.
   describe 'e-sign certificates' do
-    let(:certificate_data) { GenerateCertificate.call.transform_values(&:to_pem) }
-    let(:account_a) { create(:account) }
-    let(:account_b) { create(:account) }
+    let(:internal_certificate_data) { GenerateCertificate.call.transform_values(&:to_pem) }
+    let(:internal_account) { create(:account, :internal) }
+    let(:customer_account) { create(:account) }
 
     before do
-      create(:encrypted_config, account: account_a, key: EncryptedConfig::ESIGN_CERTS_KEY,
-                                value: certificate_data)
+      platform_certificate!
+      create(:encrypted_config, account: internal_account, key: EncryptedConfig::ESIGN_CERTS_KEY,
+                                value: internal_certificate_data)
     end
 
-    it 'loads an account own certificate and never returns it for another account' do
-      account_a_pkcs = Accounts.load_signing_pkcs(account_a)
+    it 'loads an internal account own certificate' do
+      internal_pkcs = Accounts.load_signing_pkcs(internal_account)
 
-      expect(account_a_pkcs.certificate.to_pem).to eq(certificate_data.fetch(:cert))
-      expect do
-        Accounts.load_signing_pkcs(account_b)
-      end.to raise_error(
-        Accounts::MissingEsignCertsError,
-        "Account #{account_b.id} has no e-sign certificates configured"
-      )
+      expect(internal_pkcs.certificate.to_pem).to eq(internal_certificate_data.fetch(:cert))
     end
 
-    it 'loads the parent certificate for a testing child' do
-      testing_child = create(:account)
-      account_a.testing_accounts << testing_child
+    it 'loads the parent certificate for an internal testing child' do
+      testing_child = create(:account, :internal)
+      internal_account.testing_accounts << testing_child
 
       child_pkcs = Accounts.load_signing_pkcs(testing_child.reload)
 
-      expect(child_pkcs.certificate.to_pem).to eq(certificate_data.fetch(:cert))
+      expect(child_pkcs.certificate.to_pem).to eq(internal_certificate_data.fetch(:cert))
+    end
+
+    it 'never lends one internal account certificate to another: a bare internal account raises' do
+      bare_internal = create(:account, :internal)
+
+      expect do
+        Accounts.load_signing_pkcs(bare_internal)
+      end.to raise_error(
+        Accounts::MissingEsignCertsError,
+        "Account #{bare_internal.id} has no e-sign certificates configured"
+      )
+    end
+
+    it 'signs a customer account with the platform certificate and ignores its own row' do
+      own_certificate_data = GenerateCertificate.call.transform_values(&:to_pem)
+      create(:encrypted_config, account: customer_account, key: EncryptedConfig::ESIGN_CERTS_KEY,
+                                value: own_certificate_data)
+
+      customer_pkcs = Accounts.load_signing_pkcs(customer_account)
+
+      expect(customer_pkcs.certificate.to_pem).to eq(platform_certificate_pems.fetch('cert'))
+      expect(customer_pkcs.certificate.to_pem).not_to eq(own_certificate_data.fetch(:cert))
+      expect(customer_pkcs.certificate.to_pem).not_to eq(internal_certificate_data.fetch(:cert))
+    end
+
+    it 'trusts the platform chain for a customer and adds the own chain only for an internal account' do
+      customer_certs = Accounts.load_trusted_certs(customer_account).map(&:to_pem)
+      internal_certs = Accounts.load_trusted_certs(internal_account).map(&:to_pem)
+
+      expect(customer_certs).to include(platform_certificate_pems.fetch('cert'))
+      expect(customer_certs).not_to include(internal_certificate_data.fetch(:cert))
+      expect(internal_certs).to include(platform_certificate_pems.fetch('cert'),
+                                        internal_certificate_data.fetch(:cert))
     end
   end
 
   describe 'timestamp servers' do
-    it 'prefers the account value and then the environment value without using another account' do
+    it 'ignores a customer account row and uses the platform environment value' do
       account = create(:account)
-      another_account = create(:account)
+      create(:encrypted_config, account:, key: EncryptedConfig::TIMESTAMP_SERVER_URL_KEY,
+                                value: 'https://account.example.test')
+      stub_const('Docuseal::TIMESERVER_URL', 'https://environment.example.test')
+
+      expect(Accounts.load_timeserver_url(account)).to eq('https://environment.example.test')
+    end
+
+    it 'prefers an internal account own value and then the environment value without using another account' do
+      account = create(:account, :internal)
+      another_account = create(:account, :internal)
       create(:encrypted_config, account: another_account, key: EncryptedConfig::TIMESTAMP_SERVER_URL_KEY,
                                 value: 'https://another-account.example.test')
       create(:encrypted_config, account:, key: EncryptedConfig::TIMESTAMP_SERVER_URL_KEY,
@@ -56,7 +97,7 @@ RSpec.describe 'Tenant-isolated settings', type: :request do
       parent.testing_accounts << testing_child
       linked_child = create(:account, :internal)
       AccountLinkedAccount.create!(account: parent, linked_account: linked_child, account_type: 'linked')
-      unrelated_account = create(:account)
+      unrelated_account = create(:account, :internal)
       create(:encrypted_config, account: parent, key: EncryptedConfig::TIMESTAMP_SERVER_URL_KEY,
                                 value: 'https://parent.example.test')
       stub_const('Docuseal::TIMESERVER_URL', 'https://environment.example.test')

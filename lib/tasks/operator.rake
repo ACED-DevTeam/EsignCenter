@@ -41,10 +41,16 @@ namespace :operator do
     password = ENV.fetch('OPERATOR_PASSWORD', '')
     abort 'OPERATOR_PASSWORD is required (set it in the environment; it is never printed)' if password.blank?
 
-    if (existing_account = OperatorConfigs.account)
+    existing_account = OperatorConfigs.account
+
+    if existing_account
       adopted = OperatorSeed.adopt_legacy_fulltext_flag(existing_account)
 
       puts 'An operator account already exists; no changes made.' unless adopted
+
+      # The platform signing certificate is generated once, on the operator
+      # account, and only here: a re-run leaves the existing row alone.
+      PlatformCertificate.ensure!
 
       next
     end
@@ -69,5 +75,33 @@ namespace :operator do
     puts "Created operator account #{account.id}."
 
     OperatorSeed.adopt_legacy_fulltext_flag(account)
+
+    # Generated once, here and nowhere else; `rake operator:platform_cert:fingerprint`
+    # prints its fingerprint and `…:export` writes the offline custody copy.
+    PlatformCertificate.ensure!
+  end
+
+  namespace :platform_cert do
+    desc 'Print the SHA-256 fingerprint of the platform signing certificate'
+    task fingerprint: :environment do
+      puts PlatformCertificate.fingerprint
+    end
+
+    desc 'Write the platform signing certificate (and its keys) to PATH as a 0600 PEM bundle for offline custody'
+    task :export, [:path] => :environment do |_task, args|
+      path = args[:path].to_s
+      abort 'PATH is required: rake "operator:platform_cert:export[/secure/path/platform-cert.pem]"' if path.blank?
+
+      pems = PlatformCertificate.pems
+      # Written 0600 before a single byte of key material lands in it.
+      File.open(path, File::WRONLY | File::CREAT | File::TRUNC, 0o600) do |file|
+        file.write(PlatformCertificate::EXPORT_ORDER.filter_map { |key| pems[key] }.join)
+      end
+      File.chmod(0o600, path)
+
+      # Never the key material itself: only what identifies the bundle.
+      puts "Platform signing certificate fingerprint: #{PlatformCertificate.fingerprint}"
+      puts "Wrote #{File.size(path)} bytes to #{path} (mode 0600)."
+    end
   end
 end

@@ -10,9 +10,9 @@ module Docuseal
   DEFAULT_APP_URL = ENV.fetch('APP_URL', 'http://localhost:3000')
   GITHUB_URL = 'https://github.com/AmishHillBilly/EsignCenter'
   SUPPORT_EMAIL = 'evan@processorteam.com'
-  AATL_CERT_NAME = 'docuseal_aatl'
 
-  CERTS = JSON.parse(ENV.fetch('CERTS', '{}'))
+  # There is no environment escape hatch for signing certificates: every
+  # account signs with the platform certificate or its own row (Session 4).
   TIMESERVER_URL = ENV.fetch('TIMESERVER_URL', nil)
   VERSION_FILE_PATH = Rails.root.join('.version')
   VERSION_FILE2_PATH = Rails.public_path.join('version')
@@ -62,12 +62,6 @@ module Docuseal
   # FORCE_SSL='false' means http.
   def force_ssl?
     ENV['FORCE_SSL'].present? && ENV['FORCE_SSL'] != 'false'
-  end
-
-  def default_pkcs
-    return if Docuseal::CERTS['enabled'] == false
-
-    @default_pkcs ||= GenerateCertificate.load_pkcs(Docuseal::CERTS)
   end
 
   # Instance-global toggle, memoized per process; the operator surface that

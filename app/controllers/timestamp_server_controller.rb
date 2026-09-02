@@ -1,7 +1,12 @@
 # frozen_string_literal: true
 
+# The timestamp authority is platform policy (Session 4): customer accounts
+# sign against the TSA the operator configures, so only the operator can change
+# it. The route stays mounted; everyone else gets the 404.
 class TimestampServerController < ApplicationController
   HASH_ALGORITHM = 'SHA256'
+
+  prepend_before_action :require_operator_access!
 
   before_action :build_encrypted_config
   authorize_resource :encrypted_config

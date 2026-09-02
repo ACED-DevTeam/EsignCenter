@@ -8,8 +8,7 @@ RSpec.describe ProcessSubmitterCompletionJob do
   let(:submitter) { create(:submitter, submission:, uuid: SecureRandom.uuid, completed_at: Time.current) }
 
   before do
-    create(:encrypted_config, account:, key: EncryptedConfig::ESIGN_CERTS_KEY,
-                              value: GenerateCertificate.call.transform_values(&:to_pem))
+    platform_certificate!
   end
 
   describe '#perform' do

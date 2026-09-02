@@ -11,8 +11,7 @@ RSpec.describe SendFormCompletedWebhookRequestJob do
   let(:webhook_url) { create(:webhook_url, account:, events: ['form.completed']) }
 
   before do
-    create(:encrypted_config, account:, key: EncryptedConfig::ESIGN_CERTS_KEY,
-                              value: GenerateCertificate.call.transform_values(&:to_pem))
+    platform_certificate!
   end
 
   describe '#perform' do

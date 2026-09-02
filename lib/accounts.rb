@@ -96,28 +96,27 @@ module Accounts
     []
   end
 
-  # infra-keep (certs): Session 4 makes signing certificates operator-only and rewrites these branches.
+  # Signing identity by account kind (Session 4):
+  #   customer  — always the platform certificate, even when the account owns
+  #               an esign_certs row (legacy backfill or provisioning); testing
+  #               children copy the kind, so they follow the same rule.
+  #   internal  — its own row (self, then a testing parent), never the platform
+  #               certificate; a missing row is an error.
+  #   operator  — its own row when it has one, otherwise the platform one.
   def load_signing_pkcs(account)
+    return PlatformCertificate.pkcs if account.customer?
+
     encrypted_config = esign_certs_config_for(account)
 
-    if Docuseal.multitenant?
-      return Docuseal.default_pkcs if encrypted_config&.value.blank?
+    return PlatformCertificate.pkcs if encrypted_config.nil? && account.operator?
 
-    else
-      return Docuseal.default_pkcs if encrypted_config.nil? && Docuseal::CERTS.present?
+    raise_missing_esign_certs!(account) unless encrypted_config
 
-      raise_missing_esign_certs!(account) unless encrypted_config
+    cert_data = encrypted_config.value
+    default_cert = cert_data['custom']&.find { |e| e['status'] == 'default' && e['data'].present? }
 
-    end
-    cert_data =
-      encrypted_config.value
-
-    if (default_cert = cert_data['custom']&.find { |e| e['status'] == 'default' })
-      if default_cert['name'] == Docuseal::AATL_CERT_NAME
-        Docuseal.default_pkcs
-      else
-        OpenSSL::PKCS12.new(Base64.urlsafe_decode64(default_cert['data']), default_cert['password'].to_s)
-      end
+    if default_cert
+      OpenSSL::PKCS12.new(Base64.urlsafe_decode64(default_cert['data']), default_cert['password'].to_s)
     else
       GenerateCertificate.load_pkcs(cert_data)
     end
@@ -125,10 +124,10 @@ module Accounts
 
   # Own row, then a testing parent's row (Account#configuration_lookup_accounts,
   # the same walk certs, account configs and SMTP pins use), then the
-  # environment value. Never another tenant's row.
-  # infra-keep (certs/TSA): Session 4 owns the timestamp-server policy.
+  # environment value. Customer accounts never carry their own timestamp
+  # server: the platform picks the TSA for them.
   def load_timeserver_url(account)
-    return Docuseal::TIMESERVER_URL.presence if Docuseal.multitenant?
+    return Docuseal::TIMESERVER_URL.presence if account.customer?
 
     account.configuration_lookup_accounts.each do |source_account|
       url = source_account.encrypted_configs.find_by(key: EncryptedConfig::TIMESTAMP_SERVER_URL_KEY)&.value.presence
@@ -139,22 +138,46 @@ module Accounts
     Docuseal::TIMESERVER_URL.presence
   end
 
-  # infra-keep (certs): Session 4 makes signing certificates operator-only and rewrites these branches.
+  # What a signature from this account should be checked against: the platform
+  # chain (every customer signs with it), plus this account's own chain when it
+  # is an internal/operator account that owns one, plus the TRUSTED_CERTS
+  # environment chain. A customer without a row is not an error here.
   def load_trusted_certs(account)
-    encrypted_config = esign_certs_config_for(account)
+    encrypted_config = esign_certs_config_for(account) unless account.customer?
 
-    cert_data =
-      if Docuseal.multitenant?
-        Docuseal::CERTS.merge(encrypted_config&.value || {})
-      else
-        return_certs = encrypted_config.nil? && Docuseal::CERTS.present?
+    [*PlatformCertificate.trusted_certs,
+     *config_trusted_certs(encrypted_config&.value),
+     *Docuseal.trusted_certs]
+  end
 
-        raise_missing_esign_certs!(account) unless encrypted_config || return_certs
+  # Everything the public verify page may trust: the platform chain, every
+  # internal and operator account's own chain (documents signed before the
+  # platform certificate existed, and internal accounts today), and
+  # TRUSTED_CERTS. Cached for 5 minutes — certificate rows change by hand.
+  def platform_verification_certs
+    pems = Rails.cache.fetch('platform_verification_certs', expires_in: 5.minutes) do
+      account_certs_pems
+    end
 
-        encrypted_config&.value || Docuseal::CERTS
-      end
+    [*PlatformCertificate.trusted_certs,
+     *pems.map { |pem| OpenSSL::X509::Certificate.new(pem) },
+     *Docuseal.trusted_certs]
+  end
 
-    default_pkcs = GenerateCertificate.load_pkcs(cert_data)
+  def account_certs_pems
+    accounts = Account.where(account_kind: [Account::INTERNAL_KIND, Account::OPERATOR_KIND])
+
+    EncryptedConfig.where(account: accounts, key: EncryptedConfig::ESIGN_CERTS_KEY).flat_map do |config|
+      config_trusted_certs(config.value).map(&:to_pem)
+    end
+  end
+
+  # The certificates a stored esign_certs value vouches for: the row's own
+  # chain and every custom PKCS#12 certificate it carries.
+  def config_trusted_certs(cert_data)
+    return [] if cert_data.blank?
+
+    default_pkcs = GenerateCertificate.load_pkcs(cert_data) if cert_data['cert'].present?
 
     custom_certs = cert_data.fetch('custom', []).filter_map do |e|
       next if e['data'].blank?
@@ -162,11 +185,9 @@ module Accounts
       OpenSSL::PKCS12.new(Base64.urlsafe_decode64(e['data']), e['password'].to_s)
     end
 
-    [default_pkcs.certificate,
-     *default_pkcs.ca_certs,
+    [*(default_pkcs && [default_pkcs.certificate, *default_pkcs.ca_certs]),
      *custom_certs.map(&:certificate),
-     *custom_certs.flat_map(&:ca_certs).compact,
-     *Docuseal.trusted_certs]
+     *custom_certs.flat_map(&:ca_certs).compact]
   end
 
   def can_send_emails?(account, **_params)

@@ -21,12 +21,6 @@ module ConsentSpecSupport
   CONSENT_KEYS = %w[esign_consent_checkbox_label esign_consent_disclosure_link esign_consent_disclosure_title
                     esign_consent_disclosure_body_html esign_consent_version_label esign_consent_required
                     consented_to_electronic_signatures close submission_event_names.esign_consent_by_html].freeze
-
-  # Certificate PEMs generated once per process: RSA keygen is slow and every
-  # example that signs needs a per-account certificate row until Phase B lands.
-  def self.cert_pems
-    @cert_pems ||= GenerateCertificate.call.transform_values(&:to_pem)
-  end
 end
 
 # Collects the strings a PDF's content streams actually draw, decoded through
@@ -100,10 +94,6 @@ RSpec.describe 'ESIGN consent', type: :request do
       embed_origin: 'https://app.example.com',
       submitters: [{ role: template.submitters.first['name'], email: 'signer@example.com', **submitter_attrs }]
     }.to_json
-  end
-
-  def certify!(account)
-    create(:encrypted_config, account:, key: EncryptedConfig::ESIGN_CERTS_KEY, value: ConsentSpecSupport.cert_pems)
   end
 
   def consent_events(submitter)
@@ -300,7 +290,7 @@ RSpec.describe 'ESIGN consent', type: :request do
       expect_completed_with_consent(submitter)
 
       # The API show endpoint renders the signed result on read, so it signs.
-      certify!(paid_account)
+      platform_certificate!
 
       get "/api/submitters/#{submitter.id}", headers: token_headers(paid_account)
 
@@ -379,7 +369,7 @@ RSpec.describe 'ESIGN consent', type: :request do
 
   describe 'audit trail', sidekiq: :inline do
     it 'prints the consent line in each base locale and never a missing translation' do
-      certify!(account)
+      platform_certificate!
 
       ConsentSpecSupport::BASE_LOCALES.each do |locale|
         account.update!(locale:)

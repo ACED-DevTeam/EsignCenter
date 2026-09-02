@@ -6,8 +6,7 @@ describe 'Tools API' do
   let(:file_path) { Rails.root.join('spec/fixtures/sample-document.pdf') }
 
   before do
-    create(:encrypted_config, account:, key: EncryptedConfig::ESIGN_CERTS_KEY,
-                              value: GenerateCertificate.call.transform_values(&:to_pem))
+    platform_certificate!
   end
 
   describe 'POST /api/tools/verify' do

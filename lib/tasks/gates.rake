@@ -40,13 +40,22 @@ module Gates
   # Enumerating a config table with no arguments at all is unscoped by
   # definition.
   UNSCOPED_CONFIG_ENUMERATION = /#{CONFIG_MODELS}\s*\.\s*(?:first|take|all|pluck|find_each|each)\b/
+  # The CERTS environment escape hatch is gone (Session 4): a customer signs
+  # with the platform certificate and an internal account with its own row, so
+  # no code may read a signing identity out of the environment again.
+  CERTS_ENV_PATTERNS = [
+    /Docuseal::CERTS/,
+    /ENV\[['"]CERTS['"]\]/,
+    /ENV\.fetch\(['"]CERTS['"]/
+  ].freeze
   ISOLATION_PATTERNS = [
     CONFIG_LOOKUP,
     UNSCOPED_CONFIG_ENUMERATION,
     /Account\s*\.\s*order\(\s*:id\s*\)\s*\.\s*(first|take|limit)/m,
     /Account\s*\.\s*(first\b|minimum\(\s*:id\s*\))/m,
     ACCOUNT_ONE_PATTERN,
-    /\.order\(\s*:account_id\s*\)/m
+    /\.order\(\s*:account_id\s*\)/m,
+    *CERTS_ENV_PATTERNS
   ].freeze
   # Allowlist entries pin a file AND the exact snippet. A match is exempt only
   # when it falls inside an occurrence of that snippet, so a second forbidden

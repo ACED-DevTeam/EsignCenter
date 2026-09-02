@@ -5,106 +5,112 @@
       <h1 class="text-4xl font-bold mb-4">
         <%= t('pdf_signature') %>
       </h1>
-      <div id="result">
-        <p class="mb-2">
-          <%= t('upload_signed_pdf_file_to_validate_its_signature_') %>
-        </p>
-      </div>
-      <%= form_for '', url: verify_pdf_signature_index_path, method: :post, html: { enctype: 'multipart/form-data' } do |f| %>
-        <%= f.button type: 'submit', class: 'flex' do %>
-          <div class="disabled mb-3">
-            <%= svg_icon('loader', class: 'w-5 h-5 animate-spin inline') %>
-            <%= "#{t('analyzing')}..." %>
-          </div>
-        <% end %>
-        <file-dropzone data-name="verify_attachments" data-submit-on-upload="true" class="w-full">
-          <label for="file" class="w-full block h-32 relative bg-base-200 hover:bg-base-200/70 rounded-md border border-base-content border-dashed">
-            <div class="absolute top-0 right-0 left-0 bottom-0 flex items-center justify-center p-2">
-              <div class="flex flex-col items-center text-center">
-                <span data-target="file-dropzone.icon">
-                  <%= svg_icon('cloud_upload', class: 'w-10 h-10') %>
-                </span>
-                <span data-target="file-dropzone.loading" class="hidden">
-                  <%= svg_icon('loader', class: 'w-10 h-10 animate-spin') %>
-                </span>
-                <div class="font-medium mb-1">
-                  <%= t('verify_signed_pdf') %>
-                </div>
-                <div class="text-xs">
-                  <%= t('click_to_upload_or_drag_and_drop_files_html') %>
-                </div>
-              </div>
-              <input id="file" name="files[]" class="hidden" data-action="change:file-dropzone#onSelectFiles" data-target="file-dropzone.input" type="file" accept="application/pdf" multiple>
+      <%# Verifying a signed PDF reads the certificate chains: an operator surface in this phase. %>
+      <% if operator_access? %>
+        <div id="result">
+          <p class="mb-2">
+            <%= t('upload_signed_pdf_file_to_validate_its_signature_') %>
+          </p>
+        </div>
+        <%= form_for '', url: verify_pdf_signature_index_path, method: :post, html: { enctype: 'multipart/form-data' } do |f| %>
+          <%= f.button type: 'submit', class: 'flex' do %>
+            <div class="disabled mb-3">
+              <%= svg_icon('loader', class: 'w-5 h-5 animate-spin inline') %>
+              <%= "#{t('analyzing')}..." %>
             </div>
-          </label>
-        </file-dropzone>
-      <% end %>
-    </div>
-    <div class="flex flex-col md:flex-row gap-2 md:justify-between md:items-end mb-4 mt-8">
-      <h2 class="text-3xl font-bold">
-        <%= t('signing_certificates') %>
-      </h2>
-      <% if can?(:create, @encrypted_config) %>
-        <%= link_to new_settings_esign_path, class: 'btn btn-primary btn-md', data: { turbo_frame: 'modal' } do %>
-          <%= svg_icon('plus', class: 'w-6 h-6') %>
-          <span><%= t('upload_cert') %></span>
+          <% end %>
+          <file-dropzone data-name="verify_attachments" data-submit-on-upload="true" class="w-full">
+            <label for="file" class="w-full block h-32 relative bg-base-200 hover:bg-base-200/70 rounded-md border border-base-content border-dashed">
+              <div class="absolute top-0 right-0 left-0 bottom-0 flex items-center justify-center p-2">
+                <div class="flex flex-col items-center text-center">
+                  <span data-target="file-dropzone.icon">
+                    <%= svg_icon('cloud_upload', class: 'w-10 h-10') %>
+                  </span>
+                  <span data-target="file-dropzone.loading" class="hidden">
+                    <%= svg_icon('loader', class: 'w-10 h-10 animate-spin') %>
+                  </span>
+                  <div class="font-medium mb-1">
+                    <%= t('verify_signed_pdf') %>
+                  </div>
+                  <div class="text-xs">
+                    <%= t('click_to_upload_or_drag_and_drop_files_html') %>
+                  </div>
+                </div>
+                <input id="file" name="files[]" class="hidden" data-action="change:file-dropzone#onSelectFiles" data-target="file-dropzone.input" type="file" accept="application/pdf" multiple>
+              </div>
+            </label>
+          </file-dropzone>
         <% end %>
       <% end %>
     </div>
-    <%= render 'alert' %>
-    <div class="overflow-x-auto">
-      <table class="table w-full table-lg rounded-b-none overflow-hidden">
-        <thead class="bg-base-200">
-          <tr class="text-neutral uppercase">
-            <th>
-              <%= t('name') %>
-            </th>
-            <th>
-              <%= t('valid_to') %>
-            </th>
-            <th>
-              <%= t('status') %>
-            </th>
-            <th class="text-right" width="1px">
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          <% @pkcs_list.each do |item| %>
-            <% next if item['pkcs'].blank? %>
-            <tr scope="row" class="group">
-              <td>
-                <%= item['name'] %>
-              </td>
-              <td>
-                <%= l(item['pkcs'].certificate.not_after.to_date, format: :long, locale: current_account.locale) %>
-              </td>
-              <td>
-                <% if item['status'] == 'default' %>
-                  <span class="badge badge-lg badge-info badge-outline">
-                    <%= t('default') %>
-                  </span>
-                <% elsif can?(:update, @encrypted_config) %>
-                  <%= button_to settings_esign_path, method: :put, params: { name: item['name'] }, class: 'btn btn-outline btn-neutral btn-xs whitespace-nowrap', title: t('make_default'), data: { turbo_confirm: t('are_you_sure_') } do %>
-                    <%= t('make_default') %>
-                  <% end %>
-                <% end %>
-              </td>
-              <td>
-                <% if item['name'] != EsignSettingsController::DEFAULT_CERT_NAME && item['status'] != 'default' &&  can?(:destroy, @encrypted_config) %>
-                  <%= button_to settings_esign_path, params: { name: item['name'] }, method: :delete, class: 'btn btn-outline btn-error btn-xs', title: t('remove'), data: { turbo_confirm: t('are_you_sure_') } do %>
-                    <%= t('remove') %>
-                  <% end %>
-                <% end %>
-              </td>
-            </tr>
+    <%# Signing certificates are platform-operator surfaces (Session 4): customers sign with the platform certificate, internal accounts keep their rows but manage them from the console. %>
+    <% if operator_access? %>
+      <div class="flex flex-col md:flex-row gap-2 md:justify-between md:items-end mb-4 mt-8">
+        <h2 class="text-3xl font-bold">
+          <%= t('signing_certificates') %>
+        </h2>
+        <% if can?(:create, @encrypted_config) %>
+          <%= link_to new_settings_esign_path, class: 'btn btn-primary btn-md', data: { turbo_frame: 'modal' } do %>
+            <%= svg_icon('plus', class: 'w-6 h-6') %>
+            <span><%= t('upload_cert') %></span>
           <% end %>
-        </tbody>
-      </table>
-    </div>
-    <% encrypted_config = EncryptedConfig.find_or_initialize_by(account: current_account, key: EncryptedConfig::TIMESTAMP_SERVER_URL_KEY) %>
-    <%# Custom timestamp server: hidden from customer accounts (Session 4 makes signing certs/TSA operator-only). %>
-    <% if !current_account.customer? && can?(:manage, encrypted_config) %>
+        <% end %>
+      </div>
+      <%= render 'alert' %>
+      <div class="overflow-x-auto">
+        <table class="table w-full table-lg rounded-b-none overflow-hidden">
+          <thead class="bg-base-200">
+            <tr class="text-neutral uppercase">
+              <th>
+                <%= t('name') %>
+              </th>
+              <th>
+                <%= t('valid_to') %>
+              </th>
+              <th>
+                <%= t('status') %>
+              </th>
+              <th class="text-right" width="1px">
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <% @pkcs_list.each do |item| %>
+              <% next if item['pkcs'].blank? %>
+              <tr scope="row" class="group">
+                <td>
+                  <%= item['name'] %>
+                </td>
+                <td>
+                  <%= l(item['pkcs'].certificate.not_after.to_date, format: :long, locale: current_account.locale) %>
+                </td>
+                <td>
+                  <% if item['status'] == 'default' %>
+                    <span class="badge badge-lg badge-info badge-outline">
+                      <%= t('default') %>
+                    </span>
+                  <% elsif can?(:update, @encrypted_config) %>
+                    <%= button_to settings_esign_path, method: :put, params: { name: item['name'] }, class: 'btn btn-outline btn-neutral btn-xs whitespace-nowrap', title: t('make_default'), data: { turbo_confirm: t('are_you_sure_') } do %>
+                      <%= t('make_default') %>
+                    <% end %>
+                  <% end %>
+                </td>
+                <td>
+                  <% if item['name'] != EsignSettingsController::DEFAULT_CERT_NAME && item['status'] != 'default' &&  can?(:destroy, @encrypted_config) %>
+                    <%= button_to settings_esign_path, params: { name: item['name'] }, method: :delete, class: 'btn btn-outline btn-error btn-xs', title: t('remove'), data: { turbo_confirm: t('are_you_sure_') } do %>
+                      <%= t('remove') %>
+                    <% end %>
+                  <% end %>
+                </td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+    <% end %>
+    <%# The timestamp authority is platform policy: only the operator can see or change it. %>
+    <% if operator_access? %>
+      <% encrypted_config = EncryptedConfig.find_or_initialize_by(account: current_account, key: EncryptedConfig::TIMESTAMP_SERVER_URL_KEY) %>
       <div class="flex-grow max-w-xl">
         <div class="flex justify-between items-end mb-4 mt-8">
           <h2 class="text-3xl font-bold">

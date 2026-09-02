@@ -124,12 +124,12 @@ context.
 | `SMTP_PORT` | `587` |
 | `SMTP_USERNAME` / `SMTP_PASSWORD` | The credentials for that server (for Postmark, the EsignCenter server token in both). |
 | `SMTP_FROM` | The platform's From address, e.g. `EsignCenter <noreply@esigncenter.com>`. **Boot rule:** if `SMTP_ADDRESS` is set and `SMTP_FROM` is not, the app refuses to start in production — otherwise platform mail would go out under a tenant's From address. Set both or neither. |
-| `TIMESERVER_URL` | The trusted timestamp service stamped into signed PDFs (the DigiCert URL chosen in Session 0). Accounts without their own timeserver row use this. |
+| `TIMESERVER_URL` | **Required.** The trusted timestamp service stamped into signed PDFs (the DigiCert URL chosen in Session 0). Production refuses to boot without it, and a signing job whose timestamp request fails now errors and retries instead of embedding a fake time. Customer accounts always use this value. |
 | `EMAIL_DELIVERY_MODE` | Leave unset. It defaults to `smtp` in production (real mail) and `test` everywhere else (mail is captured, never sent). Set it explicitly only to force one of those two values; anything else refuses to boot. |
 | `APP_URL` | Optional. The full public URL, e.g. `https://esign.example.com`. When unset the app builds links from `HOST` + `FORCE_SSL`, which is what production does today. |
 | `REGISTRATION_ENABLED` | Leave unset (off). Public sign-up is dark until a later session flips it to `true`. |
 | `BILLING_ENABLED` | Leave unset (off). Same idea for billing. |
-| `CERTS` | **Must stay unset.** Certificates now live per account in the database, and `CERTS` is only consulted for an account with no certificate row. Every pre-existing account gets its row from the upgrade, but a freshly seeded operator account has none — so a stray `CERTS` value would quietly become that account's signing identity. |
+| `CERTS` | **No longer read (Session 4).** Nothing in the app looks at this variable any more, so a leftover value is inert — no need to check it. Customers sign with the one platform certificate held by the operator account; see section 8 of `docs/operations.md`. |
 | `MULTITENANT` | **Must stay unset.** The fork runs single-tenant by design. |
 
 One-off values used only by the post-deploy tasks below: `OPERATOR_EMAIL`
