@@ -29,7 +29,8 @@ module Submitters
       end
 
       if params[:esign_consent].to_s == 'true'
-        EsignConsent.record!(submitter, request, version: params[:esign_consent_version].presence)
+        EsignConsent.record!(submitter, request, version: params[:esign_consent_version].presence,
+                                                 locale: params[:esign_consent_locale].presence)
       end
 
       update_submitter!(submitter, params, request, validate_required:)

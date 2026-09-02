@@ -19,6 +19,10 @@
 
 ```
 
+### Signer consent
+
+Before the signer can finish, the form shows an electronic-signature consent checkbox ("I agree to use electronic records and signatures.") with a link to the disclosure; the Next/Complete buttons stay disabled until it is ticked. It sits above the form's buttons, so allow for one extra row in the embed's height. The agreement is recorded on the signer as an `esign_consent` event and printed in the audit trail. Signers created through the API with `completed: true` never see the form, and no consent is collected or recorded for them — your application is responsible for that signer's consent; the audit trail marks such completions as made via API.
+
 ### Attributes
 
 ```json

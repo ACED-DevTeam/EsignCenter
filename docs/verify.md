@@ -125,11 +125,17 @@ verifies normally; regenerating an old combined PDF records it too, and the
 page still shows the day the last signer completed, however much later the
 file was regenerated.
 
+The backfill could only reach submissions that still existed at the Session 4
+deploy. A per-signer PDF whose submission had already been deleted also has no
+record and therefore shows **Not on record**.
+
 ## 8. Where the page is linked
 
 - The audit-trail PDF's "Verify" link points at `/verify`.
 - Settings → E-Signature shows a "Verify a signed PDF" card that opens
   `/verify` in a new tab. The old in-app verification form (which showed
   certificate subjects and signer names to logged-in admins) is gone.
-- The API endpoint `POST /api/tools/verify` is unchanged and still returns
-  the detailed, authenticated answer for the caller's own account.
+- The API endpoint `POST /api/tools/verify` still returns the detailed,
+  authenticated answer. Its checksum lookup now uses the same permanent
+  `verified_documents` table as the public page, including combined and
+  audit-trail PDFs.

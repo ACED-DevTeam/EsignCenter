@@ -56,7 +56,7 @@ module Submitters
       events.map do |event|
         event.as_json(only: %i[id submitter_id event_type event_timestamp])
              .merge('data' => event.data.slice('reason', 'firstname', 'lastname', 'method', 'country', 'idcode',
-                                               'version'))
+                                               'version', 'locale', 'disclosure_sha256'))
       end
     end
   end

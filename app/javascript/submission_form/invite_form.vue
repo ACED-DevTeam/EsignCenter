@@ -23,6 +23,12 @@
       name="esign_consent_version"
       :value="esignConsentVersion"
     >
+    <input
+      v-if="esignConsent"
+      type="hidden"
+      name="esign_consent_locale"
+      :value="esignConsentLocale"
+    >
     <div
       v-for="(submitter, index) in [...submitters, ...optionalSubmitters]"
       :key="submitter.uuid"
@@ -121,6 +127,12 @@ export default {
     },
     // The disclosure version the signer agreed to (sent with the consent).
     esignConsentVersion: {
+      type: String,
+      required: false,
+      default: ''
+    },
+    // The locale the disclosure was shown in (sent with the consent).
+    esignConsentLocale: {
       type: String,
       required: false,
       default: ''

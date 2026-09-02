@@ -6,9 +6,9 @@
 # LibreOffice profile, under a hard wall-clock deadline, and the process group
 # is killed as a whole when that deadline passes. The converter never uses the
 # shell. Concurrency across the process is capped through `with_slot`, backed
-# by the same store the rate limiter uses: MAX_CONCURRENT slot keys, each
-# taken with an atomic set-if-absent and released only by its holder. See
-# docs/word-uploads.md.
+# by the same store the rate limiter uses: `max_concurrent` slot keys
+# (WORD_CONVERSION_SLOTS, default 2), each taken with an atomic set-if-absent
+# and released only by its holder. See docs/word-uploads.md.
 module WordConverter
   EXTENSIONS = %w[.docx .doc].freeze
   CONTENT_TYPES = {
@@ -26,7 +26,8 @@ module WordConverter
   ].freeze
   MAX_FILE_SIZE = 20.megabytes
   TIMEOUT_SECONDS = 120
-  MAX_CONCURRENT = 2
+  DEFAULT_MAX_CONCURRENT = 2
+  SLOTS_ENV = 'WORD_CONVERSION_SLOTS'
   BINARY = ENV.fetch('SOFFICE_PATH', 'soffice')
   SLOT_KEY_PREFIX = 'word-conversion-slot-'
   # A crashed holder's slot frees itself when this runs out.
@@ -65,6 +66,15 @@ module WordConverter
     ENV['WORD_CONVERSION_ENABLED'] != 'false' && available?
   end
 
+  # How many conversions may run at once on this instance: WORD_CONVERSION_SLOTS
+  # as a whole number, never below 1. Unset or not a number means the default.
+  # Read on every call, so an operator's change takes effect at the next job.
+  def max_concurrent
+    value = Integer(ENV.fetch(SLOTS_ENV, ''), exception: false)
+
+    value.nil? ? DEFAULT_MAX_CONCURRENT : [value, 1].max
+  end
+
   def word?(content_type:, filename:)
     return true if CONTENT_TYPES.key?(content_type.to_s)
 
@@ -92,7 +102,7 @@ module WordConverter
     end
   end
 
-  # Holds one of MAX_CONCURRENT conversion slots for the block. Each slot is
+  # Holds one of `max_concurrent` conversion slots for the block. Each slot is
   # a key in RateLimit.store taken with an atomic set-if-absent (SET NX on
   # Redis, `unless_exist` on the memory store) and a TTL, so a crashed worker
   # cannot pin a slot forever and two workers can never share one — there is
@@ -108,14 +118,15 @@ module WordConverter
   end
 
   def slot_keys
-    Array.new(MAX_CONCURRENT) { |i| "#{SLOT_KEY_PREFIX}#{i + 1}" }
+    Array.new(max_concurrent) { |i| "#{SLOT_KEY_PREFIX}#{i + 1}" }
   end
 
   def acquire_slot
     token = SecureRandom.uuid
-    key = slot_keys.find { |slot_key| claim_slot(slot_key, token) }
+    keys = slot_keys
+    key = keys.find { |slot_key| claim_slot(slot_key, token) }
 
-    raise Busy, "#{MAX_CONCURRENT} conversions already running" if key.nil?
+    raise Busy, "#{keys.size} conversions already running" if key.nil?
 
     [key, token]
   end

@@ -36,7 +36,7 @@ class SubmittersController < ApplicationController
     assign_submitter_attrs(@submitter, submitter_params)
 
     if @submitter.save
-      maybe_resend_email_sms(@submitter, params)
+      maybe_resend_email(@submitter, params)
 
       SearchEntries.enqueue_reindex(@submitter)
 
@@ -48,22 +48,19 @@ class SubmittersController < ApplicationController
 
   private
 
-  def maybe_resend_email_sms(submitter, params)
-    if params[:send_email] == '1' && submitter.email.present?
-      # Anti-abuse: an invitation sent to this address within 4 hours is not repeated.
-      is_sent_recently = EmailEvent.exists?(email: submitter.email,
-                                            tag: 'submitter_invitation',
-                                            emailable: submitter,
-                                            event_type: 'send',
-                                            created_at: 4.hours.ago..Time.current)
+  # SMS is a hidden feature (no plan has it): `Submitters.normalize_preferences`
+  # above already refuses `send_sms`, so only the e-mail resend exists here.
+  def maybe_resend_email(submitter, params)
+    return unless params[:send_email] == '1' && submitter.email.present?
 
-      SendSubmitterInvitationEmailJob.perform_async('submitter_id' => submitter.id) unless is_sent_recently
-    end
+    # Anti-abuse: an invitation sent to this address within 4 hours is not repeated.
+    is_sent_recently = EmailEvent.exists?(email: submitter.email,
+                                          tag: 'submitter_invitation',
+                                          emailable: submitter,
+                                          event_type: 'send',
+                                          created_at: 4.hours.ago..Time.current)
 
-    return if submitter.phone.blank?
-    return unless params[:send_sms] == '1'
-
-    SendSubmitterInvitationSmsJob.perform_async('submitter_id' => submitter.id)
+    SendSubmitterInvitationEmailJob.perform_async('submitter_id' => submitter.id) unless is_sent_recently
   end
 
   def assign_submitter_attrs(submitter, attrs)

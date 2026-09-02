@@ -31,6 +31,12 @@ you ever scale to 2+ instances, add a managed Redis and set `REDIS_URL`.
 Whether to move to managed Redis before launch is decided at launch-gate 3
 from the analysis in `docs/operations.md` section 5.
 
+**Launch gate on staging:** confirm `/verify` is rate-limited per visitor
+behind Render's proxy. Send two POSTs from two different networks and inspect
+Redis; they must create distinct `rate_limit:verify-minute-*` keys. The app
+uses `request.remote_ip`, so this proves Render's forwarded headers do not put
+all visitors into one shared bucket.
+
 ## 2. Environment variables on the web service
 
 | Variable | What to put there |
@@ -61,6 +67,40 @@ JSON like `{"status":"ok","db":"ok","redis":"ok","scheduler_last_tick_at":"…"}
 with HTTP 200; `"status":"degraded"` (HTTP 503) means the database or Redis
 is unreachable. Point Render's health-check path at `/up`. Details in
 `docs/operations.md` section 4.
+
+### Word conversion memory check (launch-gate 3)
+
+Word uploads are converted to PDF by LibreOffice **inside the web
+container**, next to Puma, the embedded Sidekiq and the embedded Redis. If
+the container runs out of memory, Render kills the whole thing — web server,
+queued jobs and all. This check proves the headroom is there before customers
+can upload Word files. Do it once on staging (or the production service before
+launch), with the same instance plan you will run in production.
+
+1. **Baseline.** With nothing running, note the container's idle memory on
+   Render's *Metrics* → *Memory* graph. If you want the number from inside
+   the container instead, open a shell on the service and run
+   `ps -o rss,cmd -p 1 --ppid 1` (the `puma` line is Puma plus the embedded
+   Sidekiq; the figure is in KB). Write both down next to the plan's memory
+   limit (shown on the plan's page in the Render dashboard).
+2. **Worst case.** Prepare two `.doc` files close to the 20 MB cap (a long
+   document full of images does it). From two browser tabs, upload both to
+   the dashboard **at the same time**, so both conversions run at once (the
+   default `WORD_CONVERSION_SLOTS` is 2). Watch the memory graph while the
+   converting cards spin. Each LibreOffice process can take a few hundred
+   megabytes on a file this size, so expect the peak to sit at roughly
+   *baseline + 2 × a few hundred MB*.
+3. **Verdict.** The check passes when the peak stays clearly below the plan's
+   limit — leave at least a quarter of the limit free, since Render kills
+   the container at the limit and PDF signing has spikes of its own. Record
+   the baseline, the peak and the plan in the launch-gate notes.
+4. **If it does not fit,** in this order, none of which needs a redeploy:
+   - set `WORD_CONVERSION_SLOTS=1` (one conversion at a time) and run the
+     check again with one upload;
+   - if even one does not fit, set `WORD_CONVERSION_ENABLED=false` (Word
+     uploads off; anything still queued is marked failed without LibreOffice
+     starting) until the next step;
+   - move to a larger instance plan and repeat from step 1.
 
 **Order matters when UPGRADING:** always deploy this fork's update **before**
 the integrating app's update. An older fork can't attach the webhook auth
@@ -106,10 +146,12 @@ with the account id and the key, never the credentials.
 ## Session 1 additions (per-account settings, email, kill switches)
 
 Session 1 of the standalone-SaaS work changed how the fork finds its settings:
-every account now uses **its own** email server, signing certificate and
-templates instead of silently borrowing account #1's. This section lists the
-new environment variables, what the upgrade does to accounts that already
-exist, and the steps to run right after the deploy.
+every account now uses **its own** email server and templates instead of
+silently borrowing account #1's. Internal accounts also keep their own signing
+certificate; customer accounts sign with the platform certificate described
+in section 8 of `docs/operations.md`. This section lists the new environment
+variables, what the upgrade does to accounts that already exist, and the steps
+to run right after the deploy.
 
 ### New environment variables
 
@@ -164,6 +206,13 @@ each account's own name.
    are required; nothing secret is printed. Then enrol 2FA for that user —
    the operator surfaces (`/jobs`, the full-text toggle) need the operator
    flag **and** 2FA. See `docs/operations.md` section 7.
+2b. **Export the platform signing certificate to a fresh path:**
+   `bundle exec rake "operator:platform_cert:export[/tmp/esigncenter-platform-cert-YYYYMMDD.pem]"`.
+   Store the exported file offline in Evan's custody, then run
+   `bundle exec rake operator:platform_cert:fingerprint` and record its output
+   in the operations notes. Replace `YYYYMMDD` and use a path that does not
+   already exist; the `0600` owner-only permission is guaranteed when the task
+   creates the fresh file.
 3. **Review every pinned mail server:** `bundle exec rake email:pins` prints one
    line per account that has its own SMTP server — account id, kind, name,
    host, From address, and whether the pin is usable. It never prints

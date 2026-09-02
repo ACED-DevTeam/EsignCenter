@@ -300,7 +300,8 @@ module Submissions
                   text: "#{I18n.t('knowledge_based_authentication')}: #{I18n.t('passed')}\n"
                 },
                 consent_event && {
-                  text: "#{I18n.t('consented_to_electronic_signatures')} (#{consent_event.data['version']}): " \
+                  text: "#{I18n.t('consented_to_electronic_signatures')} " \
+                        "(#{consent_event.data.values_at('version', 'locale').compact.join(', ')}): " \
                         "#{I18n.l(consent_event.event_timestamp.in_time_zone(timezone),
                                   format: with_timestamp_seconds ? :detailed : :long, locale: account.locale)} " \
                         "#{TimeUtils.timezone_abbr(timezone, consent_event.event_timestamp)}\n"

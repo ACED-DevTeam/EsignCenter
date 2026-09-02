@@ -6,6 +6,7 @@ en: &en
   word_file_too_large: "This Word document is too large. The limit is %{limit_mb} MB — save it as a PDF or split it up."
   too_many_word_conversions: "Too many Word documents were converted in the last hour. Try again later or upload a PDF."
   unsupported_document_format: "This file format isn't supported. Upload a PDF, an image, or a Word document (.docx, .doc)."
+  unsupported_document_format_pdf_image_only: "This file format isn't supported. Upload a PDF or an image."
   esign_consent_checkbox_label: "I agree to use electronic records and signatures."
   esign_consent_disclosure_link: "Electronic Signature Disclosure"
   esign_consent_disclosure_title: "Electronic Records and Signatures Disclosure"
@@ -41,7 +42,7 @@ en: &en
   timestamp_server_operator_only_hint: "Affects the operator account only. Customer accounts use the TIMESERVER_URL environment variable."
   open_verify_page: "Open verification page"
   esign_consent_disclosure_body_html: |-
-    <p>By checking the box, you agree to use electronic records and electronic signatures for this document instead of paper and ink. Your electronic signature will be as valid as a handwritten one, and the completed document will be delivered to you electronically.</p>
+    <p>By checking the box, you agree to use electronic records and electronic signatures for this document instead of paper and ink. You agree that your electronic signature has the same legal effect as your handwritten signature. A copy of the completed document will be available to you electronically, and the sender can also provide one on request.</p>
     <p><strong>What you need.</strong> A current web browser, an internet connection and software that can open PDF files. If you can read this page, your device meets these requirements.</p>
     <p><strong>Withdrawing consent.</strong> You may withdraw your consent at any time before you complete the document by not signing it and letting the sender know. Withdrawing consent does not affect documents you have already signed.</p>
     <p><strong>Paper copies.</strong> You may request a paper copy of this document at any time by contacting the sender.</p>
@@ -913,8 +914,8 @@ en: &en
   reindex: Reindex
   build_search_index: Build Search Index
   require_two_factor_authentication_2fa_with_an_authenticator_app_e_g_google_authenticator_authy_all_users_signing_documents_must_pass_the_second_factor_verification_using_a_secure_code_in_addition_to_their_password: Require two-factor authentication (2FA) with an authenticator app (e.g., Google Authenticator, Authy). All users signing documents must pass the second factor verification using a secure code in addition to their password.
-  add_a_unique_signature_id_and_timestamp_to_each_signature_for_audit_and_traceability_purposes_along_with_the_timestamp_part_of_docuseals_21_cfr_part_11_compliance_settings: "Add a unique Signature ID and timestamp to each signature for audit and traceability purposes along with the timestamp. Part of EsignCenter's 21 CFR Part 11 compliance settings."
-  require_signer_to_provide_a_reason_for_signing_before_completing_their_signature_e_g_approvals_certifications_part_of_docuseals_21_cfr_part_11_compliance_settings: "Require signers to provide a reason for signing before completing their signature (e.g., approvals, certifications). Part of EsignCenter's 21 CFR Part 11 compliance settings."
+  add_a_unique_signature_id_and_timestamp_to_each_signature_for_audit_and_traceability: "Add a unique signature ID and timestamp to each signature for audit and traceability."
+  require_signers_to_provide_a_reason_for_signing_before_completing_their_signature_e_g_approvals_certifications: "Require signers to provide a reason for signing before completing their signature (e.g., approvals, certifications)."
   allow_signers_to_create_signatures_by_typing_their_name_instead_of_drawing_or_uploading_one: Allow signers to create signatures by typing their name instead of drawing or uploading one.
   allow_signers_to_resubmit_forms_after_completion_useful_when_corrections_or_multiple_submissions_are_needed: Allow signers to resubmit forms after completion, useful when corrections or multiple submissions are needed.
   allow_recipients_to_decline_signing_a_document_the_decline_reason_notification_will_be_sent_to_the_signature_requester: Allow recipients to decline signing a document. The decline reason notification will be sent to the signature requester.
@@ -1139,6 +1140,7 @@ es: &es
   word_file_too_large: "Este documento de Word es demasiado grande. El límite es de %{limit_mb} MB: guárdelo como PDF o divídalo."
   too_many_word_conversions: "Se han convertido demasiados documentos de Word en la última hora. Inténtelo más tarde o suba un PDF."
   unsupported_document_format: "Este formato de archivo no es compatible. Suba un PDF, una imagen o un documento de Word (.docx, .doc)."
+  unsupported_document_format_pdf_image_only: "Este formato de archivo no es compatible. Suba un PDF o una imagen."
   esign_consent_checkbox_label: "Acepto usar registros y firmas electrónicos."
   esign_consent_disclosure_link: "Divulgación sobre firma electrónica"
   esign_consent_disclosure_title: "Divulgación sobre registros y firmas electrónicos"
@@ -1174,7 +1176,7 @@ es: &es
   timestamp_server_operator_only_hint: "Afecta solo a la cuenta del operador. Las cuentas de cliente usan la variable de entorno TIMESERVER_URL."
   open_verify_page: "Abrir la página de verificación"
   esign_consent_disclosure_body_html: |-
-    <p>Al marcar la casilla, acepta usar registros y firmas electrónicos para este documento en lugar de papel y tinta. Su firma electrónica tendrá la misma validez que una firma manuscrita, y el documento completado se le entregará por medios electrónicos.</p>
+    <p>Al marcar la casilla, acepta usar registros y firmas electrónicos para este documento en lugar de papel y tinta. Acepta que su firma electrónica tiene el mismo efecto legal que su firma manuscrita. Una copia del documento completado estará disponible para usted por medios electrónicos, y el remitente también puede facilitarle una si la solicita.</p>
     <p><strong>Lo que necesita.</strong> Un navegador web actual, conexión a internet y un programa que pueda abrir archivos PDF. Si puede leer esta página, su dispositivo cumple estos requisitos.</p>
     <p><strong>Retirar el consentimiento.</strong> Puede retirar su consentimiento en cualquier momento antes de completar el documento: basta con no firmarlo e informar al remitente. Retirar el consentimiento no afecta a los documentos que ya haya firmado.</p>
     <p><strong>Copias en papel.</strong> Puede solicitar una copia en papel de este documento en cualquier momento poniéndose en contacto con el remitente.</p>
@@ -2025,8 +2027,8 @@ es: &es
   reindex: Reindexar
   build_search_index: Construir índice de búsqueda
   require_two_factor_authentication_2fa_with_an_authenticator_app_e_g_google_authenticator_authy_all_users_signing_documents_must_pass_the_second_factor_verification_using_a_secure_code_in_addition_to_their_password: Requerir autenticación de dos factores (2FA) con una aplicación de autenticación (p. ej., Google Authenticator, Authy). Todos los usuarios que firman documentos deben pasar la verificación del segundo factor usando un código seguro además de su contraseña.
-  add_a_unique_signature_id_and_timestamp_to_each_signature_for_audit_and_traceability_purposes_along_with_the_timestamp_part_of_docuseals_21_cfr_part_11_compliance_settings: Agregar un ID de firma único y una marca de tiempo a cada firma para fines de auditoría y trazabilidad junto con la marca de tiempo. Parte de la configuración de cumplimiento 21 CFR Parte 11 de EsignCenter.
-  require_signer_to_provide_a_reason_for_signing_before_completing_their_signature_e_g_approvals_certifications_part_of_docuseals_21_cfr_part_11_compliance_settings: Requerir que los firmantes proporcionen un motivo para firmar antes de completar su firma (p. ej., aprobaciones, certificaciones). Parte de la configuración de cumplimiento 21 CFR Parte 11 de EsignCenter.
+  add_a_unique_signature_id_and_timestamp_to_each_signature_for_audit_and_traceability: Agregar un ID de firma único y una marca de tiempo a cada firma para fines de auditoría y trazabilidad.
+  require_signers_to_provide_a_reason_for_signing_before_completing_their_signature_e_g_approvals_certifications: Requerir que los firmantes proporcionen un motivo para firmar antes de completar su firma (p. ej., aprobaciones, certificaciones).
   allow_signers_to_create_signatures_by_typing_their_name_instead_of_drawing_or_uploading_one: Permitir que los firmantes creen firmas escribiendo su nombre en lugar de dibujar o subir una.
   allow_signers_to_resubmit_forms_after_completion_useful_when_corrections_or_multiple_submissions_are_needed: Permitir que los firmantes vuelvan a enviar formularios después de completarlos, útil cuando se necesitan correcciones o múltiples envíos.
   allow_recipients_to_decline_signing_a_document_the_decline_reason_notification_will_be_sent_to_the_signature_requester: Permitir que los destinatarios rechacen firmar un documento. La notificación del motivo del rechazo se enviará al solicitante de la firma.
@@ -2251,6 +2253,7 @@ it: &it
   word_file_too_large: "Questo documento Word è troppo grande. Il limite è di %{limit_mb} MB: salvalo come PDF o dividilo."
   too_many_word_conversions: "Troppi documenti Word convertiti nell'ultima ora. Riprova più tardi o carica un PDF."
   unsupported_document_format: "Questo formato di file non è supportato. Carica un PDF, un'immagine o un documento Word (.docx, .doc)."
+  unsupported_document_format_pdf_image_only: "Questo formato di file non è supportato. Carica un PDF o un'immagine."
   esign_consent_checkbox_label: "Accetto di utilizzare documenti e firme elettronici."
   esign_consent_disclosure_link: "Informativa sulla firma elettronica"
   esign_consent_disclosure_title: "Informativa su documenti e firme elettronici"
@@ -2286,7 +2289,7 @@ it: &it
   timestamp_server_operator_only_hint: "Riguarda solo l'account operatore. Gli account cliente usano la variabile d'ambiente TIMESERVER_URL."
   open_verify_page: "Apri la pagina di verifica"
   esign_consent_disclosure_body_html: |-
-    <p>Selezionando la casella, accetti di utilizzare documenti e firme elettronici per questo documento al posto di carta e inchiostro. La tua firma elettronica avrà la stessa validità di una firma autografa e il documento completato ti sarà consegnato in formato elettronico.</p>
+    <p>Selezionando la casella, accetti di utilizzare documenti e firme elettronici per questo documento al posto di carta e inchiostro. Accetti che la tua firma elettronica abbia lo stesso effetto legale della tua firma autografa. Una copia del documento completato sarà disponibile per te in formato elettronico e il mittente può fornirtene una anche su richiesta.</p>
     <p><strong>Cosa ti serve.</strong> Un browser web aggiornato, una connessione a internet e un programma in grado di aprire file PDF. Se riesci a leggere questa pagina, il tuo dispositivo soddisfa questi requisiti.</p>
     <p><strong>Revoca del consenso.</strong> Puoi revocare il consenso in qualsiasi momento prima di completare il documento, semplicemente non firmandolo e informando il mittente. La revoca non riguarda i documenti che hai già firmato.</p>
     <p><strong>Copie cartacee.</strong> Puoi richiedere in qualsiasi momento una copia cartacea di questo documento contattando il mittente.</p>
@@ -3137,8 +3140,8 @@ it: &it
   reindex: Reindicizza
   build_search_index: Crea indice di ricerca
   require_two_factor_authentication_2fa_with_an_authenticator_app_e_g_google_authenticator_authy_all_users_signing_documents_must_pass_the_second_factor_verification_using_a_secure_code_in_addition_to_their_password: "Richiedere l'autenticazione a due fattori (2FA) con un'app di autenticazione (es. Google Authenticator, Authy). Tutti gli utenti che firmano documenti devono superare la verifica del secondo fattore utilizzando un codice sicuro oltre alla password."
-  add_a_unique_signature_id_and_timestamp_to_each_signature_for_audit_and_traceability_purposes_along_with_the_timestamp_part_of_docuseals_21_cfr_part_11_compliance_settings: Aggiungere un ID firma univoco e una marca temporale a ogni firma per scopi di audit e tracciabilità insieme alla marca temporale. Parte delle impostazioni di conformità 21 CFR Parte 11 di EsignCenter.
-  require_signer_to_provide_a_reason_for_signing_before_completing_their_signature_e_g_approvals_certifications_part_of_docuseals_21_cfr_part_11_compliance_settings: Richiedere ai firmatari di fornire una motivazione prima di completare la firma (es. approvazioni, certificazioni). Parte delle impostazioni di conformità 21 CFR Parte 11 di EsignCenter.
+  add_a_unique_signature_id_and_timestamp_to_each_signature_for_audit_and_traceability: Aggiungere un ID firma univoco e una marca temporale a ogni firma per scopi di audit e tracciabilità.
+  require_signers_to_provide_a_reason_for_signing_before_completing_their_signature_e_g_approvals_certifications: Richiedere ai firmatari di fornire una motivazione prima di completare la firma (es. approvazioni, certificazioni).
   allow_signers_to_create_signatures_by_typing_their_name_instead_of_drawing_or_uploading_one: Consentire ai firmatari di creare firme digitando il proprio nome invece di disegnarle o caricarle.
   allow_signers_to_resubmit_forms_after_completion_useful_when_corrections_or_multiple_submissions_are_needed: Consentire ai firmatari di reinviare i moduli dopo il completamento, utile quando sono necessarie correzioni o più invii.
   allow_recipients_to_decline_signing_a_document_the_decline_reason_notification_will_be_sent_to_the_signature_requester: Consentire ai destinatari di rifiutare di firmare un documento. La notifica del motivo del rifiuto verrà inviata al richiedente della firma.
@@ -3363,6 +3366,7 @@ fr: &fr
   word_file_too_large: "Ce document Word est trop volumineux. La limite est de %{limit_mb} Mo : enregistrez-le en PDF ou divisez-le."
   too_many_word_conversions: "Trop de documents Word ont été convertis au cours de la dernière heure. Réessayez plus tard ou téléversez un PDF."
   unsupported_document_format: "Ce format de fichier n'est pas pris en charge. Téléversez un PDF, une image ou un document Word (.docx, .doc)."
+  unsupported_document_format_pdf_image_only: "Ce format de fichier n'est pas pris en charge. Téléversez un PDF ou une image."
   esign_consent_checkbox_label: "J'accepte d'utiliser des documents et des signatures électroniques."
   esign_consent_disclosure_link: "Information sur la signature électronique"
   esign_consent_disclosure_title: "Information sur les documents et signatures électroniques"
@@ -3398,7 +3402,7 @@ fr: &fr
   timestamp_server_operator_only_hint: "Concerne uniquement le compte opérateur. Les comptes clients utilisent la variable d'environnement TIMESERVER_URL."
   open_verify_page: "Ouvrir la page de vérification"
   esign_consent_disclosure_body_html: |-
-    <p>En cochant la case, vous acceptez d'utiliser des documents et des signatures électroniques pour ce document, à la place du papier et de l'encre. Votre signature électronique aura la même valeur qu'une signature manuscrite, et le document finalisé vous sera remis par voie électronique.</p>
+    <p>En cochant la case, vous acceptez d'utiliser des documents et des signatures électroniques pour ce document, à la place du papier et de l'encre. Vous acceptez que votre signature électronique ait le même effet juridique que votre signature manuscrite. Une copie du document finalisé sera à votre disposition par voie électronique, et l'expéditeur peut également vous en fournir une sur demande.</p>
     <p><strong>Ce dont vous avez besoin.</strong> Un navigateur web récent, une connexion internet et un logiciel capable d'ouvrir les fichiers PDF. Si vous pouvez lire cette page, votre appareil répond à ces exigences.</p>
     <p><strong>Retrait du consentement.</strong> Vous pouvez retirer votre consentement à tout moment avant de finaliser le document, en ne le signant pas et en prévenant l'expéditeur. Le retrait n'affecte pas les documents que vous avez déjà signés.</p>
     <p><strong>Copies papier.</strong> Vous pouvez demander à tout moment une copie papier de ce document en contactant l'expéditeur.</p>
@@ -4245,8 +4249,8 @@ fr: &fr
   reindex: Réindexer
   build_search_index: Construire l’index de recherche
   require_two_factor_authentication_2fa_with_an_authenticator_app_e_g_google_authenticator_authy_all_users_signing_documents_must_pass_the_second_factor_verification_using_a_secure_code_in_addition_to_their_password: Exiger l’authentification à deux facteurs (2FA) avec une application d’authentification (p. ex., Google Authenticator, Authy). Tous les utilisateurs qui signent des documents doivent passer la vérification du second facteur à l’aide d’un code sécurisé en plus de leur mot de passe.
-  add_a_unique_signature_id_and_timestamp_to_each_signature_for_audit_and_traceability_purposes_along_with_the_timestamp_part_of_docuseals_21_cfr_part_11_compliance_settings: Ajouter un identifiant de signature unique et un horodatage à chaque signature à des fins d’audit et de traçabilité, avec l’horodatage. Fait partie des paramètres de conformité 21 CFR Part 11 de EsignCenter.
-  require_signer_to_provide_a_reason_for_signing_before_completing_their_signature_e_g_approvals_certifications_part_of_docuseals_21_cfr_part_11_compliance_settings: Exiger que les signataires fournissent un motif de signature avant de finaliser leur signature (p. ex., approbations, certifications). Fait partie des paramètres de conformité 21 CFR Part 11 de EsignCenter.
+  add_a_unique_signature_id_and_timestamp_to_each_signature_for_audit_and_traceability: Ajouter un identifiant de signature unique et un horodatage à chaque signature à des fins d’audit et de traçabilité.
+  require_signers_to_provide_a_reason_for_signing_before_completing_their_signature_e_g_approvals_certifications: Exiger que les signataires fournissent un motif de signature avant de finaliser leur signature (p. ex., approbations, certifications).
   allow_signers_to_create_signatures_by_typing_their_name_instead_of_drawing_or_uploading_one: Autoriser les signataires à créer des signatures en tapant leur nom au lieu de dessiner ou téléverser une signature.
   allow_signers_to_resubmit_forms_after_completion_useful_when_corrections_or_multiple_submissions_are_needed: Autoriser les signataires à soumettre à nouveau les formulaires après finalisation, utile pour des corrections ou soumissions multiples.
   allow_recipients_to_decline_signing_a_document_the_decline_reason_notification_will_be_sent_to_the_signature_requester: Autoriser les destinataires à refuser de signer un document. Le motif du refus sera notifié au demandeur de signature.
@@ -4472,6 +4476,7 @@ pt: &pt
   word_file_too_large: "Este documento do Word é muito grande. O limite é de %{limit_mb} MB: salve-o como PDF ou divida-o."
   too_many_word_conversions: "Muitos documentos do Word foram convertidos na última hora. Tente novamente mais tarde ou envie um PDF."
   unsupported_document_format: "Este formato de arquivo não é compatível. Envie um PDF, uma imagem ou um documento do Word (.docx, .doc)."
+  unsupported_document_format_pdf_image_only: "Este formato de arquivo não é compatível. Envie um PDF ou uma imagem."
   esign_consent_checkbox_label: "Concordo em utilizar registos e assinaturas eletrónicos."
   esign_consent_disclosure_link: "Divulgação sobre assinatura eletrónica"
   esign_consent_disclosure_title: "Divulgação sobre registos e assinaturas eletrónicos"
@@ -4507,7 +4512,7 @@ pt: &pt
   timestamp_server_operator_only_hint: "Afeta apenas a conta do operador. As contas de cliente usam a variável de ambiente TIMESERVER_URL."
   open_verify_page: "Abrir a página de verificação"
   esign_consent_disclosure_body_html: |-
-    <p>Ao marcar a caixa, concorda em utilizar registos e assinaturas eletrónicos para este documento, em vez de papel e tinta. A sua assinatura eletrónica terá a mesma validade de uma assinatura manuscrita, e o documento concluído ser-lhe-á entregue por via eletrónica.</p>
+    <p>Ao marcar a caixa, concorda em utilizar registos e assinaturas eletrónicos para este documento, em vez de papel e tinta. Concorda que a sua assinatura eletrónica tem o mesmo efeito legal que a sua assinatura manuscrita. Uma cópia do documento concluído ficará disponível para si por via eletrónica, e o remetente também pode fornecer-lhe uma a pedido.</p>
     <p><strong>O que precisa.</strong> Um navegador web atual, uma ligação à internet e um programa capaz de abrir ficheiros PDF. Se consegue ler esta página, o seu dispositivo cumpre estes requisitos.</p>
     <p><strong>Retirar o consentimento.</strong> Pode retirar o seu consentimento a qualquer momento antes de concluir o documento, bastando não o assinar e informar o remetente. A retirada não afeta os documentos que já assinou.</p>
     <p><strong>Cópias em papel.</strong> Pode solicitar a qualquer momento uma cópia em papel deste documento contactando o remetente.</p>
@@ -5358,8 +5363,8 @@ pt: &pt
   reindex: Reindexar
   build_search_index: Construir índice de busca
   require_two_factor_authentication_2fa_with_an_authenticator_app_e_g_google_authenticator_authy_all_users_signing_documents_must_pass_the_second_factor_verification_using_a_secure_code_in_addition_to_their_password: "Exigir autenticação de dois fatores (2FA) com um aplicativo autenticador (ex.: Google Authenticator, Authy). Todos os usuários que assinam documentos devem passar pela verificação do segundo fator usando um código seguro além da senha."
-  add_a_unique_signature_id_and_timestamp_to_each_signature_for_audit_and_traceability_purposes_along_with_the_timestamp_part_of_docuseals_21_cfr_part_11_compliance_settings: Adicionar um ID de assinatura exclusivo e um carimbo de data/hora a cada assinatura para fins de auditoria e rastreabilidade junto com o carimbo de data/hora. Parte das configurações de conformidade 21 CFR Parte 11 do EsignCenter.
-  require_signer_to_provide_a_reason_for_signing_before_completing_their_signature_e_g_approvals_certifications_part_of_docuseals_21_cfr_part_11_compliance_settings: "Exigir que os signatários forneçam uma razão antes de completar a assinatura (ex.: aprovações, certificações). Parte das configurações de conformidade 21 CFR Parte 11 do EsignCenter."
+  add_a_unique_signature_id_and_timestamp_to_each_signature_for_audit_and_traceability: Adicionar um ID de assinatura exclusivo e um carimbo de data/hora a cada assinatura para fins de auditoria e rastreabilidade.
+  require_signers_to_provide_a_reason_for_signing_before_completing_their_signature_e_g_approvals_certifications: "Exigir que os signatários forneçam uma razão antes de completar a assinatura (ex.: aprovações, certificações)."
   allow_signers_to_create_signatures_by_typing_their_name_instead_of_drawing_or_uploading_one: Permitir que os signatários criem assinaturas digitando seu nome em vez de desenhá-las ou carregá-las.
   allow_signers_to_resubmit_forms_after_completion_useful_when_corrections_or_multiple_submissions_are_needed: Permitir que os signatários reenviem formulários após o término, útil quando são necessárias correções ou múltiplos envios.
   allow_recipients_to_decline_signing_a_document_the_decline_reason_notification_will_be_sent_to_the_signature_requester: Permitir que os destinatários recusem assinar um documento. A notificação do motivo da recusa será enviada ao solicitante da assinatura.
@@ -5584,6 +5589,7 @@ de: &de
   word_file_too_large: "Dieses Word-Dokument ist zu groß. Das Limit beträgt %{limit_mb} MB – speichern Sie es als PDF oder teilen Sie es auf."
   too_many_word_conversions: "In der letzten Stunde wurden zu viele Word-Dokumente konvertiert. Versuchen Sie es später erneut oder laden Sie ein PDF hoch."
   unsupported_document_format: "Dieses Dateiformat wird nicht unterstützt. Laden Sie ein PDF, ein Bild oder ein Word-Dokument (.docx, .doc) hoch."
+  unsupported_document_format_pdf_image_only: "Dieses Dateiformat wird nicht unterstützt. Laden Sie ein PDF oder ein Bild hoch."
   esign_consent_checkbox_label: "Ich stimme der Verwendung elektronischer Dokumente und Signaturen zu."
   esign_consent_disclosure_link: "Hinweis zur elektronischen Signatur"
   esign_consent_disclosure_title: "Hinweis zu elektronischen Dokumenten und Signaturen"
@@ -5619,7 +5625,7 @@ de: &de
   timestamp_server_operator_only_hint: "Betrifft nur das Operator-Konto. Kundenkonten verwenden die Umgebungsvariable TIMESERVER_URL."
   open_verify_page: "Prüfseite öffnen"
   esign_consent_disclosure_body_html: |-
-    <p>Mit dem Setzen des Häkchens stimmen Sie zu, für dieses Dokument elektronische Dokumente und elektronische Signaturen anstelle von Papier und Tinte zu verwenden. Ihre elektronische Signatur ist genauso gültig wie eine handschriftliche, und das fertige Dokument wird Ihnen elektronisch zugestellt.</p>
+    <p>Mit dem Setzen des Häkchens stimmen Sie zu, für dieses Dokument elektronische Dokumente und elektronische Signaturen anstelle von Papier und Tinte zu verwenden. Sie stimmen zu, dass Ihre elektronische Signatur dieselbe rechtliche Wirkung hat wie Ihre handschriftliche Unterschrift. Eine Kopie des fertigen Dokuments steht Ihnen elektronisch zur Verfügung, und der Absender kann Ihnen auf Anfrage ebenfalls eine bereitstellen.</p>
     <p><strong>Was Sie benötigen.</strong> Einen aktuellen Webbrowser, eine Internetverbindung und ein Programm, das PDF-Dateien öffnen kann. Wenn Sie diese Seite lesen können, erfüllt Ihr Gerät diese Anforderungen.</p>
     <p><strong>Widerruf der Zustimmung.</strong> Sie können Ihre Zustimmung jederzeit vor dem Abschluss des Dokuments widerrufen, indem Sie es nicht unterschreiben und den Absender informieren. Der Widerruf betrifft keine Dokumente, die Sie bereits unterschrieben haben.</p>
     <p><strong>Papierkopien.</strong> Sie können jederzeit eine Papierkopie dieses Dokuments anfordern, indem Sie sich an den Absender wenden.</p>
@@ -6470,8 +6476,8 @@ de: &de
   reindex: Neu indexieren
   build_search_index: Suchindex erstellen
   require_two_factor_authentication_2fa_with_an_authenticator_app_e_g_google_authenticator_authy_all_users_signing_documents_must_pass_the_second_factor_verification_using_a_secure_code_in_addition_to_their_password: Zwei-Faktor-Authentifizierung (2FA) mit einer Authentifizierungs-App (z. B. Google Authenticator, Authy) erforderlich. Alle Benutzer, die Dokumente unterzeichnen, müssen zusätzlich zu ihrem Passwort die zweite Faktorprüfung mit einem sicheren Code bestehen.
-  add_a_unique_signature_id_and_timestamp_to_each_signature_for_audit_and_traceability_purposes_along_with_the_timestamp_part_of_docuseals_21_cfr_part_11_compliance_settings: Fügen Sie jeder Signatur eine eindeutige Signatur-ID und einen Zeitstempel für Prüf- und Nachverfolgbarkeitszwecke hinzu. Teil der EsignCenter-Einstellungen zur 21 CFR Part 11-Compliance.
-  require_signer_to_provide_a_reason_for_signing_before_completing_their_signature_e_g_approvals_certifications_part_of_docuseals_21_cfr_part_11_compliance_settings: Unterzeichner müssen vor Abschluss ihrer Signatur einen Grund für die Unterzeichnung angeben (z. B. Genehmigungen, Zertifizierungen). Teil der EsignCenter-Einstellungen zur 21 CFR Part 11-Compliance.
+  add_a_unique_signature_id_and_timestamp_to_each_signature_for_audit_and_traceability: Fügt jeder Signatur eine eindeutige Signatur-ID und einen Zeitstempel für Prüf- und Nachverfolgbarkeitszwecke hinzu.
+  require_signers_to_provide_a_reason_for_signing_before_completing_their_signature_e_g_approvals_certifications: Unterzeichner müssen vor Abschluss ihrer Signatur einen Grund für die Unterzeichnung angeben (z. B. Genehmigungen, Zertifizierungen).
   allow_signers_to_create_signatures_by_typing_their_name_instead_of_drawing_or_uploading_one: Unterzeichner dürfen Signaturen erstellen, indem sie ihren Namen eingeben, statt eine Signatur zu zeichnen oder hochzuladen.
   allow_signers_to_resubmit_forms_after_completion_useful_when_corrections_or_multiple_submissions_are_needed: Unterzeichner dürfen Formulare nach Abschluss erneut einreichen – nützlich für Korrekturen oder mehrere Einreichungen.
   allow_recipients_to_decline_signing_a_document_the_decline_reason_notification_will_be_sent_to_the_signature_requester: Empfänger dürfen die Unterzeichnung eines Dokuments ablehnen. Die Benachrichtigung mit dem Ablehnungsgrund wird an den Anforderer der Signatur gesendet.
@@ -6696,6 +6702,7 @@ pl:
   word_file_too_large: "Ten dokument Word jest za duży. Limit wynosi %{limit_mb} MB – zapisz go jako PDF lub podziel."
   too_many_word_conversions: "W ciągu ostatniej godziny przekonwertowano zbyt wiele dokumentów Word. Spróbuj ponownie później lub prześlij PDF."
   unsupported_document_format: "Ten format pliku nie jest obsługiwany. Prześlij PDF, obraz lub dokument Word (.docx, .doc)."
+  unsupported_document_format_pdf_image_only: "Ten format pliku nie jest obsługiwany. Prześlij PDF lub obraz."
   esign_consent_checkbox_label: "Zgadzam się na korzystanie z dokumentów i podpisów elektronicznych."
   esign_consent_disclosure_link: "Informacja o podpisie elektronicznym"
   esign_consent_disclosure_title: "Informacja o dokumentach i podpisach elektronicznych"
@@ -6735,7 +6742,7 @@ pl:
   analyzing: "Analizowanie"
   close: "Zamknij"
   esign_consent_disclosure_body_html: |-
-    <p>Zaznaczając pole, zgadzasz się na korzystanie z dokumentów i podpisów elektronicznych w odniesieniu do tego dokumentu zamiast papieru i długopisu. Twój podpis elektroniczny będzie tak samo ważny jak podpis odręczny, a gotowy dokument zostanie dostarczony Ci drogą elektroniczną.</p>
+    <p>Zaznaczając pole, zgadzasz się na korzystanie z dokumentów i podpisów elektronicznych w odniesieniu do tego dokumentu zamiast papieru i długopisu. Zgadzasz się, że Twój podpis elektroniczny ma taki sam skutek prawny jak Twój podpis odręczny. Kopia gotowego dokumentu będzie dla Ciebie dostępna drogą elektroniczną, a nadawca może również przekazać Ci ją na życzenie.</p>
     <p><strong>Czego potrzebujesz.</strong> Aktualnej przeglądarki internetowej, połączenia z internetem oraz programu otwierającego pliki PDF. Jeśli możesz przeczytać tę stronę, Twoje urządzenie spełnia te wymagania.</p>
     <p><strong>Wycofanie zgody.</strong> Możesz wycofać zgodę w dowolnym momencie przed ukończeniem dokumentu – wystarczy go nie podpisywać i poinformować nadawcę. Wycofanie zgody nie dotyczy dokumentów, które już zostały podpisane.</p>
     <p><strong>Kopie papierowe.</strong> W każdej chwili możesz poprosić o papierową kopię tego dokumentu, kontaktując się z nadawcą.</p>
@@ -6872,6 +6879,7 @@ uk:
   word_file_too_large: "Цей документ Word завеликий. Обмеження — %{limit_mb} МБ: збережіть його як PDF або розділіть."
   too_many_word_conversions: "За останню годину конвертовано забагато документів Word. Спробуйте пізніше або завантажте PDF."
   unsupported_document_format: "Цей формат файлу не підтримується. Завантажте PDF, зображення або документ Word (.docx, .doc)."
+  unsupported_document_format_pdf_image_only: "Цей формат файлу не підтримується. Завантажте PDF або зображення."
   esign_consent_checkbox_label: "Я погоджуюся використовувати електронні документи та підписи."
   esign_consent_disclosure_link: "Інформація про електронний підпис"
   esign_consent_disclosure_title: "Інформація про електронні документи та підписи"
@@ -6911,7 +6919,7 @@ uk:
   analyzing: "Аналіз"
   close: "Закрити"
   esign_consent_disclosure_body_html: |-
-    <p>Установлюючи прапорець, ви погоджуєтеся використовувати для цього документа електронні документи та електронні підписи замість паперу й чорнила. Ваш електронний підпис матиме таку саму силу, як і власноручний, а завершений документ буде надіслано вам в електронному вигляді.</p>
+    <p>Установлюючи прапорець, ви погоджуєтеся використовувати для цього документа електронні документи та електронні підписи замість паперу й чорнила. Ви погоджуєтеся, що ваш електронний підпис має таку саму юридичну силу, як і ваш власноручний підпис. Копія завершеного документа буде доступна вам в електронному вигляді, а відправник також може надати її на ваш запит.</p>
     <p><strong>Що вам потрібно.</strong> Сучасний веббраузер, підключення до інтернету та програма, яка відкриває файли PDF. Якщо ви можете прочитати цю сторінку, ваш пристрій відповідає цим вимогам.</p>
     <p><strong>Відкликання згоди.</strong> Ви можете відкликати згоду в будь-який момент до завершення документа: просто не підписуйте його та повідомте відправника. Відкликання не стосується документів, які ви вже підписали.</p>
     <p><strong>Паперові копії.</strong> Ви можете будь-коли запросити паперову копію цього документа, звернувшись до відправника.</p>
@@ -7048,6 +7056,7 @@ cs:
   word_file_too_large: "Tento dokument Word je příliš velký. Limit je %{limit_mb} MB – uložte jej jako PDF nebo jej rozdělte."
   too_many_word_conversions: "Za poslední hodinu bylo převedeno příliš mnoho dokumentů Word. Zkuste to později nebo nahrajte PDF."
   unsupported_document_format: "Tento formát souboru není podporován. Nahrajte PDF, obrázek nebo dokument Word (.docx, .doc)."
+  unsupported_document_format_pdf_image_only: "Tento formát souboru není podporován. Nahrajte PDF nebo obrázek."
   esign_consent_checkbox_label: "Souhlasím s používáním elektronických dokumentů a podpisů."
   esign_consent_disclosure_link: "Informace o elektronickém podpisu"
   esign_consent_disclosure_title: "Informace o elektronických dokumentech a podpisech"
@@ -7087,7 +7096,7 @@ cs:
   analyzing: "Analyzuje se"
   close: "Zavřít"
   esign_consent_disclosure_body_html: |-
-    <p>Zaškrtnutím políčka souhlasíte s tím, že pro tento dokument budou místo papíru a inkoustu použity elektronické dokumenty a elektronické podpisy. Váš elektronický podpis bude stejně platný jako vlastnoruční a dokončený dokument vám bude doručen elektronicky.</p>
+    <p>Zaškrtnutím políčka souhlasíte s tím, že pro tento dokument budou místo papíru a inkoustu použity elektronické dokumenty a elektronické podpisy. Souhlasíte s tím, že váš elektronický podpis má stejné právní účinky jako váš vlastnoruční podpis. Kopie dokončeného dokumentu vám bude k dispozici elektronicky a odesílatel vám ji může na požádání rovněž poskytnout.</p>
     <p><strong>Co potřebujete.</strong> Aktuální webový prohlížeč, připojení k internetu a program, který otevře soubory PDF. Pokud dokážete přečíst tuto stránku, vaše zařízení tyto požadavky splňuje.</p>
     <p><strong>Odvolání souhlasu.</strong> Souhlas můžete kdykoli před dokončením dokumentu odvolat tak, že dokument nepodepíšete a informujete odesílatele. Odvolání se netýká dokumentů, které jste již podepsali.</p>
     <p><strong>Papírové kopie.</strong> O papírovou kopii tohoto dokumentu můžete kdykoli požádat odesílatele.</p>
@@ -7224,6 +7233,7 @@ he:
   word_file_too_large: "מסמך ה-Word הזה גדול מדי. המגבלה היא %{limit_mb} MB – שמרו אותו כ-PDF או פצלו אותו."
   too_many_word_conversions: "הומרו יותר מדי מסמכי Word בשעה האחרונה. נסו שוב מאוחר יותר או העלו PDF."
   unsupported_document_format: "פורמט הקובץ הזה אינו נתמך. העלו PDF, תמונה או מסמך Word ‏(.docx, .doc)."
+  unsupported_document_format_pdf_image_only: "פורמט הקובץ הזה אינו נתמך. העלו PDF או תמונה."
   esign_consent_checkbox_label: "אני מסכים/ה להשתמש ברשומות ובחתימות אלקטרוניות."
   esign_consent_disclosure_link: "גילוי נאות בנושא חתימה אלקטרונית"
   esign_consent_disclosure_title: "גילוי נאות בנושא רשומות וחתימות אלקטרוניות"
@@ -7263,7 +7273,7 @@ he:
   analyzing: "מנתח"
   close: "סגור"
   esign_consent_disclosure_body_html: |-
-    <p>בסימון התיבה, את/ה מסכים/ה להשתמש במסמך זה ברשומות אלקטרוניות ובחתימות אלקטרוניות במקום נייר ועט. החתימה האלקטרונית שלך תהיה תקפה כמו חתימה בכתב יד, והמסמך המושלם יימסר לך באופן אלקטרוני.</p>
+    <p>בסימון התיבה, את/ה מסכים/ה להשתמש במסמך זה ברשומות אלקטרוניות ובחתימות אלקטרוניות במקום נייר ועט. את/ה מסכים/ה שלחתימה האלקטרונית שלך יש אותו תוקף משפטי כמו לחתימה בכתב ידך. עותק של המסמך שהושלם יהיה זמין לך באופן אלקטרוני, והשולח יכול גם לספק לך עותק לפי בקשה.</p>
     <p><strong>מה נדרש.</strong> דפדפן עדכני, חיבור לאינטרנט ותוכנה שיכולה לפתוח קובצי PDF. אם ניתן לקרוא דף זה, המכשיר שלך עומד בדרישות אלה.</p>
     <p><strong>ביטול ההסכמה.</strong> ניתן לבטל את ההסכמה בכל עת לפני השלמת המסמך, על ידי אי-חתימה עליו ויידוע השולח. ביטול ההסכמה אינו משפיע על מסמכים שכבר נחתמו.</p>
     <p><strong>עותקים מודפסים.</strong> ניתן לבקש עותק מודפס של מסמך זה בכל עת בפנייה לשולח.</p>
@@ -7400,6 +7410,7 @@ nl: &nl
   word_file_too_large: "Dit Word-document is te groot. De limiet is %{limit_mb} MB – sla het op als PDF of splits het op."
   too_many_word_conversions: "Er zijn het afgelopen uur te veel Word-documenten geconverteerd. Probeer het later opnieuw of upload een PDF."
   unsupported_document_format: "Dit bestandsformaat wordt niet ondersteund. Upload een PDF, een afbeelding of een Word-document (.docx, .doc)."
+  unsupported_document_format_pdf_image_only: "Dit bestandsformaat wordt niet ondersteund. Upload een PDF of een afbeelding."
   esign_consent_checkbox_label: "Ik ga akkoord met het gebruik van elektronische documenten en handtekeningen."
   esign_consent_disclosure_link: "Toelichting elektronische handtekening"
   esign_consent_disclosure_title: "Toelichting elektronische documenten en handtekeningen"
@@ -7435,7 +7446,7 @@ nl: &nl
   timestamp_server_operator_only_hint: "Geldt alleen voor het operatoraccount. Klantaccounts gebruiken de omgevingsvariabele TIMESERVER_URL."
   open_verify_page: "Verificatiepagina openen"
   esign_consent_disclosure_body_html: |-
-    <p>Door het vakje aan te vinken gaat u ermee akkoord om voor dit document elektronische documenten en elektronische handtekeningen te gebruiken in plaats van papier en pen. Uw elektronische handtekening is even geldig als een handgeschreven handtekening, en het voltooide document wordt elektronisch aan u bezorgd.</p>
+    <p>Door het vakje aan te vinken gaat u ermee akkoord om voor dit document elektronische documenten en elektronische handtekeningen te gebruiken in plaats van papier en pen. U gaat ermee akkoord dat uw elektronische handtekening dezelfde rechtsgeldigheid heeft als uw handgeschreven handtekening. Een kopie van het voltooide document is elektronisch voor u beschikbaar, en de afzender kan u er op verzoek ook een verstrekken.</p>
     <p><strong>Wat u nodig heeft.</strong> Een actuele webbrowser, een internetverbinding en software waarmee u PDF-bestanden kunt openen. Als u deze pagina kunt lezen, voldoet uw apparaat aan deze eisen.</p>
     <p><strong>Toestemming intrekken.</strong> U kunt uw toestemming op elk moment vóór het voltooien van het document intrekken door het niet te ondertekenen en de afzender hiervan op de hoogte te stellen. Intrekken heeft geen gevolgen voor documenten die u al heeft ondertekend.</p>
     <p><strong>Papieren kopieën.</strong> U kunt op elk moment een papieren kopie van dit document aanvragen door contact op te nemen met de afzender.</p>
@@ -8283,8 +8294,8 @@ nl: &nl
   reindex: Opnieuw indexeren
   build_search_index: Zoekindex opbouwen
   require_two_factor_authentication_2fa_with_an_authenticator_app_e_g_google_authenticator_authy_all_users_signing_documents_must_pass_the_second_factor_verification_using_a_secure_code_in_addition_to_their_password: Tweeledige verificatie (2FA) met een authenticator-app (bijv. Google Authenticator, Authy) vereisen. Alle gebruikers die documenten ondertekenen moeten naast hun wachtwoord de tweede factor verifiëren met een beveiligde code.
-  add_a_unique_signature_id_and_timestamp_to_each_signature_for_audit_and_traceability_purposes_along_with_the_timestamp_part_of_docuseals_21_cfr_part_11_compliance_settings: Voeg voor audit- en traceerbaarheidsdoeleinden een unieke handtekening-ID en tijdstempel toe aan elke handtekening. Onderdeel van de 21 CFR Part 11-nalevingsinstellingen van EsignCenter.
-  require_signer_to_provide_a_reason_for_signing_before_completing_their_signature_e_g_approvals_certifications_part_of_docuseals_21_cfr_part_11_compliance_settings: Vereist dat de ondertekenaar vóór het voltooien van zijn handtekening een reden opgeeft (bijv. goedkeuringen, certificeringen). Onderdeel van de 21 CFR Part 11-nalevingsinstellingen van EsignCenter.
+  add_a_unique_signature_id_and_timestamp_to_each_signature_for_audit_and_traceability: Voegt voor audit- en traceerbaarheidsdoeleinden een unieke handtekening-ID en tijdstempel toe aan elke handtekening.
+  require_signers_to_provide_a_reason_for_signing_before_completing_their_signature_e_g_approvals_certifications: Vereist dat ondertekenaars vóór het voltooien van hun handtekening een reden opgeven (bijv. goedkeuringen, certificeringen).
   allow_signers_to_create_signatures_by_typing_their_name_instead_of_drawing_or_uploading_one: Sta ondertekenaars toe handtekeningen te maken door hun naam te typen in plaats van te tekenen of te uploaden.
   allow_signers_to_resubmit_forms_after_completion_useful_when_corrections_or_multiple_submissions_are_needed: Sta ondertekenaars toe formulieren na voltooiing opnieuw in te dienen; nuttig wanneer correcties of meerdere inzendingen nodig zijn.
   allow_recipients_to_decline_signing_a_document_the_decline_reason_notification_will_be_sent_to_the_signature_requester: Sta ontvangers toe het ondertekenen van een document te weigeren. De melding met de reden van weigering wordt naar de aanvrager van de handtekening gestuurd.
@@ -8509,6 +8520,7 @@ ar:
   word_file_too_large: "مستند Word هذا كبير جدًا. الحد الأقصى هو %{limit_mb} ميغابايت – احفظه بصيغة PDF أو قسّمه."
   too_many_word_conversions: "تم تحويل عدد كبير جدًا من مستندات Word خلال الساعة الماضية. حاول مرة أخرى لاحقًا أو ارفع ملف PDF."
   unsupported_document_format: "تنسيق الملف هذا غير مدعوم. ارفع ملف PDF أو صورة أو مستند Word ‏(.docx, .doc)."
+  unsupported_document_format_pdf_image_only: "تنسيق الملف هذا غير مدعوم. ارفع ملف PDF أو صورة."
   esign_consent_checkbox_label: "أوافق على استخدام السجلات والتوقيعات الإلكترونية."
   esign_consent_disclosure_link: "إفصاح التوقيع الإلكتروني"
   esign_consent_disclosure_title: "إفصاح السجلات والتوقيعات الإلكترونية"
@@ -8548,7 +8560,7 @@ ar:
   analyzing: "جارٍ التحليل"
   close: "إغلاق"
   esign_consent_disclosure_body_html: |-
-    <p>بتحديد المربع، فإنك توافق على استخدام السجلات الإلكترونية والتوقيعات الإلكترونية لهذا المستند بدلاً من الورق والحبر. سيكون توقيعك الإلكتروني صالحًا مثل التوقيع بخط اليد، وسيتم تسليم المستند المكتمل إليك إلكترونيًا.</p>
+    <p>بتحديد المربع، فإنك توافق على استخدام السجلات الإلكترونية والتوقيعات الإلكترونية لهذا المستند بدلاً من الورق والحبر. وتوافق على أن لتوقيعك الإلكتروني الأثر القانوني نفسه الذي لتوقيعك بخط اليد. ستكون نسخة من المستند المكتمل متاحة لك إلكترونيًا، ويمكن للمرسل أيضًا تزويدك بنسخة عند الطلب.</p>
     <p><strong>ما تحتاج إليه.</strong> متصفح ويب حديث، واتصال بالإنترنت، وبرنامج يمكنه فتح ملفات PDF. إذا كان بإمكانك قراءة هذه الصفحة، فإن جهازك يستوفي هذه المتطلبات.</p>
     <p><strong>سحب الموافقة.</strong> يمكنك سحب موافقتك في أي وقت قبل إكمال المستند بعدم توقيعه وإبلاغ المرسل. لا يؤثر سحب الموافقة على المستندات التي وقعتها بالفعل.</p>
     <p><strong>النسخ الورقية.</strong> يمكنك طلب نسخة ورقية من هذا المستند في أي وقت عبر التواصل مع المرسل.</p>
@@ -8685,6 +8697,7 @@ ko:
   word_file_too_large: "이 Word 문서는 너무 큽니다. 제한은 %{limit_mb}MB입니다. PDF로 저장하거나 문서를 나누세요."
   too_many_word_conversions: "지난 한 시간 동안 너무 많은 Word 문서가 변환되었습니다. 나중에 다시 시도하거나 PDF를 업로드하세요."
   unsupported_document_format: "이 파일 형식은 지원되지 않습니다. PDF, 이미지 또는 Word 문서(.docx, .doc)를 업로드하세요."
+  unsupported_document_format_pdf_image_only: "이 파일 형식은 지원되지 않습니다. PDF 또는 이미지를 업로드하세요."
   esign_consent_checkbox_label: "전자 기록 및 전자 서명 사용에 동의합니다."
   esign_consent_disclosure_link: "전자 서명 고지"
   esign_consent_disclosure_title: "전자 기록 및 전자 서명 고지"
@@ -8724,7 +8737,7 @@ ko:
   analyzing: "분석 중"
   close: "닫기"
   esign_consent_disclosure_body_html: |-
-    <p>확인란을 선택하면 이 문서에 종이와 잉크 대신 전자 기록과 전자 서명을 사용하는 데 동의하게 됩니다. 귀하의 전자 서명은 자필 서명과 동일한 효력을 가지며, 완료된 문서는 전자적으로 전달됩니다.</p>
+    <p>확인란을 선택하면 이 문서에 종이와 잉크 대신 전자 기록과 전자 서명을 사용하는 데 동의하게 됩니다. 귀하는 귀하의 전자 서명이 자필 서명과 동일한 법적 효력을 가진다는 데 동의합니다. 완료된 문서의 사본은 전자적으로 확인하실 수 있으며, 요청하시면 발신자가 사본을 제공해 드릴 수도 있습니다.</p>
     <p><strong>필요한 것.</strong> 최신 웹 브라우저, 인터넷 연결, PDF 파일을 열 수 있는 프로그램입니다. 이 페이지를 읽을 수 있다면 귀하의 기기는 이 요건을 충족합니다.</p>
     <p><strong>동의 철회.</strong> 문서를 완료하기 전에는 언제든지 서명하지 않고 발신자에게 알리는 방법으로 동의를 철회할 수 있습니다. 동의 철회는 이미 서명한 문서에는 영향을 미치지 않습니다.</p>
     <p><strong>종이 사본.</strong> 발신자에게 연락하여 언제든지 이 문서의 종이 사본을 요청할 수 있습니다.</p>
@@ -8861,6 +8874,7 @@ ja:
   word_file_too_large: "このWord文書は大きすぎます。上限は%{limit_mb}MBです。PDFとして保存するか、分割してください。"
   too_many_word_conversions: "過去1時間にWord文書の変換回数が多すぎます。しばらくしてから再試行するか、PDFをアップロードしてください。"
   unsupported_document_format: "このファイル形式はサポートされていません。PDF、画像、またはWord文書（.docx、.doc）をアップロードしてください。"
+  unsupported_document_format_pdf_image_only: "このファイル形式はサポートされていません。PDFまたは画像をアップロードしてください。"
   esign_consent_checkbox_label: "電子記録および電子署名の使用に同意します。"
   esign_consent_disclosure_link: "電子署名に関する開示"
   esign_consent_disclosure_title: "電子記録および電子署名に関する開示"
@@ -8900,7 +8914,7 @@ ja:
   analyzing: "解析中"
   close: "閉じる"
   esign_consent_disclosure_body_html: |-
-    <p>チェックボックスをオンにすると、この文書について紙とインクの代わりに電子記録および電子署名を使用することに同意したことになります。お客様の電子署名は手書きの署名と同じ効力を持ち、完成した文書は電子的にお届けします。</p>
+    <p>チェックボックスをオンにすると、この文書について紙とインクの代わりに電子記録および電子署名を使用することに同意したことになります。お客様は、お客様の電子署名が手書きの署名と同じ法的効力を持つことに同意します。完成した文書の写しは電子的にご利用いただけるほか、ご要望に応じて送信者から提供を受けることもできます。</p>
     <p><strong>必要なもの。</strong> 最新のウェブブラウザ、インターネット接続、PDFファイルを開けるソフトウェアです。このページを読めていれば、お使いの端末はこれらの要件を満たしています。</p>
     <p><strong>同意の撤回。</strong> 文書を完了する前であれば、署名せずに送信者に連絡することで、いつでも同意を撤回できます。同意の撤回は、すでに署名した文書には影響しません。</p>
     <p><strong>紙のコピー。</strong> 送信者に連絡すれば、いつでもこの文書の紙のコピーを請求できます。</p>

@@ -52,8 +52,18 @@ signer (`submission_events`) — one for the original signer and, after a
 delegation, one more for the person the form was handed to — stamped with:
 
 - `version` — the disclosure version the signer saw (`v1` today),
+- `locale` — the language the disclosure was shown in (`en`, `fr`, ... — the
+  page sends back the locale it rendered; if it sends none, or one the
+  product does not speak, the request's locale is recorded instead),
+- `disclosure_sha256` — the SHA-256 fingerprint of the disclosure text in
+  that version and language. The server computes it from its own locale data
+  when the event is written; nothing about the text comes from the browser.
+  `EsignConsent.disclosure_sha256(version:, locale:)` recomputes it, so a
+  later reader can prove the archived text is the one the signer saw,
 - `ip`, `ua` (browser user agent), `sid` (session) — the same tracking data
-  every signing event carries,
+  every signing event carries — and `uid`, the user id, when the person who
+  consented was signed in to the dashboard (the sender signing their own
+  document, for example),
 - `event_timestamp` — when the agreement was first sent to the server. Sending
   it again (later steps, retries) never creates a second event.
 
@@ -84,12 +94,17 @@ delegation.
 ## 4. Where it shows
 
 - **Audit trail PDF** — each signer's block shows
-  "Consented to electronic signatures (v1): <date and time>" (in the
-  account's language), and the event log lists
-  "**Consented to electronic signatures (v1)** by <signer>".
-- **Submission events page** in the dashboard — the same event line.
+  "Consented to electronic signatures (v1, fr): <date and time>" — the
+  version and the language the signer read the disclosure in — and the event
+  log lists "**Consented to electronic signatures (v1)** by <signer>". The
+  audit trail itself is written in the language of the last signer's
+  `metadata.lang` when the sender set one, otherwise in the account's
+  language.
+- **Submission events page** in the dashboard — the same event line, with a
+  shield-check icon.
 - **API** — `GET /api/submitters/:id` and submission payloads include the
-  `esign_consent` event with `data.version`.
+  `esign_consent` event with `data.version`, `data.locale` and
+  `data.disclosure_sha256`.
 
 ## 5. The exemption: sender-attested completions
 
@@ -99,25 +114,58 @@ values themselves through the API.
 - `PUT /api/submitters/:id` with `completed: true`
 - `POST /api/submissions` with a submitter `completed: true`
 - `POST /api/signing_sessions` with a submitter `completed: true`
-- MCP "send" calls with completed values
 
 These are exempt by design. They create an `api_complete_form` event (never a
 consent event) and are not consent-checked. The audit trail shows them as
 completed via API, so a reader can tell the two kinds of completion apart.
+The integrator's own application is responsible for that signer's consent;
+the API reference and the embedding guides say so at the `completed` flag.
 
-## 6. Changing the disclosure text — bump the version
+MCP "send documents" calls cannot mark a signer completed: every signer they
+create is an ordinary human signer who goes through the gated form.
+
+## 6. Changing the disclosure text — the version rule
 
 The disclosure text is the locale key `esign_consent_disclosure_body_html`
-(all 14 base locales in `config/locales/i18n.yml`). Whenever its meaning
-changes:
+(all 14 base locales in `config/locales/i18n.yml`). `v1` is the launch text;
+nothing has shipped to production yet, so the text can still be edited under
+`v1`.
 
-1. Update the text in every base locale.
-2. Bump `EsignConsent::VERSION` (`v1` → `v2`) and `EsignConsent::EFFECTIVE_DATE`
+**The rule:** bump the version the first time the text changes *after* any
+production consent has been recorded under the current version. From then
+on, every consent event points at a version whose text must stay
+reproducible. When you bump:
+
+1. Archive the superseded text of **every** base locale in
+   `config/locales/esign_disclosures/<old-version>.yml` (for example
+   `v1.yml`), shaped as
+
+   ```yaml
+   en:
+     esign_disclosure_archive:
+       v1: |-
+         <p>By checking the box, ...</p>
+   fr:
+     esign_disclosure_archive:
+       v1: |-
+         <p>En cochant la case, ...</p>
+   ```
+
+   Rails loads that folder with the other locale files; the
+   `esign_disclosure_archive` scope keeps an old text from ever shadowing
+   the live key. That folder does not exist yet because nothing has shipped.
+2. Update the text in every base locale.
+3. Bump `EsignConsent::VERSION` (`v1` → `v2`) and `EsignConsent::EFFECTIVE_DATE`
    in `lib/esign_consent.rb`.
 
-Old events keep their old version, so the audit trail always says which text
-a signer agreed to. Signers who consented under an earlier version are not
-asked again — a new version is a new text for new signers, not a revocation.
+`EsignConsent.disclosure_text(version:, locale:)` then answers "what did a
+signer who consented to `v1` in French read?" from inside the product — the
+live key for the current version, the archive for older ones — and
+`EsignConsent.disclosure_sha256` recomputes the fingerprint stored on each
+event to prove the archived text is that one. Old events keep their old
+version, locale and fingerprint. Signers who consented under an earlier
+version are not asked again — a new version is a new text for new signers,
+not a revocation.
 
 The signing page sends back the version it displayed together with the
 consent. A page that was opened before the bump and is only submitted
@@ -130,7 +178,10 @@ names the current version is recorded.
 
 ## 7. Locale rule
 
-Every consent string exists as a real translation in all 14 base locales
+Every consent string — the checkbox label, the disclosure link and title,
+the disclosure body, the version label, the required message, the reload
+message shown for a stale version, the audit-trail line and the event-log
+line — exists as a real translation in all 14 base locales
 (`en es it fr pt de pl uk cs he nl ar ko ja`; the regional variants inherit
 them). `spec/golden/consent_spec.rb` fails if any locale is missing a key, if
 a non-English locale is an English copy, or if an audit trail PDF generated in

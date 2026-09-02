@@ -3172,10 +3172,12 @@ export default {
       this.save()
     },
     maybeShowErrorTemplateAlert (e) {
+      // The hover tooltip on the held-back buttons never shows on a touch
+      // device, so the tap gets the same words out loud.
       if (this.documentsNotReadyMessage) {
         e.preventDefault()
 
-        return
+        return alert(this.documentsNotReadyMessage)
       }
 
       if (!this.isAllRequiredFieldsAdded) {

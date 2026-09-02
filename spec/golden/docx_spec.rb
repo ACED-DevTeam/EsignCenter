@@ -160,7 +160,7 @@ RSpec.describe 'Word document uploads', type: :request do
       expect(ConvertWordDocumentJob.jobs.size).to eq(1)
 
       Template.sole.destroy!
-      ConvertWordDocumentJob.jobs.clear
+      ConvertWordDocumentJob.clear
 
       upload_to_dashboard(Rack::Test::UploadedFile.new(docx_path, 'application/pdf', original_filename: 'contract.pdf'))
 
@@ -482,6 +482,80 @@ RSpec.describe 'Word document uploads', type: :request do
         expect(response.body).to include('accept="image/*, application/pdf, application/zip, application/json"')
         expect(response.body).not_to include('.docx')
       end
+
+      # The forms no longer offer Word files, so the refusal must not invite one.
+      it 'refuses an unsupported file without inviting a Word document' do
+        upload_to_dashboard(Rack::Test::UploadedFile.new(StringIO.new('not a spreadsheet'), xlsx_type,
+                                                         original_filename: 'sheet.xlsx'))
+
+        expect_refusal(I18n.t('unsupported_document_format_pdf_image_only'))
+        expect(flash[:alert]).to include('PDF')
+        expect(flash[:alert]).not_to include('Word')
+        expect(flash[:alert]).not_to include('.docx')
+      end
+    end
+
+    # The switch exists for LibreOffice taking the container down: a job that
+    # is still queued, or one waiting for a free slot, must not launch it once
+    # the switch is off. The document ends failed (Remove is the recovery).
+    context 'with the kill switch flipped after the upload' do
+      stash_env 'WORD_CONVERSION_ENABLED'
+
+      it 'stops the queued conversion without starting LibreOffice and marks the document failed' do
+        allow(WordConverter).to receive(:call).and_call_original
+        allow(ErrorReport).to receive(:warning).and_call_original
+
+        template, attachment = upload_word_to_dashboard
+        expect(ConvertWordDocumentJob.jobs.size).to eq(1)
+
+        ENV['WORD_CONVERSION_ENABLED'] = 'false'
+
+        Sidekiq::Worker.drain_all
+
+        expect(WordConverter).not_to have_received(:call)
+        expect(ConvertWordDocumentJob.jobs).to be_empty
+
+        attachment.reload
+        expect(attachment.metadata['converting']).to be_nil
+        expect(attachment.metadata['conversion_failed']).to be(true)
+        expect(attachment.content_type).to eq(docx_type)
+        expect(template.reload.schema.sole).to include('conversion_failed' => true)
+        expect(ErrorReport).to have_received(:warning)
+          .with(instance_of(WordConverter::Unavailable), template_id: template.id, attachment_uuid: attachment.uuid)
+          .once
+
+        get "/templates/#{template.id}/documents/#{attachment.uuid}/status"
+
+        expect(response.parsed_body).to include('status' => 'failed',
+                                                'schema_item' => hash_including('conversion_failed' => true))
+      end
+
+      it 'stops a job waiting for a free slot at its next retry, touching nobody else slot' do
+        allow(WordConverter).to receive(:call).and_call_original
+
+        _template, attachment = upload_word_to_dashboard
+        job_args = ConvertWordDocumentJob.jobs.sole['args'].first
+        ConvertWordDocumentJob.clear
+
+        WordConverter.slot_keys.each do |key|
+          RateLimit.store.write(key, 'another-worker', unless_exist: true, expires_in: 10.minutes)
+        end
+
+        ConvertWordDocumentJob.new.perform(job_args)
+
+        expect(ConvertWordDocumentJob.jobs.sole['args']).to eq([job_args.merge('busy_retries' => 1)])
+
+        ENV['WORD_CONVERSION_ENABLED'] = 'false'
+
+        # The one retry, and nothing after it: a job that kept waiting would
+        # leave another retry behind instead of a failed document.
+        ConvertWordDocumentJob.perform_one
+
+        expect(WordConverter).not_to have_received(:call)
+        expect(ConvertWordDocumentJob.jobs).to be_empty
+        expect(attachment.reload.metadata['conversion_failed']).to be(true)
+        expect(WordConverter.slot_keys.map { |key| RateLimit.store.read(key) }).to all(eq('another-worker'))
+      end
     end
 
     it 'marks the document failed and reports once when LibreOffice cannot convert it' do
@@ -550,6 +624,36 @@ RSpec.describe 'Word document uploads', type: :request do
       tempfile&.close!
     end
 
+    # An upload that cannot say how big it is until it has been read (no
+    # `size` — a streamed body): the pre-read check has nothing to measure, so
+    # the bytes themselves must be refused once they are in hand.
+    it 'refuses an oversized Word upload whose size is only known once read, storing nothing' do
+      unsized_upload = Class.new do
+        attr_reader :original_filename, :content_type
+
+        def initialize(io, original_filename, content_type)
+          @io = io
+          @original_filename = original_filename
+          @content_type = content_type
+        end
+
+        delegate :read, :rewind, to: :@io
+      end
+
+      file = unsized_upload.new(StringIO.new('x' * (WordConverter::MAX_FILE_SIZE + 1)), 'big.docx', docx_type)
+      documents_before = template.documents.count
+      blobs_before = ActiveStorage::Blob.count
+
+      expect(file).not_to respond_to(:size)
+
+      expect { Templates::CreateAttachments.call(template, { files: [file] }) }
+        .to raise_error(WordConverter::FileTooLarge)
+
+      expect(template.documents.count).to eq(documents_before)
+      expect(ActiveStorage::Blob.count).to eq(blobs_before)
+      expect(ConvertWordDocumentJob.jobs).to be_empty
+    end
+
     it 'cuts off an oversized Word download from a URL at the cap and refuses it' do
       url = 'https://files.example.com/big.docx'
       stub_request(:get, url).to_return(body: 'x' * (WordConverter::MAX_FILE_SIZE + 1.megabyte),
@@ -571,7 +675,7 @@ RSpec.describe 'Word document uploads', type: :request do
 
       _template, attachment = upload_word_to_dashboard
       job_args = ConvertWordDocumentJob.jobs.sole['args'].first
-      ConvertWordDocumentJob.jobs.clear
+      ConvertWordDocumentJob.clear
 
       WordConverter.slot_keys.each do |key|
         RateLimit.store.write(key, 'another-worker', unless_exist: true, expires_in: 10.minutes)
@@ -639,7 +743,8 @@ RSpec.describe 'Word document uploads', type: :request do
 
       expect(response).to have_http_status(:unprocessable_content)
       expect(response.parsed_body['error'])
-        .to eq('Unsupported document format. Only PDF and image files are supported.')
+        .to eq('Unsupported document format. Only PDF and image files are supported. ' \
+               'Convert Word documents to PDF before uploading, or upload them from the dashboard.')
       expect(ConvertWordDocumentJob.jobs).to be_empty
     end
 
@@ -662,7 +767,8 @@ RSpec.describe 'Word document uploads', type: :request do
       result = response.parsed_body['result']
       expect(result['isError']).to be(true)
       expect(result['content'].sole['text'])
-        .to eq('Unsupported document format. Only PDF and image files are supported.')
+        .to eq('Unsupported document format. Only PDF and image files are supported. ' \
+               'Convert Word documents to PDF before uploading, or upload them from the dashboard.')
       expect(ActiveStorage::Attachment.where(record_type: 'Template').count).to eq(0)
       expect(ConvertWordDocumentJob.jobs).to be_empty
     end
@@ -882,6 +988,38 @@ RSpec.describe 'Word document uploads', type: :request do
       expect(response).to have_http_status(:unprocessable_content)
       expect(response.parsed_body).to eq('error' => converting_message)
     end
+
+    # An embedded builder session started from a clone goes through the same
+    # clone as the dashboard and the API, behind its own controller rescue.
+    it 'refuses an embedded builder session that clones the template with 422 and clones nothing' do
+      expect do
+        post '/api/template_builder_sessions', headers: api_headers,
+                                               params: { clone_template_id: template.id,
+                                                         embed_origin: 'https://app.example.com' }.to_json
+      end.not_to change(Template, :count)
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body).to eq('error' => converting_message)
+    end
+
+    # The share link's email-2FA step sends a verification code before any
+    # submitter exists; it is refused first, so no code goes out for a
+    # document nobody can sign yet.
+    it 'refuses the email-2FA verification-code send with the alert and sends no code' do
+      template.update!(shared_link: true)
+      allow(TemplateMailer).to receive(:otp_verification_email).and_call_original
+
+      sign_out(:user)
+      reset!
+
+      expect do
+        post '/start_form_email_2fa_send', params: { slug: template.slug, submitter: { email: 'signer@example.com' } }
+      end.not_to(change { [Submission.count, Submitter.count] })
+
+      expect(response).to redirect_to("/d/#{template.slug}")
+      expect(flash[:alert]).to eq(converting_message)
+      expect(TemplateMailer).not_to have_received(:otp_verification_email)
+    end
   end
 
   # The timed-out card's Remove button only drops the document from the
@@ -1097,7 +1235,7 @@ RSpec.describe 'Word document uploads', type: :request do
 
       removed = add_word_document
       removed_args = ConvertWordDocumentJob.jobs.sole['args'].first
-      ConvertWordDocumentJob.jobs.clear
+      ConvertWordDocumentJob.clear
       removed.update_columns(created_at: (Templates::CONVERSION_UNLISTED_GRACE + 1.second).ago)
 
       ConvertWordDocumentJob.new.perform(removed_args)
@@ -1123,7 +1261,7 @@ RSpec.describe 'Word document uploads', type: :request do
     it 'measures the stale clock from when the conversion started, not the upload or the slot wait' do
       attachment = add_word_document
       job_args = ConvertWordDocumentJob.jobs.sole['args'].first
-      ConvertWordDocumentJob.jobs.clear
+      ConvertWordDocumentJob.clear
       put "/templates/#{template.id}", as: :json,
                                        params: { template: { schema: [pdf_item, response.parsed_body['schema'].sole] } }
 

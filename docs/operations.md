@@ -91,13 +91,20 @@ including the encrypted signing key — without touching production.
           configs: EncryptedConfig.count, counters: AccountCounter.count })
    ```
 
-4. Prove the signing key decrypts — this is the step that fails if
-   `SECRET_KEY_BASE` were ever lost:
+4. Prove both the internal-account signing key and the platform signing key
+   decrypt — this is the step that fails if `SECRET_KEY_BASE` were ever lost:
 
    ```ruby
    cert = EncryptedConfig.where(key: 'esign_certs').order(:account_id).first
    puts cert.account_id, cert.value.keys.inspect   # expect the certificate field names, no error
+
+   platform_fingerprint = PlatformCertificate.fingerprint
+   puts platform_fingerprint   # expect the fingerprint recorded in the operations notes
    ```
+
+   The platform fingerprint must exactly match the value recorded after
+   `rake operator:platform_cert:fingerprint` during deployment. A mismatch or
+   decryption error means the restore has not passed.
 
    Also check an SMTP pin decrypts (never print the credentials):
 
@@ -402,6 +409,7 @@ Sessions 5–6 and are listed there when they land.
 | `PRESIGNED_URLS_EXPIRE_MINUTES`, `FILE_URLS_EXPIRE_MINUTES` | Optional | `config/environments/production.rb`, `lib/accounts.rb` | Download-link lifetimes; defaults 240 and 40 minutes. |
 | `TRUSTED_CERTS` | Optional | `lib/docuseal.rb` | Extra root certificates trusted when verifying a signed PDF, on top of the platform certificate. Unset is fine. |
 | `WORD_CONVERSION_ENABLED` | Optional (Session 4) | `lib/word_converter.rb` | Unset = Word (.docx/.doc) uploads are on whenever LibreOffice is in the image. Set to exactly `false` to switch them off: the upload forms stop offering Word files and any Word file sent is refused with a clear message. The kill switch for LibreOffice trouble. See `docs/word-uploads.md`. |
+| `WORD_CONVERSION_SLOTS` | Optional (Session 4) | `lib/word_converter.rb` | How many Word conversions (LibreOffice processes) may run at once on the instance. Unset = `2`. A whole number, never below 1; anything else falls back to the default. Set to `1` if the launch-gate memory check (`docs/render-deploy-checklist.md`) shows two do not fit; takes effect at the next job. |
 | `SOFFICE_PATH` | Optional (Session 4) | `lib/word_converter.rb` | Full path to the LibreOffice binary when `soffice` is not on `PATH`. Leave unset for the shipped image. |
 | One-off, for `rake email:pin`: `ACCOUNT_ID`, `SMTP_TOKEN_ENV`, `FROM_EMAIL`, `SMTP_HOST`, `SMTP_PIN_PORT`, plus one variable per internal app holding that app's Postmark server token (any name; `SMTP_TOKEN_ENV` names it) | Task-time only | `lib/tasks/email.rake` | The task aborts naming the missing one. `SMTP_HOST` defaults to `smtp.postmarkapp.com`, `SMTP_PIN_PORT` to `587`. |
 
@@ -458,7 +466,7 @@ decision is made from.
 
 | Thing | What it is | Lifetime |
 | --- | --- | --- |
-| Job queues (`default`, `webhooks`, `sms`, `images`, `mailers`, `recurrent`) | Work waiting to run: send this email, deliver this webhook, generate this PDF | Seconds to minutes normally |
+| Job queues (`default`, `webhooks`, `images`, `documents`, `mailers`, `recurrent`) | Work waiting to run: send this email, deliver this webhook, generate this PDF | Seconds to minutes normally |
 | The retry set | Jobs that failed and are waiting to try again (webhook retries back off 2, 4, 8… minutes; up to 13 attempts) | Minutes to hours |
 | The scheduled set | Jobs booked for a **future time**: reminder emails (`SendSubmitterInvitationReminderEmailJob.perform_at`), submission expiry (`ProcessSubmissionExpiredJob.perform_at expire_at`), delayed invitation sends | Hours to **weeks** |
 | Rate-limit windows | "This signer asked for a code 2 times in the last 45 s" — namespace `rate_limit`, TTLs 45 s to 5 min | Under 5 minutes |
@@ -527,13 +535,18 @@ review** (the checklist notes the PDF work already needs Standard).
 
 What shipped (Session 4 D): conversions run on the `documents` Sidekiq queue
 (a fetch weight on the shared worker pool, not a thread of its own), at most
-**two** LibreOffice processes at once — two slot keys in Redis
-(`WordConverter::MAX_CONCURRENT`), each taken atomically, are the real cap,
-and the cap fails closed when Redis cannot answer — a 120-second hard timeout that kills the
-whole process group, a 20 MB file cap, and 30 conversions per account per
-hour. Budget a few hundred megabytes per running conversion on top of the
-web server's working set when choosing the tier. `WORD_CONVERSION_ENABLED=false`
-turns the feature off without a deploy. Details in `docs/word-uploads.md`.
+**two** LibreOffice processes at once by default — the slot keys in Redis
+(`WordConverter.max_concurrent`, set by `WORD_CONVERSION_SLOTS`), each
+taken atomically, are the real cap, and the cap fails closed when Redis
+cannot answer — a 120-second hard timeout that kills the whole process
+group, a 20 MB file cap, and 30 conversions per account per hour. Budget a
+few hundred megabytes per running conversion on top of the web server's
+working set when choosing the tier; the deploy checklist's "Word conversion
+memory check" measures it. If the headroom is short: `WORD_CONVERSION_SLOTS=1`
+first, then `WORD_CONVERSION_ENABLED=false` (which also stops queued and
+slot-waiting conversions — they are marked failed without LibreOffice
+starting), then a larger instance. None of those needs a deploy. Details in
+`docs/word-uploads.md`.
 
 ### Cost of Render managed Redis
 

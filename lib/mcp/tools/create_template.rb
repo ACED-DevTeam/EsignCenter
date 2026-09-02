@@ -33,7 +33,7 @@ module Mcp
       }.freeze
 
       # Same words as the API's refusal (Api::TemplatesController).
-      UNSUPPORTED_FORMAT_MESSAGE = 'Unsupported document format. Only PDF and image files are supported.'
+      UNSUPPORTED_FORMAT_MESSAGE = Templates::CreateAttachments::UNSUPPORTED_FORMAT_API_MESSAGE
 
       module_function
 

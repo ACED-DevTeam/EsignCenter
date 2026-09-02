@@ -99,7 +99,12 @@ class VerifyController < ApplicationController
     signer_key = signature.signature_handler.signer_certificate.public_key.to_der
 
     ours.any? { |certificate| certificate.public_key.to_der == signer_key }
-  rescue HexaPDF::Error, OpenSSL::OpenSSLError, NoMethodError
+  rescue HexaPDF::Error, OpenSSL::OpenSSLError, NoMethodError => e
+    # A signature the checker cannot even read counts as not ours, but never
+    # silently: a verifier bug would otherwise look exactly like a stranger's
+    # signature (the zero-byte CMS case in config/initializers/hexapdf.rb).
+    ErrorReport.warning(e, verify: 'signature check raised')
+
     false
   end
 

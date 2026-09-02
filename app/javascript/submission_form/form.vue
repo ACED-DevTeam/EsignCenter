@@ -678,6 +678,7 @@
         :url="baseUrl + submitPath + '/invite'"
         :esign-consent="esignConsentChecked"
         :esign-consent-version="esignConsent.version"
+        :esign-consent-locale="esignConsent.locale"
         :style="{ maxWidth: isBreakpointMd ? '582px' : '' }"
         @success="[isInvite = false, performComplete($event)]"
       />
@@ -983,8 +984,9 @@ export default {
       required: false,
       default: true
     },
-    // { version, consented, label, link_text, required_message, modal_id }
-    // from the Rails partial; `consented: true` means no checkbox is shown.
+    // { version, locale, consented, label, link_text, required_message,
+    // stale_message, modal_id } from the Rails partial; `consented: true`
+    // means no checkbox is shown.
     esignConsent: {
       type: Object,
       required: false,

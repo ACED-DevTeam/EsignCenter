@@ -19,6 +19,13 @@
 # A document the builder has removed from the template (its schema no longer
 # lists the attachment) is skipped without a LibreOffice run, once the
 # builder has had time to list it (Templates::CONVERSION_UNLISTED_GRACE).
+#
+# The kill switch (WORD_CONVERSION_ENABLED=false, or LibreOffice gone) stops
+# every conversion that has not started yet — a job still queued, or one
+# waiting for a free slot — without launching LibreOffice: the document is
+# marked failed, and the failed card's Remove button is the recovery. Only a
+# conversion whose PDF is already stored still finishes (no LibreOffice
+# needed for that).
 class ConvertWordDocumentJob
   include Sidekiq::Job
 
@@ -43,6 +50,7 @@ class ConvertWordDocumentJob
 
     # A retry after the blob swap: the PDF is there, only the rest is owed.
     return finish_conversion(template, attachment) if attachment.metadata['conversion_stage'] == STAGE_PDF_STORED
+    return fail_conversion(template, attachment, switched_off_error) unless WordConverter.enabled?
 
     busy_retries = params['busy_retries'].to_i
 
@@ -64,6 +72,10 @@ class ConvertWordDocumentJob
 
     finish_conversion(template, attachment, pdf_data)
   rescue WordConverter::Busy
+    # A job that would wait for a slot stops here once the switch is off,
+    # rather than coming back in 15 seconds to find out.
+    return fail_conversion(template, attachment, switched_off_error) unless WordConverter.enabled?
+
     self.class.perform_in(BUSY_RETRY_DELAY, params.merge('busy_retries' => busy_retries + 1))
   rescue WordConverter::TimeoutError, WordConverter::ConversionError, WordConverter::Unavailable => e
     fail_conversion(template, attachment, e)
@@ -78,6 +90,10 @@ class ConvertWordDocumentJob
   end
 
   private
+
+  def switched_off_error
+    WordConverter::Unavailable.new('Word conversion is switched off (WORD_CONVERSION_ENABLED=false or no LibreOffice)')
+  end
 
   # The template and the attachment still owed a conversion, or nil. An
   # attachment the schema no longer lists was removed by the user (the

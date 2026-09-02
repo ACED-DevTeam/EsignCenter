@@ -1776,7 +1776,7 @@
                         },
                         "completed": {
                           "type": "boolean",
-                          "description": "Pass `true` to mark submitter as completed and auto-signed via API."
+                          "description": "Pass `true` to mark submitter as completed and auto-signed via API. No ESIGN consent is collected or recorded for such a submitter — your application is responsible for the signer's consent to sign electronically; the audit trail marks this completion as made via API."
                         },
                         "metadata": {
                           "type": "object",
@@ -3980,7 +3980,7 @@
                         },
                         "completed": {
                           "type": "boolean",
-                          "description": "Pass `true` to mark submitter as completed and auto-signed via API."
+                          "description": "Pass `true` to mark submitter as completed and auto-signed via API. No ESIGN consent is collected or recorded for such a submitter — your application is responsible for the signer's consent to sign electronically; the audit trail marks this completion as made via API."
                         },
                         "metadata": {
                           "type": "object",
@@ -4893,7 +4893,7 @@
                         },
                         "completed": {
                           "type": "boolean",
-                          "description": "Pass `true` to mark submitter as completed and auto-signed via API."
+                          "description": "Pass `true` to mark submitter as completed and auto-signed via API. No ESIGN consent is collected or recorded for such a submitter — your application is responsible for the signer's consent to sign electronically; the audit trail marks this completion as made via API."
                         },
                         "metadata": {
                           "type": "object",
@@ -5821,7 +5821,7 @@
                         },
                         "completed": {
                           "type": "boolean",
-                          "description": "Pass `true` to mark submitter as completed and auto-signed via API."
+                          "description": "Pass `true` to mark submitter as completed and auto-signed via API. No ESIGN consent is collected or recorded for such a submitter — your application is responsible for the signer's consent to sign electronically; the audit trail marks this completion as made via API."
                         },
                         "metadata": {
                           "type": "object",
@@ -6995,7 +6995,7 @@
                   },
                   "completed": {
                     "type": "boolean",
-                    "description": "Pass `true` to mark submitter as completed and auto-signed via API."
+                    "description": "Pass `true` to mark submitter as completed and auto-signed via API. No ESIGN consent is collected or recorded for such a submitter — your application is responsible for the signer's consent to sign electronically; the audit trail marks this completion as made via API."
                   },
                   "metadata": {
                     "type": "object",

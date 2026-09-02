@@ -58,7 +58,7 @@ module Api
       render json: { error: 'The PDF is password-protected. Upload an unencrypted PDF.' },
              status: :unprocessable_content
     rescue Templates::CreateAttachments::InvalidFileType
-      render json: { error: 'Unsupported document format. Only PDF and image files are supported.' },
+      render json: { error: Templates::CreateAttachments::UNSUPPORTED_FORMAT_API_MESSAGE },
              status: :unprocessable_content
     end
 

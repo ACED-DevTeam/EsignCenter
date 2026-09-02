@@ -13,13 +13,18 @@
         class="checkbox checkbox-sm mt-0.5 flex-none"
         :checked="modelValue"
         :aria-invalid="error ? 'true' : undefined"
-        aria-describedby="esign_consent_required"
+        :aria-describedby="error ? 'esign_consent_error' : undefined"
         @change="$emit('update:modelValue', $event.target.checked)"
       >
       <input
         type="hidden"
         name="esign_consent_version"
         :value="config.version"
+      >
+      <input
+        type="hidden"
+        name="esign_consent_locale"
+        :value="config.locale"
       >
       <div class="text-sm sm:text-base leading-snug">
         <label
@@ -37,12 +42,20 @@
         </button>
       </div>
     </div>
+    <div aria-live="polite">
+      <p
+        v-if="error"
+        id="esign_consent_error"
+        class="text-error text-sm mt-1 ps-7"
+      >
+        {{ message }}
+      </p>
+    </div>
     <p
       id="esign_consent_required"
-      :role="error ? 'alert' : undefined"
-      :class="error ? 'text-error text-sm mt-1 ps-7' : 'sr-only'"
+      class="sr-only"
     >
-      {{ stale ? config.stale_message : config.required_message }}
+      {{ message }}
     </p>
   </div>
 </template>
@@ -51,10 +64,11 @@
 export default {
   name: 'EsignConsent',
   props: {
-    // { version, label, link_text, required_message, stale_message, modal_id }
-    // — strings come from the Rails partial so config/locales/i18n.yml stays
-    // the single source. `version` is sent back with the consent so the server
-    // can refuse a consent given on an outdated disclosure.
+    // { version, locale, label, link_text, required_message, stale_message,
+    // modal_id } — strings come from the Rails partial so
+    // config/locales/i18n.yml stays the single source. `version` and `locale`
+    // are sent back with the consent: the server refuses a consent given on
+    // an outdated disclosure and records which language the signer read it in.
     config: {
       type: Object,
       required: true
@@ -78,6 +92,14 @@ export default {
     }
   },
   emits: ['update:modelValue'],
+  computed: {
+    // Read by assistive tech in two places: the live region announces it
+    // when it appears; the always-present sr-only copy describes the disabled
+    // action buttons (form.vue points their aria-describedby at it).
+    message () {
+      return this.stale ? this.config.stale_message : this.config.required_message
+    }
+  },
   methods: {
     focus () {
       this.$refs.checkbox?.focus()

@@ -97,6 +97,37 @@ RSpec.describe 'Public verify', type: :request do
     io.string
   end
 
+  # The fixture signed with `pkcs` through HexaPDF's external-signing hook,
+  # with a CMS encoding that ends in a zero byte.
+  def pdf_signed_with_zero_terminated_cms(pkcs)
+    document = HexaPDF::Document.new(io: StringIO.new(unsigned_pdf))
+    io = StringIO.new
+
+    document.sign(io, signature_size: 20_000, write_options: { validate: false },
+                      external_signing: lambda { |signed_io, byte_range|
+                        data = signed_io.pread(byte_range[1], byte_range[0]) +
+                               signed_io.pread(byte_range[3], byte_range[2])
+
+                        zero_terminated_cms(data, pkcs)
+                      })
+
+    io.string
+  end
+
+  # Signing times are tried until the CMS ends in a zero byte — the last byte
+  # of the RSA value, so about one try in 256.
+  def zero_terminated_cms(data, pkcs)
+    base = Time.current.to_i
+    candidates = 4096.times.lazy.map do |offset|
+      HexaPDF::DigitalSignature::Signing::SignedDataCreator.create(
+        data, type: :cms, certificate: pkcs.certificate, key: pkcs.key, certificates: pkcs.ca_certs,
+              signing_time: Time.zone.at(base + offset)
+      ).to_der
+    end
+
+    candidates.find { |der| der.end_with?("\x00") } || raise('no zero-terminated CMS signature in 4096 tries')
+  end
+
   describe 'a completed document' do
     it 'verifies the downloaded PDF anonymously and reveals only the day and the signer count', sidekiq: :inline do
       platform_certificate!
@@ -306,6 +337,20 @@ RSpec.describe 'Public verify', type: :request do
       expect(response.body).to include(I18n.t('verify_error_too_many_requests', locale: :en))
       expect(response.body).to include('id="verify_form"')
     end
+
+    it 'rate-limits the 101st post in an hour from one IP with the same friendly page' do
+      stub_const('VerifyController::MINUTE_LIMIT', 1_000)
+      invalid_pdf = "%PDF-1.7\n"
+
+      100.times { verify(invalid_pdf) }
+      verify(invalid_pdf)
+
+      expect(response).to have_http_status(:too_many_requests)
+      expect(response).not_to be_redirect
+      expect(error_class).to include('too_many_requests')
+      expect(response.body).to include(I18n.t('verify_error_too_many_requests', locale: :en))
+      expect(response.body).to include('id="verify_form"')
+    end
   end
 
   describe 'what counts as our signature' do
@@ -326,6 +371,28 @@ RSpec.describe 'Public verify', type: :request do
 
       expect(response).to have_http_status(:ok)
       expect(result_state).to eq('not_verified')
+    end
+
+    # One signature in 256 ends its CMS encoding on a zero byte. The PDF pads
+    # the signature slot with zeros too, and stock HexaPDF stripped every
+    # trailing zero before decoding — that real one included — so the check
+    # raised and the page called a genuine document "not verified"
+    # (config/initializers/hexapdf.rb). The flake that hit three suite runs.
+    it 'still counts our signature when its CMS encoding ends in a zero byte' do
+      platform_certificate!
+      allow(ErrorReport).to receive(:warning).and_call_original
+      pkcs = PlatformCertificate.pkcs
+      bytes = pdf_signed_with_zero_terminated_cms(pkcs)
+
+      expect(signer_public_keys(bytes)).to eq([pkcs.certificate.public_key.to_der])
+      expect(OpenSSL::PKCS7.new(HexaPDF::Document.new(io: StringIO.new(bytes)).signatures.first.contents).to_der)
+        .to end_with("\x00")
+
+      verify(bytes)
+
+      expect(response).to have_http_status(:ok)
+      expect(result_state).to eq('not_on_record')
+      expect(ErrorReport).not_to have_received(:warning)
     end
 
     it 'still verifies our documents when one internal account row holds a corrupt PKCS#12', sidekiq: :inline do

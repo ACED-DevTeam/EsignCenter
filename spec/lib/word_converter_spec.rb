@@ -89,6 +89,42 @@ RSpec.describe WordConverter do
     end
   end
 
+  describe '.max_concurrent' do
+    stash_env 'WORD_CONVERSION_SLOTS', clear: true
+
+    it 'is 2 by default, with one slot key per conversion' do
+      expect(described_class.max_concurrent).to eq(2)
+      expect(described_class.slot_keys).to eq(%w[word-conversion-slot-1 word-conversion-slot-2])
+    end
+
+    it 'follows WORD_CONVERSION_SLOTS, never below 1, and ignores a value that is not a number' do
+      ENV['WORD_CONVERSION_SLOTS'] = '3'
+      expect(described_class.max_concurrent).to eq(3)
+      expect(described_class.slot_keys.size).to eq(3)
+
+      ENV['WORD_CONVERSION_SLOTS'] = '0'
+      expect(described_class.max_concurrent).to eq(1)
+
+      ENV['WORD_CONVERSION_SLOTS'] = 'two'
+      expect(described_class.max_concurrent).to eq(2)
+    end
+
+    it 'lets a third conversion in when the override allows three' do
+      ENV['WORD_CONVERSION_SLOTS'] = '3'
+
+      described_class.with_slot do
+        described_class.with_slot do
+          expect { described_class.with_slot { nil } }.not_to raise_error
+
+          expect { described_class.with_slot { described_class.with_slot { raise 'never reached' } } }
+            .to raise_error(WordConverter::Busy, /3 conversions already running/)
+        end
+      end
+
+      expect(slot_keys.filter_map { |key| RateLimit.store.read(key) }).to be_empty
+    end
+  end
+
   describe '.with_slot' do
     def held_tokens
       slot_keys.filter_map { |key| RateLimit.store.read(key) }

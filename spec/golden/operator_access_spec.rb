@@ -228,14 +228,31 @@ RSpec.describe 'Operator access', type: :request do
 
   describe 'no HTTP path creates or promotes an operator' do
     # The operator flag is written by exactly one path: `rake operator:seed`
-    # (lib/tasks/operator.rake). No controller and no other lib code may name
-    # it, and nothing may `permit!` a whole request payload — that is how a
-    # mass-assigned `platform_operator: true` would slip in.
-    it 'never mentions platform_operator outside the operator seed and never permit!s a payload' do
-      operator_hits = Rails.root.glob('{app/controllers,lib}/**/*.{rb,rake}').select do |path|
-        next false if path.to_s.end_with?('lib/tasks/operator.rake')
+    # (lib/tasks/operator.rake). Nothing else under app/ or lib/ — models,
+    # jobs, mailers and views included — may name it, except the two READS in
+    # app/models/user.rb (the schema annotation and the `operator_access?`
+    # predicate), each pinned by its exact line. And nothing may `permit!` a
+    # whole request payload — that is how a mass-assigned
+    # `platform_operator: true` would slip in.
+    it 'never mentions platform_operator outside the operator seed and the two user.rb reads, ' \
+       'and never permit!s a payload' do
+      allowed_reads = {
+        'app/models/user.rb' => [
+          /\A#\s+platform_operator\s+:boolean\s+default\(FALSE\), not null\z/,
+          /\Aplatform_operator\? && otp_required_for_login\? && otp_secret\.present\?\z/
+        ]
+      }
 
-        File.read(path).include?('platform_operator')
+      operator_hits = Rails.root.glob('{app,lib}/**/*.{rb,rake,erb,yml,yaml,js,vue,ts}').flat_map do |path|
+        relative = path.relative_path_from(Rails.root).to_s
+        next [] if relative == 'lib/tasks/operator.rake'
+
+        File.foreach(path).with_index(1).filter_map do |line, number|
+          next unless line.include?('platform_operator')
+          next if allowed_reads.fetch(relative, []).any? { |pattern| line.strip.match?(pattern) }
+
+          "#{relative}:#{number}: #{line.strip}"
+        end
       end
       permit_hits = Rails.root.glob('{app,lib}/**/*.{rb,rake,erb}').select do |path|
         File.read(path).match?(/\bpermit!/)

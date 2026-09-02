@@ -13,11 +13,12 @@ module Api
 
     wrap_parameters false
 
-    # The account-state guard runs on EVERY request that presents a token —
+    # Both token guards run on EVERY request that presents a token —
     # including the controllers below that skip authenticate_user! (blob
     # proxies, tracking endpoints) yet still authorize through current_user.
-    # Subclasses never skip it.
+    # State first, then entitlement. Subclasses never skip either.
     before_action :refuse_inactive_token_account!
+    before_action :refuse_unentitled_token_account!
     before_action :authenticate_user!
     check_authorization
 
@@ -92,9 +93,7 @@ module Api
     end
 
     def authenticate_user!
-      return render json: { error: 'Not authenticated' }, status: :unauthorized unless current_user
-
-      refuse_unentitled_token_account!
+      render json: { error: 'Not authenticated' }, status: :unauthorized unless current_user
     end
 
     # The REST API is a paid-only surface for the TOKEN: a request that
@@ -102,8 +101,12 @@ module Api
     # entitlement is refused here, existing tokens included. The same
     # endpoints keep working over the browser session (the in-app builder and
     # dashboard call /api/* with the session cookie), so nothing is checked
-    # when user_from_token is nil. Controllers that skip authenticate_user!
-    # (public signing-form endpoints) are untouched by design.
+    # when user_from_token is nil — anonymous and session requests pass
+    # through untouched. It is its own before_action rather than part of
+    # authenticate_user! so the controllers that skip authentication yet
+    # still authorize through the token (the blob proxy) refuse a free token
+    # too: an expired download link is the one place a free token would
+    # otherwise do real work.
     def refuse_unentitled_token_account!
       return if user_from_token.nil?
       return if Entitlements.allowed?(current_account, :api)

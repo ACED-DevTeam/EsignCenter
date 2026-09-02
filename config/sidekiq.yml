@@ -1,7 +1,6 @@
 queues:
   - [default, 1]
   - [webhooks, 1]
-  - [sms, 2]
   - [images, 1]
   - [documents, 1]
   - [mailers, 1]

@@ -291,13 +291,26 @@ for everyone), `lib/webhook_urls.rb` (webhook fan-out now keyed on the
 
 ### 2.5 Survivors
 
-After the rewrite, `grep -rn "multitenant?" app lib config` returns exactly
-the infra-keep rows above: `app/models/submitter.rb` (2), `app/jobs/application_job.rb`,
-`lib/accounts.rb` (3), `lib/docuseal.rb` (2 — the predicate and the fulltext
-toggle; `advanced_formats?` no longer reads it since Session 4),
-`lib/download_utils.rb` (2), `lib/send_webhook_request.rb`,
-`lib/templates/image_to_fields.rb` (13 lines, one of them a comment). The gate definition in `lib/tasks/gates.rake` spells
-the word only as an escaped regex, so the literal grep does not list it.
+`grep -rn "multitenant?" app lib config` returns exactly these ten lines, all
+infra-keep (the predicate is never true here, so each branch is inert):
+
+| Line | What it is | Why it stays |
+|---|---|---|
+| `app/models/submitter.rb:63` | `has_many :email_events` dependent policy | Unconditional `:destroy` in the shipped configuration |
+| `app/models/submitter.rb:72` | `after_destroy :anonymize_email_events` guard | Never runs here; the events are destroyed with the submitter instead |
+| `app/jobs/application_job.rb:4` | Comment | Names the retry policy below as infra-keep |
+| `app/jobs/application_job.rb:5` | `retry_on StandardError` guard | The retry policy is unconditional in the shipped configuration |
+| `lib/download_utils.rb:46` | Default for `validate:` on `call` | Every caller that fetches a user-supplied URL passes `validate: true` explicitly; justified at the site |
+| `lib/download_utils.rb:89` | Default for `validate:` on `conn` | Same |
+| `lib/send_webhook_request.rb:97` | HTTPS/localhost rules for webhook targets | `account.customer?` already makes them unconditional for every customer account (Session 1) |
+| `lib/docuseal.rb:33` | The predicate itself | Stays, never flipped (decision-locked) |
+| `lib/docuseal.rb:73` | Fulltext search toggle | `OperatorConfigs` governs; the tenancy half is inert |
+| `lib/templates/image_to_fields.rb:528` | ONNX memory-arena tuning | Justified at the site |
+
+`lib/accounts.rb` no longer reads it (rewritten by account kind in Session 4,
+see 2.4), `advanced_formats?` no longer reads it either, and the gate
+definition in `lib/tasks/gates.rake` spells the word only as an escaped
+regex, so the literal grep does not list it.
 
 ### 2.6 Feature switches and the upgrade call-to-action
 

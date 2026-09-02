@@ -29,6 +29,16 @@ module Templates
       RateLimit::LimitApproached => 'too_many_word_conversions',
       InvalidFileType => 'unsupported_document_format'
     }.freeze
+    # The same refusal while Word conversion is off: the upload forms no
+    # longer offer Word files then, so the message must not invite one.
+    UNSUPPORTED_FORMAT_PDF_IMAGE_ONLY_KEY = 'unsupported_document_format_pdf_image_only'
+
+    # The API, MCP and signing-session refusal for anything but a PDF or an
+    # image (Word is a dashboard-only format): one wording, quoted verbatim by
+    # the golden specs.
+    UNSUPPORTED_FORMAT_API_MESSAGE = 'Unsupported document format. Only PDF and image files are supported. ' \
+                                     'Convert Word documents to PDF before uploading, or upload them from ' \
+                                     'the dashboard.'
 
     BASE_ACCEPT_FILE_TYPES = 'image/*, application/pdf, application/zip, application/json'
 
@@ -148,6 +158,8 @@ module Templates
 
       # An oversized zip is a different problem from an unknown format.
       return if key.nil? || (error.is_a?(InvalidFileType) && error.message == 'zip_too_large')
+
+      key = UNSUPPORTED_FORMAT_PDF_IMAGE_ONLY_KEY if key == 'unsupported_document_format' && !WordConverter.enabled?
 
       I18n.t(key, limit_mb: WordConverter::MAX_FILE_SIZE / 1.megabyte)
     end

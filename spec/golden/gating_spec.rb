@@ -138,6 +138,15 @@ RSpec.describe 'Feature gating', type: :request do
 
       expect(response).to have_http_status(:ok)
 
+      # "Incl. existing tokens on downgrade": the token that just worked is
+      # refused the moment its account stops being paid — the entitlement is
+      # read at request time, never cached with the token.
+      downgrade_to_free!(paid_account)
+
+      get '/api/templates', headers: token_headers(paid_account)
+
+      expect_json_refusal
+
       # The in-app builder and dashboard call /api/* with the browser session;
       # the refusal is about tokens, never about the same endpoint over a session.
       act_as(free_account)
@@ -160,12 +169,36 @@ RSpec.describe 'Feature gating', type: :request do
       end.to change(Submission, :count).by(1)
       expect(response).to have_http_status(:ok)
     end
+
+    # The blob proxy skips authenticate_user! and authorizes an expired
+    # download link through the token alone, so it is the one door where a
+    # free token would otherwise do real work: it is refused like any other
+    # API call, and an entitled token still gets the file.
+    it 'refuses an expired download link to a free token and serves it to an internal token' do
+      free_blob = template_for(free_account).documents.first.blob
+
+      get ActiveStorage::Blob.proxy_path(free_blob, expires_at: 1.hour.ago), headers: token_headers(free_account)
+
+      expect_json_refusal
+
+      internal_blob = template_for(internal_account).documents.first.blob
+
+      get ActiveStorage::Blob.proxy_path(internal_blob, expires_at: 1.hour.ago),
+          headers: token_headers(internal_account)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body.bytesize).to eq(internal_blob.byte_size)
+    end
   end
 
   describe 'MCP tokens' do
+    let(:mcp_tokens) { {} }
+
+    # One token per account for the whole example, so a downgrade sequence
+    # re-presents the SAME token; the enable-MCP toggle is set once.
     def mcp_request(account, method, params = nil)
-      mcp_token = admin_for(account).mcp_tokens.create!(name: 'Golden')
-      create(:account_config, account:, key: AccountConfig::ENABLE_MCP_KEY, value: true)
+      mcp_token = mcp_tokens[account.id] ||= admin_for(account).mcp_tokens.create!(name: 'Golden')
+      account.account_configs.find_or_create_by!(key: AccountConfig::ENABLE_MCP_KEY) { |config| config.value = true }
 
       post '/mcp', headers: { 'Authorization' => "Bearer #{mcp_token.token}", 'Content-Type' => 'application/json' },
                    params: { jsonrpc: '2.0', id: 1, method:, params: }.compact.to_json
@@ -185,6 +218,13 @@ RSpec.describe 'Feature gating', type: :request do
 
       expect(response).to have_http_status(:ok)
       expect(response.parsed_body.dig('result', 'tools')).to be_present
+
+      # The same MCP token is refused once the account stops being paid.
+      downgrade_to_free!(paid_account)
+
+      mcp_request(paid_account, 'tools/list')
+
+      expect_json_refusal
     end
 
     it 'refuses a mutating tool call from a free token before any record exists, and creates for internal' do
@@ -623,6 +663,24 @@ RSpec.describe 'Feature gating', type: :request do
       end.not_to change(Template, :count)
 
       expect_json_unavailable
+    end
+
+    it 'applies the same check to templates created over the API with conditions' do
+      # A free account is refused at the API door itself (api is paid-only,
+      # proven above) and the create permit list drops `conditions`, so this
+      # is proven at the seam every API create funnels through
+      # (Templates::CreateFromApi: templates, signing sessions, builder sessions).
+      pdf = Base64.encode64(Rails.root.join('spec/fixtures/sample-document.pdf').read)
+      field = { name: 'Gated', type: 'text', conditions: [{ field_uuid: SecureRandom.uuid, action: 'not_empty' }],
+                areas: [{ x: 0.1, y: 0.1, w: 0.2, h: 0.05, page: 0, document: 0 }] }
+      attrs = { name: 'Conditional', documents: [{ name: 'doc.pdf', file: pdf }], fields: [field] }
+
+      expect { Templates::CreateFromApi.call(attrs, user: admin_for(free_account)) }
+        .to raise_error(Entitlements::UpgradeRequired) { |error| expect(error.feature).to eq(:conditional_logic) }
+      expect(Template.count).to eq(0)
+
+      expect { Templates::CreateFromApi.call(attrs, user: admin_for(internal_account)) }
+        .to change(Template, :count).by(1)
     end
   end
 

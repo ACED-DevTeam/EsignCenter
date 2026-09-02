@@ -1,11 +1,11 @@
 <% require_email_2fa = @template.preferences['require_email_2fa'] == true %>
 <% prefillable_fields = @template.fields.select { |f| f['prefillable'] } %>
-<% default_tab = cookies.permanent[:add_recipients_tab].presence || 'email' %>
+<% default_tab = cookies.permanent[:add_recipients_tab].presence_in(%w[email detailed]) || 'email' %>
 <% recipient_form_fields = Accounts.load_recipient_form_fields(current_account) if prefillable_fields.blank? %>
 <% only_detailed = require_email_2fa || prefillable_fields.present? || recipient_form_fields.present? %>
 <% variables_form = render 'variables_form', schema: @template.variables_schema if @template.variables_schema.present? && @template.variables_schema.any? { |_, v| !v['disabled'] } %>
 <%= render 'shared/turbo_modal_large', title: params[:selfsign] ? t('add_recipients') : t('add_new_recipients') do %>
-  <% options = [only_detailed ? nil : [t('via_email'), 'email'], only_detailed ? nil : [t('via_phone'), 'phone'], [t('detailed'), 'detailed']].compact %>
+  <% options = [only_detailed ? nil : [t('via_email'), 'email'], [t('detailed'), 'detailed']].compact %>
   <% if options.size > 1 %>
     <toggle-visible data-element-ids="<%= options.map(&:last).to_json %>" class="relative text-center px-2 mt-4 block">
       <div class="flex justify-center">
@@ -24,9 +24,6 @@
     <% unless only_detailed %>
       <div id="email" class="<%= 'hidden' if default_tab != 'email' %>">
         <%= render 'email_form', template: @template, variables_form: %>
-      </div>
-      <div id="phone" class="<%= 'hidden' if default_tab != 'phone' %>">
-        <%= render 'phone_form', template: @template, variables_form: %>
       </div>
     <% end %>
     <div id="detailed" class="<%= 'hidden' if !only_detailed && default_tab != 'detailed' %>">

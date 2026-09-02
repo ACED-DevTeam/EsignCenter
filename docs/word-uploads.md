@@ -67,7 +67,7 @@ is still treated as a Word file.
 
 | Situation | Message |
 |---|---|
-| Not a PDF, image or Word file (a spreadsheet, for instance) | "This file format isn't supported. Upload a PDF, an image, or a Word document (.docx, .doc)." |
+| Not a PDF, image or Word file (a spreadsheet, for instance) | "This file format isn't supported. Upload a PDF, an image, or a Word document (.docx, .doc)." — or, while Word conversion is switched off, "This file format isn't supported. Upload a PDF or an image." |
 | Word file larger than 20 MB | "This Word document is too large. The limit is 20 MB — save it as a PDF or split it up." |
 | More than 30 Word conversions from one account in an hour | "Too many Word documents were converted in the last hour. Try again later or upload a PDF." |
 | Conversion switched off, or LibreOffice missing | "Word documents can't be converted right now. Save the file as a PDF and upload it again." |
@@ -83,7 +83,7 @@ kept.
 |---|---|---|
 | File size | 20 MB | `WordConverter::MAX_FILE_SIZE` |
 | Time per conversion | 120 seconds, then the LibreOffice process group is killed | `WordConverter::TIMEOUT_SECONDS` |
-| Conversions running at once (whole instance) | 2 | `WordConverter::MAX_CONCURRENT` |
+| Conversions running at once (whole instance) | 2, or `WORD_CONVERSION_SLOTS` | `WordConverter.max_concurrent` |
 | Conversions per account | 30 per hour | `Templates::CreateAttachments::WORD_CONVERSIONS_PER_HOUR` |
 | Queue | `documents`, fetch weight 1 on the shared worker pool (not a thread of its own) | `config/sidekiq.yml` |
 
@@ -109,10 +109,11 @@ where it left off without converting again.
 
 | Variable | Default | Effect |
 |---|---|---|
-| `WORD_CONVERSION_ENABLED` | unset (on) | Set to exactly `false` to switch Word uploads off. The upload forms stop offering `.docx`/`.doc`, and a Word file sent anyway is refused with the "can't be converted right now" message. Jobs already queued still run. This is the kill switch to reach for if LibreOffice misbehaves in production. |
+| `WORD_CONVERSION_ENABLED` | unset (on) | Set to exactly `false` to switch Word uploads off. The upload forms stop offering `.docx`/`.doc`, and a Word file sent anyway is refused with the "can't be converted right now" message. Conversions that have not started yet — jobs still queued, or waiting for a free slot — stop at their next run without LibreOffice being launched: the document is marked failed and its card shows Remove (the recovery). A conversion whose PDF is already stored still finishes, since that needs no LibreOffice. This is the kill switch to reach for if LibreOffice misbehaves in production. |
+| `WORD_CONVERSION_SLOTS` | `2` | How many conversions may run at once on the instance (a whole number, never below 1; anything else means the default). Lower it to `1` when the memory check at launch-gate 3 shows two LibreOffice processes do not fit; raise it only on a larger instance. Takes effect at the next job, no redeploy. |
 | `SOFFICE_PATH` | `soffice` (found on `PATH`) | Full path to the LibreOffice binary when it is not on `PATH`. If the binary cannot be found, Word uploads behave as if the switch were off. |
 
-Both are optional; nothing else needs configuring.
+All three are optional; nothing else needs configuring.
 
 ## Resources (launch-gate 3)
 
@@ -130,8 +131,9 @@ Both are optional; nothing else needs configuring.
   entry in `config/sidekiq.yml` is only a fetch weight: the embedded Sidekiq
   runs its `SIDEKIQ_THREADS` worker threads across every queue, so the queue
   itself does not limit how many conversions run. The real cap is the
-  two slot keys in Redis (`WordConverter::MAX_CONCURRENT`), each taken
-  atomically and released only by the worker holding it: at most two
+  slot keys in Redis (`WordConverter.max_concurrent`, two unless
+  `WORD_CONVERSION_SLOTS` says otherwise), each taken atomically and
+  released only by the worker holding it: at most that many
   LibreOffice processes at once, whatever the worker pool is doing — and if
   the store (Redis) cannot answer, the job waits and retries rather than run
   unaccounted.

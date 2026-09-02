@@ -20,7 +20,7 @@ module Api
       pdf = HexaPDF::Document.new(io: StringIO.new(file))
 
       trusted_certs = Accounts.load_trusted_certs(current_account)
-      is_checksum_found = CompletedDocument.exists?(sha256: Base64.urlsafe_encode64(Digest::SHA256.digest(file)))
+      is_checksum_found = VerifiedDocument.exists?(sha256: Digest::SHA256.hexdigest(file))
 
       render json: {
         checksum_status: is_checksum_found ? 'verified' : 'not_found',

@@ -152,10 +152,11 @@ RSpec.describe 'Token account state', type: :request do
       expect(response).to have_http_status(:ok)
     end
 
-    # Every API controller that skips authenticate_user! keeps the state guard
-    # on its callback chain. (The legacy blob proxy controller was removed in
-    # Session 3 together with its never-mounted route.)
-    it 'keeps the state guard on every API controller that skips authenticate_user!' do
+    # Every API controller that skips authenticate_user! keeps both token
+    # guards — account state, then plan entitlement — on its callback chain.
+    # (The legacy blob proxy controller was removed in Session 3 together
+    # with its never-mounted route.)
+    it 'keeps both token guards on every API controller that skips authenticate_user!' do
       controllers = [
         Api::ActiveStorageBlobsProxyController,
         Api::SubmitterFormViewsController, Api::SubmitterEmailClicksController, Api::Admin::AccountsController
@@ -165,6 +166,9 @@ RSpec.describe 'Token account state', type: :request do
         filters = controller._process_action_callbacks.select { |callback| callback.kind == :before }.map(&:filter)
 
         expect(filters).to include(:refuse_inactive_token_account!), controller.name
+        expect(filters).to include(:refuse_unentitled_token_account!), controller.name
+        expect(filters.index(:refuse_inactive_token_account!))
+          .to be < filters.index(:refuse_unentitled_token_account!), controller.name
         expect(filters).not_to include(:authenticate_user!), controller.name
       end
     end

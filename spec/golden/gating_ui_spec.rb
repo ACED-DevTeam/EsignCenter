@@ -126,6 +126,19 @@ RSpec.describe 'Feature gating UI', type: :request do
     expect(internal_body).to include('name="save_message"')
   end
 
+  # SMS is hidden for everyone (no plan has it), so the send dialog offers no
+  # "via Phone" recipients tab to anyone — a phone-only recipient could never
+  # be reached. The e-mail tab proves the tab strip itself rendered.
+  it 'send dialog offers no "via Phone" recipients tab to any account' do
+    [free_account, paid_account, internal_account].each do |account|
+      body = visit_as(account, "/templates/#{template_for(account).id}/submissions/new")
+
+      expect(body).to include(I18n.t('via_email')), account.account_kind
+      expect(body).not_to include(I18n.t('via_phone')), account.account_kind
+      expect(body).not_to include('id="phone"'), account.account_kind
+    end
+  end
+
   describe 'webhook event resend' do
     def webhook_event_for(account)
       webhook_url = create(:webhook_url, account:, events: ['form.completed'])
@@ -309,6 +322,21 @@ RSpec.describe 'Feature gating UI', type: :request do
       response.body
     end
 
+    def document_not_ready_page_for(account)
+      template = template_for(account)
+      template.update!(shared_link: true)
+      document = template.documents.sole
+      document.metadata['converting'] = true
+      document.save!
+
+      get "/d/#{template.slug}"
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.body).to include(I18n.t('document_not_ready'))
+
+      response.body
+    end
+
     it 'renders the DocuSeal attribution on both signer-facing 2FA pages for free and paid-without-branding accounts' do
       create(:account_config, account: paid_account, key: AccountConfig::REMOVE_BRANDING_KEY, value: true)
 
@@ -319,6 +347,16 @@ RSpec.describe 'Feature gating UI', type: :request do
       bodies.each { |body| expect(docuseal_attribution_links(body)).not_to be_empty }
     end
 
+    it 'renders the DocuSeal attribution on the document-not-ready page for free and paid-without-branding accounts' do
+      create(:account_config, account: paid_account, key: AccountConfig::REMOVE_BRANDING_KEY, value: true)
+
+      [free_account, paid_account].each do |account|
+        body = document_not_ready_page_for(account)
+
+        expect(docuseal_attribution_links(body)).not_to be_empty
+      end
+    end
+
     it 'renders the DocuSeal attribution on the public /verify page for an anonymous visitor' do
       sign_out(:user)
       reset!
@@ -326,7 +364,8 @@ RSpec.describe 'Feature gating UI', type: :request do
       get '/verify'
 
       expect(response).to have_http_status(:ok)
-      expect(docuseal_attribution_links(response.body)).not_to be_empty
+      link = docuseal_attribution_links(response.body).sole
+      expect(link['href']).to eq("#{Docuseal::DOCUSEAL_URL}/start")
     end
 
     it 'renders the share-link QR attribution for free and paid-without-branding accounts alike' do

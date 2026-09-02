@@ -96,6 +96,12 @@ export function SigningScreen({ signingSession }) {
 
 The completion event includes fresh `submitter` data and a `signing_session` status object. The signed document can be fetched from `documents_url` after the session status is `completed`. The existing EsignCenter webhook settings can also notify your app when `form.completed` or `submission.completed` happens.
 
+## Signer consent
+
+Before a signer can finish, the signing form shows an electronic-signature consent checkbox ("I agree to use electronic records and signatures.") with a link to the disclosure; the Next/Complete buttons stay disabled until it is ticked. The checkbox sits above the form's buttons, so allow for one extra row when you size the iframe. The agreement is recorded as an `esign_consent` event on the submitter (the disclosure version and locale the signer saw, and a SHA-256 of that disclosure text) and printed in the audit trail.
+
+If you create a submitter with `completed: true`, no ESIGN consent is collected or recorded — your application is responsible for the signer's consent; the audit trail marks this completion as made via API.
+
 ## Existing templates
 
 If the document is already a saved EsignCenter template, send `template_id` instead of `documents` and `fields`:

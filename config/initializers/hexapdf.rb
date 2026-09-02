@@ -2,6 +2,33 @@
 
 module HexaPDF
   module DigitalSignature
+    # HexaPDF 1.7.0 strips every trailing zero byte from a signature's
+    # /Contents before decoding it (the PDF pads the reserved slot with
+    # zeros) — including a zero that is the last byte of the CMS itself: the
+    # final byte of the RSA value, in one signature out of 256. The truncated
+    # DER raised OpenSSL::ASN1::ASN1Error on every check of such a document,
+    # so /verify called a genuine one "not verified" and the API verify tool
+    # failed. Decoding the structure OpenSSL already parsed (it ignores the
+    # padding) uses exactly the CMS length. Same structure walk as upstream.
+    class CMSHandler
+      def embedded_tsa_signature
+        return @embedded_tsa_signature if defined?(@embedded_tsa_signature)
+
+        @embedded_tsa_signature = nil
+        p7 = OpenSSL::ASN1.decode(@pkcs7.to_der)
+        signed_data = p7.value[1].value[0]
+        signer_info = signed_data.value[-1].value[0] # first (and only) signer info
+        return unless signer_info.value[-1].tag == 1 # check for unsigned attributes
+
+        timestamp_token = signer_info.value[-1].value.find do |unsigned_attr|
+          unsigned_attr.value[0].value == 'id-smime-aa-timeStampToken'
+        end
+        return unless timestamp_token
+
+        @embedded_tsa_signature = OpenSSL::PKCS7.new(timestamp_token.value[1].value[0])
+      end
+    end
+
     class Signatures
       private
 

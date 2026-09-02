@@ -9,9 +9,11 @@
 # is refused with a JSON 422 and leaves nothing behind: no completed_at, no
 # completion job, no complete_form event. With `esign_consent=true` and the
 # current `esign_consent_version` the completion succeeds and exactly one
-# versioned consent event carrying the signer's IP exists. The consent line
-# is printed in the audit trail in every base locale, and no locale can show
-# a missing translation.
+# versioned consent event carrying the signer's IP exists, stamped with the
+# locale the disclosure was shown in and the SHA-256 of that disclosure text
+# (computed on the server, never taken from the client). The consent line —
+# version and locale — is printed in the audit trail in every base locale,
+# and no locale can show a missing translation.
 #
 # Sender-attested completions (API `completed: true`, signing sessions created
 # completed) have no human signer: they complete with zero consent events and
@@ -21,7 +23,8 @@ module ConsentSpecSupport
   BASE_LOCALES = %w[en es it fr pt de pl uk cs he nl ar ko ja].freeze
   CONSENT_KEYS = %w[esign_consent_checkbox_label esign_consent_disclosure_link esign_consent_disclosure_title
                     esign_consent_disclosure_body_html esign_consent_version_label esign_consent_required
-                    consented_to_electronic_signatures close submission_event_names.esign_consent_by_html].freeze
+                    esign_consent_version_stale consented_to_electronic_signatures close
+                    submission_event_names.esign_consent_by_html].freeze
 end
 
 # Collects the strings a PDF's content streams actually draw, decoded through
@@ -76,9 +79,10 @@ RSpec.describe 'ESIGN consent', type: :request do
   end
 
   # The consent always travels with the version the form displayed
-  # (consent_version_spec proves a missing or stale version is refused).
-  def consent_params
-    { esign_consent: 'true', esign_consent_version: EsignConsent::VERSION }
+  # (consent_version_spec proves a missing or stale version is refused) and
+  # the locale it was displayed in.
+  def consent_params(locale: 'en')
+    { esign_consent: 'true', esign_consent_version: EsignConsent::VERSION, esign_consent_locale: locale }
   end
 
   def completion_params(submitter, esign_consent: nil)
@@ -109,13 +113,22 @@ RSpec.describe 'ESIGN consent', type: :request do
     expect(submitter.submission_events.where(event_type: %w[complete_form esign_consent])).not_to exist
   end
 
-  def expect_completed_with_consent(submitter)
+  def expect_completed_with_consent(submitter, locale: 'en')
     expect(response).to have_http_status(:ok)
     expect(submitter.reload.completed_at).to be_present
     expect(submitter.submission_events.where(event_type: 'complete_form').count).to eq(1)
     expect(consent_events(submitter).count).to eq(1)
-    expect(consent_events(submitter).sole.data).to include('version' => 'v1')
-    expect(consent_events(submitter).sole.data['ip']).to be_present
+    expect_consent_data(consent_events(submitter).sole.data, locale:)
+  end
+
+  # The event names the exact text the signer agreed to: version, locale and
+  # the digest of the disclosure body in that locale, which must be the one
+  # EsignConsent recomputes from the locale data (a later verifier's check).
+  def expect_consent_data(data, locale:)
+    expect(data).to include('version' => 'v1', 'locale' => locale)
+    expect(data['disclosure_sha256']).to match(/\A\h{64}\z/)
+    expect(data['disclosure_sha256']).to eq(EsignConsent.disclosure_sha256(version: 'v1', locale:))
+    expect(data['ip']).to be_present
   end
 
   def expect_gated(submitter)
@@ -141,6 +154,19 @@ RSpec.describe 'ESIGN consent', type: :request do
       page.process_contents(collector)
       collector.text
     end.join(' ')
+  end
+
+  # A phrase as it may come back out of the PDF: line wraps fall between
+  # words and the collector keeps no whitespace across them.
+  def pdf_phrase(text)
+    Regexp.new(text.split(/\s+/).map { |word| Regexp.escape(word) }.join('\s*'))
+  end
+
+  # The per-signer audit line for a consent given at `time`
+  # ("Consented to electronic signatures (v1, en): September 01, 2026 10:00").
+  def consent_line(time, locale: 'en')
+    pdf_phrase("#{I18n.t('consented_to_electronic_signatures')} (#{EsignConsent::VERSION}, #{locale}): " \
+               "#{I18n.l(time.in_time_zone(account.timezone), format: :long, locale: account.locale)}")
   end
 
   describe 'interactive paths' do
@@ -196,6 +222,44 @@ RSpec.describe 'ESIGN consent', type: :request do
       Sidekiq::Worker.clear_all
 
       expect_gated(fresh)
+    end
+
+    it 'gates the dashboard resubmit (PUT /submitters_resubmit/:id) afresh' do
+      original = emailed_submitter_for(account)
+      # The dashboard offers "resubmit" only for the signed-in user's own row.
+      original.update!(email: admin_for(account).email)
+
+      put "/s/#{original.slug}", params: completion_params(original, esign_consent: 'true')
+      expect_completed_with_consent(original)
+
+      act_as(account)
+      put "/submitters_resubmit/#{original.id}"
+
+      fresh = Submitter.last
+
+      expect(fresh).not_to eq(original)
+      expect(response).to redirect_to("/s/#{fresh.slug}")
+      expect(EsignConsent.consented?(fresh)).to be(false)
+
+      Sidekiq::Worker.clear_all
+
+      expect_gated(fresh)
+    end
+
+    it 'gates "Sign in person" (the /s/:slug link on the submission page)' do
+      submitter = emailed_submitter_for(account)
+
+      act_as(account)
+      get "/submissions/#{submitter.submission_id}"
+
+      expect(response).to have_http_status(:ok)
+
+      link = Nokogiri::HTML(response.body).css('a').find { |a| a.text.strip == I18n.t('sign_in_person') }
+
+      expect(link).to be_present
+      expect(link['href']).to eq("/s/#{submitter.slug}")
+
+      expect_gated(submitter)
     end
 
     it 'gates an email-2FA signer after the code is verified' do
@@ -271,14 +335,22 @@ RSpec.describe 'ESIGN consent', type: :request do
       submitter = emailed_submitter_for(account)
       old_slug = submitter.slug
 
+      # A consents at T, B an hour later: the audit block must show B's time.
+      a_consented_at = Time.zone.parse('2026-09-01 10:00:00 UTC')
+      b_consented_at = a_consented_at + 1.hour
+
       # A agrees on a step save without completing.
-      put "/s/#{old_slug}", params: { values: { text_field(submitter)['uuid'] => 'Jane' }, **consent_params }
+      travel_to(a_consented_at) do
+        put "/s/#{old_slug}", params: { values: { text_field(submitter)['uuid'] => 'Jane' }, **consent_params }
+      end
       expect(response).to have_http_status(:ok)
       first_consent = consent_events(submitter).sole
       expect(EsignConsent.consented?(submitter)).to be(true)
 
       # A hands the form to B: same row, new email and slug, one delegate_form event.
-      post "/s/#{old_slug}/delegate", params: { email: 'b@example.com' }
+      travel_to(a_consented_at + 30.minutes) do
+        post "/s/#{old_slug}/delegate", params: { email: 'b@example.com' }
+      end
       expect(response).to redirect_to("/s/#{old_slug}/delegated")
 
       submitter.reload
@@ -291,7 +363,8 @@ RSpec.describe 'ESIGN consent', type: :request do
       # B opens the form: the checkbox is back.
       get "/s/#{submitter.slug}"
       expect(response).to have_http_status(:ok)
-      expect(esign_consent_contract).to include('consented' => false, 'version' => EsignConsent::VERSION)
+      expect(esign_consent_contract).to include('consented' => false, 'version' => EsignConsent::VERSION,
+                                                'locale' => 'en')
 
       # B cannot complete on A's consent.
       put "/s/#{submitter.slug}", params: completion_params(submitter)
@@ -303,15 +376,18 @@ RSpec.describe 'ESIGN consent', type: :request do
 
       # B agrees on a step save without completing: a second, newer event
       # carrying B's own tracking data; A's stays in the log.
-      put "/s/#{submitter.slug}", params: { values: { text_field(submitter)['uuid'] => 'Jane' }, **consent_params }
+      travel_to(b_consented_at) do
+        put "/s/#{submitter.slug}", params: { values: { text_field(submitter)['uuid'] => 'Jane' }, **consent_params }
+      end
       expect(response).to have_http_status(:ok)
       expect(submitter.reload.completed_at).to be_nil
 
       consents = consent_events(submitter).order(:id).to_a
       expect(consents).to match([
-                                  first_consent,
-                                  have_attributes(event_timestamp: be > delegate_event.event_timestamp,
+                                  have_attributes(id: first_consent.id, event_timestamp: a_consented_at),
+                                  have_attributes(event_timestamp: b_consented_at,
                                                   data: include('version' => EsignConsent::VERSION,
+                                                                'locale' => 'en',
                                                                 'ip' => be_present))
                                 ])
 
@@ -319,22 +395,27 @@ RSpec.describe 'ESIGN consent', type: :request do
       # A's) and creates no third one — the post-delegation idempotency proof.
       # (A PUT after completion would prove nothing: the controller answers
       # 422 form_has_been_completed_already before consent is consulted.)
-      put "/s/#{submitter.slug}", params: completion_params(submitter, esign_consent: 'true')
+      travel_to(b_consented_at + 1.minute) do
+        put "/s/#{submitter.slug}", params: completion_params(submitter, esign_consent: 'true')
+      end
       expect(response).to have_http_status(:ok)
       expect(submitter.reload.completed_at).to be_present
       expect(submitter.submission_events.where(event_type: 'complete_form').count).to eq(1)
       expect(consent_events(submitter).order(:id).to_a).to eq(consents)
 
-      # B's per-signer block in the audit trail carries the consent line
-      # (the per-signer block only counts events newer than the delegation,
-      # so the line proves B's own event, not A's).
+      # B's per-signer block in the audit trail carries B's own consent line:
+      # B's time, once, and never A's (an hour earlier). The event log below
+      # the blocks still lists A's consent, in its own shape, so the check is
+      # on the per-signer line, not on A's time appearing anywhere.
       audit_trail = submitter.submission.reload.audit_trail
       expect(audit_trail).to be_attached
 
       text = pdf_text(audit_trail.download)
 
-      expect(text).to include("#{I18n.t('consented_to_electronic_signatures')} (#{EsignConsent::VERSION}):")
-      expect(text.scan("#{I18n.t('consented_to_electronic_signatures')} (#{EsignConsent::VERSION}):").size).to eq(1)
+      expect(text).to match(consent_line(b_consented_at))
+      expect(text).not_to match(consent_line(a_consented_at))
+      expect(text.scan("#{I18n.t('consented_to_electronic_signatures')} (#{EsignConsent::VERSION}, en):").size)
+        .to eq(1)
     end
   end
 
@@ -352,7 +433,7 @@ RSpec.describe 'ESIGN consent', type: :request do
       expect(submitter.reload.completed_at).to be_nil
       expect(consent_events(submitter).count).to eq(1)
       expect(consent_events(submitter).sole.event_timestamp).to eq(consented_at)
-      expect(consent_events(submitter).sole.data).to include('version' => 'v1')
+      expect_consent_data(consent_events(submitter).sole.data, locale: 'en')
 
       travel_to(consented_at + 1.hour) do
         put "/s/#{submitter.slug}", params: completion_params(submitter, esign_consent: 'true')
@@ -366,7 +447,41 @@ RSpec.describe 'ESIGN consent', type: :request do
       expect(response.parsed_body).to eq('error' => I18n.t('form_has_been_completed_already'))
     end
 
-    it 'exposes the consent version through the API event data' do
+    it 'records the locale the disclosure was shown in and the digest of that text' do
+      submitter = emailed_submitter_for(account)
+
+      # A French page on an English account: the event names the French text.
+      put "/s/#{submitter.slug}", params: completion_params(submitter).merge(consent_params(locale: 'fr'))
+      expect_completed_with_consent(submitter, locale: 'fr')
+
+      data = consent_events(submitter).sole.data
+      french = Digest::SHA256.hexdigest(I18n.t('esign_consent_disclosure_body_html', locale: :fr))
+
+      expect(data['disclosure_sha256']).to eq(french)
+      expect(data['disclosure_sha256']).not_to eq(EsignConsent.disclosure_sha256(version: 'v1', locale: 'en'))
+      expect(EsignConsent.disclosure_text(version: 'v1', locale: 'fr'))
+        .to eq(I18n.t('esign_consent_disclosure_body_html', locale: :fr))
+    end
+
+    it 'falls back to the request locale when the page sends none or one this product does not speak' do
+      [[nil, 'en'], %w[xx en], %w[fr-FR fr]].each do |sent, recorded|
+        submitter = emailed_submitter_for(account)
+
+        put "/s/#{submitter.slug}", params: completion_params(submitter).merge(consent_params(locale: sent).compact)
+        expect_completed_with_consent(submitter, locale: recorded)
+
+        Sidekiq::Worker.clear_all
+      end
+    end
+
+    it 'has no digest for a version and locale that were never published' do
+      expect(EsignConsent.disclosure_text(version: 'v0', locale: 'en')).to be_nil
+      expect(EsignConsent.disclosure_sha256(version: 'v0', locale: 'en')).to be_nil
+      expect(EsignConsent.disclosure_sha256(version: 'v1', locale: 'xx')).to be_nil
+      expect(EsignConsent.disclosure_sha256(version: '../v1', locale: 'en')).to be_nil
+    end
+
+    it 'exposes the consent version, locale and disclosure digest through the API event data' do
       submitter = emailed_submitter_for(paid_account)
 
       put "/s/#{submitter.slug}", params: completion_params(submitter, esign_consent: 'true')
@@ -380,7 +495,8 @@ RSpec.describe 'ESIGN consent', type: :request do
       event = response.parsed_body['submission_events'].find { |e| e['event_type'] == 'esign_consent' }
 
       expect(event).to be_present
-      expect(event['data']).to eq('version' => 'v1')
+      expect(event['data']).to eq('version' => 'v1', 'locale' => 'en',
+                                  'disclosure_sha256' => EsignConsent.disclosure_sha256(version: 'v1', locale: 'en'))
     end
   end
 
@@ -425,7 +541,8 @@ RSpec.describe 'ESIGN consent', type: :request do
 
   describe 'locales' do
     it 'resolves every consent string in every declared locale, translated for non-English ones' do
-      english = %w[esign_consent_checkbox_label esign_consent_disclosure_body_html].index_with do |key|
+      english = %w[esign_consent_checkbox_label esign_consent_disclosure_body_html
+                   esign_consent_version_stale].index_with do |key|
         I18n.t(key, locale: :en)
       end
 
@@ -458,10 +575,11 @@ RSpec.describe 'ESIGN consent', type: :request do
         account.update!(locale:)
         submitter = emailed_submitter_for(account)
 
-        put "/s/#{submitter.slug}", params: completion_params(submitter, esign_consent: 'true')
+        put "/s/#{submitter.slug}", params: completion_params(submitter).merge(consent_params(locale:))
 
         expect(response).to have_http_status(:ok), locale
         expect(submitter.reload.completed_at).to be_present, locale
+        expect_consent_data(consent_events(submitter).sole.data, locale:)
 
         audit_trail = submitter.submission.reload.audit_trail
 
@@ -471,7 +589,7 @@ RSpec.describe 'ESIGN consent', type: :request do
 
         expect(text).not_to match(/translation missing/i), "#{locale}: #{text[/.{0,40}translation missing.{0,60}/i]}"
         expect(text).to include(I18n.t('consented_to_electronic_signatures', locale:)), locale
-        expect(text).to include("(#{EsignConsent::VERSION})"), locale
+        expect(text).to include("(#{EsignConsent::VERSION}, #{locale})"), locale
       end
     end
   end
