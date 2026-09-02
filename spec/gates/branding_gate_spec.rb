@@ -84,11 +84,23 @@ RSpec.describe 'Branding gate' do
   end
 
   describe 'Gates.attribution_failures' do
+    let(:powered_by_file) { 'app/views/shared/_powered_by.html.erb' }
+    let(:rendered_anchor) { '<a href="<%= Docuseal::DOCUSEAL_URL %>/start" class="underline">DocuSeal</a>' }
+
+    # A minimal passing file: every required snippet plus, where the
+    # requirement asks for one, the anchor as real rendered markup.
+    def passing_content(requirement)
+      lines = requirement.fetch(:snippets).dup
+      lines << rendered_anchor if requirement[:rendered_anchor]
+
+      lines.join("\n")
+    end
+
     def write_tree(root, overrides = {})
       Gates::ATTRIBUTION_REQUIREMENTS.each do |requirement|
         path = File.join(root, requirement.fetch(:file))
         FileUtils.mkdir_p(File.dirname(path))
-        File.write(path, overrides.fetch(requirement.fetch(:file), requirement.fetch(:snippets).join("\n")))
+        File.write(path, overrides.fetch(requirement.fetch(:file), passing_content(requirement)))
       end
     end
 
@@ -102,12 +114,36 @@ RSpec.describe 'Branding gate' do
 
     it 'fails when the DocuSeal anchor, the constant reference or the AGPL comment disappears' do
       Dir.mktmpdir do |root|
-        write_tree(root, 'app/views/shared/_powered_by.html.erb' => "<%= t('powered_by') %>\n")
+        write_tree(root, powered_by_file => "<%= t('powered_by') %>\n")
 
         expect(Gates.attribution_failures(root)).to contain_exactly(
-          'app/views/shared/_powered_by.html.erb: attribution snippet missing: Docuseal::DOCUSEAL_URL',
-          'app/views/shared/_powered_by.html.erb: attribution snippet missing: >DocuSeal</a>',
-          'app/views/shared/_powered_by.html.erb: attribution snippet missing: AGPL LICENSE_ADDITIONAL_TERMS'
+          "#{powered_by_file}: attribution snippet missing: Docuseal::DOCUSEAL_URL",
+          "#{powered_by_file}: attribution snippet missing: >DocuSeal</a>",
+          "#{powered_by_file}: attribution snippet missing: AGPL LICENSE_ADDITIONAL_TERMS",
+          "#{powered_by_file}: attribution anchor is not rendered markup: <a href=\"<%= Docuseal::DOCUSEAL_URL"
+        )
+      end
+    end
+
+    it 'fails when the DocuSeal anchor survives only inside an ERB comment' do
+      Dir.mktmpdir do |root|
+        commented = "<%# AGPL LICENSE_ADDITIONAL_TERMS: #{rendered_anchor} %>\n<%= t('powered_by') %>\n"
+        write_tree(root, powered_by_file => commented)
+
+        expect(Gates.attribution_failures(root)).to contain_exactly(
+          "#{powered_by_file}: attribution anchor is not rendered markup: <a href=\"<%= Docuseal::DOCUSEAL_URL"
+        )
+      end
+    end
+
+    it 'fails when the constant is mentioned but the anchor is not an href on it' do
+      Dir.mktmpdir do |root|
+        mention = "<%# AGPL LICENSE_ADDITIONAL_TERMS %>\n<%= link_to 'DocuSeal', Docuseal::DOCUSEAL_URL %>\n" \
+                  "<span>>DocuSeal</a></span>\n"
+        write_tree(root, powered_by_file => mention)
+
+        expect(Gates.attribution_failures(root)).to contain_exactly(
+          "#{powered_by_file}: attribution anchor is not rendered markup: <a href=\"<%= Docuseal::DOCUSEAL_URL"
         )
       end
     end

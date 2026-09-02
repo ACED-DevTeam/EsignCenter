@@ -12,9 +12,11 @@ RSpec.describe BackfillGloballyResolvedEncryptedConfigs do
   # The lowest-id account is the one the pre-change global fallbacks pointed at.
   # A third, row-less account makes the source choice observable: it must
   # receive the lowest account's row, never the second account's.
-  let!(:source_account) { create(:account) }
-  let!(:other_account) { create(:account) }
-  let!(:third_account) { create(:account) }
+  # Per-account SMTP is a paid-only row (Session 3): these accounts are paid so
+  # the copied pins resolve at runtime, which is what the backfill is for.
+  let!(:source_account) { create(:account, :paid) }
+  let!(:other_account) { create(:account, :paid) }
+  let!(:third_account) { create(:account, :paid) }
 
   let(:source_smtp_value) do
     {

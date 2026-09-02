@@ -1,5 +1,6 @@
 en: &en
   this_feature_requires_a_paid_plan: This feature requires a paid plan
+  this_feature_is_not_available: This feature is not available
   feature_is_available_on_the_paid_plan: '%{feature} is available on the paid plan.'
   upgrade_to_unlock_this_and_every_other_paid_feature: Upgrade your account to unlock this and every other paid feature.
   upgrade_plan: Upgrade plan
@@ -770,7 +771,7 @@ en: &en
   submission_created_via_source_html: '<b>Submission created</b> via %{source}'
   pro_user_seats_used: Pro user seats used
   manage_plan: Manage plan
-  this_submission_has_multiple_signers_which_prevents_the_use_of_a_sharing_link_html: This submission has multiple signers, which prevents the use of a sharing link as it's unclear which signer is responsible for specific fields. To resolve this, follow this guide to define the default signer details.
+  this_submission_has_multiple_signers_which_prevents_the_use_of_a_sharing_link_html: This submission has multiple signers, which prevents the use of a sharing link as it's unclear which signer is responsible for specific fields. To resolve this, define the default signer details under the template's Preferences → Recipients so this link opens as the sender.
   welcome_to_docuseal: Welcome to EsignCenter
   start_a_quick_tour_to_learn_how_to_create_and_send_your_first_document: Start a quick tour to learn how to create and send your first document
   start_tour: Start Tour
@@ -1071,6 +1072,7 @@ en: &en
 
 es: &es
   this_feature_requires_a_paid_plan: Esta función requiere un plan de pago
+  this_feature_is_not_available: Esta función no está disponible
   feature_is_available_on_the_paid_plan: '%{feature} está disponible en el plan de pago.'
   upgrade_to_unlock_this_and_every_other_paid_feature: Mejora tu cuenta para desbloquear esta y todas las demás funciones de pago.
   upgrade_plan: Mejorar plan
@@ -1820,7 +1822,7 @@ es: &es
   submission_created_via_source_html: '<b>Envío creado</b> a través de %{source}'
   pro_user_seats_used: Plazas de usuario Pro en uso
   manage_plan: Gestionar plan
-  this_submission_has_multiple_signers_which_prevents_the_use_of_a_sharing_link_html: 'Este envío tiene múltiples firmantes, lo que impide el uso de un enlace para compartir, ya que no está claro qué firmante es responsable de los campos específicos. Para resolver esto, sigue esta guía para definir los detalles predeterminados del firmante.'
+  this_submission_has_multiple_signers_which_prevents_the_use_of_a_sharing_link_html: 'Este envío tiene múltiples firmantes, lo que impide el uso de un enlace para compartir, ya que no está claro qué firmante es responsable de los campos específicos. Para resolver esto, define los detalles predeterminados del firmante en Preferencias → Destinatarios de la plantilla para que este enlace se abra como remitente.'
   welcome_to_docuseal: Bienvenido a EsignCenter
   start_a_quick_tour_to_learn_how_to_create_and_send_your_first_document: Inicia una guía rápida para aprender a crear y enviar tu primer documento.
   start_tour: Iniciar guía
@@ -2121,6 +2123,7 @@ es: &es
 
 it: &it
   this_feature_requires_a_paid_plan: Questa funzione richiede un piano a pagamento
+  this_feature_is_not_available: Questa funzione non è disponibile
   feature_is_available_on_the_paid_plan: '%{feature} è disponibile nel piano a pagamento.'
   upgrade_to_unlock_this_and_every_other_paid_feature: Aggiorna il tuo account per sbloccare questa e tutte le altre funzioni a pagamento.
   upgrade_plan: Aggiorna piano
@@ -2870,7 +2873,7 @@ it: &it
   submission_created_via_source_html: '<b>Invio creato</b> tramite %{source}'
   pro_user_seats_used: Posti utente Pro in uso
   manage_plan: Gestisci piano
-  this_submission_has_multiple_signers_which_prevents_the_use_of_a_sharing_link_html: "Questa sottomissione ha più firmatari, il che impedisce l'uso di un link di condivisione poiché non è chiaro quale firmatario sia responsabile di specifici campi. Per risolvere questo problema, segui questa guida per definire i dettagli predefiniti del firmatario."
+  this_submission_has_multiple_signers_which_prevents_the_use_of_a_sharing_link_html: "Questa sottomissione ha più firmatari, il che impedisce l'uso di un link di condivisione poiché non è chiaro quale firmatario sia responsabile di specifici campi. Per risolvere questo problema, definisci i dettagli predefiniti del firmatario in Preferenze → Destinatari del modello, così questo link si aprirà come mittente."
   welcome_to_docuseal: Benvenuto in EsignCenter
   start_a_quick_tour_to_learn_how_to_create_and_send_your_first_document: Inizia un tour rapido per imparare a creare e inviare il tuo primo documento.
   start_tour: Inizia il tour
@@ -3171,6 +3174,7 @@ it: &it
 
 fr: &fr
   this_feature_requires_a_paid_plan: Cette fonctionnalité nécessite un abonnement payant
+  this_feature_is_not_available: Cette fonctionnalité n'est pas disponible
   feature_is_available_on_the_paid_plan: '%{feature} est disponible avec l''abonnement payant.'
   upgrade_to_unlock_this_and_every_other_paid_feature: Passez à un abonnement payant pour débloquer cette fonctionnalité et toutes les autres.
   upgrade_plan: 'Changer d''abonnement'
@@ -3920,7 +3924,7 @@ fr: &fr
   submission_created_via_source_html: "<b>Soumission créée</b> via %{source}"
   pro_user_seats_used: Places d’utilisateurs Pro utilisées
   manage_plan: Gérer la formule
-  this_submission_has_multiple_signers_which_prevents_the_use_of_a_sharing_link_html: Cette soumission comporte plusieurs signataires, ce qui empêche l’utilisation d’un lien de partage car il n’est pas clair quel signataire est responsable de quels champs. Pour résoudre cela, suivez ce guide pour définir les détails du signataire par défaut.
+  this_submission_has_multiple_signers_which_prevents_the_use_of_a_sharing_link_html: Cette soumission comporte plusieurs signataires, ce qui empêche l’utilisation d’un lien de partage car il n’est pas clair quel signataire est responsable de quels champs. Pour résoudre cela, définissez les détails du signataire par défaut dans Préférences → Destinataires du modèle afin que ce lien s’ouvre en tant qu’expéditeur.
   welcome_to_docuseal: Bienvenue sur EsignCenter
   start_a_quick_tour_to_learn_how_to_create_and_send_your_first_document: Lancez une visite rapide pour apprendre à créer et envoyer votre premier document
   start_tour: Démarrer la visite
@@ -4218,6 +4222,7 @@ fr: &fr
 
 pt: &pt
   this_feature_requires_a_paid_plan: Este recurso requer um plano pago
+  this_feature_is_not_available: Este recurso não está disponível
   feature_is_available_on_the_paid_plan: '%{feature} está disponível no plano pago.'
   upgrade_to_unlock_this_and_every_other_paid_feature: Atualize a sua conta para desbloquear este e todos os outros recursos pagos.
   upgrade_plan: Atualizar plano
@@ -4967,7 +4972,7 @@ pt: &pt
   submission_created_via_source_html: '<b>Envio criado</b> via %{source}'
   pro_user_seats_used: Lugares de usuário Pro em uso
   manage_plan: Gerenciar plano
-  this_submission_has_multiple_signers_which_prevents_the_use_of_a_sharing_link_html: 'Este envio tem vários signatários, o que impede o uso de um link de compartilhamento, pois não está claro qual signatário é responsável por quais campos. Para resolver isso, siga este guia para definir os detalhes padrão do signatário.'
+  this_submission_has_multiple_signers_which_prevents_the_use_of_a_sharing_link_html: 'Este envio tem vários signatários, o que impede o uso de um link de compartilhamento, pois não está claro qual signatário é responsável por quais campos. Para resolver isso, defina os detalhes padrão do signatário em Preferências → Destinatários do modelo para que este link seja aberto como remetente.'
   welcome_to_docuseal: Bem-vindo ao EsignCenter
   start_a_quick_tour_to_learn_how_to_create_and_send_your_first_document: Comece um tour rápido para aprender a criar e enviar seu primeiro documento.
   start_tour: Iniciar tour
@@ -5268,6 +5273,7 @@ pt: &pt
 
 de: &de
   this_feature_requires_a_paid_plan: Diese Funktion erfordert einen kostenpflichtigen Tarif
+  this_feature_is_not_available: Diese Funktion ist nicht verfügbar
   feature_is_available_on_the_paid_plan: '%{feature} ist im kostenpflichtigen Tarif verfügbar.'
   upgrade_to_unlock_this_and_every_other_paid_feature: 'Wechseln Sie den Tarif, um diese und alle weiteren kostenpflichtigen Funktionen freizuschalten.'
   upgrade_plan: Tarif wechseln
@@ -6017,7 +6023,7 @@ de: &de
   submission_created_via_source_html: '<b>Einreichung erstellt</b> über %{source}'
   pro_user_seats_used: Verwendete Pro-Benutzerplätze
   manage_plan: Plan verwalten
-  this_submission_has_multiple_signers_which_prevents_the_use_of_a_sharing_link_html: 'Diese Einreichung hat mehrere Unterzeichner, was die Nutzung eines Freigabelinks verhindert, da unklar ist, welcher Unterzeichner für welche Felder verantwortlich ist. Um dies zu lösen, folgen Sie dieser Anleitung, um die Standarddetails des Unterzeichners festzulegen.'
+  this_submission_has_multiple_signers_which_prevents_the_use_of_a_sharing_link_html: 'Diese Einreichung hat mehrere Unterzeichner, was die Nutzung eines Freigabelinks verhindert, da unklar ist, welcher Unterzeichner für welche Felder verantwortlich ist. Um dies zu lösen, legen Sie die Standarddetails des Unterzeichners unter Einstellungen → Empfänger der Vorlage fest, damit dieser Link als Absender geöffnet wird.'
   welcome_to_docuseal: Willkommen bei EsignCenter
   start_a_quick_tour_to_learn_how_to_create_and_send_your_first_document: Starten Sie eine kurze Tour, um zu lernen, wie Sie Ihr erstes Dokument erstellen und versenden.
   start_tour: Starten
@@ -6318,6 +6324,7 @@ de: &de
 
 pl:
   this_feature_requires_a_paid_plan: Ta funkcja wymaga płatnego planu
+  this_feature_is_not_available: Ta funkcja nie jest dostępna
   feature_is_available_on_the_paid_plan: '%{feature} jest dostępna w płatnym planie.'
   upgrade_to_unlock_this_and_every_other_paid_feature: 'Zmień plan, aby odblokować tę i wszystkie inne płatne funkcje.'
   upgrade_plan: Zmień plan
@@ -6426,6 +6433,7 @@ pl:
 
 uk:
   this_feature_requires_a_paid_plan: Ця функція доступна лише в платному плані
+  this_feature_is_not_available: Ця функція недоступна
   feature_is_available_on_the_paid_plan: '%{feature} доступна в платному плані.'
   upgrade_to_unlock_this_and_every_other_paid_feature: 'Оновіть план, щоб розблокувати цю та всі інші платні функції.'
   upgrade_plan: Оновити план
@@ -6534,6 +6542,7 @@ uk:
 
 cs:
   this_feature_requires_a_paid_plan: Tato funkce vyžaduje placený plán
+  this_feature_is_not_available: Tato funkce není k dispozici
   feature_is_available_on_the_paid_plan: '%{feature} je k dispozici v placeném plánu.'
   upgrade_to_unlock_this_and_every_other_paid_feature: Přejděte na placený plán a odemkněte tuto i všechny ostatní placené funkce.
   upgrade_plan: Změnit plán
@@ -6642,6 +6651,7 @@ cs:
 
 he:
   this_feature_requires_a_paid_plan: תכונה זו דורשת תוכנית בתשלום
+  this_feature_is_not_available: תכונה זו אינה זמינה
   feature_is_available_on_the_paid_plan: '%{feature} זמין בתוכנית בתשלום.'
   upgrade_to_unlock_this_and_every_other_paid_feature: שדרגו את החשבון כדי לפתוח תכונה זו ואת כל שאר התכונות בתשלום.
   upgrade_plan: שדרוג תוכנית
@@ -6750,6 +6760,7 @@ he:
 
 nl: &nl
   this_feature_requires_a_paid_plan: Deze functie vereist een betaald abonnement
+  this_feature_is_not_available: Deze functie is niet beschikbaar
   feature_is_available_on_the_paid_plan: '%{feature} is beschikbaar in het betaalde abonnement.'
   upgrade_to_unlock_this_and_every_other_paid_feature: Upgrade je account om deze en alle andere betaalde functies te ontgrendelen.
   upgrade_plan: Abonnement upgraden
@@ -7500,7 +7511,7 @@ nl: &nl
   submission_created_via_source_html: "<b>Inzending aangemaakt</b> via %{source}"
   pro_user_seats_used: Gebruikersplaatsen Pro gebruikt
   manage_plan: Abonnement beheren
-  this_submission_has_multiple_signers_which_prevents_the_use_of_a_sharing_link_html: Deze inzending heeft meerdere ondertekenaars, waardoor het gebruik van een deellink niet mogelijk is omdat onduidelijk is welke ondertekenaar verantwoordelijk is voor specifieke velden. Volg deze handleiding om de standaardgegevens van de ondertekenaar te definiëren.
+  this_submission_has_multiple_signers_which_prevents_the_use_of_a_sharing_link_html: Deze inzending heeft meerdere ondertekenaars, waardoor het gebruik van een deellink niet mogelijk is omdat onduidelijk is welke ondertekenaar verantwoordelijk is voor specifieke velden. Definieer de standaardgegevens van de ondertekenaar onder Voorkeuren → Ontvangers van de sjabloon, zodat deze link als afzender wordt geopend.
   welcome_to_docuseal: Welkom bij EsignCenter
   start_a_quick_tour_to_learn_how_to_create_and_send_your_first_document: Start een korte rondleiding om te leren hoe u uw eerste document maakt en verzendt
   start_tour: Rondleiding starten
@@ -7797,6 +7808,7 @@ nl: &nl
 
 ar:
   this_feature_requires_a_paid_plan: تتطلب هذه الميزة خطة مدفوعة
+  this_feature_is_not_available: هذه الميزة غير متاحة
   feature_is_available_on_the_paid_plan: '%{feature} متاحة في الخطة المدفوعة.'
   upgrade_to_unlock_this_and_every_other_paid_feature: قم بترقية حسابك لفتح هذه الميزة وجميع الميزات المدفوعة الأخرى.
   upgrade_plan: ترقية الخطة
@@ -7905,6 +7917,7 @@ ar:
 
 ko:
   this_feature_requires_a_paid_plan: 이 기능은 유료 플랜이 필요합니다
+  this_feature_is_not_available: 이 기능은 사용할 수 없습니다
   feature_is_available_on_the_paid_plan: '%{feature}은(는) 유료 플랜에서 사용할 수 있습니다.'
   upgrade_to_unlock_this_and_every_other_paid_feature: 계정을 업그레이드하여 이 기능과 모든 유료 기능을 사용하세요.
   upgrade_plan: 플랜 업그레이드
@@ -8013,6 +8026,7 @@ ko:
 
 ja:
   this_feature_requires_a_paid_plan: この機能は有料プランが必要です
+  this_feature_is_not_available: この機能は利用できません
   feature_is_available_on_the_paid_plan: '%{feature}は有料プランでご利用いただけます。'
   upgrade_to_unlock_this_and_every_other_paid_feature: アカウントをアップグレードすると、この機能とすべての有料機能が利用できます。
   upgrade_plan: プランをアップグレード

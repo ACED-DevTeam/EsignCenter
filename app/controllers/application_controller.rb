@@ -34,11 +34,11 @@ class ApplicationController < ActionController::Base
   # callers (the builder saves with a JSON body; fetch/XHR) get the API shape;
   # a browser form goes back where it came from with an alert. The decision is
   # always about the acting user's account, never the request's own claims.
-  rescue_from Entitlements::UpgradeRequired do
+  rescue_from Entitlements::UpgradeRequired do |e|
     if request.format.json? || request.xhr? || request.content_mime_type&.json?
-      render json: { error: Entitlements::REFUSAL_MESSAGE }, status: :forbidden
+      render json: { error: Entitlements.refusal_message(e.feature) }, status: :forbidden
     else
-      redirect_back fallback_location: root_path, alert: I18n.t('this_feature_requires_a_paid_plan')
+      redirect_back fallback_location: root_path, alert: Entitlements.refusal_alert(e.feature)
     end
   end
 

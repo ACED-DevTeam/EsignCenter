@@ -23,6 +23,37 @@ RSpec.describe 'Isolation gate' do
       end
     end
 
+    it 'catches paren-less finders, dynamic key finders, chained scopes and two nesting levels of arguments' do
+      [
+        'AccountConfig.find_by key: k',
+        'config = EncryptedConfig.where key: EncryptedConfig::EMAIL_SMTP_KEY, value: helper(1)',
+        "AccountConfig.find_by_key('x')",
+        'AccountConfig.find_by_key!(AccountConfig::FORCE_MFA)',
+        "EncryptedConfig.find_by_value_and_key(true, 'x')",
+        "AccountConfig.unscoped.find_by(key: 'x')",
+        "AccountConfig.where(value: true).find_by(key: 'x')",
+        "AccountConfig.where(value: true)\n  .order(:id)\n  .find_by(key: 'x')",
+        'AccountConfig.find_by(key: helper(other(1)))',
+        "AccountConfig.find_by(value: build(list(a, b)), key: 'x')"
+      ].each do |snippet|
+        expect(Gates.isolation_violations("#{snippet}\n", 'lib/probe.rb')).to have_attributes(size: 1), snippet
+      end
+    end
+
+    it 'accepts a chain scoped to an account in any of its segments' do
+      [
+        "AccountConfig.where(account:).find_by(key: 'x')",
+        "AccountConfig.where(account_id: current_account.id).order(:id).find_by(key: 'x')",
+        "AccountConfig.unscoped.where(account: account, key: 'x').take",
+        'AccountConfig.find_by key: k, account: account',
+        "AccountConfig.find_by_account_id_and_key(account.id, 'x')",
+        "AccountConfig.find_by(account_id: helper(other(1)), key: 'x')",
+        "EncryptedConfig.find_by(account:, key: 'x')&.value.presence"
+      ].each do |snippet|
+        expect(Gates.isolation_violations("#{snippet}\n", 'lib/probe.rb')).to be_empty, snippet
+      end
+    end
+
     it 'accepts account-scoped finders whatever the argument order' do
       [
         "AccountConfig.find_by(account: account, key: 'x')",

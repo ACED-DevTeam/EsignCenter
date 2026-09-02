@@ -30,8 +30,14 @@ module MailConfigs
   # esign certs (Accounts.esign_certs_config_for) and account configs
   # (AccountConfigs.find_for_account) — a test-mode child falls back to its
   # parent's pinned SMTP server instead of dropping to the platform default.
+  #
+  # Per-account SMTP is a paid-only row: an unentitled account's pin stays in
+  # place (D43) but is skipped, so mail falls through to the platform default
+  # exactly as for an unpinned account. A testing child resolves its plan
+  # through its parent, so it keeps inheriting the parent's pin.
   def find_smtp_config(account)
     return [nil, nil] unless account
+    return [nil, nil] unless Entitlements.allowed?(account, :account_smtp)
 
     account.configuration_lookup_accounts.each do |source_account|
       config = usable_smtp_config(source_account)

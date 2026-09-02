@@ -148,7 +148,12 @@ class ProcessSubmitterCompletionJob
     end
   end
 
+  # BCC is a paid-only row read at send time: addresses saved while paid stay
+  # in place after a downgrade (D43) but no copy goes out until the account is
+  # entitled again.
   def build_bcc_addresses(submission)
+    return [] unless Entitlements.allowed?(submission.account, :bcc)
+
     bcc = submission.preferences['bcc_completed'].presence ||
           submission.template&.preferences&.dig('bcc_completed').presence ||
           submission.account.account_configs

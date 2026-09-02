@@ -139,7 +139,17 @@ module Submitters
     ActiveStorage::Attachment.create!(blob:, name: 'attachments', record: submitter)
   end
 
+  # Every submission/submitter path funnels through normalize_preferences, so
+  # the two preference-borne paid/hidden features are refused at this one
+  # seam, before anything (an EmailMessage row included) is stored.
+  def require_preference_entitlements!(account, params)
+    Entitlements.require!(account, :bcc) if params['bcc_completed'].present?
+    Entitlements.require!(account, :sms) if params['send_sms'].in?(TRUE_VALUES)
+  end
+
   def normalize_preferences(account, user, params)
+    require_preference_entitlements!(account, params)
+
     preferences = {}
 
     message_params = params['message'].presence || params.slice('subject', 'body').presence

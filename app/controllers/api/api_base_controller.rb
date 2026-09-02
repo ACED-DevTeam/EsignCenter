@@ -25,8 +25,8 @@ module Api
       render json: { error: e.message }, status: :unprocessable_content
     end
 
-    rescue_from Entitlements::UpgradeRequired do
-      render json: { error: Entitlements::REFUSAL_MESSAGE }, status: :forbidden
+    rescue_from Entitlements::UpgradeRequired do |e|
+      render json: { error: Entitlements.refusal_message(e.feature) }, status: :forbidden
     end
 
     rescue_from RateLimit::LimitApproached do |e|

@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 RSpec.describe SendTemplateCreatedWebhookRequestJob do
-  let(:account) { create(:account) }
+  let(:account) { create(:account, :paid) }
   let(:user) { create(:user, account:) }
   let(:template) { create(:template, account:, author: user) }
   let(:webhook_url) { create(:webhook_url, account:, events: ['template.created']) }

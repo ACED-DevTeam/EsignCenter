@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 RSpec.describe SendSubmissionExpiredWebhookRequestJob do
-  let(:account) { create(:account) }
+  let(:account) { create(:account, :paid) }
   let(:user) { create(:user, account:) }
   let(:template) { create(:template, account:, author: user) }
   let(:submission) { create(:submission, :with_submitters, template:, created_by_user: user, expire_at: 1.day.ago) }

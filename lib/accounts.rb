@@ -191,6 +191,22 @@ module Accounts
     AccountConfigs.find_for_account(account, AccountConfig::REMOVE_BRANDING_KEY)&.value == true
   end
 
+  # Custom email copy is a paid-only row read at send time: an account-level
+  # email template or a per-template email key saved while paid stays in
+  # place after a downgrade (D43) but the default copy renders until the
+  # account is entitled again. Both readers return nil for an unentitled account.
+  def custom_email_config(account, key)
+    return nil unless Entitlements.allowed?(account, :custom_email_templates)
+
+    AccountConfigs.find_for_account(account, key)
+  end
+
+  def custom_email_copy(account, preferences, key)
+    return nil unless Entitlements.allowed?(account, :custom_email_templates)
+
+    preferences&.dig(key).presence
+  end
+
   def normalize_timezone(timezone)
     tzinfo = TZInfo::Timezone.get(ActiveSupport::TimeZone::MAPPING[timezone] || timezone)
 

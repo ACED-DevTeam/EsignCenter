@@ -22,6 +22,11 @@ module Entitlements
   # `this_feature_requires_a_paid_plan` locale key instead.
   REFUSAL_MESSAGE = 'This feature requires a paid plan'
 
+  # Hidden features are not on any plan, so their refusal must not promise an
+  # upgrade; JSON doors answer with this constant, HTML controllers with the
+  # `this_feature_is_not_available` locale key.
+  UNAVAILABLE_MESSAGE = 'This feature is not available'
+
   # Account configs whose non-blank value switches on a paid-only feature.
   # Clearing a value is always allowed (a downgrade never has to purge, D43).
   ACCOUNT_CONFIG_FEATURES = {
@@ -59,6 +64,20 @@ module Entitlements
 
   def require!(account, feature)
     raise UpgradeRequired, feature.to_sym unless allowed?(account, feature)
+  end
+
+  def hidden?(feature)
+    HIDDEN.include?(feature.to_sym)
+  end
+
+  # The English refusal for a JSON door, chosen by what was refused.
+  def refusal_message(feature)
+    hidden?(feature) ? UNAVAILABLE_MESSAGE : REFUSAL_MESSAGE
+  end
+
+  # The translated refusal for a browser form, chosen the same way.
+  def refusal_alert(feature)
+    I18n.t(hidden?(feature) ? 'this_feature_is_not_available' : 'this_feature_requires_a_paid_plan')
   end
 
   # Every paid-only feature the account may use, resolved with one plan lookup

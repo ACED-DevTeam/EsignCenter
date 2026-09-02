@@ -13,6 +13,7 @@ RSpec.describe Entitlements, type: :lib do
     expect(described_class::HIDDEN).to eq(%i[sms bulk_send saml_sso formulas])
     expect(described_class.paid_only_rows).to eq(described_class::PAID_ONLY)
     expect(described_class::REFUSAL_MESSAGE).to eq('This feature requires a paid plan')
+    expect(described_class::UNAVAILABLE_MESSAGE).to eq('This feature is not available')
   end
 
   describe '.allowed?' do
@@ -115,10 +116,18 @@ RSpec.describe Entitlements, type: :lib do
   end
 
   describe 'refusal copy' do
-    it 'has the HTML refusal string in every declared locale' do
+    it 'has the HTML refusal strings in every declared locale' do
       I18n.available_locales.each do |locale|
         expect(I18n.t('this_feature_requires_a_paid_plan', locale:, raise: true)).to be_present, locale.to_s
+        expect(I18n.t('this_feature_is_not_available', locale:, raise: true)).to be_present, locale.to_s
       end
+    end
+
+    it 'never promises an upgrade for a hidden feature' do
+      expect(described_class.refusal_message(:webhooks)).to eq(described_class::REFUSAL_MESSAGE)
+      expect(described_class.refusal_message(:sms)).to eq(described_class::UNAVAILABLE_MESSAGE)
+      expect(described_class.refusal_alert(:webhooks)).to eq(I18n.t('this_feature_requires_a_paid_plan'))
+      expect(described_class.refusal_alert(:formulas)).to eq(I18n.t('this_feature_is_not_available'))
     end
   end
 end

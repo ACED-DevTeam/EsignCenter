@@ -99,7 +99,13 @@ class SubmissionsController < ApplicationController
                                        params: params.merge('send_completed_email' => true))
   end
 
+  # Saving the dialog's message onto the template is per-template email copy
+  # (the custom-email-templates row); refused before anything persists.
   def save_template_message(template, params)
+    return if params[:subject].blank? && params[:body].blank?
+
+    Entitlements.require!(current_account, :custom_email_templates)
+
     template.preferences['request_email_subject'] = params[:subject] if params[:subject].present?
     template.preferences['request_email_body'] = params[:body] if params[:body].present?
 

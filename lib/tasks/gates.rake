@@ -16,23 +16,32 @@ module Gates
   CONFIG_MODELS = '(?:EncryptedConfig|AccountConfig)'
   CONFIG_FINDERS = 'find_by!?|exists\?|where|order|pluck|pick|take|first_or_initialize|' \
                    'find_or_initialize_by|find_or_create_by!?|create_or_find_by!?'
-  # An argument list with at most one level of nested parentheses; `[^()]`
+  # Dynamic finders spell the key in the method name (`find_by_key`,
+  # `find_by_key!`, `find_by_value_and_key`).
+  DYNAMIC_KEY_FINDER = 'find_by_(?:\w+_and_)?key(?:_and_\w+)?!?'
+  # An argument list with up to two levels of nested parentheses; `[^()]`
   # matches newlines, so a call split across lines is still one call.
-  CALL_ARGS = '(?:[^()]|\((?:[^()])*\))*'
-  # A config lookup carrying `key:` ANYWHERE in its arguments without an
-  # `account:` / `account_id:` keyword alongside it is unscoped: it reads
+  INNER_ARGS = '(?:[^()]|\([^()]*\))*'
+  CALL_ARGS = "(?:[^()]|\\(#{INNER_ARGS}\\))*".freeze
+  # One chained scope between the model and the finder — `.unscoped`,
+  # `.where(...)`, `.order(...)` — with or without an argument list.
+  SCOPE_SEGMENT = "\\s*\\.\\s*\\w+[!?]?(?:\\s*\\(#{CALL_ARGS}\\))?".freeze
+  # A finder call: parenthesised, or paren-less to the end of the line.
+  FINDER_CALL = "(?:#{CONFIG_FINDERS})(?![\\w!?])(?:\\s*\\(#{CALL_ARGS}\\)|[ \\t]+[^\\n]*)".freeze
+  DYNAMIC_FINDER_CALL = "#{DYNAMIC_KEY_FINDER}(?![\\w!?])(?:\\s*\\(#{CALL_ARGS}\\)|[ \\t]+[^\\n]*)?".freeze
+  # Every config lookup: the model, any chained scopes, then a finder. Whether
+  # it is scoped is decided over the WHOLE expression (unscoped_config_lookup?),
+  # so `account:` may sit in any segment of the chain — a lookup carrying
+  # `key:` anywhere without an `account:` / `account_id:` alongside it reads
   # whichever account's row happens to come first.
-  UNSCOPED_CONFIG_FINDER = /
-    #{CONFIG_MODELS}\s*\.\s*(?:#{CONFIG_FINDERS})\(
-    (?!#{CALL_ARGS}\baccount(?:_id)?\s*:)
-    (?=#{CALL_ARGS}\bkey\s*:)
-    #{CALL_ARGS}\)
-  /mx
+  CONFIG_LOOKUP = /#{CONFIG_MODELS}(?:#{SCOPE_SEGMENT})*\s*\.\s*(?:#{FINDER_CALL}|#{DYNAMIC_FINDER_CALL})/m
+  ACCOUNT_SCOPED_ARGUMENT = /\baccount(?:_id)?\s*:|find_by_\w*account/
+  KEYED_LOOKUP = /\bkey\s*:|\b#{DYNAMIC_KEY_FINDER}/
   # Enumerating a config table with no arguments at all is unscoped by
   # definition.
   UNSCOPED_CONFIG_ENUMERATION = /#{CONFIG_MODELS}\s*\.\s*(?:first|take|all|pluck|find_each|each)\b/
   ISOLATION_PATTERNS = [
-    UNSCOPED_CONFIG_FINDER,
+    CONFIG_LOOKUP,
     UNSCOPED_CONFIG_ENUMERATION,
     /Account\s*\.\s*order\(\s*:id\s*\)\s*\.\s*(first|take|limit)/m,
     /Account\s*\.\s*(first\b|minimum\(\s*:id\s*\))/m,
@@ -108,7 +117,10 @@ module Gates
   ATTRIBUTION_REQUIREMENTS = [
     {
       file: 'app/views/shared/_powered_by.html.erb',
-      snippets: ['Docuseal::DOCUSEAL_URL', '>DocuSeal</a>', 'AGPL LICENSE_ADDITIONAL_TERMS']
+      snippets: ['Docuseal::DOCUSEAL_URL', '>DocuSeal</a>', 'AGPL LICENSE_ADDITIONAL_TERMS'],
+      # The anchor has to be rendered markup, not a mention: a line outside any
+      # ERB comment that opens the anchor with the attribution URL.
+      rendered_anchor: '<a href="<%= Docuseal::DOCUSEAL_URL'
     },
     {
       file: 'app/views/templates_share_link_qr/_branding.html.erb',
@@ -141,11 +153,24 @@ module Gates
   # allowlisted expression must still fail on a second, unreviewed one. An
   # expression two patterns both catch is reported once.
   def isolation_violations(content, relative_path)
-    unique_matches(content, ISOLATION_PATTERNS).filter_map do |match|
+    unique_matches(content, ISOLATION_PATTERNS) { |match| isolation_violation?(match) }.filter_map do |match|
       next if allowlisted?(ISOLATION_ALLOWLIST, relative_path, content, match)
 
       format_violation(content, relative_path, match)
     end
+  end
+
+  # A config lookup is a violation only when it is keyed and nothing in the
+  # whole chain scopes it to an account; every other pattern is a violation
+  # wherever it matches.
+  def isolation_violation?(match)
+    return true unless match.regexp == CONFIG_LOOKUP
+
+    unscoped_config_lookup?(match[0])
+  end
+
+  def unscoped_config_lookup?(expression)
+    expression.match?(KEYED_LOOKUP) && !expression.match?(ACCOUNT_SCOPED_ARGUMENT)
   end
 
   def spec_violations(content, relative_path)
@@ -188,9 +213,24 @@ module Gates
 
       content = read(path)
 
-      requirement.fetch(:snippets).reject { |snippet| content.include?(snippet) }
-                 .map { |snippet| "#{file}: attribution snippet missing: #{snippet}" }
+      failures = requirement.fetch(:snippets).reject { |snippet| content.include?(snippet) }
+                            .map { |snippet| "#{file}: attribution snippet missing: #{snippet}" }
+
+      anchor = requirement[:rendered_anchor]
+
+      if anchor && !rendered?(content, anchor)
+        failures << "#{file}: attribution anchor is not rendered markup: #{anchor}"
+      end
+
+      failures
     end
+  end
+
+  ERB_COMMENT = /<%#.*?%>/m
+
+  # True when some line outside every ERB comment carries the snippet.
+  def rendered?(content, snippet)
+    content.gsub(ERB_COMMENT, '').lines.any? { |line| line.include?(snippet) }
   end
 
   def support_email_failures
@@ -208,9 +248,12 @@ module Gates
   # Matches of every pattern, in pattern order, dropping any match that
   # overlaps one already collected — so one expression is reported once even
   # when two patterns both catch it.
+  # An optional block filters candidate matches before the overlap check, so
+  # a discarded candidate never shadows a real violation on the same span.
   def unique_matches(content, patterns)
     patterns.each_with_object([]) do |pattern, collected|
       scan_matches(content, pattern).each do |match|
+        next if block_given? && !yield(match)
         next if collected.any? { |seen| overlap?(seen, match) }
 
         collected << match

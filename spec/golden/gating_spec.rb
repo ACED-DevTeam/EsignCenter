@@ -20,6 +20,9 @@ RSpec.describe 'Feature gating', type: :request do
   let(:admins) { {} }
   let(:json_refusal) { { 'error' => 'This feature requires a paid plan' } }
   let(:html_refusal) { I18n.t('this_feature_requires_a_paid_plan') }
+  # Hidden features are on no plan, so their refusal never promises an upgrade.
+  let(:json_unavailable) { { 'error' => 'This feature is not available' } }
+  let(:html_unavailable) { I18n.t('this_feature_is_not_available') }
   let(:json_headers) { { 'CONTENT_TYPE' => 'application/json', 'ACCEPT' => 'application/json' } }
 
   def admin_for(account)
@@ -32,6 +35,54 @@ RSpec.describe 'Feature gating', type: :request do
 
   def template_for(account)
     create(:template, account:, author: admin_for(account))
+  end
+
+  def sent_submitter_for(account, template: template_for(account))
+    submission = create(:submission, :with_submitters, template:, created_by_user: admin_for(account))
+    submission.submitters.first.tap { |submitter| submitter.update!(sent_at: Time.current) }
+  end
+
+  # A template that already carries a condition (built while the account was
+  # paid, or before the matrix existed): written straight to the row, the way
+  # legacy data sits there, never through the gated save.
+  def conditional_template_for(account)
+    template = template_for(account)
+    fields = template.fields.deep_dup
+    fields.last['conditions'] = [{ 'field_uuid' => fields.first['uuid'], 'action' => 'not_empty' }]
+    template.update!(fields:)
+
+    template
+  end
+
+  def formula_template_for(account)
+    template = template_for(account)
+    fields = template.fields.deep_dup
+    fields.last['preferences'] = { 'formula' => "{{#{fields.first['uuid']}}} + 1" }
+    template.update!(fields:)
+
+    template
+  end
+
+  def put_template_fields(account, template, fields, schema: template.schema)
+    end_session
+    # The builder posts a JSON body with no Accept header; the refusal must
+    # still come back as JSON, not as a redirect the JS would swallow.
+    sign_in(admin_for(account))
+    put "/templates/#{template.id}",
+        params: { template: { fields:, schema:, submitters: template.submitters } }.to_json,
+        headers: { 'CONTENT_TYPE' => 'application/json' }
+
+    template.reload
+  end
+
+  def html_submission_params(template, extra = {})
+    { submission: { '1' => { submitters: [{ uuid: template.submitters.first['uuid'], email: 'signer@example.com' }] } },
+      send_email: '1' }.merge(extra)
+  end
+
+  def api_submission_params(template, extra = {})
+    { template_id: template.id,
+      submitters: [{ role: template.submitters.first['name'], email: 'signer@example.com' }] }.merge(extra)
   end
 
   # Devise's integration sign_out queues a Warden logout for the next request
@@ -53,6 +104,16 @@ RSpec.describe 'Feature gating', type: :request do
   def expect_html_refusal
     expect(response).to have_http_status(:redirect)
     expect(flash[:alert]).to eq(html_refusal)
+  end
+
+  def expect_json_unavailable
+    expect(response).to have_http_status(:forbidden)
+    expect(response.parsed_body).to eq(json_unavailable)
+  end
+
+  def expect_html_unavailable
+    expect(response).to have_http_status(:redirect)
+    expect(flash[:alert]).to eq(html_unavailable)
   end
 
   describe 'REST API tokens' do
@@ -80,31 +141,56 @@ RSpec.describe 'Feature gating', type: :request do
       expect(response).to have_http_status(:ok)
       expect(response.parsed_body['data']).to be_present
     end
+
+    it 'refuses a mutating call from a free token before anything is created, and creates for internal' do
+      expect do
+        post '/api/submissions', headers: token_headers(free_account).merge(json_headers),
+                                 params: api_submission_params(template_for(free_account)).to_json
+      end.not_to change(Submission, :count)
+      expect_json_refusal
+
+      expect do
+        post '/api/submissions', headers: token_headers(internal_account).merge(json_headers),
+                                 params: api_submission_params(template_for(internal_account)).to_json
+      end.to change(Submission, :count).by(1)
+      expect(response).to have_http_status(:ok)
+    end
   end
 
   describe 'MCP tokens' do
-    def mcp_tools_list(account)
+    def mcp_request(account, method, params = nil)
       mcp_token = admin_for(account).mcp_tokens.create!(name: 'Golden')
       create(:account_config, account:, key: AccountConfig::ENABLE_MCP_KEY, value: true)
 
       post '/mcp', headers: { 'Authorization' => "Bearer #{mcp_token.token}", 'Content-Type' => 'application/json' },
-                   params: { jsonrpc: '2.0', id: 1, method: 'tools/list' }.to_json
+                   params: { jsonrpc: '2.0', id: 1, method:, params: }.compact.to_json
     end
 
     it 'refuses a free MCP token and answers internal and paid ones' do
-      mcp_tools_list(free_account)
+      mcp_request(free_account, 'tools/list')
 
       expect_json_refusal
 
-      mcp_tools_list(internal_account)
+      mcp_request(internal_account, 'tools/list')
 
       expect(response).to have_http_status(:ok)
       expect(response.parsed_body.dig('result', 'tools')).to be_present
 
-      mcp_tools_list(paid_account)
+      mcp_request(paid_account, 'tools/list')
 
       expect(response).to have_http_status(:ok)
       expect(response.parsed_body.dig('result', 'tools')).to be_present
+    end
+
+    it 'refuses a mutating tool call from a free token before any record exists, and creates for internal' do
+      call = { name: 'create_template', arguments: { name: 'Golden MCP template' } }
+
+      expect { mcp_request(free_account, 'tools/call', call) }.not_to change(Template, :count)
+      expect_json_refusal
+
+      expect { mcp_request(internal_account, 'tools/call', call) }.to change(Template, :count).by(1)
+      expect(response).to have_http_status(:ok)
+      expect(Template.last).to have_attributes(account_id: internal_account.id, name: 'Golden MCP template')
     end
   end
 
@@ -260,13 +346,158 @@ RSpec.describe 'Feature gating', type: :request do
       expect(template.fields.last['conditions']).to be_present
     end
 
-    it 'refuses a field with a formula for everyone, internal included (hidden for everyone)' do
+    it 'refuses a field with a formula for everyone, internal included (hidden for everyone), and never says ' \
+       '"paid plan" for it' do
       [free_account, internal_account, paid_account].each do |account|
         template = save_fields(account, 'preferences' => { 'formula' => '{{a}} + {{b}}' })
 
-        expect_json_refusal
+        expect_json_unavailable
         expect(template.fields.last.dig('preferences', 'formula')).to be_nil, account.account_kind
       end
+    end
+
+    it 'lets a downgraded account keep saving a template that already carries conditions, refuses only a ' \
+       'condition the save introduces, and always allows removing one' do
+      template = conditional_template_for(free_account)
+      legacy_conditions = template.fields.last['conditions']
+
+      # Rename a field, leave the legacy condition untouched: a routine save.
+      fields = template.fields.deep_dup
+      fields.first['name'] = 'Renamed'
+      template = put_template_fields(free_account, template, fields)
+
+      expect(response).to have_http_status(:ok)
+      expect(template.fields.first['name']).to eq('Renamed')
+      expect(template.fields.last['conditions']).to eq(legacy_conditions)
+
+      # A second field gaining a condition is new conditional logic.
+      fields = template.fields.deep_dup
+      fields[1]['conditions'] = [{ 'field_uuid' => fields.first['uuid'], 'action' => 'not_empty' }]
+      template = put_template_fields(free_account, template, fields)
+
+      expect_json_refusal
+      expect(template.fields[1]['conditions']).to be_nil
+      expect(template.fields.last['conditions']).to eq(legacy_conditions)
+
+      # Editing the legacy condition's content is new logic too.
+      fields = template.fields.deep_dup
+      fields.last['conditions'] = [{ 'field_uuid' => fields.first['uuid'], 'action' => 'empty' }]
+      template = put_template_fields(free_account, template, fields)
+
+      expect_json_refusal
+      expect(template.fields.last['conditions']).to eq(legacy_conditions)
+
+      # Removing it never needs the entitlement.
+      fields = template.fields.deep_dup
+      fields.last.delete('conditions')
+      template = put_template_fields(free_account, template, fields)
+
+      expect(response).to have_http_status(:ok)
+      expect(template.fields.last['conditions']).to be_nil
+    end
+
+    it 'keeps evaluating a downgraded account\'s existing conditions at signing time (D43: in-flight signing ' \
+       'keeps its entitlements)' do
+      template = conditional_template_for(free_account)
+      gate_uuid = template.fields.first['uuid']
+      schema = template.schema.deep_dup
+      schema.first['conditions'] = [{ 'field_uuid' => gate_uuid, 'action' => 'not_empty' }]
+      template.update!(schema:)
+
+      submitter = sent_submitter_for(free_account, template:)
+      submission = submitter.submission
+
+      # The gating field is empty: the conditional document is hidden and the
+      # conditional field reaches the signer with its conditions for evaluation.
+      expect(Submissions.filtered_conditions_schema(submission)).to be_empty
+      conditional_field = Submissions.filtered_conditions_fields(submitter).find { |f| f['conditions'].present? }
+
+      expect(conditional_field['uuid']).to eq(template.fields.last['uuid'])
+
+      submitter.update!(values: { gate_uuid => 'filled' })
+
+      expect(Submissions.filtered_conditions_schema(submission.reload).pluck('attachment_uuid'))
+        .to eq(template.schema.pluck('attachment_uuid'))
+    end
+
+    it 'treats a clone as a new template: a free account cannot clone its conditional template (the original ' \
+       'stays usable) and nobody, internal included, can clone a template with a formula field' do
+      conditional_template = conditional_template_for(free_account)
+
+      end_session
+      sign_in(admin_for(free_account))
+
+      expect do
+        post "/templates/#{conditional_template.id}/clone", params: { template: { name: 'Copy' } }
+      end.not_to change(Template, :count)
+      expect_html_refusal
+      expect(conditional_template.reload.fields.last['conditions']).to be_present
+
+      # The same template still opens and saves for its owner.
+      get "/templates/#{conditional_template.id}/edit"
+
+      expect(response).to have_http_status(:ok)
+
+      formula_template = formula_template_for(internal_account)
+
+      end_session
+      sign_in(admin_for(internal_account))
+
+      expect do
+        post "/templates/#{formula_template.id}/clone", params: { template: { name: 'Copy' } }
+      end.not_to change(Template, :count)
+      expect_html_unavailable
+
+      expect do
+        post "/api/templates/#{formula_template.id}/clone", params: { name: 'Copy' }.to_json,
+                                                            headers: token_headers(internal_account).merge(json_headers)
+      end.not_to change(Template, :count)
+      expect_json_unavailable
+
+      # A plain template clones for everyone.
+      plain_template = template_for(internal_account)
+
+      expect do
+        post "/templates/#{plain_template.id}/clone", params: { template: { name: 'Copy' } }
+      end.to change(Template, :count).by(1)
+    end
+
+    it 'applies the same check to per-submission field overrides (fields[].preferences.formula, conditions)' do
+      template = template_for(internal_account)
+      field_name = template.fields.first['name']
+      formula_params = api_submission_params(template)
+      formula_params[:submitters].first[:fields] = [{ name: field_name, preferences: { formula: '1+1' } }]
+
+      expect do
+        post '/api/submissions', headers: token_headers(internal_account).merge(json_headers),
+                                 params: formula_params.to_json
+      end.not_to change(Submission, :count)
+      expect_json_unavailable
+
+      # Conditions on a per-submission field are conditional logic: paid-only.
+      # The API permit lists drop `conditions`, so this is proven at the seam
+      # every door funnels through (Submissions::CreateFromSubmitters).
+      free_template = template_for(free_account)
+      conditions_attrs = [{ submitters: [{ role: free_template.submitters.first['name'], email: 'signer@example.com',
+                                           fields: [{ name: field_name,
+                                                      conditions: [{ field_uuid: SecureRandom.uuid,
+                                                                     action: 'not_empty' }] }] }] }]
+
+      expect do
+        Submissions.create_from_submitters(template: free_template, user: admin_for(free_account), source: :api,
+                                           submitters_order: 'preserved',
+                                           submissions_attrs: conditions_attrs.map(&:with_indifferent_access))
+      end.to raise_error(Entitlements::UpgradeRequired) { |error| expect(error.feature).to eq(:conditional_logic) }
+      expect(Submission.count).to eq(0)
+
+      plain_params = api_submission_params(template)
+      plain_params[:submitters].first[:fields] = [{ name: field_name, default_value: 'Prefilled' }]
+
+      expect do
+        post '/api/submissions', headers: token_headers(internal_account).merge(json_headers),
+                                 params: plain_params.to_json
+      end.to change(Submission, :count).by(1)
+      expect(response).to have_http_status(:ok)
     end
 
     it 'applies the same check to templates created over the API with fields' do
@@ -280,7 +511,7 @@ RSpec.describe 'Feature gating', type: :request do
                                          fields: [field] }.to_json
       end.not_to change(Template, :count)
 
-      expect_json_refusal
+      expect_json_unavailable
     end
   end
 
@@ -290,12 +521,6 @@ RSpec.describe 'Feature gating', type: :request do
       sign_in(admin_for(account))
       post '/settings/notifications', params: { account_config: { key: AccountConfig::SUBMITTER_REMINDERS,
                                                                   value: { first_duration: 'two_days' } } }
-    end
-
-    def sent_submitter_for(account)
-      submission = create(:submission, :with_submitters, template: template_for(account),
-                                                         created_by_user: admin_for(account))
-      submission.submitters.first.tap { |submitter| submitter.update!(sent_at: Time.current) }
     end
 
     it 'refuses the reminders setting for a free account, saves it for internal and paid, and schedules ' \
@@ -385,6 +610,48 @@ RSpec.describe 'Feature gating', type: :request do
       expect(response.body).to include(I18n.t('powered_by'))
       expect(response.body).to include("href=\"#{Docuseal::DOCUSEAL_URL}/start\"")
     end
+
+    it 'honours the flag in every mailer and page: the verification-code email and the embedded builder page' do
+      create(:account_config, account: paid_account, key: AccountConfig::REMOVE_BRANDING_KEY, value: true)
+      create(:account_config, account: free_account, key: AccountConfig::REMOVE_BRANDING_KEY, value: true)
+
+      paid_submitter = sent_submitter_for(paid_account).tap { |s| s.update!(email: 'paid@example.com') }
+      free_submitter = sent_submitter_for(free_account).tap { |s| s.update!(email: 'free@example.com') }
+
+      paid_otp = SubmitterMailer.otp_verification_email(paid_submitter)
+      free_otp = SubmitterMailer.otp_verification_email(free_submitter)
+
+      expect((paid_otp.html_part || paid_otp).body.decoded).not_to include('Sent using')
+      expect((free_otp.html_part || free_otp).body.decoded).to include('Sent using')
+
+      smtp_mail = SettingsMailer.smtp_successful_setup('admin@example.com', paid_account)
+
+      expect((smtp_mail.html_part || smtp_mail).body.decoded).not_to include('Sent using')
+
+      # The embedded builder is itself paid-only, so the page is opened as the
+      # paid account and then read again after a downgrade: the flag goes inert.
+      post '/api/template_builder_sessions', headers: token_headers(paid_account).merge(json_headers),
+                                             params: { template_id: template_for(paid_account).id,
+                                                       embed_origin: 'https://crm.example.com' }.to_json
+
+      expect(response).to have_http_status(:ok)
+
+      builder_path = URI.parse(response.parsed_body['builder_src']).path
+
+      get builder_path
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).not_to include(I18n.t('powered_by'))
+      expect(response.body).to include("href=\"#{Docuseal::DOCUSEAL_URL}\"")
+      expect(response.body).to include('>DocuSeal</a>')
+
+      downgrade_to_free!(paid_account)
+      get builder_path
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include(I18n.t('powered_by'))
+      expect(response.body).to include("href=\"#{Docuseal::DOCUSEAL_URL}\"")
+    end
   end
 
   describe 'custom email templates' do
@@ -432,6 +699,36 @@ RSpec.describe 'Feature gating', type: :request do
 
       expect(response).to have_http_status(:ok)
       expect(template.preferences['request_email_subject']).to eq('Custom subject')
+    end
+
+    it 'refuses the send dialog\'s "save this message to the template" for a free account before anything ' \
+       'persists, and saves it for internal' do
+      free_template = template_for(free_account)
+      params = html_submission_params(free_template, save_message: '1', is_custom_message: '1',
+                                                     subject: 'Dialog subject', body: 'Dialog body')
+
+      end_session
+      sign_in(admin_for(free_account))
+
+      expect do
+        post "/templates/#{free_template.id}/submissions", params:
+      end.not_to(change { [Submission.count, EmailMessage.count] })
+      expect_html_refusal
+      expect(free_template.reload.preferences.slice('request_email_subject', 'request_email_body')).to be_empty
+
+      internal_template = template_for(internal_account)
+
+      end_session
+      sign_in(admin_for(internal_account))
+
+      expect do
+        post "/templates/#{internal_template.id}/submissions",
+             params: html_submission_params(internal_template, save_message: '1', is_custom_message: '1',
+                                                               subject: 'Dialog subject', body: 'Dialog body')
+      end.to change(Submission, :count).by(1)
+      expect(flash[:alert]).to be_nil
+      expect(internal_template.reload.preferences).to include('request_email_subject' => 'Dialog subject',
+                                                              'request_email_body' => 'Dialog body')
     end
   end
 
@@ -502,6 +799,39 @@ RSpec.describe 'Feature gating', type: :request do
       expect(template.preferences['bcc_completed']).to eq('archive@example.com')
     end
 
+    it 'refuses a per-submission bcc_completed for a free account over the HTML send dialog and the session API, ' \
+       'and stores it for internal' do
+      free_template = template_for(free_account)
+
+      end_session
+      sign_in(admin_for(free_account))
+
+      expect do
+        post "/templates/#{free_template.id}/submissions",
+             params: html_submission_params(free_template, bcc_completed: 'archive@example.com')
+      end.not_to change(Submission, :count)
+      expect_html_refusal
+
+      bcc_params = api_submission_params(free_template, bcc_completed: 'archive@example.com')
+
+      expect do
+        post '/api/submissions', params: bcc_params.to_json, headers: json_headers
+      end.not_to change(Submission, :count)
+      expect_json_refusal
+
+      end_session
+
+      internal_template = template_for(internal_account)
+
+      expect do
+        post '/api/submissions', headers: token_headers(internal_account).merge(json_headers),
+                                 params: api_submission_params(internal_template,
+                                                               bcc_completed: 'archive@example.com').to_json
+      end.to change(Submission, :count).by(1)
+      expect(response).to have_http_status(:ok)
+      expect(Submission.last.preferences['bcc_completed']).to eq('archive@example.com')
+    end
+
     it 'always lets a free account clear a value it can no longer set' do
       create(:account_config, account: free_account, key: AccountConfig::BCC_EMAILS, value: 'old@example.com')
 
@@ -511,6 +841,103 @@ RSpec.describe 'Feature gating', type: :request do
 
       expect(flash[:alert]).to be_nil
       expect(free_account.account_configs.find_by(key: AccountConfig::BCC_EMAILS)).to be_nil
+    end
+  end
+
+  describe 'SMS (hidden for everyone)' do
+    it 'refuses a requested SMS send over HTML and the API for free and internal accounts alike, changes nothing, ' \
+       'and never says "paid plan"' do
+      [free_account, internal_account].each do |account|
+        submitter = sent_submitter_for(account)
+
+        end_session
+        sign_in(admin_for(account))
+        put "/submitters/#{submitter.id}", params: { submitter: { phone: '+15551234567' }, send_sms: '1' }
+
+        expect_html_unavailable
+        expect(submitter.reload.phone).to be_blank, account.account_kind
+
+        # The session path is open for every plan, so this proves the SMS row
+        # itself rather than the token refusal.
+        put "/api/submitters/#{submitter.id}", headers: json_headers,
+                                               params: { phone: '+15551234567', send_sms: true }.to_json
+
+        expect_json_unavailable
+        expect(submitter.reload.phone).to be_blank, account.account_kind
+        expect(submitter.preferences['send_sms']).to be_nil
+
+        expect do
+          post '/api/submissions', headers: json_headers,
+                                   params: api_submission_params(template_for(account), send_sms: true).to_json
+        end.not_to change(Submission, :count)
+        expect_json_unavailable
+      end
+    end
+  end
+
+  # D43 read-time: what an account saved while paid stays in place after a
+  # downgrade but goes inert — the row is still there, nothing reads it.
+  describe 'retained paid settings after a downgrade' do
+    include_context 'with isolated SMTP environment'
+
+    def pin_smtp(account)
+      create(:encrypted_config, account:, key: EncryptedConfig::EMAIL_SMTP_KEY,
+                                value: { 'host' => 'pinned.smtp.example', 'port' => '587', 'username' => 'pinned',
+                                         'password' => 'secret', 'from_email' => 'docs@example.com',
+                                         'authentication' => 'plain' })
+    end
+
+    it 'skips a pinned SMTP server once the account is no longer paid, keeping the row' do
+      pin = pin_smtp(paid_account)
+      ENV['SMTP_ADDRESS'] = 'platform.smtp.example'
+
+      expect(MailConfigs.resolve(paid_account)).to have_attributes(source: :account)
+      expect(MailConfigs.resolve(paid_account).smtp[:address]).to eq('pinned.smtp.example')
+
+      downgrade_to_free!(paid_account)
+
+      expect(MailConfigs.resolve(paid_account)).to have_attributes(source: :env)
+      expect(MailConfigs.resolve(paid_account).smtp[:address]).to eq('platform.smtp.example')
+      expect(EncryptedConfig.exists?(pin.id)).to be(true)
+    end
+
+    it 'renders the default email copy once the account is no longer paid, keeping the custom copy' do
+      create(:account_config, account: paid_account, key: AccountConfig::SUBMITTER_INVITATION_EMAIL_KEY,
+                              value: { 'subject' => 'Account subject', 'body' => 'Account body {{submitter.link}}' })
+      template = template_for(paid_account)
+      template.update!(preferences: template.preferences.merge('request_email_subject' => 'Template subject',
+                                                               'request_email_body' => 'Template body'))
+      submitter = sent_submitter_for(paid_account, template:)
+
+      mail = SubmitterMailer.invitation_email(submitter)
+
+      expect(mail.subject).to eq('Template subject')
+      expect((mail.html_part || mail).body.decoded).to include('Template body')
+
+      downgrade_to_free!(paid_account)
+
+      mail = SubmitterMailer.invitation_email(submitter.reload)
+
+      expect(mail.subject).to eq(I18n.t(:you_are_invited_to_sign_a_document))
+      expect((mail.html_part || mail).body.decoded).not_to include('Template body', 'Account body')
+      expect(template.reload.preferences['request_email_subject']).to eq('Template subject')
+      expect(paid_account.account_configs.find_by(key: AccountConfig::SUBMITTER_INVITATION_EMAIL_KEY)).to be_present
+    end
+
+    it 'sends no BCC copy once the account is no longer paid, keeping the addresses' do
+      create(:account_config, account: paid_account, key: AccountConfig::BCC_EMAILS, value: 'archive@example.com')
+      template = template_for(paid_account)
+      template.update!(preferences: template.preferences.merge('bcc_completed' => 'legal@example.com'))
+      submission = sent_submitter_for(paid_account, template:).submission
+      job = ProcessSubmitterCompletionJob.new
+
+      expect(job.build_bcc_addresses(submission)).to eq(['legal@example.com'])
+
+      downgrade_to_free!(paid_account)
+
+      expect(job.build_bcc_addresses(submission.reload)).to eq([])
+      expect(template.reload.preferences['bcc_completed']).to eq('legal@example.com')
+      expect(paid_account.account_configs.find_by(key: AccountConfig::BCC_EMAILS)&.value).to eq('archive@example.com')
     end
   end
 

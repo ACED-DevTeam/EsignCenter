@@ -17,7 +17,7 @@ RSpec.describe 'Webhook hardening' do
   end
 
   describe 'signed webhook delivery' do
-    let(:account) { create(:account) }
+    let(:account) { create(:account, :paid) }
     let(:webhook_url) { create(:webhook_url, account:, events: ['submission.created']) }
 
     it 'sends valid legacy and EsignCenter signatures for the same body' do
@@ -197,7 +197,7 @@ RSpec.describe 'Webhook hardening' do
     end
 
     it 'refuses a customer localhost URL before any request or event exists' do
-      account = create(:account)
+      account = create(:account, :paid)
       submitter = build_submitter(account)
       webhook_url = create(:webhook_url, account:, url: 'http://localhost/webhook')
 

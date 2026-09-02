@@ -51,7 +51,8 @@ class TemplatesController < ApplicationController
   end
 
   def update
-    Templates::AssertEntitledFields.call(current_account, [*template_params[:fields], *template_params[:schema]])
+    Templates::AssertEntitledFields.call(current_account, template_params[:fields],
+                                         schema: template_params[:schema], baseline: @template)
 
     @template.assign_attributes(template_params)
 

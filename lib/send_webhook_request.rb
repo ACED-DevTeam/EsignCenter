@@ -30,6 +30,11 @@ module SendWebhookRequest
   module_function
 
   def call(webhook_url, event_uuid:, event_type:, record:, data:, attempt: 0)
+    # Webhooks are paid-only. Every webhook job lands here, so a delivery
+    # queued before a downgrade makes no request and records nothing (D43 —
+    # the URL row stays, inert).
+    return unless Entitlements.allowed?(webhook_url.account, :webhooks)
+
     uri = validate_webhook_uri!(webhook_url)
 
     webhook_event = create_webhook_event(webhook_url, event_uuid:, event_type:, record:)

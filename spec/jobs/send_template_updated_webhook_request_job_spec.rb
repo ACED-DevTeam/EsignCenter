@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 RSpec.describe SendTemplateUpdatedWebhookRequestJob do
-  let(:account) { create(:account) }
+  let(:account) { create(:account, :paid) }
   let(:user) { create(:user, account:) }
   let(:template) { create(:template, account:, author: user) }
   let(:webhook_url) { create(:webhook_url, account:, events: ['template.updated']) }
@@ -35,6 +35,19 @@ RSpec.describe SendTemplateUpdatedWebhookRequestJob do
           'User-Agent' => 'EsignCenter Webhook'
         }
       ).once
+    end
+
+    it 'makes no request and records nothing for an account that is no longer entitled to webhooks ' \
+       '(D43: the URL row stays, inert)' do
+      downgrade_to_free!(account)
+
+      expect do
+        described_class.new.perform('template_id' => template.id, 'webhook_url_id' => webhook_url.id,
+                                    'event_uuid' => SecureRandom.uuid)
+      end.not_to change(WebhookEvent, :count)
+
+      expect(WebMock).not_to have_requested(:post, webhook_url.url)
+      expect(WebhookUrl.exists?(webhook_url.id)).to be(true)
     end
 
     it 'sends a webhook request with the secret' do

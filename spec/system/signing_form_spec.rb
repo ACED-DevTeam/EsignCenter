@@ -1090,7 +1090,8 @@ RSpec.describe 'Signing Form' do
 
         expect(page).to have_content('This submission has multiple signers, which prevents the use of a sharing link ' \
                                      "as it's unclear which signer is responsible for specific fields. " \
-                                     'To resolve this, follow this guide to define the default signer details.')
+                                     "To resolve this, define the default signer details under the template's " \
+                                     'Preferences → Recipients so this link opens as the sender.')
       end
 
       it 'shows a "Not found" error message if a logged-out user associated with the template account opens the link' do

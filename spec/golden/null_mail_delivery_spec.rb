@@ -122,7 +122,7 @@ RSpec.describe 'Null mail delivery', type: :lib do
     end
 
     it 'raises SMTP delivery errors on a pinned account transport too' do
-      account = create(:account)
+      account = create(:account, :paid)
       create(:encrypted_config, account:, key: EncryptedConfig::EMAIL_SMTP_KEY,
                                 value: { 'host' => 'pinned.smtp.example', 'port' => '587',
                                          'from_email' => 'tenant@example.com' })

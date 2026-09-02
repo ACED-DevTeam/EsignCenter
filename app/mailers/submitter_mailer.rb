@@ -16,16 +16,17 @@ class SubmitterMailer < ApplicationMailer
     end
 
     template_submitters_index = @email_message.blank? ? build_submitter_preferences_index(@submitter) : {}
+    template_preferences = @submitter.template&.preferences
 
     @body = @email_message&.body.presence ||
-            template_submitters_index.dig(@submitter.uuid, 'request_email_body').presence ||
-            @submitter.template&.preferences&.dig('request_email_body').presence
+            custom_email_copy(template_submitters_index[@submitter.uuid], 'request_email_body') ||
+            custom_email_copy(template_preferences, 'request_email_body')
 
     @subject = @email_message&.subject.presence ||
-               template_submitters_index.dig(@submitter.uuid, 'request_email_subject').presence ||
-               @submitter.template&.preferences&.dig('request_email_subject').presence
+               custom_email_copy(template_submitters_index[@submitter.uuid], 'request_email_subject') ||
+               custom_email_copy(template_preferences, 'request_email_subject')
 
-    @email_config = AccountConfigs.find_for_account(@current_account, AccountConfig::SUBMITTER_INVITATION_EMAIL_KEY)
+    @email_config = custom_email_config(AccountConfig::SUBMITTER_INVITATION_EMAIL_KEY)
     @body ||= fetch_config_email_body(@email_config, @submitter)
 
     assign_message_metadata('submitter_invitation', @submitter)
@@ -55,7 +56,7 @@ class SubmitterMailer < ApplicationMailer
 
     Submissions::EnsureResultGenerated.call(submitter)
 
-    @email_config = AccountConfigs.find_for_account(@current_account, AccountConfig::SUBMITTER_COMPLETED_EMAIL_KEY)
+    @email_config = custom_email_config(AccountConfig::SUBMITTER_COMPLETED_EMAIL_KEY)
 
     add_completed_email_attachments!(
       submitter,
@@ -65,10 +66,10 @@ class SubmitterMailer < ApplicationMailer
                       template_preferences['completed_notification_email_attach_audit'] != false
     )
 
-    @subject = template_preferences['completed_notification_email_subject'].presence
+    @subject = custom_email_copy(template_preferences, 'completed_notification_email_subject')
     @subject ||= @email_config.value['subject'] if @email_config
 
-    @body = template_preferences['completed_notification_email_body'].presence
+    @body = custom_email_copy(template_preferences, 'completed_notification_email_body')
     @body ||= fetch_config_email_body(@email_config, @submitter)
 
     assign_message_metadata('submitter_completed', @submitter)
@@ -113,7 +114,7 @@ class SubmitterMailer < ApplicationMailer
 
     Submissions::EnsureResultGenerated.call(@submitter)
 
-    @email_config = AccountConfigs.find_for_account(@current_account, AccountConfig::SUBMITTER_DOCUMENTS_COPY_EMAIL_KEY)
+    @email_config = custom_email_config(AccountConfig::SUBMITTER_DOCUMENTS_COPY_EMAIL_KEY)
 
     add_completed_email_attachments!(
       submitter,
@@ -123,10 +124,10 @@ class SubmitterMailer < ApplicationMailer
                       (@email_config.nil? || @email_config.value['attach_audit_log'] != false)
     )
 
-    @subject = template_preferences['documents_copy_email_subject'].presence
+    @subject = custom_email_copy(template_preferences, 'documents_copy_email_subject')
     @subject ||= @email_config.value['subject'] if @email_config
 
-    @body = template_preferences['documents_copy_email_body'].presence
+    @body = custom_email_copy(template_preferences, 'documents_copy_email_body')
     @body ||= fetch_config_email_body(@email_config, @submitter)
 
     assign_message_metadata('submitter_documents_copy', @submitter)
@@ -144,7 +145,8 @@ class SubmitterMailer < ApplicationMailer
   end
 
   def otp_verification_email(submitter, locale: nil)
-    mail_account(submitter.account)
+    @current_account = submitter.submission.account
+    mail_account(@current_account)
     @submitter = submitter
     @otp_code = EmailVerificationCodes.generate([submitter.email.downcase.strip, submitter.slug].join(':'))
 
@@ -156,6 +158,16 @@ class SubmitterMailer < ApplicationMailer
   end
 
   private
+
+  # Custom email copy is paid-only and read at send time (Accounts.custom_email_*):
+  # nil for an unentitled account, so the default copy renders.
+  def custom_email_config(key)
+    Accounts.custom_email_config(@current_account, key)
+  end
+
+  def custom_email_copy(preferences, key)
+    Accounts.custom_email_copy(@current_account, preferences, key)
+  end
 
   def build_submitter_reply_to(submitter, email_config: nil, documents_copy_email: nil)
     reply_to = submitter.preferences['reply_to'].presence

@@ -21,7 +21,7 @@ RSpec.describe MailConfigs, type: :lib do
 
   describe '.resolve' do
     it 'prefers the account SMTP config over the platform environment' do
-      account = create(:account, name: 'Tenant "Quoted" Name')
+      account = create(:account, :paid, name: 'Tenant "Quoted" Name')
       create_smtp_config(account)
       ENV['SMTP_ADDRESS'] = 'platform.smtp.example'
 
@@ -35,6 +35,18 @@ RSpec.describe MailConfigs, type: :lib do
         read_timeout: MailConfigs::READ_TIMEOUT
       )
       expect(result.from).to eq('"Tenant Quoted Name" <tenant@example.com>')
+    end
+
+    it 'skips the pin of an account that is not entitled to per-account SMTP and keeps the row (D43)' do
+      account = create(:account)
+      pin = create_smtp_config(account)
+      ENV['SMTP_ADDRESS'] = 'platform.smtp.example'
+
+      result = described_class.resolve(account)
+
+      expect(result.source).to eq(:env)
+      expect(result.smtp[:address]).to eq('platform.smtp.example')
+      expect(EncryptedConfig.exists?(pin.id)).to be(true)
     end
 
     it 'builds the platform default and uses the Postmark token for both credentials' do

@@ -86,6 +86,12 @@ has it*.
   "This feature requires a paid plan" (locale key
   `this_feature_requires_a_paid_plan`, translated for every language). Nothing
   is saved.
+- **Hidden features** (SMS, bulk send, SAML SSO, formulas) are not on any
+  plan, so their refusal never promises an upgrade: the JSON error is
+  `Entitlements::UNAVAILABLE_MESSAGE` ("This feature is not available") and
+  the browser alert is the `this_feature_is_not_available` key. Both rescue
+  handlers pick the wording from the refused feature
+  (`Entitlements.refusal_message` / `Entitlements.refusal_alert`).
 
 The decision is always about the **acting user's account** — never about
 anything the request claims about itself.
@@ -97,10 +103,31 @@ never purges):
   reminder schedule or email template it can no longer set. Only a non-blank
   value is refused.
 - **Existing data stays but goes inert.** Webhook URLs, the remove-branding
-  flag and reminder schedules saved while paid are kept; they simply stop
-  doing anything until the account is paid again. Conditions already on a
-  template keep evaluating for signers — the check runs when fields are
-  *saved*, never at signing time.
+  flag, reminder schedules, a pinned SMTP server, custom email copy and BCC
+  addresses saved while paid are kept; they simply stop doing anything until
+  the account is paid again. The switch-off happens where each one is *read*:
+  `MailConfigs.resolve` skips an unentitled account's pin (mail falls through
+  to the platform default), the mailers read custom subject/body through
+  `Accounts.custom_email_config` / `Accounts.custom_email_copy` (nil for an
+  unentitled account, so the default copy renders), the completion job
+  collects no BCC addresses, a reminder job already in the queue sends
+  nothing (`SendSubmitterInvitationReminderEmailJob`), and a webhook job
+  already in the queue makes no request and records nothing
+  (`SendWebhookRequest.call`).
+- **In-flight signing keeps its entitlements; account-level conveniences do
+  not.** The distinction in D43: a document that is out for signature keeps
+  working exactly as sent — conditions already on a template keep evaluating
+  for signers, submissions created while paid stay open, links keep working.
+  What stops at downgrade is the account's own paid conveniences around that
+  signing: per-account SMTP, custom email copy, BCC, reminders and webhooks.
+  Nothing is deleted; it all comes back when the account is paid again.
+- **Saving a template you built while paid still works.** The conditional-
+  logic check compares the incoming fields with the persisted template and
+  refuses only a condition or formula the save *introduces*; renaming a field
+  on a template that already carries conditions is fine, adding a new
+  condition is not, and removing one is always allowed. A clone is a new
+  template, so cloning a conditional template needs the entitlement (and a
+  template with a formula field cannot be cloned by anyone).
 
 ### 1.6 Where each row is enforced
 
@@ -111,13 +138,14 @@ never purges):
 | Webhooks | `WebhookSettingsController` create/update/resend require `:webhooks`; `WebhookUrls.for_account_id` returns no URLs for an unentitled account, so nothing is ever enqueued for it (stale rows included) | Redirect + alert; no deliveries |
 | Embedded signing sessions | `Api::SigningSessionsController` requires `:signing_sessions` for token and session callers alike (independent of the generic token refusal) | 403 JSON |
 | Embedded template builder | `Api::TemplateBuilderSessionsController` requires `:embed` | 403 JSON |
-| Conditional logic | `Templates::AssertEntitledFields` on every path that assigns incoming fields: builder save (`TemplatesController#update`), embedded builder save (`EmbedTemplateBuilderController#update_template`), `Api::TemplatesController#update`, `Templates::CreateFromApi` (API template create, signing sessions, builder sessions) and `Templates::Clone` when fields come from another account's template | 403 JSON; template unchanged |
+| Conditional logic | `Templates::AssertEntitledFields` on every path that assigns incoming fields: builder save (`TemplatesController#update`), embedded builder save (`EmbedTemplateBuilderController#update_template`), `Api::TemplatesController#update` (all three against the persisted template as baseline — only *introduced* conditions are refused), `Templates::CreateFromApi` (API template create, signing sessions, builder sessions) and every `Templates::Clone` (own account included; a clone is a new template). Per-submission field overrides (`fields[].preferences` / `conditions` on `/api/submissions`, `/api/submitters`, signing sessions) run the same check in `Submissions::CreateFromSubmitters` | 403 JSON; template unchanged |
 | Formulas (hidden) | Same check, refused for everyone including internal | 403 JSON for all plans |
+| SMS (hidden) | `Submitters.normalize_preferences` — the one seam every submission/submitter path funnels through — refuses a requested `send_sms` before anything is stored, HTML and API alike | Redirect + alert / 403 JSON "This feature is not available" (hidden features never say "paid plan") |
 | Automatic reminders | `NotificationsSettingsController#create` for the `submitter_reminders` setting; `Submitters::ScheduleReminders.call` schedules nothing for an unentitled account | Redirect + alert; no reminder jobs |
 | Branding removal | `PersonalizationSettingsController#create` for the `remove_branding` flag; honored by `Accounts.branding_removed?` in the email footer (`shared/_email_attribution`) and the signing-page footer (`shared/_powered_by`). Only the "Powered by" / "Sent using" wording goes away — the DocuSeal attribution link and Source link always render (AGPL §7(b)) | Redirect + alert; branding stays on |
-| Custom email templates | `PersonalizationSettingsController#create` for the four account-level email templates; `TemplatesPreferencesController#create` for per-template email subject/body (invitation, reminder, documents copy, completed notification, per-signer copy) | Redirect + alert |
-| Per-account SMTP | `EmailSmtpSettingsController#create` (as a before-action, so the refusal is not swallowed by the controller's own error handling) | Redirect + alert; no SMTP row |
-| BCC / documents-copy address | `NotificationsSettingsController#create` for `bcc_emails`; `TemplatesPreferencesController#create` for a template's `bcc_completed` | Redirect + alert |
+| Custom email templates | `PersonalizationSettingsController#create` for the four account-level email templates; `TemplatesPreferencesController#create` for per-template email subject/body (invitation, reminder, documents copy, completed notification, per-signer copy); `SubmissionsController#create` when the send dialog asks to save its message onto the template (`save_message=1`). Read-time: the mailers show default copy to an unentitled account | Redirect + alert |
+| Per-account SMTP | `EmailSmtpSettingsController#create` (as a before-action, so the refusal is not swallowed by the controller's own error handling). Read-time: `MailConfigs.resolve` skips an unentitled account's pin | Redirect + alert; no SMTP row |
+| BCC / documents-copy address | `NotificationsSettingsController#create` for `bcc_emails`; `TemplatesPreferencesController#create` for a template's `bcc_completed`; `Submitters.normalize_preferences` for a per-submission `bcc_completed` (HTML send dialog, `/api/submissions`, signing sessions). Read-time: the completion job collects no BCC addresses for an unentitled account | Redirect + alert / 403 JSON |
 | Delivery tracking | Declared; enforced in Session 8 | — |
 
 Signer-page copy (`form_completed_button`, `form_completed_message`), policy

@@ -25,6 +25,10 @@ class McpController < ActionController::API
     end
   rescue CanCan::AccessDenied
     render json: { jsonrpc: '2.0', id: nil, error: { code: -32_603, message: 'Forbidden' } }, status: :forbidden
+  rescue Entitlements::UpgradeRequired => e
+    error = { code: -32_603, message: Entitlements.refusal_message(e.feature) }
+
+    render json: { jsonrpc: '2.0', id: nil, error: }, status: :forbidden
   rescue JSON::ParserError
     render json: { jsonrpc: '2.0', id: nil, error: { code: -32_700, message: 'Parse error' } }, status: :bad_request
   end

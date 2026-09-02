@@ -50,6 +50,8 @@ class SendSubmitterInvitationReminderEmailJob
     return false if submitter.preferences['send_email'] == false
     return false if submitter.submission.archived_at? || submitter.template&.archived_at?
     return false if submitter.submission.expired?
+    # Reminders are paid-only: a reminder scheduled while paid does not fire after a downgrade (D43 — inert, not purged).
+    return false unless Entitlements.allowed?(submitter.account, :reminders)
 
     if submitter.submission.source == 'invite' && !Accounts.can_send_emails?(submitter.account, on_events: true)
       return false

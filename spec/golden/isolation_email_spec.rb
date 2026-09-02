@@ -39,7 +39,7 @@ RSpec.describe 'Email tenant isolation', type: :lib do
   end
 
   it 'uses the sending account pin even when platform SMTP is configured' do
-    account = create(:account, name: 'Pinned Tenant')
+    account = create(:account, :paid, name: 'Pinned Tenant')
     pin_smtp(account, host: 'tenant.smtp.example', username: 'tenant-user', from_email: 'own@example.com')
     ENV['SMTP_ADDRESS'] = 'platform.smtp.example'
     ENV['SMTP_USERNAME'] = 'platform-user'
@@ -74,8 +74,8 @@ RSpec.describe 'Email tenant isolation', type: :lib do
   end
 
   it 'never reads another account pin when the sending account has none' do
-    pinned_account = create(:account)
-    sending_account = create(:account)
+    pinned_account = create(:account, :paid)
+    sending_account = create(:account, :paid)
     pin_smtp(pinned_account, host: 'other-tenant.smtp.example')
     allow(MailConfigs).to receive(:delivery_mode).and_return('smtp')
     allow(Rails.logger).to receive(:warn)
@@ -110,7 +110,7 @@ RSpec.describe 'Email tenant isolation', type: :lib do
   end
 
   it 'tags SubmitterMailer and applies the submitter account pin' do
-    account = create(:account, name: 'Submitter Tenant')
+    account = create(:account, :paid, name: 'Submitter Tenant')
     author = create(:user, account:)
     template = create(:template, account:, author:, attachment_count: 0)
     submission = create(:submission, template:, created_by_user: author)
@@ -138,7 +138,7 @@ RSpec.describe 'Email tenant isolation', type: :lib do
   end
 
   it 'tags Devise mail with the user account so pinned SMTP applies' do
-    account = create(:account, name: 'Devise Tenant')
+    account = create(:account, :paid, name: 'Devise Tenant')
     user = create(:user, account:)
     pin_smtp(account, host: 'devise.smtp.example')
     allow(MailConfigs).to receive(:delivery_mode).and_return('smtp')
@@ -238,8 +238,8 @@ RSpec.describe 'Email tenant isolation', type: :lib do
   end
 
   it 'reports email availability only for the account pin or platform environment' do
-    pinned_account = create(:account)
-    unpinned_account = create(:account)
+    pinned_account = create(:account, :paid)
+    unpinned_account = create(:account, :paid)
     pin_smtp(pinned_account)
     allow(Rails).to receive(:env).and_return(ActiveSupport::EnvironmentInquirer.new('production'))
 

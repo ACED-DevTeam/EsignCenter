@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 RSpec.describe SendSubmissionArchivedWebhookRequestJob do
-  let(:account) { create(:account) }
+  let(:account) { create(:account, :paid) }
   let(:user) { create(:user, account:) }
   let(:template) { create(:template, account:, author: user) }
   let(:submission) { create(:submission, template:, created_by_user: user) }

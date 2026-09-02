@@ -188,6 +188,8 @@ module Submissions
 
     def maybe_set_template_fields(submission, submitters_attrs, default_submitter_uuid: nil, with_template: true,
                                   new_fields: nil)
+      assert_entitled_field_params!(submission, submitters_attrs)
+
       template_fields = (submission.template_fields || submission.template.fields).deep_dup
 
       submitters = submission.template_submitters || submission.template.submitters
@@ -213,6 +215,15 @@ module Submissions
       submission
     end
     # rubocop:enable Metrics
+
+    # Per-submission field overrides can carry a formula (hidden for everyone)
+    # or conditions (paid-only): the same refusal as a builder save, before
+    # anything is merged into the submission's fields.
+    def assert_entitled_field_params!(submission, submitters_attrs)
+      fields = Array.wrap(submitters_attrs).flat_map { |attrs| Array.wrap(attrs[:fields]) }
+
+      Templates::AssertEntitledFields.call(submission.account, fields) if fields.present?
+    end
 
     def merge_submitters_and_fields(submitter_attrs, template_submitters, template_fields)
       selected_submitters = submitter_attrs[:roles].map do |role|
