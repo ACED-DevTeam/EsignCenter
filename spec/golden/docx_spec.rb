@@ -301,6 +301,101 @@ RSpec.describe 'Word document uploads', type: :request do
       expect(ActiveStorage::Blob.exists?(word_blob_id)).to be(false)
     end
 
+    # The markers come off in the job's very last statement: a raise inside
+    # that final save leaves the PDF stored, the schema already updated and
+    # the markers on, so the retry resumes without LibreOffice.
+    it 'resumes after a failure inside the final marker-clearing save without converting again' do
+      allow(WordConverter).to receive(:call).and_call_original
+
+      upload_to_dashboard
+      template = Template.sole
+      attachment = template.documents.sole
+      word_blob_id = attachment.blob_id
+      job_args = ConvertWordDocumentJob.jobs.sole['args'].first
+
+      job = ConvertWordDocumentJob.new
+      calls = 0
+      allow(job).to receive(:clear_conversion_markers!).and_wrap_original do |original, document|
+        calls += 1
+
+        if calls == 1
+          allow(document).to receive(:save!).and_raise(ActiveRecord::ConnectionTimeoutError, 'database hiccup')
+        end
+
+        original.call(document)
+      end
+
+      expect { job.perform(job_args) }.to raise_error(/database hiccup/)
+
+      # Everything but the markers is done; the markers say "still owed".
+      attachment.reload
+      expect(attachment.content_type).to eq('application/pdf')
+      expect(attachment.metadata).to include('converting' => true, 'conversion_stage' => 'pdf_stored',
+                                             'word_blob_id' => word_blob_id)
+      expect(attachment.metadata['conversion_started_at']).to be_present
+      expect(Templates.documents_status(template.reload)).to eq('converting')
+      expect(template.schema.sole).not_to have_key('converting')
+
+      ConvertWordDocumentJob.new.perform(job_args)
+      Sidekiq::Worker.drain_all
+
+      expect(WordConverter).to have_received(:call).once
+
+      attachment.reload
+      expect(attachment.metadata.keys).not_to include('converting', 'conversion_stage', 'conversion_started_at',
+                                                      'word_blob_id')
+      expect(attachment.metadata.dig('pdf', 'number_of_pages')).to be >= 1
+      expect(Templates.documents_status(template.reload)).to be_nil
+      expect(template.schema.sole).not_to have_key('converting')
+      expect(ActiveStorage::Blob.exists?(word_blob_id)).to be(false)
+    end
+
+    # A builder that was open when the job finished (polling timed out, or a
+    # second tab) autosaves a schema copy without the marker: the fields it
+    # has not merged yet must not be lost. The marker goes once a field
+    # claims the document (the builder merged them) or the builder says
+    # "remove" explicitly.
+    it 'keeps the pending_fields marker through an autosave that did not send it, until a field claims the document' do
+      stub_found_fields
+
+      upload_to_dashboard
+      template = Template.sole
+      attachment = template.documents.sole
+      ConvertWordDocumentJob.drain
+
+      expect(template.reload.schema.sole).to include('pending_fields' => true)
+
+      schema_item = { attachment_uuid: attachment.uuid, name: 'fieldtags' }
+
+      put "/templates/#{template.id}", as: :json, params: { template: { schema: [schema_item] } }
+
+      expect(response).to have_http_status(:ok)
+      expect(template.reload.schema.sole).to include('pending_fields' => true)
+      expect(template.fields).to be_blank
+
+      # "Remove": the builder says so explicitly.
+      put "/templates/#{template.id}", as: :json,
+                                       params: { template: { schema: [schema_item.merge(pending_fields: false)] } }
+
+      expect(response).to have_http_status(:ok)
+      expect(template.reload.schema.sole).not_to have_key('pending_fields')
+
+      # "Keep": the merged field claims the document, so the marker goes
+      # even when the builder's copy still carries it.
+      template.update!(schema: [schema_item.merge(pending_fields: true).stringify_keys])
+      field = { uuid: SecureRandom.uuid, name: 'Full name', type: 'text', required: true,
+                submitter_uuid: template.submitters.first['uuid'],
+                areas: [{ attachment_uuid: attachment.uuid, page: 0, x: 0.1, y: 0.1, w: 0.3, h: 0.05 }] }
+
+      put "/templates/#{template.id}", as: :json,
+                                       params: { template: { schema: [schema_item.merge(pending_fields: true)],
+                                                             fields: [field] } }
+
+      expect(response).to have_http_status(:ok)
+      expect(template.reload.schema.sole).not_to have_key('pending_fields')
+      expect(template.fields.sole['name']).to eq('Full name')
+    end
+
     it 'marks the document failed when Sidekiq gives up retrying a transient error' do
       allow(ErrorReport).to receive(:warning).and_call_original
 
@@ -725,6 +820,141 @@ RSpec.describe 'Word document uploads', type: :request do
 
       expect(response).to have_http_status(:unprocessable_content)
       expect(response.parsed_body).to eq('error' => converting_message)
+    end
+  end
+
+  # The timed-out card's Remove button only drops the document from the
+  # schema: the attachment and its queued job stay behind, and neither may
+  # keep blocking the template. A document the builder has just added is
+  # listed client-side and saved on the next autosave, so a brand new
+  # unlisted one still counts (Templates::CONVERSION_UNLISTED_GRACE).
+  describe 'a converting document the template no longer lists' do
+    let!(:account) { create(:account, :internal) }
+    let(:api_headers) { { 'x-auth-token': user.access_token.token, 'CONTENT_TYPE' => 'application/json' } }
+    let(:template) { create(:template, account:, author: user, only_field_types: %w[text]) }
+    let(:pdf_item) { template.schema.sole.deep_dup }
+
+    before do
+      sign_in(user)
+    end
+
+    def add_word_document
+      post "/templates/#{template.id}/documents", params: { files: [docx_upload] }
+
+      template.documents.find_by!(uuid: response.parsed_body['schema'].sole['attachment_uuid'])
+    end
+
+    def post_api_submission
+      post '/api/submissions', headers: api_headers, params: {
+        template_id: template.id, submitters: [{ email: 'signer@example.com' }]
+      }.to_json
+    end
+
+    it 'unblocks sending as soon as the builder removes it from the schema' do
+      attachment = add_word_document
+      word_item = response.parsed_body['schema'].sole
+
+      put "/templates/#{template.id}", as: :json, params: { template: { schema: [pdf_item, word_item] } }
+
+      # The timed-out card appears after five minutes: a listed document
+      # blocks however old it is.
+      attachment.blob.update_columns(created_at: 5.minutes.ago)
+
+      expect(Templates.documents_status(template.reload)).to eq('converting')
+
+      post_api_submission
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body).to eq('error' => I18n.t('documents_still_converting'))
+
+      # Remove: the schema is spliced, the attachment stays converting in storage.
+      put "/templates/#{template.id}", as: :json, params: { template: { schema: [pdf_item] } }
+
+      expect(response).to have_http_status(:ok)
+      expect(attachment.reload.metadata['converting']).to be(true)
+      expect(Templates.documents_status(template.reload)).to be_nil
+
+      expect { post_api_submission }.to change(Submission, :count).by(1)
+
+      expect(response).to have_http_status(:ok)
+    end
+
+    it 'still blocks while it is fresh (the builder has not saved the schema yet), not once it is old' do
+      attachment = add_word_document
+
+      expect(Templates.documents_status(template.reload)).to eq('converting')
+
+      post_api_submission
+
+      expect(response).to have_http_status(:unprocessable_content)
+
+      attachment.blob.update_columns(created_at: (Templates::CONVERSION_UNLISTED_GRACE + 1.second).ago)
+
+      expect(Templates.documents_status(template.reload)).to be_nil
+
+      expect { post_api_submission }.to change(Submission, :count).by(1)
+    end
+
+    it 'is skipped by the job without a LibreOffice run, while a fresh unlisted one still converts' do
+      allow(WordConverter).to receive(:call).and_call_original
+
+      removed = add_word_document
+      removed_args = ConvertWordDocumentJob.jobs.sole['args'].first
+      ConvertWordDocumentJob.jobs.clear
+      removed.blob.update_columns(created_at: (Templates::CONVERSION_UNLISTED_GRACE + 1.second).ago)
+
+      ConvertWordDocumentJob.new.perform(removed_args)
+
+      expect(WordConverter).not_to have_received(:call)
+      removed.reload
+      expect(removed.content_type).to eq(docx_type)
+      expect(removed.metadata).to include('converting' => true)
+      expect(removed.metadata['conversion_started_at']).to be_nil
+
+      fresh = add_word_document
+      ConvertWordDocumentJob.drain
+
+      expect(WordConverter).to have_received(:call).once
+      expect(fresh.reload.content_type).to eq('application/pdf')
+      expect(fresh.metadata['converting']).to be_nil
+    end
+
+    # The stale clock (30 minutes, then "failed") runs from the last sign of
+    # progress: the job starting, or the half-way PDF being stored — not
+    # from an upload that sat in a backed-up queue.
+    it 'measures the stale clock from when the job started rather than from the upload' do
+      allow(WordConverter).to receive(:call).and_raise(WordConverter::Busy)
+
+      attachment = add_word_document
+      job_args = ConvertWordDocumentJob.jobs.sole['args'].first
+      ConvertWordDocumentJob.jobs.clear
+      put "/templates/#{template.id}", as: :json,
+                                       params: { template: { schema: [pdf_item, response.parsed_body['schema'].sole] } }
+
+      # Nothing has run yet: the upload time is all there is to go by.
+      attachment.blob.update_columns(created_at: (Templates::CONVERSION_STALE_AFTER + 1.minute).ago)
+
+      expect(Templates.documents_status(template.reload)).to eq('failed')
+
+      # The first run stamps the start (and here waits for a slot).
+      ConvertWordDocumentJob.new.perform(job_args)
+
+      attachment.reload
+      expect(Time.zone.parse(attachment.metadata['conversion_started_at'])).to be_within(1.minute).of(Time.current)
+      expect(Templates.documents_status(template.reload)).to eq('converting')
+      expect(Templates::ConversionStatus.call(template, attachment.uuid)).to include(status: 'converting')
+
+      # Thirty minutes after that start with no further progress: failed.
+      attachment.metadata['conversion_started_at'] = (Templates::CONVERSION_STALE_AFTER + 1.minute).ago.iso8601
+      attachment.save!
+
+      expect(Templates.documents_status(template.reload)).to eq('failed')
+      expect(Templates::ConversionStatus.call(template, attachment.uuid)).to include(status: 'failed')
+
+      # A PDF stored half-way through is progress too (the later of the two counts).
+      attachment.blob.update_columns(created_at: Time.current)
+
+      expect(Templates.documents_status(template.reload)).to eq('converting')
     end
   end
 

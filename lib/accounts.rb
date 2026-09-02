@@ -176,14 +176,15 @@ module Accounts
     [*PlatformCertificate.current_chain, *PlatformCertificate.retired_chains]
   end
 
-  # One unreadable row (a corrupt custom PKCS#12, a bad password) is reported
-  # and skipped: it must not take verification down for every other account.
+  # One unreadable row (a corrupt custom PKCS#12, a bad password, a value
+  # encrypted under a key this deployment no longer has) is reported and
+  # skipped: it must not take verification down for every other account.
   def account_certs_pems
     accounts = Account.where(account_kind: [Account::INTERNAL_KIND, Account::OPERATOR_KIND])
 
     EncryptedConfig.where(account: accounts, key: EncryptedConfig::ESIGN_CERTS_KEY).flat_map do |config|
       config_trusted_certs(config.value).map(&:to_pem)
-    rescue OpenSSL::OpenSSLError, ArgumentError => e
+    rescue OpenSSL::OpenSSLError, ArgumentError, ActiveRecord::Encryption::Errors::Base => e
       ErrorReport.error(e, account_id: config.account_id, key: config.key)
 
       []

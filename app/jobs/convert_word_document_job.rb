@@ -10,10 +10,15 @@
 #
 # The job is resumable: the PDF blob is swapped in with `converting` still set
 # and a `conversion_stage` marker, and both stay on until the schema is
-# updated and the Word blob is purged — the markers are cleared LAST, so a
-# retry that finds the PDF already stored skips LibreOffice and only redoes
-# the post-processing (page count, previews, field extraction, schema, purge
-# — all idempotent).
+# updated and the Word blob's deletion is queued — the markers come off in
+# the very last statement, so a retry after a raise anywhere past the blob
+# swap (including inside that final save) finds the PDF already stored,
+# skips LibreOffice and only redoes the post-processing (page count,
+# previews, field extraction, schema, purge — all idempotent).
+#
+# A document the builder has removed from the template (its schema no longer
+# lists the attachment) is skipped without a LibreOffice run, once the
+# builder has had time to list it (Templates::CONVERSION_UNLISTED_GRACE).
 class ConvertWordDocumentJob
   include Sidekiq::Job
 
@@ -38,6 +43,8 @@ class ConvertWordDocumentJob
 
     # A retry after the blob swap: the PDF is there, only the rest is owed.
     return finish_conversion(template, attachment) if attachment.metadata['conversion_stage'] == STAGE_PDF_STORED
+
+    stamp_started_at!(attachment)
 
     busy_retries = params['busy_retries'].to_i
 
@@ -70,14 +77,29 @@ class ConvertWordDocumentJob
 
   private
 
-  # The template and the attachment still owed a conversion, or nil.
+  # The template and the attachment still owed a conversion, or nil. An
+  # attachment the schema no longer lists was removed by the user (the
+  # timed-out card's Remove button): nothing to convert — unless it is so
+  # fresh that the builder's add-document flow has not saved the schema
+  # listing it yet.
   def load(params)
     template = Template.find_by(id: params['template_id'])
     attachment = template && template.documents.preload(:blob).find_by(uuid: params['attachment_uuid'])
 
     return [] if attachment.nil? || !(attachment.metadata['converting'] || attachment.metadata['conversion_failed'])
+    return [] unless Templates.schema_lists?(template, attachment) || Templates.within_unlisted_grace?(attachment)
 
     [template, attachment]
+  end
+
+  # The first run stamps when the conversion actually started, so the stale
+  # clock (Templates.stale_conversion?) does not count the time the job spent
+  # queued or waiting for a slot.
+  def stamp_started_at!(attachment)
+    return if attachment.metadata['conversion_started_at'].present?
+
+    attachment.metadata['conversion_started_at'] = Time.current.iso8601
+    attachment.save!
   end
 
   # Swaps the PDF blob into the attachment (same uuid). `converting` stays on
@@ -90,9 +112,10 @@ class ConvertWordDocumentJob
       metadata: {
         'original_filename' => filename,
         'converting' => true,
+        'conversion_started_at' => attachment.metadata['conversion_started_at'],
         'conversion_stage' => STAGE_PDF_STORED,
         'word_blob_id' => word_blob.id
-      }
+      }.compact
     )
 
     attachment.blob = pdf_blob
@@ -104,7 +127,13 @@ class ConvertWordDocumentJob
   # from the builder leaves them: the builder merges and saves them itself
   # (from the status poll, or on its next mount via the schema item's
   # `pending_fields` marker), so this job never rewrites `template.fields`
-  # underneath an open builder. The markers come off last.
+  # underneath an open builder.
+  #
+  # Order matters for resumability: ONE schema update, then the Word blob's
+  # deletion is queued, and the attachment markers are cleared in the very
+  # last statement. Until that last save commits, `load` still sees the
+  # attachment as converting with the PDF stored, so a retry redoes only
+  # this method.
   def finish_conversion(template, attachment, pdf_data = nil)
     pdf_data ||= attachment.download
 
@@ -115,24 +144,30 @@ class ConvertWordDocumentJob
 
     update_schema_item(template, attachment.uuid) do |item|
       item.delete('conversion_failed')
+      item.delete('converting')
       item['pending_fields'] = true if fields_found
     end
 
     word_blob_id = attachment.metadata['word_blob_id']
     ActiveStorage::Blob.find_by(id: word_blob_id)&.purge_later if word_blob_id
 
-    attachment.metadata.delete('converting')
-    attachment.metadata.delete('conversion_stage')
-    attachment.metadata.delete('word_blob_id')
-    attachment.save!
-
-    update_schema_item(template, attachment.uuid) { |item| item.delete('converting') }
+    clear_conversion_markers!(attachment)
 
     nil
   end
 
+  # The last step of a conversion: from here on `load` no longer resumes it.
+  def clear_conversion_markers!(attachment)
+    attachment.metadata.delete('converting')
+    attachment.metadata.delete('conversion_stage')
+    attachment.metadata.delete('conversion_started_at')
+    attachment.metadata.delete('word_blob_id')
+    attachment.save!
+  end
+
   def fail_conversion(template, attachment, error)
     attachment.metadata.delete('converting')
+    attachment.metadata.delete('conversion_started_at')
     attachment.metadata['conversion_failed'] = true
     attachment.save!
 

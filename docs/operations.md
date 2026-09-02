@@ -789,12 +789,15 @@ the running app is signing with a certificate you do not have a copy of.
   would turn every one of them into "not verified". New signatures carry the
   new identity, so the two fingerprints differ from that moment on. Never
   rotate casually.
-- **Nothing generates the certificate except signing and the seed.** The
-  first customer signing (or `rake operator:seed`, whichever comes first)
-  creates the row; the `/verify` page, the API verify tool, the E-Signature
-  settings page and the export/fingerprint/rotate tasks only *read* it. With
-  no row yet, `/verify` simply answers "not verified" and the tasks say to
-  run the seed. No anonymous upload can mint the platform key.
+- **Nothing generates the certificate except signing, the seed and a
+  rotation.** The first customer signing (or `rake operator:seed`, whichever
+  comes first) creates the row; the `/verify` page, the API verify tool, the
+  E-Signature settings page and the export/fingerprint tasks only *read* it.
+  The rotate task is the one deliberate exception: it *generates and writes*
+  a replacement identity into the row (after retiring the current chain) —
+  and it refuses to run when there is no row yet. With no row, `/verify`
+  simply answers "not verified" and the tasks say to run the seed. No
+  anonymous upload can mint the platform key.
 
 ### 8.4 The timestamp authority is loud now
 

@@ -23,13 +23,20 @@ back — and a conversion is not.
    document. Save it as a PDF and upload again."** with the normal Remove
    button. A conversion that is still running after 5 minutes shows "This is
    taking longer than expected. Refresh the page later." — also with the
-   Remove button (the job keeps running; a later page load shows the
-   result). A document still marked converting **30 minutes** after its file
-   was stored has lost its job; the app treats it as failed from then on, so
-   a template is never blocked forever.
+   Remove button. Pressing Remove takes the document out of the template and
+   unblocks sending right away; a conversion job that has not started yet
+   then finds nothing to do and skips the conversion (a job already
+   converting finishes, but the result belongs to nothing). A document still
+   marked converting **30 minutes** after its conversion last showed
+   progress — the job starting, or the half-way PDF being stored; time
+   spent waiting in the queue does not count — has lost its job; the app
+   treats it as failed from then on, so a template is never blocked forever.
 4. If the conversion finished while nobody had the builder open, the form
    fields found in the Word file are added the next time the builder opens
-   (with the same keep-or-remove prompt), not lost.
+   (with the same keep-or-remove prompt), not lost — and they survive an
+   autosave from a builder that was open when the conversion finished but
+   had stopped checking. "Remove" on that prompt removes only the fields
+   found in the Word file; every other field on the template stays.
 
 **Nothing can be sent while a document is converting.** A template whose
 document is still converting — or failed to convert — is not ready for
@@ -63,7 +70,9 @@ is still treated as a Word file.
 | Conversion switched off, or LibreOffice missing | "Word documents can't be converted right now. Save the file as a PDF and upload it again." |
 
 While the file is being converted it is stored as uploaded. Once the PDF is
-in place the original Word file is deleted from storage; only the PDF is kept.
+in place, the deletion of the original Word file is queued as the conversion
+finishes (a small background job removes it moments later); only the PDF is
+kept.
 
 ## Limits and guards
 
@@ -89,8 +98,9 @@ reported to Sentry as a warning; it is not retried (the result would be the
 same). Storage or database errors are retried by Sidekiq as usual (3 tries);
 when those run out the document is marked failed too. The job keeps its
 "still converting" markers until the PDF is stored, the template updated and
-the Word file purged, so a retry after any step resumes where it left off
-without converting again.
+the Word file's deletion queued; clearing the markers is its very last step,
+so a retry after a failure at any point — even in that last step — resumes
+where it left off without converting again.
 
 ## Operator switches
 

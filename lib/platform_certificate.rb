@@ -111,15 +111,23 @@ module PlatformCertificate
   # and replaces the row with a freshly generated identity. Returns the old
   # and the new fingerprint. Requires an existing row: rotation is a change
   # of identity, not a first seed.
+  #
+  # The current row is read and row-locked INSIDE the transaction, and the
+  # retired chain is taken from that locked read: two rotations running at
+  # once serialize on the lock, so the second retires the first one's fresh
+  # identity instead of retiring the same old chain twice and orphaning a
+  # leaf that may already have signed a document.
   def rotate!
     account = operator_account!
-    row = find_row(account) ||
-          raise(MissingCertificateError, 'No platform certificate to rotate; run `rake operator:seed` first')
-
-    old_pems = row.value
     new_pems = generate_pems
+    old_pems = nil
 
     ApplicationRecord.transaction do
+      row = account.encrypted_configs.lock.find_by(key: KEY) ||
+            raise(MissingCertificateError, 'No platform certificate to rotate; run `rake operator:seed` first')
+
+      old_pems = row.value
+
       retired = account.encrypted_configs.lock.find_or_initialize_by(key: RETIRED_KEY)
       retired.value = Array(retired.value) + [old_pems.slice(*CHAIN_KEYS).merge('retired_at' => Time.current.iso8601)]
       retired.save!

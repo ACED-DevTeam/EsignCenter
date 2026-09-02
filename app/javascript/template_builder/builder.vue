@@ -1969,9 +1969,25 @@ export default {
     t (key) {
       return this.i18n[key] || i18n[this.language]?.[key] || i18n.en[key] || key
     },
+    // "Remove" for the fields found in an uploaded or converted document:
+    // only the areas on those documents go (a field lives in
+    // field.areas[].attachment_uuid, never at the top level), a field left
+    // with no area goes with them, and every other field on the template
+    // stays. The schema items say `pending_fields: false` explicitly so the
+    // server drops the marker instead of carrying it over (see
+    // Templates.refresh_conversion_flags) and no later mount merges the
+    // removed fields again.
     removePendingFields () {
-      this.template.fields = this.template.fields.filter((f) => {
-        return this.template.schema.find((item) => item.attachment_uuid === f.attachment_uuid && item.pending_fields)
+      const attachmentUuids = [...this.pendingFieldAttachmentUuids]
+
+      attachmentUuids.forEach((attachmentUuid) => {
+        this.removeAreasByAttachmentUuid(attachmentUuid)
+      })
+
+      this.template.schema.forEach((item) => {
+        if (attachmentUuids.includes(item.attachment_uuid)) {
+          item.pending_fields = false
+        }
       })
 
       this.save()

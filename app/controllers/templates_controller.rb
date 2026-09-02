@@ -93,7 +93,7 @@ class TemplatesController < ApplicationController
   def template_params
     params.require(:template).permit(
       :name,
-      { schema: [[:attachment_uuid, :google_drive_file_id, :name, :dynamic,
+      { schema: [[:attachment_uuid, :google_drive_file_id, :name, :dynamic, :pending_fields,
                   { conditions: [%i[field_uuid value action operation]] }]],
         submitters: [%i[name uuid is_requester linked_to_uuid invite_via_field_uuid
                         invite_by_uuid optional_invite_by_uuid email order]],

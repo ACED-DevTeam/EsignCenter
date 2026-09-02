@@ -26,11 +26,21 @@ module Templates
     three_months: 3.months
   }.with_indifferent_access.freeze
 
-  # A document still marked converting this long after its blob was stored
+  # A document still marked converting this long after its conversion last
+  # showed progress (the job starting, or the PDF it swapped in half-way)
   # has lost its job (a dead-set entry, a container killed mid-run): it is
   # treated as failed so the user gets the failed card and its Remove
   # button instead of a template blocked forever.
   CONVERSION_STALE_AFTER = 30.minutes
+
+  # A converting attachment the schema does not list is normally one the
+  # user removed (the timed-out card's Remove button splices the schema
+  # only; the attachment and its job stay) and must not block sending. But
+  # the builder's add-document flow lists the item CLIENT-SIDE after the
+  # upload response and saves the schema on its next autosave, so a brand
+  # new unlisted attachment is still on its way in: it keeps blocking (and
+  # its job keeps running) for this long after its blob was stored.
+  CONVERSION_UNLISTED_GRACE = 2.minutes
 
   # Raised wherever a submission would be built from a template that still
   # has a Word document converting (or one that failed to convert): the PDF
@@ -51,22 +61,37 @@ module Templates
   # nil when every document is ready, otherwise 'converting' or 'failed'.
   # The attachments' own blob metadata decides — the schema flags are only a
   # cache the builder reads (see refresh_conversion_flags). A document still
-  # converting anywhere on the template blocks, whether or not the schema
-  # lists it yet; a failed one (including a stale conversion) blocks while
-  # the schema still lists it (the builder's "remove document" drops it from
-  # the schema, not from storage). A failed document outranks a converting
-  # one: it needs the user's action.
+  # converting blocks while the schema lists it, or while it is younger than
+  # CONVERSION_UNLISTED_GRACE (still being listed by the builder); a failed
+  # one (including a stale conversion) blocks while the schema lists it (the
+  # builder's "remove document" drops it from the schema, not from storage).
+  # A failed document outranks a converting one: it needs the user's action.
   def documents_status(template)
     flagged = flagged_documents(template)
 
     return if flagged.empty?
 
-    schema_uuids = template.schema.to_a.map { |item| item['attachment_uuid'] || item[:attachment_uuid] }
+    schema_uuids = schema_attachment_uuids(template)
 
     return 'failed' if flagged.any? { |d| conversion_failed?(d) && schema_uuids.include?(d.uuid) }
-    return 'converting' if flagged.any? { |d| converting?(d) }
+
+    if flagged.any? { |d| converting?(d) && (schema_uuids.include?(d.uuid) || within_unlisted_grace?(d)) }
+      return 'converting'
+    end
 
     nil
+  end
+
+  def schema_attachment_uuids(template)
+    template.schema.to_a.map { |item| item['attachment_uuid'] || item[:attachment_uuid] }
+  end
+
+  def schema_lists?(template, document)
+    schema_attachment_uuids(template).include?(document.uuid)
+  end
+
+  def within_unlisted_grace?(document)
+    document.blob.created_at > CONVERSION_UNLISTED_GRACE.ago
   end
 
   def flagged_documents(template)
@@ -83,10 +108,21 @@ module Templates
     document.metadata['conversion_failed'].present? || stale_conversion?(document)
   end
 
-  # The blob's own timestamp is the last sign of progress: the Word upload,
-  # or the PDF the job swapped in half-way through.
+  # Measured from the last sign of progress: the moment the job first ran
+  # (`conversion_started_at`, stamped by ConvertWordDocumentJob — queue wait
+  # and slot wait do not count) or the blob's own timestamp (the Word upload,
+  # or the PDF the job swapped in half-way through), whichever is later.
   def stale_conversion?(document)
-    document.metadata['converting'].present? && document.blob.created_at < CONVERSION_STALE_AFTER.ago
+    return false if document.metadata['converting'].blank?
+
+    conversion_progress_at(document) < CONVERSION_STALE_AFTER.ago
+  end
+
+  def conversion_progress_at(document)
+    started_at = document.metadata['conversion_started_at'].presence
+    started_at = Time.zone.parse(started_at.to_s) if started_at
+
+    [started_at, document.blob.created_at].compact.max
   end
 
   # Re-derives every schema item's `converting` / `conversion_failed` flag
@@ -94,8 +130,18 @@ module Templates
   # without those keys (they are not permitted params, and the client is not
   # trusted with them), so each save would otherwise drop the placeholder and
   # stop the polling after a reload.
+  #
+  # The `pending_fields` marker (fields a conversion found, not yet merged
+  # into template.fields by any builder) is carried over from the persisted
+  # schema item when the client did not send it — a builder that autosaves
+  # with an older copy of the schema must not lose the fields — and dropped
+  # as soon as a field area claims the attachment (the builder merged them).
+  # A client that sends the key explicitly decides (the "Remove" choice
+  # sends false).
   def refresh_conversion_flags(template)
     flagged = flagged_documents(template).index_by(&:uuid)
+    persisted_pending = persisted_pending_fields_uuids(template)
+    claimed = claimed_attachment_uuids(template)
 
     template.schema = template.schema.to_a.map do |item|
       item = item.to_h.stringify_keys.except('converting', 'conversion_failed')
@@ -104,8 +150,37 @@ module Templates
       item['converting'] = true if document && converting?(document)
       item['conversion_failed'] = true if document && conversion_failed?(document)
 
-      item
+      refresh_pending_fields(item, persisted_pending:, claimed:)
     end
+  end
+
+  def refresh_pending_fields(item, persisted_pending:, claimed:)
+    uuid = item['attachment_uuid']
+
+    if claimed.include?(uuid)
+      item.delete('pending_fields')
+    elsif item.key?('pending_fields')
+      explicit = ActiveModel::Type::Boolean.new.cast(item.delete('pending_fields'))
+      item['pending_fields'] = true if explicit
+    elsif persisted_pending.include?(uuid)
+      item['pending_fields'] = true
+    end
+
+    item
+  end
+
+  def persisted_pending_fields_uuids(template)
+    template.schema_in_database.to_a.filter_map do |item|
+      item = item.to_h.stringify_keys
+
+      item['attachment_uuid'] if item['pending_fields']
+    end
+  end
+
+  def claimed_attachment_uuids(template)
+    template.fields.to_a.flat_map do |field|
+      Array(field['areas'] || field[:areas]).map { |area| area['attachment_uuid'] || area[:attachment_uuid] }
+    end.compact.uniq
   end
 
   def documents_ready?(template)

@@ -340,6 +340,32 @@ RSpec.describe 'Public verify', type: :request do
         .with(instance_of(OpenSSL::PKCS12::PKCS12Error), hash_including(account_id: internal_account.id))
         .at_least(:once)
     end
+
+    # A row written under an encryption key this deployment no longer has
+    # raises lazily, when its value is read: reported and skipped like a
+    # corrupt one, never a 500 on every upload.
+    it 'still verifies our documents when one internal account row cannot be decrypted', sidekiq: :inline do
+      platform_certificate!
+      broken = create(:encrypted_config, account: internal_account, key: EncryptedConfig::ESIGN_CERTS_KEY,
+                                         value: { 'custom' => [] })
+      allow_any_instance_of(EncryptedConfig).to receive(:value).and_wrap_original do |original, *args|
+        raise ActiveRecord::Encryption::Errors::Decryption, 'unknown key' if original.receiver.id == broken.id
+
+        original.call(*args)
+      end
+      allow(ErrorReport).to receive(:error).and_call_original
+      submission = submission_for(account)
+      bytes = downloaded_bytes(complete!(submission.submitters.first))
+
+      verify(bytes)
+
+      expect(response).to have_http_status(:ok)
+      expect(result_state).to eq('verified')
+      expect(ErrorReport).to have_received(:error)
+        .with(instance_of(ActiveRecord::Encryption::Errors::Decryption),
+              hash_including(account_id: internal_account.id))
+        .at_least(:once)
+    end
   end
 
   describe 'the page never generates the platform certificate' do
