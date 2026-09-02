@@ -1,7 +1,8 @@
-<%# "Continue with Google": only while sign-up is open and Google credentials exist. POST-only (OmniAuth refuses GET), full page load (Turbo would swallow the redirect to Google). %>
+<%# "Continue with Google": only while sign-up is open and Google credentials exist. POST-only (OmniAuth refuses GET), full page load (Turbo would swallow the redirect to Google). The browser's timezone goes on the form's query string: OmniAuth keeps the authorize request's query for the callback (omniauth.params), where a new account is stamped with it. %>
 <% if Registrations.google_enabled? %>
-  <%= button_to user_google_oauth2_omniauth_authorize_path, method: :post, form: { data: { turbo: false } }, form_class: 'w-full', class: 'btn btn-outline w-full text-base normal-case gap-3' do %>
+  <%= button_to user_google_oauth2_omniauth_authorize_path, method: :post, form: { id: 'google_sign_in_form', data: { turbo: false } }, form_class: 'w-full', class: 'btn btn-outline w-full text-base normal-case gap-3' do %>
     <%= svg_icon('brand_google', class: 'w-5 h-5 shrink-0') %>
     <span><%= t('continue_with_google') %></span>
   <% end %>
+  <set-timezone data-form-id="google_sign_in_form"></set-timezone>
 <% end %>

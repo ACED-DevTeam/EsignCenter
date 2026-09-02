@@ -89,8 +89,9 @@ class UsersController < ApplicationController
     end
 
     self_excluded = %i[password otp_required_for_login role archived_at]
+    attrs = attrs.except(*(current_user == @user ? self_excluded : %i[password]))
 
-    if @user.update(attrs.except(*(current_user == @user ? self_excluded : %i[password])))
+    if update_user(attrs)
       if @user.try(:pending_reconfirmation?) && @user.previous_changes.key?(:unconfirmed_email)
         SendConfirmationInstructionsJob.perform_async('user_id' => @user.id)
 
@@ -102,6 +103,8 @@ class UsersController < ApplicationController
     else
       render turbo_stream: turbo_stream.replace(:modal, template: 'users/edit'), status: :unprocessable_content
     end
+  rescue Quotas::SeatLimitReached => e
+    redirect_to settings_users_path, alert: e.localized_message
   end
 
   def destroy
@@ -124,6 +127,23 @@ class UsersController < ApplicationController
 
   def role_valid?(role)
     User::ROLES.include?(role)
+  end
+
+  # "Unarchive" (users/index) fills a seat exactly like an invite does, so it
+  # runs the same check under the same creation lock; every other edit of an
+  # archived user (a name, a role) is a plain update.
+  def update_user(attrs)
+    return @user.update(attrs) unless reactivating?(attrs)
+
+    Quotas.with_creation_lock(current_account) do
+      Quotas.assert_seat_available!(current_account)
+
+      @user.update(attrs)
+    end
+  end
+
+  def reactivating?(attrs)
+    @user.archived_at.present? && attrs.key?(:archived_at) && attrs[:archived_at].blank?
   end
 
   def reactivatable?(existing_user)

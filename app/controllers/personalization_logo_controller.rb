@@ -21,7 +21,9 @@ class PersonalizationLogoController < ApplicationController
 
     # The logo is an account-user upload: it counts against storage like a
     # document does, and is refused the same way when the account is full.
-    Quotas::Storage.assert_available!(current_account, file.size)
+    # A replacement frees the old logo, so only the growth counts: a full
+    # account can still swap its logo for one of the same size.
+    Quotas::Storage.assert_available!(current_account, [file.size - current_account.logo.blob&.byte_size.to_i, 0].max)
 
     file.tempfile.rewind
 

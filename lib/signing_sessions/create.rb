@@ -16,6 +16,14 @@ module SigningSessions
       template = nil
       submission = nil
 
+      # Preflight only: inline documents are uploaded (Templates::CreateFromApi
+      # stores the blobs) before the locked re-check in CreateFromSubmitters
+      # refuses the submission, and a rolled-back transaction does not take
+      # the stored objects back. Refusing here first keeps a paused or capped
+      # account from filling storage with documents it cannot send; the check
+      # under the creation lock stays the authority.
+      Quotas.assert_can_create_submissions!(user.account)
+
       ActiveRecord::Base.transaction do
         template = find_or_create_template
         submission = create_submission(template)

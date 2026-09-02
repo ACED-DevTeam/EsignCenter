@@ -168,6 +168,40 @@ RSpec.describe 'Storage quota', type: :request do
     expect(response).to have_http_status(:ok)
   end
 
+  it 'lets a full account swap its logo for one of the same size: the old logo is freed, only growth counts' do
+    act_as(free_account)
+    logo = Rails.root.join('spec/fixtures/sample-image.png')
+
+    post settings_personalization_logo_path, params: { logo: Rack::Test::UploadedFile.new(logo, 'image/png') }
+
+    first_blob = free_account.reload.logo.blob
+    cap!(free_account, room: 0)
+
+    expect(Quotas::Storage.bytes_used(free_account)).to eq(Quotas.limits_for(free_account).storage_bytes)
+
+    post settings_personalization_logo_path, params: { logo: Rack::Test::UploadedFile.new(logo, 'image/png') }
+
+    expect(response).to have_http_status(:redirect)
+    expect(flash[:alert]).to be_nil
+    expect(flash[:notice]).to eq(I18n.t('settings_have_been_saved'))
+    expect(free_account.reload.logo).to be_attached
+    expect(free_account.logo.blob.id).not_to eq(first_blob.id)
+    expect(free_account.logo.blob.byte_size).to eq(first_blob.byte_size)
+
+    # One byte bigger than the freed logo does not fit.
+    bigger = Tempfile.new(['logo', '.png']).tap do |file|
+      file.binmode
+      file.write("#{logo.binread}\0".b)
+      file.rewind
+    end
+
+    post settings_personalization_logo_path, params: { logo: Rack::Test::UploadedFile.new(bigger.path, 'image/png') }
+
+    expect(response).to have_http_status(:redirect)
+    expect(flash[:alert]).to eq(full_message(free_account))
+    expect(free_account.reload.logo.blob.byte_size).to eq(first_blob.byte_size)
+  end
+
   it 'still takes a signer upload, still sends and still completes on a full account', sidekiq: :inline do
     template = text_template_for(free_account)
     cap!(free_account, room: 0)

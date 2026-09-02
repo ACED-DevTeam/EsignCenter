@@ -2,10 +2,14 @@
 
 # Self-serve sign-up by email and password (docs/signup.md). Only `new`,
 # `create` and the check-your-email page exist — edit/update/destroy are not
-# routed. Every create runs the three abuse guards in order (per-IP limit,
-# Turnstile, disposable-address blocklist) before anything is written, saves
-# the account and its admin in one transaction, and never signs the user in:
-# Devise mails a confirmation link and the person signs in after opening it.
+# routed. Every create runs the abuse guards in order — Turnstile, then the
+# form's own checks (the disposable-address blocklist among them), then the
+# per-IP limit — before anything is written, saves the account and its admin
+# in one transaction, and never signs the user in: Devise mails a
+# confirmation link and the person signs in after opening it. The per-IP
+# limit counts sign-ups, not attempts: it is spent only once the CAPTCHA and
+# the validation have passed, so five typos from one office never lock the
+# office out.
 class RegistrationsController < Devise::RegistrationsController
   include LaunchGates
 
@@ -28,8 +32,9 @@ class RegistrationsController < Devise::RegistrationsController
   def create
     build_signup(sign_up_params)
 
-    return refuse(:too_many_requests) unless ip_allowed?
     return refuse(:unprocessable_content) unless turnstile_verified?
+    return refuse(:unprocessable_content) unless @user.valid?(:registration)
+    return refuse(:too_many_requests) unless ip_allowed?
 
     if save_signup
       session[:signup_email] = @user.email
@@ -68,6 +73,12 @@ class RegistrationsController < Devise::RegistrationsController
   # after_commit, through the platform mail server (devise_mail override).
   def save_signup
     @user.save(context: :registration)
+  rescue ActiveRecord::RecordNotUnique
+    # Two sign-ups for one address at the same moment: the loser hits the
+    # unique index instead of the validation, and is told the same thing.
+    @user.errors.add(:email, :taken)
+
+    false
   end
 
   def ip_allowed?

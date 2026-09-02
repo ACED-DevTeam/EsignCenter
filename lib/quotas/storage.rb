@@ -90,6 +90,13 @@ module Quotas
       direct.or(previews)
     end
 
+    # Not listed: DynamicDocument / DynamicDocumentVersion attachments. The
+    # models exist in the upstream schema, but nothing in this fork creates
+    # the first row of either — no controller, service or job builds one
+    # (Templates::CloneAttachments only copies ones that already exist), so
+    # there is no blob to count. Add the two record types here (a
+    # DynamicDocument belongs to a template; a version to its document) the
+    # day a feature starts creating them.
     def direct_attachments(ids)
       attachments = ActiveStorage::Attachment
 

@@ -20,7 +20,11 @@ class UsageSettingsController < ApplicationController
     @seats_used = Accounts.users_count(@billing)
 
     @resets_at = Quotas.resets_at(@billing)
-    @paused = SendingPause.paused?(@billing)
+    # Pause and reason come from one read (SendingPause.state), so the banner
+    # never names a pause without its reason.
+    paused_at, reason = SendingPause.state(@billing)
+    @paused = paused_at.present?
+    @pause_reason = @paused ? reason : nil
     @support_email = Docuseal::SUPPORT_EMAIL
 
     return unless @plan == Plans::PAID

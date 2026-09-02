@@ -7,8 +7,11 @@
 module Registrations
   module_function
 
+  # Both credentials, or no Google: with only the id the button would render
+  # and the exchange with Google would fail after the bounce.
   def google_enabled?
-    Docuseal.registration_enabled? && ENV['GOOGLE_OAUTH_CLIENT_ID'].present?
+    Docuseal.registration_enabled? &&
+      ENV['GOOGLE_OAUTH_CLIENT_ID'].present? && ENV['GOOGLE_OAUTH_CLIENT_SECRET'].present?
   end
 
   # Per-IP sign-up velocity (the two registration rows of Quotas::Limits).

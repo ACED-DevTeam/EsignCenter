@@ -347,6 +347,28 @@ RSpec.describe 'Quotas', type: :request do # rubocop:disable RSpec/MultipleDescr
       end
     end
 
+    it 'path 6b: a paused paid account posting a signing session WITH inline documents is refused ' \
+       'before a document is stored', sidekiq: :inline do
+      SendingPause.pause!(paid_account, reason: 'complaint')
+      pdf = Base64.encode64(Rails.root.join('spec/fixtures/sample-document.pdf').read)
+      params = { name: 'Inline', embed_origin: 'https://app.example.com',
+                 documents: [{ name: 'disclosure.pdf', file: pdf }],
+                 submitters: [{ name: 'Borrower', email: unique_email }],
+                 fields: [{ name: 'Signature', type: 'signature', role: 'Borrower',
+                            areas: [{ x: 0.1, y: 0.8, w: 0.3, h: 0.06, page: 0, document: 0 }] }] }
+
+      stored_before = [Template.count, ActiveStorage::Blob.count]
+
+      refusing do
+        post '/api/signing_sessions', headers: token_headers(paid_account).merge(json_headers),
+                                      params: params.to_json
+      end
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body).to eq('error' => paused_alert)
+      expect([Template.count, ActiveStorage::Blob.count]).to eq(stored_before)
+    end
+
     it 'path 7: selfsign via the start form is refused with the sender alert and the usage link',
        sidekiq: :inline do
       act_as(free_account)
@@ -661,6 +683,36 @@ RSpec.describe 'Quotas', type: :request do # rubocop:disable RSpec/MultipleDescr
 
       expect { 3.times { invite(unique_email) } }.to change(User, :count).by(3)
     end
+
+    it 'refuses the Unarchive button on a full account, allows it with a seat free, and leaves other edits alone' do
+      archived = create(:user, account: free_account, archived_at: 1.day.ago)
+      act_as(free_account)
+
+      unarchive = -> { put "/users/#{archived.id}", params: { user: { archived_at: '' } } }
+
+      expect { unarchive.call }.not_to(change { archived.reload.archived_at })
+
+      expect(response).to redirect_to('/settings/users')
+      expect(flash[:alert]).to eq(I18n.t('seat_limit_free'))
+
+      # A plain edit of the archived user is not a reactivation.
+      put "/users/#{archived.id}", params: { user: { first_name: 'Renamed' } }
+
+      expect(response).to have_http_status(:redirect)
+      expect(archived.reload).to have_attributes(first_name: 'Renamed')
+      expect(archived.archived_at).to be_present
+
+      two_seats = create(:account, :paid, seats: 2)
+      parked = create(:user, account: two_seats, archived_at: 1.day.ago)
+      act_as(two_seats)
+
+      put "/users/#{parked.id}", params: { user: { archived_at: '' } }
+
+      expect(response).to have_http_status(:redirect)
+      expect(flash[:alert]).to be_nil
+      expect(parked.reload.archived_at).to be_nil
+      expect(Accounts.users_count(two_seats)).to eq(2)
+    end
   end
 
   describe 'sending pause' do
@@ -784,6 +836,51 @@ RSpec.describe 'Quotas', type: :request do # rubocop:disable RSpec/MultipleDescr
 
       expect(SendingPause.paused?(team)).to be(true)
       expect(team.reload.sending_pause_reason).to eq('bounce_rate')
+    end
+
+    it 'counts a message sent twice to the same address as one delivery, so duplicates never shrink the window' do
+      submitter = send_one(free_account).submitters.first
+      team = create(:account)
+      record = lambda do |type, message_id: SecureRandom.uuid, email: unique_email, minutes_ago: 0|
+        create(:email_event, account: team, emailable: submitter, event_type: type, message_id:, email:,
+                             event_datetime: minutes_ago.minutes.ago)
+      end
+
+      # 19 older deliveries, the four oldest bounced; then one message whose
+      # recipient is on it five times (to + cc). 24 send events, 20 distinct
+      # deliveries: the window holds every one of them, so the bounced four
+      # are inside it (4 of 20). Cutting 20 EVENTS instead would drop the
+      # four oldest deliveries — exactly the bounced ones — and see 0 of 16.
+      older = Array.new(19) { |i| record.call('send', minutes_ago: 60 - i) }
+      older.first(4).each { |event| record.call('bounce', message_id: event.message_id, email: event.email) }
+      duplicated = SecureRandom.uuid
+      twice = unique_email
+      5.times { record.call('send', message_id: duplicated, email: twice, minutes_ago: 1) }
+
+      expect(SendingPause.bounce_rate(team)).to eq(0.2)
+
+      SendingPause.evaluate!(team, event: EmailEvent.where(account: team, event_type: 'bounce').first)
+
+      expect(SendingPause.paused?(team)).to be(true)
+      expect(team.reload.sending_pause_reason).to eq('bounce_rate')
+    end
+
+    it 'sees a pause written by another connection after the account object was loaded' do
+      stale = Account.find(free_account.id)
+
+      expect(SendingPause.paused?(stale)).to be(false)
+
+      Account.where(id: free_account.id).update_all(sending_paused_at: Time.current, sending_pause_reason: 'complaint')
+
+      expect(stale.sending_paused_at).to be_nil
+      expect(SendingPause.paused?(stale)).to be(true)
+      expect { Quotas.assert_can_create_submissions!(stale) }
+        .to raise_error(Quotas::LimitReached) { |e| expect(e.reason).to eq(:sending_paused) }
+
+      SendingPause.resume!(stale)
+
+      expect(SendingPause.paused?(stale)).to be(false)
+      expect(free_account.reload.sending_pause_reason).to be_nil
     end
   end
 

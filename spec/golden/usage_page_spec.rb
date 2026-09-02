@@ -73,9 +73,11 @@ RSpec.describe 'Usage page', type: :request do
     expect(Quotas::Storage.bytes_used(free_account)).to be_positive # the signed PDF
     expect(card(doc, 'storage').text).to include(of(stored, '1 GB'))
     expect(card(doc, 'seats').text).to include(of(1, 1))
-    # The one seat is taken, and that is the only cap this account has hit.
-    expect(doc.css('[data-limit-reached]').size).to eq(1)
-    expect(card(doc, 'seats').at('[data-limit-reached]')).to be_present
+    # The one seat is taken — the ordinary state of a free account, shown
+    # neutral — and no cap has been hit.
+    expect(doc.css('[data-limit-reached]')).to be_empty
+    expect(card(doc, 'seats').at('[data-all-seats-in-use]').text).to eq(I18n.t('all_seats_in_use'))
+    expect(card(doc, 'seats').at('progress')['class']).not_to include('progress-error')
     expect(card(doc, 'completions').at('progress')['value']).to eq('20')
 
     reset = doc.at('[data-usage-reset]').text
@@ -147,15 +149,51 @@ RSpec.describe 'Usage page', type: :request do
     expect(doc.at('[data-usage-upgrade]')).to be_nil
   end
 
-  it 'shows the sending-paused banner with the support address while sending is paused', sidekiq: :inline do
+  it 'shows the sending-paused banner with the complaint reason and the support address', sidekiq: :inline do
     SendingPause.pause!(free_account, reason: 'complaint')
     act_as(free_account)
 
     banner = page.at('[data-sending-paused-banner]')
 
     expect(banner).to be_present
+    expect(banner.at('[data-sending-pause-reason="complaint"]').text).to eq(I18n.t('sending_pause_reason_complaint'))
+    expect(banner.text).not_to include(I18n.t('sending_pause_reason_bounce_rate'))
     expect(banner.text).to include(I18n.t('sending_paused_banner', email: Docuseal::SUPPORT_EMAIL))
     expect(banner.text).to include(Docuseal::SUPPORT_EMAIL)
+  end
+
+  it 'names the bounce rate as the reason when that is what paused sending', sidekiq: :inline do
+    SendingPause.pause!(free_account, reason: 'bounce_rate')
+    act_as(free_account)
+
+    banner = page.at('[data-sending-paused-banner]')
+
+    expect(banner.at('[data-sending-pause-reason="bounce_rate"]').text)
+      .to eq(I18n.t('sending_pause_reason_bounce_rate'))
+    expect(banner.text).not_to include(I18n.t('sending_pause_reason_complaint'))
+    expect(banner.text).to include(I18n.t('sending_paused_banner', email: Docuseal::SUPPORT_EMAIL))
+  end
+
+  it 'shows seats neutral at 1 of 1 and red only past the seats, at 2 of 1' do
+    act_as(free_account)
+
+    seats = card(page, 'seats')
+
+    expect(seats.text).to include(of(1, 1))
+    expect(seats.at('[data-all-seats-in-use]').text).to eq(I18n.t('all_seats_in_use'))
+    expect(seats.at('[data-limit-reached]')).to be_nil
+    expect(seats.at('progress')['class']).to include('progress-primary')
+
+    # Two users on a one-seat account (a paid account that dropped to free).
+    create(:user, account: free_account)
+
+    seats = card(page, 'seats')
+
+    expect(seats.text).to include(of(2, 1))
+    expect(seats.at('[data-limit-reached]').text).to eq(I18n.t('limit_reached'))
+    expect(seats.at('[data-all-seats-in-use]')).to be_nil
+    expect(seats.at('progress')['class']).to include('progress-error')
+    expect(seats.at('progress')['value']).to eq('100')
   end
 
   it 'tells an internal account that no limits apply and shows its raw numbers' do

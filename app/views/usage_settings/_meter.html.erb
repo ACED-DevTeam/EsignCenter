@@ -1,6 +1,8 @@
-<%# One usage card: `used` and `limit` are numbers (limit nil = unlimited); `used_text`/`limit_text` are what the human reads. Over the cap the bar is full and the badge says so — the number is never clamped. %>
+<%# One usage card: `used` and `limit` are numbers (limit nil = unlimited); `used_text`/`limit_text` are what the human reads. Over the cap the bar is full and the badge says so — the number is never clamped. `full_is_neutral` (seats): exactly at the limit is the ordinary state, shown neutral; only past it is red. %>
 <% limit = local_assigns[:limit] %>
-<% over = limit.present? && used >= limit %>
+<% full_is_neutral = local_assigns[:full_is_neutral] %>
+<% over = limit.present? && (full_is_neutral ? used > limit : used >= limit) %>
+<% full = full_is_neutral && limit.present? && !over && used >= limit %>
 <% percent = limit.present? && limit.positive? ? [(used * 100.0 / limit).round, 100].min : nil %>
 <div class="card bg-base-100 border border-base-300" data-usage-card="<%= key %>">
   <div class="card-body p-5 gap-3">
@@ -13,6 +15,8 @@
       </div>
       <% if over %>
         <span class="badge badge-error badge-outline whitespace-nowrap flex-none" data-limit-reached><%= t('limit_reached') %></span>
+      <% elsif full %>
+        <span class="badge badge-neutral badge-outline whitespace-nowrap flex-none" data-all-seats-in-use><%= t('all_seats_in_use') %></span>
       <% end %>
     </div>
     <p class="text-3xl font-bold tabular-nums" dir="auto">

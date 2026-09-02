@@ -17,12 +17,22 @@ module SendingPause
 
   module_function
 
+  # Reads the column fresh rather than the object's copy: the account a
+  # creation path holds was loaded before it took the creation lock, so a
+  # pause committed in between would be invisible on that object.
   def paused?(account)
+    state(account).first.present?
+  end
+
+  # [sending_paused_at, sending_pause_reason] of the billing account, read in
+  # one statement so a banner never shows a pause without its reason (or the
+  # reverse). Internal and operator accounts are never paused.
+  def state(account)
     billing = Plans.billing_account(account)
 
-    return false if billing.internal? || billing.operator?
+    return [nil, nil] if billing.internal? || billing.operator?
 
-    billing.sending_paused_at.present?
+    Account.where(id: billing.id).pick(:sending_paused_at, :sending_pause_reason)
   end
 
   # Idempotent: an account already paused keeps its first reason and gets no
@@ -35,18 +45,20 @@ module SendingPause
 
     return billing if billing.internal? || billing.operator?
 
+    # The flag is written under the same lock as the pause, so a resume that
+    # lands right after sees (and resolves) it instead of racing past it.
     paused_now = billing.with_lock do
       next false if billing.sending_paused_at.present?
 
       billing.update!(sending_paused_at: Time.current, sending_pause_reason: reason)
 
+      AbuseFlags.record!(billing, reason == 'complaint' ? 'complaint' : 'bounce_rate',
+                         period: AccountCounters.month_period, details:)
+
       true
     end
 
     return billing unless paused_now
-
-    AbuseFlags.record!(billing, reason == 'complaint' ? 'complaint' : 'bounce_rate',
-                       period: AccountCounters.month_period, details:)
 
     QuotaMailer.sending_paused(billing, reason).deliver_later!
 
@@ -60,11 +72,15 @@ module SendingPause
     billing
   end
 
+  # Under the same row lock as pause!: the two writes land together, and a
+  # pause arriving at the same moment is either fully before or fully after.
   def resume!(account)
     billing = Plans.billing_account(account)
 
-    billing.update!(sending_paused_at: nil, sending_pause_reason: nil)
-    billing.abuse_flags.open.where(kind: FLAG_KINDS).update_all(resolved_at: Time.current)
+    billing.with_lock do
+      billing.update!(sending_paused_at: nil, sending_pause_reason: nil)
+      billing.abuse_flags.open.where(kind: FLAG_KINDS).update_all(resolved_at: Time.current)
+    end
 
     billing
   end
@@ -87,18 +103,13 @@ module SendingPause
   # nil otherwise. A delivery is one (message, recipient) pair: a message to
   # several recipients records one send event per recipient under the same
   # message_id (lib/action_mailer_events_observer.rb), and each recipient
-  # bounces on its own.
+  # bounces on its own. The window is BOUNCE_WINDOW distinct deliveries: the
+  # pairs are made distinct BEFORE the window is cut, so a message that
+  # carries the same address twice (to and cc) never shrinks it.
   def bounce_rate(billing)
     ids = Quotas.account_ids(billing)
 
-    deliveries = EmailEvent.where(account_id: ids, event_type: 'send')
-                           .order(event_datetime: :desc)
-                           .limit(Quotas::Limits::BOUNCE_WINDOW)
-                           .pluck(:message_id, :email)
-                           .map { |message_id, email| [message_id, email.to_s.downcase] }
-                           .uniq
-
-    return nil if deliveries.size < Quotas::Limits::BOUNCE_MIN_SENDS
+    return nil if (deliveries = recent_deliveries(ids)).size < Quotas::Limits::BOUNCE_MIN_SENDS
 
     bounced = EmailEvent.where(account_id: ids, event_type: HARD_BOUNCE_EVENTS,
                                message_id: deliveries.map(&:first))
@@ -108,5 +119,20 @@ module SendingPause
     rate = (deliveries & bounced).size.to_f / deliveries.size
 
     rate >= Quotas::Limits::BOUNCE_PAUSE_RATE ? rate : nil
+  end
+
+  # The newest BOUNCE_WINDOW distinct (message_id, email) pairs among the
+  # send events, each pair dated by its latest event.
+  def recent_deliveries(ids)
+    distinct_pairs =
+      EmailEvent.where(account_id: ids, event_type: 'send')
+                .select('DISTINCT ON (message_id, LOWER(email)) message_id, LOWER(email) AS email, event_datetime')
+                .order(Arel.sql('message_id, LOWER(email), event_datetime DESC'))
+
+    EmailEvent.from(distinct_pairs, :email_events)
+              .order(event_datetime: :desc)
+              .limit(Quotas::Limits::BOUNCE_WINDOW)
+              .pluck(:message_id, :email)
+              .map { |message_id, email| [message_id, email.to_s] }
   end
 end

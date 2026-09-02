@@ -53,8 +53,8 @@ RSpec.describe 'Self-serve registration', type: :request do
 
   # The real flow: the POST-only authorize endpoint (OmniAuth's request
   # phase) redirects to the callback, which is where the controller runs.
-  def sign_in_with_google!
-    post user_google_oauth2_omniauth_authorize_path
+  def sign_in_with_google!(**query)
+    post user_google_oauth2_omniauth_authorize_path(query)
 
     expect(response).to have_http_status(:redirect)
     expect(response.location).to include(user_google_oauth2_omniauth_callback_path)
@@ -267,6 +267,50 @@ RSpec.describe 'Self-serve registration', type: :request do
       expect(response.body).to include('already been taken')
       expect(User.where('lower(email) = ?', 'taken@example.com').count).to eq(1)
     end
+
+    it 'spends the per-network budget on sign-ups, not attempts: five failures never block the sixth person' do
+      enable_registration!
+      create(:user, email: 'taken@example.com')
+
+      stub_turnstile(success: false, error_codes: ['invalid-input-response'])
+      3.times do
+        expect { sign_up(email: 'typo@example.com') }.not_to change(User, :count)
+        expect(response).to have_http_status(:unprocessable_content)
+      end
+
+      stub_turnstile(success: true)
+      2.times do
+        expect { sign_up(email: 'taken@example.com') }.not_to change(User, :count)
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(response.body).to include('already been taken')
+      end
+
+      # Five failures spent nothing: the next five real sign-ups go through...
+      Quotas::Limits::SIGNUPS_PER_IP_PER_HOUR.times do |i|
+        expect { sign_up(email: "person#{i}@example.com", name: "Person #{i}") }.to change(User, :count).by(1)
+        expect(response).to redirect_to(confirm_registration_path)
+      end
+
+      # ...and only then is the network's hour full.
+      expect { sign_up(email: 'sixth@example.com', name: 'Sixth Person') }.not_to change(User, :count)
+      expect(response).to have_http_status(:too_many_requests)
+      expect(response.body).to include(I18n.t('too_many_sign_ups_from_this_network'))
+    end
+
+    it 'tells the loser of two simultaneous sign-ups for one address that it is taken, without a 500' do
+      enable_registration!
+      stub_turnstile(success: true)
+      allow(Registrations).to receive(:build_signup).and_wrap_original do |original, **kwargs|
+        original.call(**kwargs).tap do |user|
+          allow(user).to receive(:save).and_raise(ActiveRecord::RecordNotUnique, 'duplicate key value')
+        end
+      end
+
+      expect { sign_up(email: 'race@example.com') }.not_to change(Account, :count)
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.body).to include('already been taken')
+      expect(User.where(email: 'race@example.com')).not_to exist
+    end
   end
 
   describe 'Google sign-up and sign-in' do
@@ -367,6 +411,78 @@ RSpec.describe 'Self-serve registration', type: :request do
       get user_google_oauth2_omniauth_callback_path
       expect(response).to have_http_status(:not_found)
       expect(User.count).to eq(1)
+    end
+
+    it 'answers 404 for the Google endpoints while the Google client id is unset, instead of bouncing to Google' do
+      ENV.delete('GOOGLE_OAUTH_CLIENT_ID')
+      mock_google(email: 'grace@example.com')
+
+      post user_google_oauth2_omniauth_authorize_path
+      expect(response).to have_http_status(:not_found)
+
+      get user_google_oauth2_omniauth_callback_path
+      expect(response).to have_http_status(:not_found)
+      expect(User.count).to eq(1)
+
+      get new_registration_path
+      expect(response).to have_http_status(:ok)
+      expect(response.body).not_to include(google_button)
+    end
+
+    it 'answers 404 for the Google endpoints while only the client secret is unset (both credentials are required)' do
+      ENV.delete('GOOGLE_OAUTH_CLIENT_SECRET')
+      mock_google(email: 'grace@example.com')
+
+      post user_google_oauth2_omniauth_authorize_path
+      expect(response).to have_http_status(:not_found)
+
+      get user_google_oauth2_omniauth_callback_path
+      expect(response).to have_http_status(:not_found)
+      expect(User.count).to eq(1)
+
+      get new_registration_path
+      expect(response).to have_http_status(:ok)
+      expect(response.body).not_to include(google_button)
+    end
+
+    it 'refuses a locked user (too many wrong passwords) instead of signing them in through Google' do
+      user = create(:user, email: 'locked@example.com')
+      user.lock_access!(send_instructions: false)
+      mock_google(email: 'locked@example.com')
+
+      sign_in_with_google!
+
+      expect(response).to redirect_to(new_user_session_path)
+      expect(flash[:alert]).to eq(I18n.t('devise.failure.locked'))
+      expect(user.reload.sign_in_count).to eq(0)
+      expect(user.access_locked?).to be(true)
+      expect_signed_out
+    end
+
+    it 'stamps a new account with the timezone the sign-in button carried' do
+      mock_google(email: 'paris@example.com')
+
+      expect { sign_in_with_google!(timezone: 'Europe/Paris') }.to change(Account, :count).by(1)
+      expect(signed_up_user('paris@example.com').account.timezone).to eq('Paris')
+
+      mock_google(email: 'nowhere@example.com')
+
+      expect { sign_in_with_google!(timezone: 'Mars/Olympus') }.to change(Account, :count).by(1)
+      expect(signed_up_user('nowhere@example.com').account.timezone).to eq('UTC')
+    end
+
+    it 'tells the loser of two simultaneous Google sign-ups for one address that it is taken, without a 500' do
+      mock_google(email: 'race@example.com')
+      allow(Registrations).to receive(:build_signup).and_wrap_original do |original, **kwargs|
+        original.call(**kwargs).tap do |user|
+          allow(user).to receive(:save).and_raise(ActiveRecord::RecordNotUnique, 'duplicate key value')
+        end
+      end
+
+      expect { sign_in_with_google! }.not_to change(Account, :count)
+      expect(response).to redirect_to(new_user_session_path)
+      expect(flash[:alert]).to include('already been taken')
+      expect_signed_out
     end
   end
 

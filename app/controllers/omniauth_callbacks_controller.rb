@@ -6,7 +6,8 @@
 # new customer account behind the same per-IP and blocklist guards as the
 # email path (no Turnstile: Google gated the request). A user who enrolled
 # two-factor authentication is sent to the password form instead — the
-# one-time code is entered there and Google never bypasses it.
+# one-time code is entered there and Google never bypasses it; a user whose
+# sign-in is locked (too many wrong passwords) is refused the same way.
 class OmniauthCallbacksController < Devise::OmniauthCallbacksController
   include LaunchGates
 
@@ -28,6 +29,9 @@ class OmniauthCallbacksController < Devise::OmniauthCallbacksController
 
     user.confirm unless user.confirmed?
 
+    # Devise's own gate (a lockout above all): the reason in Devise's words.
+    return refuse(inactive_message_for(user)) unless user.active_for_authentication?
+
     sign_in_and_redirect user, event: :authentication
   end
 
@@ -41,20 +45,47 @@ class OmniauthCallbacksController < Devise::OmniauthCallbacksController
     auth.extra&.raw_info&.email_verified == true
   end
 
+  def inactive_message_for(user)
+    I18n.t(user.inactive_message, scope: 'devise.failure', default: I18n.t('google_sign_in_failed'))
+  end
+
   # A stranger: a new customer account whose admin is confirmed at once
   # (Google verified the address) with a random password they can reset
-  # later from the sign-in page.
+  # later from the sign-in page. The browser's timezone rides on the
+  # authorize request's query string (devise/shared/_google_button), which
+  # OmniAuth hands back here as omniauth.params.
   def register(email, auth)
     Registrations.assert_ip_allowed!(request.remote_ip)
 
-    user = Registrations.build_signup(name: auth.info.name, email:, password: Devise.friendly_token, timezone: nil)
+    user = Registrations.build_signup(name: auth.info.name, email:, password: Devise.friendly_token,
+                                      timezone: request.env.dig('omniauth.params', 'timezone'))
     user.skip_confirmation!
 
-    return user if user.save(context: :registration)
+    return user if save_new(user)
 
-    refuse(user.errors.map(&:message).first || I18n.t('google_sign_in_failed'))
+    refuse(refusal_message(user))
   rescue RateLimit::LimitApproached
     refuse(I18n.t('too_many_sign_ups_from_this_network'))
+  end
+
+  # The blocklist writes a whole sentence on the email field; Devise's
+  # "taken" is a fragment that needs its attribute in front.
+  def refusal_message(user)
+    error = user.errors.first
+
+    return I18n.t('google_sign_in_failed') unless error
+
+    error.type == :taken ? error.full_message : error.message
+  end
+
+  # Two sign-ups for one address at the same moment: the loser hits the
+  # unique index instead of the validation, and is told the same thing.
+  def save_new(user)
+    user.save(context: :registration)
+  rescue ActiveRecord::RecordNotUnique
+    user.errors.add(:email, :taken)
+
+    false
   end
 
   def refuse(message)

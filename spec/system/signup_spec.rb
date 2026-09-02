@@ -1,7 +1,8 @@
 # frozen_string_literal: true
 
 RSpec.describe 'Sign Up' do
-  stash_env 'REGISTRATION_ENABLED', 'TURNSTILE_SITE_KEY', 'GOOGLE_OAUTH_CLIENT_ID', clear: true
+  stash_env 'REGISTRATION_ENABLED', 'TURNSTILE_SITE_KEY', 'GOOGLE_OAUTH_CLIENT_ID', 'GOOGLE_OAUTH_CLIENT_SECRET',
+            clear: true
 
   before do
     # The instance is set up, so /sign_up is never the first-run setup redirect.
@@ -10,6 +11,7 @@ RSpec.describe 'Sign Up' do
     # Cloudflare's always-passing test site key: the widget renders without a real site.
     ENV['TURNSTILE_SITE_KEY'] = '1x00000000000000000000AA'
     ENV['GOOGLE_OAUTH_CLIENT_ID'] = 'google-client-id'
+    ENV['GOOGLE_OAUTH_CLIENT_SECRET'] = 'google-client-secret'
 
     visit new_registration_path
   end
@@ -29,7 +31,38 @@ RSpec.describe 'Sign Up' do
     expect(page).to have_link('Privacy Policy', href: '/privacy')
     expect(page).to have_link('Already have an account?', href: new_user_session_path)
     expect(page).to have_field('user[timezone]', type: 'hidden', with: /\S/)
+    # The Google button carries the browser's timezone on its query string
+    # (OmniAuth keeps only the authorize request's query for the callback).
+    expect(page).to have_css('form#google_sign_in_form[action*="timezone="]')
     expect(page).to have_no_content('DocuSeal')
     expect(page).to have_no_content('Powered by')
+  end
+
+  # The sign-up page carries its own security policy (the Turnstile host);
+  # a Turbo visit would keep the sign-in page's policy and the widget would
+  # be refused. Both sign-up links are full page loads, and the proof is the
+  # widget itself: Cloudflare's test key issues a token into the widget's
+  # hidden field only when its script was allowed to load on the visited
+  # page (the widget's own iframe sits in a closed shadow root, out of
+  # CSS's reach).
+  it 'loads the Turnstile widget when the sign-up page is reached from the sign-in page links' do
+    visit new_user_session_path
+
+    footer_link = find('a.link', text: /create free account/i)
+    navbar_link = find('a.btn', text: /create free account/i)
+
+    expect(footer_link['data-turbo']).to eq('false')
+    expect(navbar_link['data-turbo']).to eq('false')
+
+    footer_link.click
+
+    expect(page).to have_current_path(new_registration_path)
+    expect(page).to have_field('cf-turnstile-response', type: 'hidden', with: /\S/, wait: 15)
+
+    visit new_user_session_path
+    find('a.btn', text: /create free account/i).click
+
+    expect(page).to have_current_path(new_registration_path)
+    expect(page).to have_field('cf-turnstile-response', type: 'hidden', with: /\S/, wait: 15)
   end
 end
