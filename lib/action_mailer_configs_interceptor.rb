@@ -4,6 +4,14 @@ module ActionMailerConfigsInterceptor
   module_function
 
   def delivering_email(message)
+    # Idempotent: the development server re-registers this interceptor on every
+    # code reload (a new module object each time), so one message can pass
+    # through here twice. The first pass strips the account header, so a
+    # second pass would resolve no account and re-route the mail — skip it.
+    return message if message.instance_variable_get(:@ec_mail_config_applied)
+
+    message.instance_variable_set(:@ec_mail_config_applied, true)
+
     account_id = message['X-EC-Account-Id']&.value
     message['X-EC-Account-Id'] = nil
 

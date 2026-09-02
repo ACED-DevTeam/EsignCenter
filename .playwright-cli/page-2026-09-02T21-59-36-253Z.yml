@@ -1,0 +1,50 @@
+- generic [active] [ref=e54]:
+  - generic [ref=e55]:
+    - link "EsignCenter" [ref=e57] [cursor=pointer]:
+      - /url: /
+    - generic [ref=e63]:
+      - link "Settings" [ref=e65] [cursor=pointer]:
+        - /url: /settings/profile
+      - generic [ref=e66]: SW
+  - generic [ref=e70]:
+    - generic [ref=e71]: Signed in successfully.
+    - generic [ref=e77] [cursor=pointer]: ×
+  - generic [ref=e78]:
+    - generic [ref=e79]:
+      - generic [ref=e80]:
+        - generic [ref=e81]:
+          - generic [ref=e83]:
+            - generic [ref=e84]:
+              - text: Templates
+              - button [ref=e85] [cursor=pointer]
+            - generic [ref=e92]:
+              - text: Submissions
+              - button [ref=e93] [cursor=pointer]
+          - heading "Document Templates" [level=1] [ref=e98]
+        - generic [ref=e99]:
+          - generic [ref=e100]: Upload
+          - link "Create" [ref=e110] [cursor=pointer]:
+            - /url: /templates/new
+      - generic [ref=e114]:
+        - generic [ref=e115]:
+          - link "Staging Walk NDA Staging Walker 02 Sep 04:58 PM" [ref=e116] [cursor=pointer]:
+            - /url: /templates/239
+            - generic [ref=e117]: Staging Walk NDA
+            - generic [ref=e118]:
+              - paragraph [ref=e119]:
+                - generic [ref=e124]: Staging Walker
+              - paragraph [ref=e125]:
+                - generic [ref=e126]: 02 Sep 04:58 PM
+          - text: Move Edit Clone Archive
+        - generic [ref=e132]:
+          - generic [ref=e133]: Welcome to EsignCenter
+          - generic [ref=e134]: Start a quick tour to learn how to create and send your first document
+          - generic [ref=e135]:
+            - button "Skip" [ref=e138] [cursor=pointer]
+            - button "Start Tour" [ref=e144] [cursor=pointer]
+    - generic [ref=e147] [cursor=pointer]:
+      - generic:
+        - generic:
+          - generic:
+            - generic: Upload a New Document
+            - generic: Click to upload or drag and drop

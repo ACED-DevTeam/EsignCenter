@@ -1,0 +1,19 @@
+- generic [active] [ref=f3e1]:
+  - generic [ref=f3e2]:
+    - link "EsignCenter" [ref=f3e4] [cursor=pointer]:
+      - /url: /
+    - generic [ref=f3e10]:
+      - link "Sign In" [ref=f3e11] [cursor=pointer]:
+        - /url: /sign_in
+      - link "Create free account" [ref=f3e18] [cursor=pointer]:
+        - /url: /sign_up
+  - generic [ref=f3e22]:
+    - heading "Check your email" [level=1] [ref=f3e29]
+    - paragraph [ref=f3e30]: We sent a confirmation link to evan+staging@processorteam.com. Open it to activate your account.
+    - paragraph [ref=f3e31]:
+      - text: Didn't get the email? Check your spam folder or
+      - link "resend it" [ref=f3e32] [cursor=pointer]:
+        - /url: /confirmation/new
+      - text: .
+    - link "Back to sign in" [ref=f3e34] [cursor=pointer]:
+      - /url: /sign_in

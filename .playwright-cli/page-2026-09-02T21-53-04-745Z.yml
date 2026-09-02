@@ -1,0 +1,54 @@
+- generic [ref=f1e1]:
+  - generic [ref=f1e2]:
+    - link "EsignCenter" [ref=f1e4] [cursor=pointer]:
+      - /url: /
+    - link "Sign In" [ref=f1e11] [cursor=pointer]:
+      - /url: /sign_in
+  - generic [ref=f1e19]:
+    - heading "Create your free account" [level=1] [ref=f1e20]
+    - paragraph [ref=f1e21]: "Free: 5 completed documents a month, 1 user."
+    - button "Continue with Google" [ref=f1e24] [cursor=pointer]
+    - generic [ref=f1e30]: or sign up with email
+    - generic [ref=f1e31]:
+      - generic [ref=f1e32]:
+        - generic [ref=f1e33]:
+          - generic [ref=f1e34] [cursor=pointer]: Full name
+          - textbox "Full name" [active] [ref=f1e35]
+        - generic [ref=f1e36]:
+          - generic [ref=f1e37] [cursor=pointer]: Email
+          - textbox "Email" [ref=f1e38]
+        - generic [ref=f1e39]:
+          - generic [ref=f1e40] [cursor=pointer]:
+            - generic [ref=f1e41]: Password
+            - generic [ref=f1e42]: 6 characters minimum
+          - generic [ref=f1e43]:
+            - textbox "Password 6 characters minimum" [ref=f1e44]:
+              - /placeholder: "************"
+            - button [ref=f1e45] [cursor=pointer]
+      - button "Create free account" [ref=f1e56] [cursor=pointer]
+      - paragraph [ref=f1e60]:
+        - text: By creating an account you agree to the
+        - link "Terms of Service" [ref=f1e61] [cursor=pointer]:
+          - /url: /terms
+        - text: and the
+        - link "Privacy Policy" [ref=f1e62] [cursor=pointer]:
+          - /url: /privacy
+        - text: .
+    - link "Already have an account?" [ref=f1e64] [cursor=pointer]:
+      - /url: /sign_in
+    - combobox [ref=f1e68] [cursor=pointer]:
+      - option "English (US)" [selected]
+      - option "English (UK)"
+      - option "Español"
+      - option "Italiano"
+      - option "Deutsch"
+      - option "Français"
+      - option "Nederlands"
+      - option "Polski"
+      - option "Українська"
+      - option "Čeština"
+      - option "Português"
+      - option "עברית"
+      - option "العربية"
+      - option "한국어"
+      - option "日本語"

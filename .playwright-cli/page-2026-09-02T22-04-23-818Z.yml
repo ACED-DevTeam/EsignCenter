@@ -1,0 +1,27 @@
+- generic [active] [ref=e1]:
+  - main [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e4]:
+        - generic [ref=e5]:
+          - link [ref=e6] [cursor=pointer]:
+            - /url: /
+            - heading "EsignCenter" [level=1] [ref=e12]
+          - paragraph [ref=e13]: You have been invited to submit a form
+        - generic [ref=e21]:
+          - paragraph [ref=e22]: Staging Walk NDA
+          - paragraph [ref=e23]: Invited by Staging Walker
+      - generic [ref=e24]:
+        - generic [ref=e25]:
+          - generic [ref=e26] [cursor=pointer]: Email
+          - textbox "Email" [ref=e27]:
+            - /placeholder: Provide your email to start
+        - button "Start" [ref=e29] [cursor=pointer]
+    - generic [ref=e34]:
+      - text: Powered by
+      - link "DocuSeal" [ref=e35] [cursor=pointer]:
+        - /url: https://www.docuseal.com/start
+      - text: "- open source documents software ·"
+      - link "Source" [ref=e36] [cursor=pointer]:
+        - /url: https://github.com/AmishHillBilly/EsignCenter
+  - group [ref=e37] [cursor=pointer]:
+    - generic "Bullet Warnings" [ref=e38]

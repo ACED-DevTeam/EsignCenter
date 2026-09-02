@@ -1,4 +1,4 @@
-<%# Upgrade call-to-action: rendered wherever a PAID-ONLY surface is shown to an account whose plan lacks it (the server refuses the matching POST regardless — this is the friendly face of that refusal). Locals: feature (display name, required); body (optional sentence overriding the default copy); compact (optional, true renders a one-line banner for the SECOND gated surface on a page so two full cards never stack). The link is a placeholder until Session 6 wires the real Checkout URL onto [data-upgrade-cta]. %>
+<%# Upgrade call-to-action: rendered wherever a PAID-ONLY surface is shown to an account whose plan lacks it (the server refuses the matching POST regardless — this is the friendly face of that refusal). Locals: feature (display name, required); body (optional sentence overriding the default copy); title (optional heading for a non-feature context such as the usage page, default "This feature requires a paid plan"); compact (optional, true renders a one-line banner for the SECOND gated surface on a page so two full cards never stack). The link is a placeholder until Session 6 wires the real Checkout URL onto [data-upgrade-cta]. %>
 <% feature = local_assigns.fetch(:feature) %>
 <% if local_assigns[:compact] %>
   <div class="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 rounded-2xl bg-base-200 border border-base-300 px-4 py-3 <%= local_assigns[:class] %>" data-upgrade-cta-compact>
@@ -25,7 +25,7 @@
         </div>
         <div class="min-w-0">
           <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <p class="text-lg font-semibold leading-tight"><%= t('this_feature_requires_a_paid_plan') %></p>
+            <p class="text-lg font-semibold leading-tight"><%= local_assigns[:title] || t('this_feature_requires_a_paid_plan') %></p>
             <span class="badge badge-neutral badge-outline badge-sm"><%= t('paid_plan') %></span>
           </div>
           <p class="text-sm text-base-content/70 mt-1" dir="auto">

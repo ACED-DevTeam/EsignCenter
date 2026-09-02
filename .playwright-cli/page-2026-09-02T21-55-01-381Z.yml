@@ -1,0 +1,43 @@
+- generic [ref=f4e45]:
+  - generic [ref=f4e46]:
+    - link "EsignCenter" [ref=f4e48] [cursor=pointer]:
+      - /url: /
+    - link "Create free account" [ref=f4e55] [cursor=pointer]:
+      - /url: /sign_up
+  - generic [ref=f4e59]:
+    - generic [ref=f4e60]: You have to confirm your email address before continuing.
+    - generic [ref=f4e65] [cursor=pointer]: ×
+  - generic [ref=f4e67]:
+    - heading "Sign In" [level=1] [ref=f4e68]
+    - generic [ref=f4e69]:
+      - generic [ref=f4e70]:
+        - generic [ref=f4e71]:
+          - generic [ref=f4e72] [cursor=pointer]: Email
+          - textbox "Email" [active] [ref=f4e73]
+        - generic [ref=f4e74]:
+          - generic [ref=f4e75] [cursor=pointer]: Password
+          - textbox "Password" [ref=f4e76]
+      - button "Sign In" [ref=f4e78] [cursor=pointer]
+    - generic [ref=f4e82]: or
+    - button "Continue with Google" [ref=f4e84] [cursor=pointer]
+    - generic [ref=f4e90]:
+      - link "Create free account" [ref=f4e91] [cursor=pointer]:
+        - /url: /sign_up
+      - link "Forgot your password?" [ref=f4e92] [cursor=pointer]:
+        - /url: /password/new
+    - combobox [ref=f4e96] [cursor=pointer]:
+      - option "English (US)" [selected]
+      - option "English (UK)"
+      - option "Español"
+      - option "Italiano"
+      - option "Deutsch"
+      - option "Français"
+      - option "Nederlands"
+      - option "Polski"
+      - option "Українська"
+      - option "Čeština"
+      - option "Português"
+      - option "עברית"
+      - option "العربية"
+      - option "한국어"
+      - option "日本語"

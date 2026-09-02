@@ -1,0 +1,19 @@
+- generic [active] [ref=e1]:
+  - main [ref=e2]:
+    - generic [ref=e3]:
+      - link [ref=e5] [cursor=pointer]:
+        - /url: /
+        - heading "EsignCenter" [level=1] [ref=e11]
+      - generic [ref=e18]:
+        - paragraph [ref=e19]: Staging Walk NDA
+        - paragraph [ref=e20]: This form is not accepting new responses right now.
+      - paragraph [ref=e21]: Please contact the person who shared this form with you.
+  - generic [ref=e22]:
+    - text: Powered by
+    - link "DocuSeal" [ref=e23] [cursor=pointer]:
+      - /url: https://www.docuseal.com/start
+    - text: "- open source documents software ·"
+    - link "Source" [ref=e24] [cursor=pointer]:
+      - /url: https://github.com/AmishHillBilly/EsignCenter
+  - group [ref=e25] [cursor=pointer]:
+    - generic "Bullet Warnings" [ref=e26]

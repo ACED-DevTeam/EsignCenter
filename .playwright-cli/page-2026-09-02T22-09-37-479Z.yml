@@ -1,0 +1,93 @@
+- generic [active] [ref=f1e1]:
+  - main [ref=f1e3]:
+    - button "Enter screen reader mode" [ref=f1e4] [cursor=pointer]
+    - generic [ref=f1e5]:
+      - generic [ref=f1e6]:
+        - heading "Staging Walk NDA" [level=1] [ref=f1e7]
+        - generic [ref=f1e8]:
+          - button "Decline" [ref=f1e10] [cursor=pointer]
+          - button "Download" [ref=f1e11] [cursor=pointer]
+      - generic [ref=f1e14]:
+        - button "Decline" [ref=f1e16] [cursor=pointer]
+        - button "Download" [ref=f1e18] [cursor=pointer]
+      - generic [ref=f1e24]:
+        - button "Enter screen reader mode" [ref=f1e25] [cursor=pointer]
+        - generic [ref=f1e26]:
+          - img "sample-document - Page 1" [ref=f1e27]
+          - button "First Name" [ref=f1e29] [cursor=pointer]
+      - generic [ref=f1e31]:
+        - text: Powered by
+        - link "DocuSeal" [ref=f1e32] [cursor=pointer]:
+          - /url: https://www.docuseal.com/start
+        - text: "- open source documents software ·"
+        - link "Source" [ref=f1e33] [cursor=pointer]:
+          - /url: https://github.com/AmishHillBilly/EsignCenter
+      - paragraph [ref=f1e34]:
+        - link "Report this document" [ref=f1e35] [cursor=pointer]:
+          - /url: /report/ULYMAYzqGZF24a
+  - generic [ref=f1e36]:
+    - button "Minimize" [ref=f1e37] [cursor=pointer]
+    - generic [ref=f1e44]:
+      - text: Fill all required fields to complete
+      - button "Complete" [ref=f1e45] [cursor=pointer]
+    - generic [ref=f1e46]:
+      - generic [ref=f1e47]:
+        - generic [ref=f1e50]:
+          - textbox [ref=f1e51]
+          - button "Toggle Multiline Text" [ref=f1e53] [cursor=pointer]:
+            - generic [ref=f1e56]: Multi-line
+        - generic [ref=f1e57]:
+          - generic [ref=f1e58]:
+            - checkbox "I agree to use electronic records and signatures." [ref=f1e59] [cursor=pointer]
+            - generic [ref=f1e60]:
+              - text: I agree to use electronic records and signatures.
+              - button "Electronic Signature Disclosure" [ref=f1e61] [cursor=pointer]
+          - paragraph [ref=f1e62]: Please agree to use electronic records and signatures to continue.
+        - generic [ref=f1e63]:
+          - button "Complete" [disabled]
+      - navigation "Form progress" [ref=f1e64]:
+        - button "Step 1" [ref=f1e66] [cursor=pointer]
+  - dialog "Decline":
+    - generic:
+      - generic:
+        - generic: Decline
+        - generic:
+          - button "Close": ×
+      - generic:
+        - generic:
+          - generic:
+            - generic: Notify the sender with the reason you declined
+            - textbox "Notify the sender with the reason you declined":
+              - /placeholder: Provide a reason
+          - generic:
+            - button "Decline"
+    - generic:
+      - button "Close"
+  - dialog "Electronic Records and Signatures Disclosure":
+    - generic:
+      - generic:
+        - generic: Electronic Records and Signatures Disclosure
+        - generic:
+          - button "Close": ×
+      - generic:
+        - generic:
+          - paragraph: By checking the box, you agree to use electronic records and electronic signatures for this document instead of paper and ink. You agree that your electronic signature has the same legal effect as your handwritten signature. A copy of the completed document will be available to you electronically, and the sender can also provide one on request.
+          - paragraph:
+            - strong: What you need.
+            - text: A current web browser, an internet connection and software that can open PDF files. If you can read this page, your device meets these requirements.
+          - paragraph:
+            - strong: Withdrawing consent.
+            - text: You may withdraw your consent at any time before you complete the document by not signing it and letting the sender know. Withdrawing consent does not affect documents you have already signed.
+          - paragraph:
+            - strong: Paper copies.
+            - text: You may request a paper copy of this document at any time by contacting the sender.
+          - paragraph:
+            - strong: What we record.
+            - text: Your agreement is recorded together with the date, time and internet (IP) address from which you gave it, and it appears in the document's audit trail.
+        - paragraph: Version v1 · September 02, 2026
+        - generic:
+          - button "Close"
+    - generic:
+      - button "Close"
+  - group [ref=f1e67] [cursor=pointer]:
+    - generic "Bullet Warnings" [ref=f1e68]

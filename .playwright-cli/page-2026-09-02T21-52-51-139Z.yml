@@ -1,0 +1,40 @@
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - link "EsignCenter" [ref=e4] [cursor=pointer]:
+      - /url: /
+    - link "Create free account" [ref=e11] [cursor=pointer]:
+      - /url: /sign_up
+  - generic [ref=e15]:
+    - heading "Sign In" [level=1] [ref=e16]
+    - generic [ref=e17]:
+      - generic [ref=e18]:
+        - generic [ref=e19]:
+          - generic [ref=e20] [cursor=pointer]: Email
+          - textbox "Email" [active] [ref=e21]
+        - generic [ref=e22]:
+          - generic [ref=e23] [cursor=pointer]: Password
+          - textbox "Password" [ref=e24]
+      - button "Sign In" [ref=e26] [cursor=pointer]
+    - generic [ref=e30]: or
+    - button "Continue with Google" [ref=e32] [cursor=pointer]
+    - generic [ref=e38]:
+      - link "Create free account" [ref=e39] [cursor=pointer]:
+        - /url: /sign_up
+      - link "Forgot your password?" [ref=e40] [cursor=pointer]:
+        - /url: /password/new
+    - combobox [ref=e44] [cursor=pointer]:
+      - option "English (US)" [selected]
+      - option "English (UK)"
+      - option "Español"
+      - option "Italiano"
+      - option "Deutsch"
+      - option "Français"
+      - option "Nederlands"
+      - option "Polski"
+      - option "Українська"
+      - option "Čeština"
+      - option "Português"
+      - option "עברית"
+      - option "العربية"
+      - option "한국어"
+      - option "日本語"
