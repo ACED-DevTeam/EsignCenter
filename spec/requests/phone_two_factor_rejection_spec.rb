@@ -16,41 +16,38 @@ RSpec.describe 'Phone two-factor verification rejection', type: :request do
   end
 
   describe 'POST /api/submissions' do
-    it 'rejects a truthy top-level flag without creating a submission' do
-      expect do
-        post '/api/submissions', headers:, params: {
-          template_id: template.id,
-          require_phone_2fa: true,
-          submitters: [valid_submitter]
-        }.to_json
-      end.not_to change(Submission, :count)
+    # Every structural location the rejector walks: the top level, the
+    # `submission` envelope, a `submissions` array entry, a submitter of any
+    # of those, and the `preferences` hash of any of those. One example per
+    # location, so a failure names the location that stopped being refused.
+    rejected_bodies = {
+      'a truthy top-level flag' =>
+        ->(s) { { require_phone_2fa: true, submitters: [s] } },
+      'a truthy per-submitter flag' =>
+        ->(s) { { submitters: [s.merge(require_phone_2fa: '1')] } },
+      'a truthy flag on the submission envelope' =>
+        ->(s) { { submission: { require_phone_2fa: 1, submitters: [s] } } },
+      'the flag on a submissions array entry' =>
+        ->(s) { { submissions: [{ require_phone_2fa: true, submitters: [s] }] } },
+      'the flag on a submissions array entry\'s submitter' =>
+        ->(s) { { submissions: [{ submitters: [s.merge(require_phone_2fa: 'on')] }] } },
+      'the flag on a submission envelope\'s submitter' =>
+        ->(s) { { submission: { submitters: [s.merge(require_phone_2fa: 1)] } } },
+      'the flag inside a top-level preferences hash' =>
+        ->(s) { { preferences: { require_phone_2fa: true }, submitters: [s] } },
+      'the flag inside a submitter preferences hash' =>
+        ->(s) { { submitters: [s.merge(preferences: { require_phone_2fa: 'yes' })] } }
+    }
 
-      expect_phone_rejection
-    end
+    rejected_bodies.each do |location, body_for|
+      it "rejects #{location} without creating a submission" do
+        expect do
+          post '/api/submissions', headers:,
+                                   params: { template_id: template.id }.merge(body_for.call(valid_submitter)).to_json
+        end.not_to change(Submission, :count)
 
-    it 'rejects a truthy per-submitter flag without creating a submission' do
-      expect do
-        post '/api/submissions', headers:, params: {
-          template_id: template.id,
-          submitters: [valid_submitter.merge(require_phone_2fa: '1')]
-        }.to_json
-      end.not_to change(Submission, :count)
-
-      expect_phone_rejection
-    end
-
-    it 'rejects a truthy per-submission flag without creating a submission' do
-      expect do
-        post '/api/submissions', headers:, params: {
-          template_id: template.id,
-          submission: {
-            require_phone_2fa: 1,
-            submitters: [valid_submitter]
-          }
-        }.to_json
-      end.not_to change(Submission, :count)
-
-      expect_phone_rejection
+        expect_phone_rejection
+      end
     end
 
     it 'accepts a falsy flag without storing it' do
@@ -128,35 +125,6 @@ RSpec.describe 'Phone two-factor verification rejection', type: :request do
       end.to change(Submission, :count).by(1)
 
       expect(response).to have_http_status(:ok)
-    end
-  end
-
-  describe 'structural locations' do
-    it 'rejects the flag on a submissions array entry and on its submitter' do
-      [
-        { submissions: [{ require_phone_2fa: true, submitters: [valid_submitter] }] },
-        { submissions: [{ submitters: [valid_submitter.merge(require_phone_2fa: 'on')] }] },
-        { submission: { submitters: [valid_submitter.merge(require_phone_2fa: 1)] } }
-      ].each do |body|
-        expect do
-          post '/api/submissions', headers:, params: { template_id: template.id }.merge(body).to_json
-        end.not_to change(Submission, :count)
-
-        expect_phone_rejection
-      end
-    end
-
-    it 'rejects the flag inside a preferences hash on a submitter or at the top level' do
-      [
-        { preferences: { require_phone_2fa: true }, submitters: [valid_submitter] },
-        { submitters: [valid_submitter.merge(preferences: { require_phone_2fa: 'yes' })] }
-      ].each do |body|
-        expect do
-          post '/api/submissions', headers:, params: { template_id: template.id }.merge(body).to_json
-        end.not_to change(Submission, :count)
-
-        expect_phone_rejection
-      end
     end
   end
 

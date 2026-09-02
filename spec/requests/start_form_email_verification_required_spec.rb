@@ -53,19 +53,25 @@ RSpec.describe 'Shared form email verification notice', type: :request do
       expect(response.body).not_to include('name="submitter[email]"')
     end
 
+    # A refused write leaves no trace at all: the gate fires before a submitter
+    # is looked up or built, so nothing is created, nothing is mailed and no
+    # job is queued.
+    def create_nothing
+      not_change(Submission, :count)
+        .and(not_change(Submitter, :count))
+        .and(not_change(ActionMailer::Base.deliveries, :count))
+        .and(not_change { enqueued_jobs_count })
+    end
+
     context 'when email 2FA is enabled' do
       before { template.update_column(:preferences, { 'require_email_2fa' => true }) }
 
       # The page is not just a notice: submitting one's own email is refused
-      # before a submitter is looked up or built, so nothing is created,
-      # nothing is mailed and no job is queued.
+      # outright.
       it 'refuses PUT /d/:slug without creating anything' do
         expect do
           put "/d/#{template.slug}", params: { submitter: { email: 'stranger@example.com' } }
-        end.to not_change(Submission, :count)
-          .and(not_change(Submitter, :count))
-          .and(not_change(ActionMailer::Base.deliveries, :count))
-          .and(not_change { enqueued_jobs_count })
+        end.to create_nothing
 
         expect_refusal_page
       end
@@ -73,7 +79,7 @@ RSpec.describe 'Shared form email verification notice', type: :request do
       it 'refuses the OTP verification step through the same door' do
         expect do
           put "/d/#{template.slug}", params: { submitter: { email: 'stranger@example.com' }, one_time_code: '123456' }
-        end.to not_change(Submitter, :count).and(not_change { enqueued_jobs_count })
+        end.to create_nothing
 
         expect_refusal_page
       end
@@ -82,7 +88,7 @@ RSpec.describe 'Shared form email verification notice', type: :request do
         expect do
           put "/d/#{template.slug}", params: { submitter: { email: 'stranger@example.com' } }.to_json,
                                      headers: { 'CONTENT_TYPE' => 'application/json', 'ACCEPT' => 'application/json' }
-        end.to not_change(Submitter, :count).and(not_change { enqueued_jobs_count })
+        end.to create_nothing
 
         expect(response).to have_http_status(:forbidden)
         expect(response.body).to be_empty
@@ -101,7 +107,7 @@ RSpec.describe 'Shared form email verification notice', type: :request do
 
         expect do
           put '/resubmit_form', params: { resubmit: submitter.slug }
-        end.to not_change(Submitter, :count).and(not_change { enqueued_jobs_count })
+        end.to create_nothing
 
         expect_refusal_page
       end
@@ -146,19 +152,13 @@ RSpec.describe 'Shared form email verification notice', type: :request do
         it 'still refuses the anonymous PUT, selfsign param or not' do
           expect do
             put "/d/#{template.slug}", params: { selfsign: true }
-          end.to not_change(Submission, :count)
-            .and(not_change(Submitter, :count))
-            .and(not_change(ActionMailer::Base.deliveries, :count))
-            .and(not_change { enqueued_jobs_count })
+          end.to create_nothing
 
           expect_refusal_page
 
           expect do
             put "/d/#{template.slug}", params: { submitter: { email: user.email } }
-          end.to not_change(Submission, :count)
-            .and(not_change(Submitter, :count))
-            .and(not_change(ActionMailer::Base.deliveries, :count))
-            .and(not_change { enqueued_jobs_count })
+          end.to create_nothing
 
           expect_refusal_page
         end
@@ -170,7 +170,7 @@ RSpec.describe 'Shared form email verification notice', type: :request do
 
           expect do
             put "/d/#{template.slug}", params: { submitter: { email: 'stranger@example.com' } }
-          end.to not_change(Submitter, :count).and(not_change { enqueued_jobs_count })
+          end.to create_nothing
 
           expect_refusal_page
         end

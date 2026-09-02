@@ -64,10 +64,9 @@ RSpec.describe 'Feature gating', type: :request do
   end
 
   def put_template_fields(account, template, fields, schema: template.schema)
-    end_session
     # The builder posts a JSON body with no Accept header; the refusal must
     # still come back as JSON, not as a redirect the JS would swallow.
-    sign_in(admin_for(account))
+    act_as(account)
     put "/templates/#{template.id}",
         params: { template: { fields:, schema:, submitters: template.submitters } }.to_json,
         headers: { 'CONTENT_TYPE' => 'application/json' }
@@ -94,6 +93,13 @@ RSpec.describe 'Feature gating', type: :request do
   def end_session
     sign_out(:user)
     reset!
+  end
+
+  # The actor switch every example makes before a request it wants attributed
+  # to a particular account's admin: a fresh session, then that admin.
+  def act_as(account)
+    end_session
+    sign_in(admin_for(account))
   end
 
   def expect_json_refusal
@@ -134,8 +140,7 @@ RSpec.describe 'Feature gating', type: :request do
 
       # The in-app builder and dashboard call /api/* with the browser session;
       # the refusal is about tokens, never about the same endpoint over a session.
-      end_session
-      sign_in(admin_for(free_account))
+      act_as(free_account)
       get '/api/templates'
 
       expect(response).to have_http_status(:ok)
@@ -196,8 +201,7 @@ RSpec.describe 'Feature gating', type: :request do
 
   describe 'webhooks' do
     def save_webhook(account)
-      end_session
-      sign_in(admin_for(account))
+      act_as(account)
       post '/settings/webhooks', params: { webhook_url: { url: 'https://hooks.example.com/esign',
                                                           events: ['template.updated'] } }
     end
@@ -226,8 +230,7 @@ RSpec.describe 'Feature gating', type: :request do
       expect { WebhookUrls.enqueue_events(template_for(paid_account), 'template.updated') }
         .to change(SendTemplateUpdatedWebhookRequestJob.jobs, :size).by(1)
 
-      end_session
-      sign_in(admin_for(free_account))
+      act_as(free_account)
 
       expect { post "/settings/webhooks/#{stale_webhook.id}/resend" }
         .not_to change(SendTestWebhookRequestJob.jobs, :size)
@@ -256,14 +259,12 @@ RSpec.describe 'Feature gating', type: :request do
       free_event = webhook_event_for(free_account)
       internal_event = webhook_event_for(internal_account)
 
-      end_session
-      sign_in(admin_for(free_account))
+      act_as(free_account)
 
       expect { resend_event(free_event) }.not_to change(SendFormCompletedWebhookRequestJob.jobs, :size)
       expect_html_refusal
 
-      end_session
-      sign_in(admin_for(internal_account))
+      act_as(internal_account)
 
       expect { resend_event(internal_event) }.to change(SendFormCompletedWebhookRequestJob.jobs, :size).by(1)
       expect(response).to have_http_status(:ok)
@@ -279,8 +280,7 @@ RSpec.describe 'Feature gating', type: :request do
       events = { webhook_url: { events: { 'form.viewed' => '1' } } }
       secret = { webhook_url: { secret: { key: 'X-Key', value: 'value' } } }
 
-      end_session
-      sign_in(admin_for(free_account))
+      act_as(free_account)
 
       put "/webhook_preferences/#{free_webhook.id}", params: events
 
@@ -298,8 +298,7 @@ RSpec.describe 'Feature gating', type: :request do
       expect(response).to have_http_status(:ok)
       expect { delete "/settings/webhooks/#{free_webhook.id}" }.to change(WebhookUrl, :count).by(-1)
 
-      end_session
-      sign_in(admin_for(internal_account))
+      act_as(internal_account)
 
       put "/webhook_preferences/#{internal_webhook.id}", params: events
 
@@ -331,8 +330,7 @@ RSpec.describe 'Feature gating', type: :request do
 
       # Named refusal: the same call over a browser session is not covered by
       # the generic token refusal, so this proves the signing-session row itself.
-      end_session
-      sign_in(admin_for(free_account))
+      act_as(free_account)
 
       expect { create_signing_session(free_account, {}) }.not_to change(Submission, :count)
       expect_json_refusal
@@ -365,8 +363,7 @@ RSpec.describe 'Feature gating', type: :request do
       expect_json_refusal
       expect(template.reload.preferences['embed_builder']).to be_nil
 
-      end_session
-      sign_in(admin_for(free_account))
+      act_as(free_account)
       template = create_builder_session(free_account, {})
 
       expect_json_refusal
@@ -431,10 +428,9 @@ RSpec.describe 'Feature gating', type: :request do
       fields = template.fields.deep_dup
       fields.last.merge!(field_patch.deep_stringify_keys)
 
-      end_session
       # The builder posts a JSON body with no Accept header; the refusal must
       # still come back as JSON, not as a redirect the JS would swallow.
-      sign_in(admin_for(account))
+      act_as(account)
       put "/templates/#{template.id}",
           params: { template: { fields:, schema: template.schema, submitters: template.submitters } }.to_json,
           headers: { 'CONTENT_TYPE' => 'application/json' }
@@ -541,8 +537,7 @@ RSpec.describe 'Feature gating', type: :request do
        'stays usable) and nobody, internal included, can clone a template with a formula field' do
       conditional_template = conditional_template_for(free_account)
 
-      end_session
-      sign_in(admin_for(free_account))
+      act_as(free_account)
 
       expect do
         post "/templates/#{conditional_template.id}/clone", params: { template: { name: 'Copy' } }
@@ -557,8 +552,7 @@ RSpec.describe 'Feature gating', type: :request do
 
       formula_template = formula_template_for(internal_account)
 
-      end_session
-      sign_in(admin_for(internal_account))
+      act_as(internal_account)
 
       expect do
         post "/templates/#{formula_template.id}/clone", params: { template: { name: 'Copy' } }
@@ -634,8 +628,7 @@ RSpec.describe 'Feature gating', type: :request do
 
   describe 'automatic reminders' do
     def save_reminders(account)
-      end_session
-      sign_in(admin_for(account))
+      act_as(account)
       post '/settings/notifications', params: { account_config: { key: AccountConfig::SUBMITTER_REMINDERS,
                                                                   value: { first_duration: 'two_days' } } }
     end
@@ -663,8 +656,7 @@ RSpec.describe 'Feature gating', type: :request do
 
   describe 'branding removal' do
     def save_remove_branding(account)
-      end_session
-      sign_in(admin_for(account))
+      act_as(account)
       post '/settings/personalization', params: { account_config: { key: AccountConfig::REMOVE_BRANDING_KEY,
                                                                     value: 'true' } }
     end
@@ -777,8 +769,7 @@ RSpec.describe 'Feature gating', type: :request do
 
   describe 'custom email templates' do
     def save_invitation_email(account)
-      end_session
-      sign_in(admin_for(account))
+      act_as(account)
       post '/settings/personalization', params: { account_config: { key: AccountConfig::SUBMITTER_INVITATION_EMAIL_KEY,
                                                                     value: { subject: 'Please sign {{template.name}}',
                                                                              body: 'Hello {{submitter.link}}' } } }
@@ -787,8 +778,7 @@ RSpec.describe 'Feature gating', type: :request do
     def save_template_email_copy(account)
       template = template_for(account)
 
-      end_session
-      sign_in(admin_for(account))
+      act_as(account)
       post "/templates/#{template.id}/preferences",
            params: { template: { preferences: { request_email_subject: 'Custom subject' } } }
 
@@ -828,8 +818,7 @@ RSpec.describe 'Feature gating', type: :request do
       params = html_submission_params(free_template, save_message: '1', is_custom_message: '1',
                                                      subject: 'Dialog subject', body: 'Dialog body')
 
-      end_session
-      sign_in(admin_for(free_account))
+      act_as(free_account)
 
       expect do
         post "/templates/#{free_template.id}/submissions", params:
@@ -839,8 +828,7 @@ RSpec.describe 'Feature gating', type: :request do
 
       internal_template = template_for(internal_account)
 
-      end_session
-      sign_in(admin_for(internal_account))
+      act_as(internal_account)
 
       expect do
         post "/templates/#{internal_template.id}/submissions",
@@ -855,8 +843,7 @@ RSpec.describe 'Feature gating', type: :request do
 
   describe 'per-account SMTP' do
     def save_smtp(account)
-      end_session
-      sign_in(admin_for(account))
+      act_as(account)
       post '/settings/email', params: { encrypted_config: { value: { host: 'smtp.example.com', port: '587',
                                                                      username: 'mailer', password: 'secret',
                                                                      from_email: 'docs@example.com',
@@ -877,8 +864,7 @@ RSpec.describe 'Feature gating', type: :request do
 
   describe 'BCC / documents-copy address' do
     def save_bcc(account)
-      end_session
-      sign_in(admin_for(account))
+      act_as(account)
       post '/settings/notifications', params: { account_config: { key: AccountConfig::BCC_EMAILS,
                                                                   value: 'archive@example.com' } }
     end
@@ -886,8 +872,7 @@ RSpec.describe 'Feature gating', type: :request do
     def save_template_bcc(account)
       template = template_for(account)
 
-      end_session
-      sign_in(admin_for(account))
+      act_as(account)
       post "/templates/#{template.id}/preferences",
            params: { template: { preferences: { bcc_completed: 'archive@example.com' } } }
 
@@ -924,8 +909,7 @@ RSpec.describe 'Feature gating', type: :request do
        'and stores it for internal' do
       free_template = template_for(free_account)
 
-      end_session
-      sign_in(admin_for(free_account))
+      act_as(free_account)
 
       expect do
         post "/templates/#{free_template.id}/submissions",
@@ -956,8 +940,7 @@ RSpec.describe 'Feature gating', type: :request do
     it 'always lets a free account clear a value it can no longer set' do
       create(:account_config, account: free_account, key: AccountConfig::BCC_EMAILS, value: 'old@example.com')
 
-      end_session
-      sign_in(admin_for(free_account))
+      act_as(free_account)
       post '/settings/notifications', params: { account_config: { key: AccountConfig::BCC_EMAILS, value: '' } }
 
       expect(flash[:alert]).to be_nil
@@ -971,8 +954,7 @@ RSpec.describe 'Feature gating', type: :request do
       [free_account, internal_account].each do |account|
         submitter = sent_submitter_for(account)
 
-        end_session
-        sign_in(admin_for(account))
+        act_as(account)
         put "/submitters/#{submitter.id}", params: { submitter: { phone: '+15551234567' }, send_sms: '1' }
 
         expect_html_unavailable
