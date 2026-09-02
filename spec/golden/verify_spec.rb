@@ -18,6 +18,25 @@ require 'rake'
 # is the platform's (current or retired), an internal or operator account's
 # — never a TRUSTED_CERTS environment key — and the page never generates the
 # platform certificate. See docs/verify.md.
+# Stands in for a timestamp authority: answers HexaPDF's timestamp_handler
+# contract (`sign(io, byte_range)` → a CMS token) with a token over the
+# signature bytes, signed by `pkcs` — the shape a real RFC 3161 token has once
+# it sits in the signature's unsigned attributes.
+class VerifySpecTimestampAuthority
+  def initialize(pkcs)
+    @pkcs = pkcs
+  end
+
+  def sign(io, byte_range)
+    io.pos = byte_range[0]
+
+    HexaPDF::DigitalSignature::Signing::SignedDataCreator.create(
+      io.read(byte_range[1]), type: :cms, certificate: @pkcs.certificate, key: @pkcs.key,
+                              certificates: @pkcs.ca_certs
+    )
+  end
+end
+
 RSpec.describe 'Public verify', type: :request do
   let!(:account) { create(:account) }
   let(:internal_account) { create(:account, :internal) }
@@ -99,33 +118,41 @@ RSpec.describe 'Public verify', type: :request do
 
   # The fixture signed with `pkcs` through HexaPDF's external-signing hook,
   # with a CMS encoding that ends in a zero byte.
-  def pdf_signed_with_zero_terminated_cms(pkcs)
+  def pdf_signed_with_zero_terminated_cms(pkcs, timestamp_handler: nil)
     document = HexaPDF::Document.new(io: StringIO.new(unsigned_pdf))
     io = StringIO.new
 
-    document.sign(io, signature_size: 20_000, write_options: { validate: false },
+    document.sign(io, signature_size: 30_000, write_options: { validate: false },
                       external_signing: lambda { |signed_io, byte_range|
                         data = signed_io.pread(byte_range[1], byte_range[0]) +
                                signed_io.pread(byte_range[3], byte_range[2])
 
-                        zero_terminated_cms(data, pkcs)
+                        zero_terminated_cms(data, pkcs, timestamp_handler:)
                       })
 
     io.string
   end
 
   # Signing times are tried until the CMS ends in a zero byte — the last byte
-  # of the RSA value, so about one try in 256.
-  def zero_terminated_cms(data, pkcs)
+  # of the RSA value (of the timestamp token's, when one is embedded: it
+  # signs the signature bytes, so it changes with them), about one try in 256.
+  def zero_terminated_cms(data, pkcs, timestamp_handler: nil)
     base = Time.current.to_i
     candidates = 4096.times.lazy.map do |offset|
       HexaPDF::DigitalSignature::Signing::SignedDataCreator.create(
         data, type: :cms, certificate: pkcs.certificate, key: pkcs.key, certificates: pkcs.ca_certs,
-              signing_time: Time.zone.at(base + offset)
+              signing_time: Time.zone.at(base + offset), timestamp_handler:
       ).to_der
     end
 
     candidates.find { |der| der.end_with?("\x00") } || raise('no zero-terminated CMS signature in 4096 tries')
+  end
+
+  # `bytes` with the first bytes of its signature's CMS overwritten: a
+  # signature no checker can read, in a PDF that still parses (the byte range
+  # and the file length are untouched).
+  def with_unreadable_cms(bytes)
+    bytes.sub(%r{(/Contents\s*<)\h{8}}, '\\1ffffffff')
   end
 
   describe 'a completed document' do
@@ -393,6 +420,76 @@ RSpec.describe 'Public verify', type: :request do
       expect(response).to have_http_status(:ok)
       expect(result_state).to eq('not_on_record')
       expect(ErrorReport).not_to have_received(:warning)
+    end
+
+    # The same override walks the unsigned attributes for the timestamp
+    # token; a zero-terminated CMS carrying one must give the token back.
+    it 'reads the embedded timestamp token of our signature when its CMS ends in a zero byte' do
+      platform_certificate!
+      allow(ErrorReport).to receive(:warning).and_call_original
+      pkcs = PlatformCertificate.pkcs
+      tsa = GenerateCertificate.load_pkcs(GenerateCertificate.call('Timestamp Authority')
+                                                             .transform_values(&:to_pem).stringify_keys)
+      bytes = pdf_signed_with_zero_terminated_cms(pkcs, timestamp_handler: VerifySpecTimestampAuthority.new(tsa))
+      signature = HexaPDF::Document.new(io: StringIO.new(bytes)).signatures.first
+
+      expect(OpenSSL::PKCS7.new(signature.contents).to_der).to end_with("\x00")
+
+      token = signature.signature_handler.embedded_tsa_signature
+
+      expect(token).to be_a(OpenSSL::PKCS7)
+      expect(token.certificates.map { |c| c.subject.to_s }).to include(tsa.certificate.subject.to_s)
+      expect(token.certificates.map { |c| c.subject.to_s }).not_to include(pkcs.certificate.subject.to_s)
+
+      verify(bytes)
+
+      expect(response).to have_http_status(:ok)
+      expect(result_state).to eq('not_on_record')
+      expect(ErrorReport).not_to have_received(:warning)
+    end
+
+    # An unreadable signature is reported only when it is plausibly ours: a
+    # stranger's broken PDF is an anonymous upload, not a verifier bug, and
+    # must not reach Sentry (100 posts an hour per IP would be 100 warnings).
+    it 'refuses a stranger signature the checker cannot read silently, without a warning' do
+      platform_certificate!
+      allow(ErrorReport).to receive(:warning).and_call_original
+      other = GenerateCertificate.load_pkcs(GenerateCertificate.call('Elsewhere').transform_values(&:to_pem)
+                                                               .stringify_keys)
+      bytes = with_unreadable_cms(pdf_signed_by(other))
+
+      expect(bytes.bytesize).to eq(pdf_signed_by(other).bytesize)
+      expect { HexaPDF::Document.new(io: StringIO.new(bytes)).signatures.first.signature_handler }
+        .to raise_error(HexaPDF::Error, /invalid/)
+
+      verify(bytes)
+
+      expect(response).to have_http_status(:ok)
+      expect(result_state).to eq('not_verified')
+      expect(ErrorReport).not_to have_received(:warning)
+    end
+
+    # The stub is on the checker (HexaPDF's Signature#verify), not on the
+    # thing under test — the controller's decision to report a failed read of
+    # a signature whose key is ours. A real unreadable-but-ours signature was
+    # the zero-byte CMS above, which the override now reads.
+    it 'warns when a signature made with our key cannot be checked, and still refuses it' do
+      platform_certificate!
+      allow(ErrorReport).to receive(:warning).and_call_original
+      pkcs = PlatformCertificate.pkcs
+      bytes = pdf_signed_by(pkcs)
+
+      expect(signer_public_keys(bytes)).to eq([pkcs.certificate.public_key.to_der])
+
+      allow_any_instance_of(HexaPDF::DigitalSignature::Signature)
+        .to receive(:verify).and_raise(HexaPDF::Error, 'checker bug')
+
+      verify(bytes)
+
+      expect(response).to have_http_status(:ok)
+      expect(result_state).to eq('not_verified')
+      expect(ErrorReport).to have_received(:warning)
+        .with(an_instance_of(HexaPDF::Error), verify: 'signature check raised').once
     end
 
     it 'still verifies our documents when one internal account row holds a corrupt PKCS#12', sidekiq: :inline do

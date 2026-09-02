@@ -10,6 +10,11 @@ module HexaPDF
     # so /verify called a genuine one "not verified" and the API verify tool
     # failed. Decoding the structure OpenSSL already parsed (it ignores the
     # padding) uses exactly the CMS length. Same structure walk as upstream.
+    #
+    # Pinned to the bug, not the version:
+    # spec/lib/hexa_pdf/digital_signature/cms_handler_override_spec.rb reads the
+    # installed gem's source and goes red the day an upgrade drops the strip —
+    # delete this override (and that spec) then.
     class CMSHandler
       def embedded_tsa_signature
         return @embedded_tsa_signature if defined?(@embedded_tsa_signature)

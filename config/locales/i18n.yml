@@ -62,7 +62,7 @@ en: &en
   this_feature_requires_a_paid_plan: This feature requires a paid plan
   this_feature_is_not_available: This feature is not available
   email_invitation_required: Email invitation required
-  email_verification_shared_link_instructions: "This form requires an emailed invitation because email verification is enabled. The sender can turn off \"Require email 2FA\" in the template's preferences to share it by link."
+  email_verification_shared_link_instructions: "This document can't be signed from a shared link. Ask the person who sent it to email you an invitation."
   feature_is_available_on_the_paid_plan: '%{feature} is available on the paid plan.'
   upgrade_to_unlock_this_and_every_other_paid_feature: Upgrade your account to unlock this and every other paid feature.
   upgrade_plan: Upgrade plan
@@ -1196,7 +1196,7 @@ es: &es
   this_feature_requires_a_paid_plan: Esta función requiere un plan de pago
   this_feature_is_not_available: Esta función no está disponible
   email_invitation_required: Se requiere una invitación por correo electrónico
-  email_verification_shared_link_instructions: "Este formulario requiere una invitación por correo electrónico porque la verificación de correo está habilitada. El remitente puede desactivar \"Requerir 2FA por correo electrónico\" en las preferencias de la plantilla para compartirlo mediante un enlace."
+  email_verification_shared_link_instructions: "Este documento no se puede firmar desde un enlace compartido. Pide a la persona que lo envió que te mande una invitación por correo electrónico."
   feature_is_available_on_the_paid_plan: '%{feature} está disponible en el plan de pago.'
   upgrade_to_unlock_this_and_every_other_paid_feature: Mejora tu cuenta para desbloquear esta y todas las demás funciones de pago.
   upgrade_plan: Mejorar plan
@@ -2309,7 +2309,7 @@ it: &it
   this_feature_requires_a_paid_plan: Questa funzione richiede un piano a pagamento
   this_feature_is_not_available: Questa funzione non è disponibile
   email_invitation_required: È richiesto un invito via email
-  email_verification_shared_link_instructions: "Questo modulo richiede un invito via email perché la verifica email è abilitata. Il mittente può disattivare \"Richiedi 2FA email\" nelle preferenze del modello per condividerlo tramite link."
+  email_verification_shared_link_instructions: "Questo documento non può essere firmato da un link condiviso. Chiedi alla persona che lo ha inviato di mandarti un invito via email."
   feature_is_available_on_the_paid_plan: '%{feature} è disponibile nel piano a pagamento.'
   upgrade_to_unlock_this_and_every_other_paid_feature: Aggiorna il tuo account per sbloccare questa e tutte le altre funzioni a pagamento.
   upgrade_plan: Aggiorna piano
@@ -3422,7 +3422,7 @@ fr: &fr
   this_feature_requires_a_paid_plan: Cette fonctionnalité nécessite un abonnement payant
   this_feature_is_not_available: Cette fonctionnalité n'est pas disponible
   email_invitation_required: Invitation par e-mail requise
-  email_verification_shared_link_instructions: "Ce formulaire nécessite une invitation par e-mail car la vérification de l’adresse e-mail est activée. L’expéditeur peut désactiver \"Exiger la 2FA par e-mail\" dans les préférences du modèle pour le partager par lien."
+  email_verification_shared_link_instructions: "Ce document ne peut pas être signé depuis un lien partagé. Demandez à la personne qui l’a envoyé de vous adresser une invitation par e-mail."
   feature_is_available_on_the_paid_plan: '%{feature} est disponible avec l''abonnement payant.'
   upgrade_to_unlock_this_and_every_other_paid_feature: Passez à un abonnement payant pour débloquer cette fonctionnalité et toutes les autres.
   upgrade_plan: 'Changer d''abonnement'
@@ -4532,7 +4532,7 @@ pt: &pt
   this_feature_requires_a_paid_plan: Este recurso requer um plano pago
   this_feature_is_not_available: Este recurso não está disponível
   email_invitation_required: É necessário um convite por e-mail
-  email_verification_shared_link_instructions: "Este formulário requer um convite por e-mail porque a verificação de e-mail está ativada. O remetente pode desativar \"Exigir 2FA por e-mail\" nas preferências do modelo para compartilhá-lo por link."
+  email_verification_shared_link_instructions: "Este documento não pode ser assinado a partir de um link compartilhado. Peça à pessoa que o enviou que lhe mande um convite por e-mail."
   feature_is_available_on_the_paid_plan: '%{feature} está disponível no plano pago.'
   upgrade_to_unlock_this_and_every_other_paid_feature: Atualize a sua conta para desbloquear este e todos os outros recursos pagos.
   upgrade_plan: Atualizar plano
@@ -5645,7 +5645,7 @@ de: &de
   this_feature_requires_a_paid_plan: Diese Funktion erfordert einen kostenpflichtigen Tarif
   this_feature_is_not_available: Diese Funktion ist nicht verfügbar
   email_invitation_required: E-Mail-Einladung erforderlich
-  email_verification_shared_link_instructions: "Dieses Formular erfordert eine E-Mail-Einladung, da die E-Mail-Verifizierung aktiviert ist. Der Absender kann \"E-Mail-2FA erforderlich\" in den Vorlageneinstellungen deaktivieren, um es per Link zu teilen."
+  email_verification_shared_link_instructions: "Dieses Dokument kann nicht über einen geteilten Link unterschrieben werden. Bitten Sie die Person, die es gesendet hat, Ihnen eine Einladung per E-Mail zu schicken."
   feature_is_available_on_the_paid_plan: '%{feature} ist im kostenpflichtigen Tarif verfügbar.'
   upgrade_to_unlock_this_and_every_other_paid_feature: 'Wechseln Sie den Tarif, um diese und alle weiteren kostenpflichtigen Funktionen freizuschalten.'
   upgrade_plan: Tarif wechseln
@@ -6764,7 +6764,7 @@ pl:
   this_feature_requires_a_paid_plan: Ta funkcja wymaga płatnego planu
   this_feature_is_not_available: Ta funkcja nie jest dostępna
   email_invitation_required: Wymagane zaproszenie e-mail
-  email_verification_shared_link_instructions: "Ten formularz wymaga zaproszenia e-mail, ponieważ weryfikacja adresu e-mail jest włączona. Nadawca może wyłączyć \"Wymagaj uwierzytelniania e-mail 2FA\" w preferencjach szablonu, aby udostępnić go za pomocą linku."
+  email_verification_shared_link_instructions: "Tego dokumentu nie można podpisać z udostępnionego linku. Poproś osobę, która go wysłała, o przesłanie zaproszenia e-mailem."
   feature_is_available_on_the_paid_plan: '%{feature} jest dostępna w płatnym planie.'
   upgrade_to_unlock_this_and_every_other_paid_feature: 'Zmień plan, aby odblokować tę i wszystkie inne płatne funkcje.'
   upgrade_plan: Zmień plan
@@ -6941,7 +6941,7 @@ uk:
   this_feature_requires_a_paid_plan: Ця функція доступна лише в платному плані
   this_feature_is_not_available: Ця функція недоступна
   email_invitation_required: Потрібне запрошення електронною поштою
-  email_verification_shared_link_instructions: "Ця форма потребує запрошення електронною поштою, оскільки перевірку електронної пошти ввімкнено. Відправник може вимкнути \"Вимагати 2FA електронною поштою\" в налаштуваннях шаблону, щоб поділитися формою за посиланням."
+  email_verification_shared_link_instructions: "Цей документ не можна підписати за спільним посиланням. Попросіть особу, яка його надіслала, надіслати вам запрошення електронною поштою."
   feature_is_available_on_the_paid_plan: '%{feature} доступна в платному плані.'
   upgrade_to_unlock_this_and_every_other_paid_feature: 'Оновіть план, щоб розблокувати цю та всі інші платні функції.'
   upgrade_plan: Оновити план
@@ -7118,7 +7118,7 @@ cs:
   this_feature_requires_a_paid_plan: Tato funkce vyžaduje placený plán
   this_feature_is_not_available: Tato funkce není k dispozici
   email_invitation_required: Je vyžadována e-mailová pozvánka
-  email_verification_shared_link_instructions: "Tento formulář vyžaduje e-mailovou pozvánku, protože je zapnuto ověření e-mailu. Odesílatel může v předvolbách šablony vypnout \"Vyžadovat e-mailové 2FA\" a formulář pak sdílet odkazem."
+  email_verification_shared_link_instructions: "Tento dokument nelze podepsat ze sdíleného odkazu. Požádejte osobu, která jej odeslala, aby vám poslala pozvánku e-mailem."
   feature_is_available_on_the_paid_plan: '%{feature} je k dispozici v placeném plánu.'
   upgrade_to_unlock_this_and_every_other_paid_feature: Přejděte na placený plán a odemkněte tuto i všechny ostatní placené funkce.
   upgrade_plan: Změnit plán
@@ -7295,7 +7295,7 @@ he:
   this_feature_requires_a_paid_plan: תכונה זו דורשת תוכנית בתשלום
   this_feature_is_not_available: תכונה זו אינה זמינה
   email_invitation_required: נדרשת הזמנה בדוא״ל
-  email_verification_shared_link_instructions: "טופס זה דורש הזמנה בדוא״ל מכיוון שאימות דוא״ל מופעל. השולח יכול לכבות את \"דרוש אימות דו-שלבי בדוא״ל\" בהעדפות התבנית כדי לשתף אותו באמצעות קישור."
+  email_verification_shared_link_instructions: "לא ניתן לחתום על מסמך זה מקישור משותף. בקשו מהאדם ששלח אותו לשלוח לכם הזמנה בדוא״ל."
   feature_is_available_on_the_paid_plan: '%{feature} זמין בתוכנית בתשלום.'
   upgrade_to_unlock_this_and_every_other_paid_feature: שדרגו את החשבון כדי לפתוח תכונה זו ואת כל שאר התכונות בתשלום.
   upgrade_plan: שדרוג תוכנית
@@ -7466,7 +7466,7 @@ nl: &nl
   this_feature_requires_a_paid_plan: Deze functie vereist een betaald abonnement
   this_feature_is_not_available: Deze functie is niet beschikbaar
   email_invitation_required: E-mailuitnodiging vereist
-  email_verification_shared_link_instructions: "Voor dit formulier is een e-mailuitnodiging vereist omdat e-mailverificatie is ingeschakeld. De afzender kan \"E-mail-2FA vereisen\" uitschakelen in de sjabloonvoorkeuren om het formulier via een link te delen."
+  email_verification_shared_link_instructions: "Dit document kan niet via een gedeelde link worden ondertekend. Vraag de persoon die het heeft verstuurd om u een uitnodiging per e-mail te sturen."
   feature_is_available_on_the_paid_plan: '%{feature} is beschikbaar in het betaalde abonnement.'
   upgrade_to_unlock_this_and_every_other_paid_feature: Upgrade je account om deze en alle andere betaalde functies te ontgrendelen.
   upgrade_plan: Abonnement upgraden
@@ -8582,7 +8582,7 @@ ar:
   this_feature_requires_a_paid_plan: تتطلب هذه الميزة خطة مدفوعة
   this_feature_is_not_available: هذه الميزة غير متاحة
   email_invitation_required: الدعوة عبر البريد الإلكتروني مطلوبة
-  email_verification_shared_link_instructions: "يتطلب هذا النموذج دعوة عبر البريد الإلكتروني لأن التحقق من البريد الإلكتروني مفعّل. يمكن للمرسل إيقاف \"طلب المصادقة الثنائية عبر البريد الإلكتروني\" في تفضيلات القالب لمشاركة النموذج عبر رابط."
+  email_verification_shared_link_instructions: "لا يمكن توقيع هذا المستند من رابط مشترك. اطلب من الشخص الذي أرسله أن يرسل لك دعوة عبر البريد الإلكتروني."
   feature_is_available_on_the_paid_plan: '%{feature} متاحة في الخطة المدفوعة.'
   upgrade_to_unlock_this_and_every_other_paid_feature: قم بترقية حسابك لفتح هذه الميزة وجميع الميزات المدفوعة الأخرى.
   upgrade_plan: ترقية الخطة
@@ -8759,7 +8759,7 @@ ko:
   this_feature_requires_a_paid_plan: 이 기능은 유료 플랜이 필요합니다
   this_feature_is_not_available: 이 기능은 사용할 수 없습니다
   email_invitation_required: 이메일 초대가 필요합니다
-  email_verification_shared_link_instructions: "이메일 인증이 활성화되어 있어 이 양식은 이메일로 받은 초대가 필요합니다. 발신자는 템플릿 환경설정에서 \"이메일 2FA 요구\"를 끄면 링크로 공유할 수 있습니다."
+  email_verification_shared_link_instructions: "이 문서는 공유 링크로는 서명할 수 없습니다. 보낸 사람에게 이메일로 초대장을 보내 달라고 요청하세요."
   feature_is_available_on_the_paid_plan: '%{feature}은(는) 유료 플랜에서 사용할 수 있습니다.'
   upgrade_to_unlock_this_and_every_other_paid_feature: 계정을 업그레이드하여 이 기능과 모든 유료 기능을 사용하세요.
   upgrade_plan: 플랜 업그레이드
@@ -8936,7 +8936,7 @@ ja:
   this_feature_requires_a_paid_plan: この機能は有料プランが必要です
   this_feature_is_not_available: この機能は利用できません
   email_invitation_required: メールでの招待が必要です
-  email_verification_shared_link_instructions: "メール認証が有効なため、このフォームにはメールでの招待が必要です。送信者はテンプレートの設定で「メール2FAを必須にする」をオフにすると、リンクで共有できます。"
+  email_verification_shared_link_instructions: "この文書は共有リンクから署名できません。送信者にメールで招待を送ってもらうよう依頼してください。"
   feature_is_available_on_the_paid_plan: '%{feature}は有料プランでご利用いただけます。'
   upgrade_to_unlock_this_and_every_other_paid_feature: アカウントをアップグレードすると、この機能とすべての有料機能が利用できます。
   upgrade_plan: プランをアップグレード

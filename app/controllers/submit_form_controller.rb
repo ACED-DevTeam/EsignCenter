@@ -3,7 +3,9 @@
 class SubmitFormController < ApplicationController
   layout 'form'
 
-  around_action :with_browser_locale, only: %i[show completed success delegated]
+  # `update` included: a consent recorded without a page-sent locale falls
+  # back to the same browser locale `show` rendered the disclosure under.
+  around_action :with_browser_locale, only: %i[show update completed success delegated]
   skip_before_action :authenticate_user!
   skip_authorization_check
   skip_before_action :verify_authenticity_token, only: :update

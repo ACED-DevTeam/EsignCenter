@@ -88,23 +88,35 @@ class VerifyController < ApplicationController
     end
   end
 
-  # A signature counts only when HexaPDF reports no error-level finding
-  # (integrity, byte range, chain against `trusted`) AND the signer
-  # certificate's public key is one of `ours` — the chain check alone would
-  # accept any certificate the trust set happens to vouch for, and the
-  # TRUSTED_CERTS environment chain is in `trusted` but never in `ours`.
+  # A signature counts only when the signer certificate's public key is one
+  # of `ours` AND HexaPDF reports no error-level finding (integrity, byte
+  # range, chain against `trusted`) — the chain check alone would accept any
+  # certificate the trust set happens to vouch for, and the TRUSTED_CERTS
+  # environment chain is in `trusted` but never in `ours`.
+  #
+  # A signature the checker cannot read counts as not ours. When its signer
+  # key IS ours that is reported, never swallowed: a verifier bug would
+  # otherwise look exactly like a stranger's signature (the zero-byte CMS
+  # case in config/initializers/hexapdf.rb). A stranger's unreadable
+  # signature — an exotic signer HexaPDF trips on, a CMS nothing can parse —
+  # is refused silently: anonymous uploads must not drive Sentry.
   def trusted_signature?(signature, trusted, ours)
-    return false unless signature.verify(trusted_certs: trusted).success?
+    return false unless ours_signature?(signature, ours)
 
+    signature.verify(trusted_certs: trusted).success?
+  rescue HexaPDF::Error, OpenSSL::OpenSSLError, NoMethodError => e
+    ErrorReport.warning(e, verify: 'signature check raised')
+
+    false
+  end
+
+  # Whether the signer certificate's key is one of ours. Needs only the CMS
+  # to parse, not the check to run; a CMS that cannot even be read is nobody's.
+  def ours_signature?(signature, ours)
     signer_key = signature.signature_handler.signer_certificate.public_key.to_der
 
     ours.any? { |certificate| certificate.public_key.to_der == signer_key }
-  rescue HexaPDF::Error, OpenSSL::OpenSSLError, NoMethodError => e
-    # A signature the checker cannot even read counts as not ours, but never
-    # silently: a verifier bug would otherwise look exactly like a stranger's
-    # signature (the zero-byte CMS case in config/initializers/hexapdf.rb).
-    ErrorReport.warning(e, verify: 'signature check raised')
-
+  rescue HexaPDF::Error, OpenSSL::OpenSSLError, NoMethodError
     false
   end
 

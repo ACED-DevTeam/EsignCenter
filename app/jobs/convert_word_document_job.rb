@@ -72,10 +72,8 @@ class ConvertWordDocumentJob
 
     finish_conversion(template, attachment, pdf_data)
   rescue WordConverter::Busy
-    # A job that would wait for a slot stops here once the switch is off,
-    # rather than coming back in 15 seconds to find out.
-    return fail_conversion(template, attachment, switched_off_error) unless WordConverter.enabled?
-
+    # The retry re-enters perform, whose kill-switch check (above) stops a
+    # waiting job once the switch is off.
     self.class.perform_in(BUSY_RETRY_DELAY, params.merge('busy_retries' => busy_retries + 1))
   rescue WordConverter::TimeoutError, WordConverter::ConversionError, WordConverter::Unavailable => e
     fail_conversion(template, attachment, e)

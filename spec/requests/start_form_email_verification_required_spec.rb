@@ -14,10 +14,11 @@ RSpec.describe 'Shared form email verification notice', type: :request do
 
     expect(response).to have_http_status(:ok)
     expect(response.body).to include('Email invitation required')
-    expect(response.body).to include(
-      'This form requires an emailed invitation because email verification is enabled.'
-    )
-    expect(response.body).to include('The sender can turn off &quot;Require email 2FA&quot;')
+    # Signer copy: what the reader can do, never the sender's settings (those
+    # stay in the share-link modal, for the sender).
+    expect(response.body).to include('This document can&#39;t be signed from a shared link.')
+    expect(response.body).to include('Ask the person who sent it to email you an invitation.')
+    expect(response.body).not_to include('The sender can turn off')
   end
 
   context 'when the template is not shared' do

@@ -474,6 +474,31 @@ RSpec.describe 'ESIGN consent', type: :request do
       end
     end
 
+    # The fallback is the browser locale the signing page rendered under
+    # (with_browser_locale covers `update` too), not the account's or English.
+    it 'falls back to the browser locale the page was rendered under when it sends none' do
+      submitter = emailed_submitter_for(account)
+
+      put "/s/#{submitter.slug}", params: completion_params(submitter).merge(consent_params(locale: nil).compact),
+                                  headers: { 'HTTP_ACCEPT_LANGUAGE' => 'fr-FR,fr;q=0.9,en;q=0.8' }
+      expect_completed_with_consent(submitter, locale: 'fr')
+    end
+
+    # A superseded disclosure lives under `esign_disclosure_archive.<version>`
+    # (docs §6); the archive is empty today, so a stand-in text is stored for
+    # the example and removed again.
+    it 'reads a superseded disclosure from the archive scope and fingerprints it' do
+      I18n.backend.store_translations(:en, esign_disclosure_archive: { v0: '<p>old</p>' })
+
+      expect(EsignConsent.disclosure_text(version: 'v0', locale: 'en')).to eq('<p>old</p>')
+      expect(EsignConsent.disclosure_sha256(version: 'v0', locale: 'en')).to eq(Digest::SHA256.hexdigest('<p>old</p>'))
+      expect(EsignConsent.disclosure_text(version: 'v0', locale: 'fr')).to be_nil
+      expect(EsignConsent.disclosure_text(version: 'v1', locale: 'en')).not_to eq('<p>old</p>')
+    ensure
+      I18n.backend.translations[:en].delete(:esign_disclosure_archive)
+      expect(EsignConsent.disclosure_text(version: 'v0', locale: 'en')).to be_nil
+    end
+
     it 'has no digest for a version and locale that were never published' do
       expect(EsignConsent.disclosure_text(version: 'v0', locale: 'en')).to be_nil
       expect(EsignConsent.disclosure_sha256(version: 'v0', locale: 'en')).to be_nil

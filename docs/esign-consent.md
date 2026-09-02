@@ -54,7 +54,11 @@ delegation, one more for the person the form was handed to — stamped with:
 - `version` — the disclosure version the signer saw (`v1` today),
 - `locale` — the language the disclosure was shown in (`en`, `fr`, ... — the
   page sends back the locale it rendered; if it sends none, or one the
-  product does not speak, the request's locale is recorded instead),
+  product does not speak, the request's locale is recorded instead). The
+  locale is browser-attested, like the `Accept-Language` header it comes
+  from: the page sends it, and the fallback is the browser locale the
+  signing page was rendered under — the server cannot prove which language
+  the person actually read,
 - `disclosure_sha256` — the SHA-256 fingerprint of the disclosure text in
   that version and language. The server computes it from its own locale data
   when the event is written; nothing about the text comes from the browser.
