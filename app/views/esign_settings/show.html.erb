@@ -19,10 +19,40 @@
     </div>
     <%# Signing certificates are platform-operator surfaces (Session 4): customers sign with the platform certificate, internal accounts keep their rows but manage them from the console. %>
     <% if operator_access? %>
-      <div class="flex flex-col md:flex-row gap-2 md:justify-between md:items-end mb-4 mt-8">
+      <div class="flex justify-between items-end mb-4 mt-8 max-w-xl">
         <h2 class="text-3xl font-bold">
           <%= t('signing_certificates') %>
         </h2>
+      </div>
+      <%# The platform identity itself is read-only here: rake operator:platform_cert:* manages it. %>
+      <div id="platform_certificate" class="border border-base-300 rounded-xl p-4 max-w-xl space-y-2">
+        <div class="flex items-center gap-3">
+          <%= svg_icon('shield_check', class: 'w-8 h-8 shrink-0') %>
+          <div>
+            <p class="font-semibold"><%= t('platform_signing_certificate') %></p>
+            <p class="text-sm"><%= t('platform_certificate_used_by_every_customer_account') %></p>
+          </div>
+        </div>
+        <% if @platform_certificate %>
+          <dl class="grid grid-cols-1 sm:grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm pt-2">
+            <dt class="font-medium"><%= t('name') %></dt>
+            <dd><%= Docuseal.product_name %></dd>
+            <dt class="font-medium"><%= t('sha256_fingerprint') %></dt>
+            <dd class="font-mono text-xs break-all" dir="ltr"><%= @platform_certificate_fingerprint %></dd>
+            <dt class="font-medium"><%= t('valid_to') %></dt>
+            <dd><%= l(@platform_certificate.not_after.to_date, format: :long, locale: current_account.locale) %></dd>
+          </dl>
+        <% else %>
+          <p class="text-sm text-error pt-2"><%= t('platform_certificate_not_generated_yet') %></p>
+        <% end %>
+      </div>
+      <div class="flex flex-col md:flex-row gap-2 md:justify-between md:items-end mb-4 mt-8">
+        <div>
+          <h3 class="text-xl font-bold">
+            <%= t('this_account_certificates') %>
+          </h3>
+          <p class="text-sm"><%= t('this_account_certificates_hint') %></p>
+        </div>
         <% if can?(:create, @encrypted_config) %>
           <%= link_to new_settings_esign_path, class: 'btn btn-primary btn-md', data: { turbo_frame: 'modal' } do %>
             <%= svg_icon('plus', class: 'w-6 h-6') %>
@@ -82,14 +112,15 @@
         </table>
       </div>
     <% end %>
-    <%# The timestamp authority is platform policy: only the operator can see or change it. %>
+    <%# Customers always use the TIMESERVER_URL environment value; this row pins the operator account's own. %>
     <% if operator_access? %>
       <% encrypted_config = EncryptedConfig.find_or_initialize_by(account: current_account, key: EncryptedConfig::TIMESTAMP_SERVER_URL_KEY) %>
       <div class="flex-grow max-w-xl">
-        <div class="flex justify-between items-end mb-4 mt-8">
+        <div class="mb-4 mt-8">
           <h2 class="text-3xl font-bold">
             <%= t('timestamp_server') %>
           </h2>
+          <p class="text-sm mt-1"><%= t('timestamp_server_operator_only_hint') %></p>
         </div>
         <%= form_for encrypted_config, url: timestamp_server_index_path, method: :post, html: { autocomplete: 'off', class: 'space-y-4' } do |f| %>
           <div class="form-control">

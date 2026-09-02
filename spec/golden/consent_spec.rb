@@ -7,10 +7,11 @@
 # resubmit, email-2FA, invite-then-complete, selfsign) ends in
 # Submitters::SubmitValues. Completing there without an `esign_consent` event
 # is refused with a JSON 422 and leaves nothing behind: no completed_at, no
-# completion job, no complete_form event. With `esign_consent=true` the
-# completion succeeds and exactly one versioned consent event carrying the
-# signer's IP exists. The consent line is printed in the audit trail in every
-# base locale, and no locale can show a missing translation.
+# completion job, no complete_form event. With `esign_consent=true` and the
+# current `esign_consent_version` the completion succeeds and exactly one
+# versioned consent event carrying the signer's IP exists. The consent line
+# is printed in the audit trail in every base locale, and no locale can show
+# a missing translation.
 #
 # Sender-attested completions (API `completed: true`, signing sessions created
 # completed) have no human signer: they complete with zero consent events and
@@ -82,8 +83,16 @@ RSpec.describe 'ESIGN consent', type: :request do
     fields.find { |f| f['type'] == 'text' && f['submitter_uuid'] == submitter.uuid }
   end
 
+  # The consent always travels with the version the form displayed
+  # (consent_version_spec proves a missing or stale version is refused).
+  def consent_params
+    { esign_consent: 'true', esign_consent_version: EsignConsent::VERSION }
+  end
+
   def completion_params(submitter, esign_consent: nil)
-    { completed: 'true', values: { text_field(submitter)['uuid'] => 'Jane' }, esign_consent: }.compact
+    params = { completed: 'true', values: { text_field(submitter)['uuid'] => 'Jane' } }
+
+    esign_consent ? params.merge(consent_params) : params
   end
 
   def create_signing_session(account, headers, submitter_attrs = {})
@@ -231,7 +240,7 @@ RSpec.describe 'ESIGN consent', type: :request do
       post "/s/#{submitter.slug}/invite", params: invite
       expect_consent_refused(submitter)
 
-      post "/s/#{submitter.slug}/invite", params: invite.merge(esign_consent: 'true')
+      post "/s/#{submitter.slug}/invite", params: invite.merge(consent_params)
       expect_completed_with_consent(submitter)
       expect(submission.submitters.where(uuid: second['uuid']).count).to eq(1)
     end
@@ -262,7 +271,7 @@ RSpec.describe 'ESIGN consent', type: :request do
 
       travel_to(consented_at) do
         put "/s/#{submitter.slug}",
-            params: { values: { text_field(submitter)['uuid'] => 'Jane' }, esign_consent: 'true' }
+            params: { values: { text_field(submitter)['uuid'] => 'Jane' }, **consent_params }
       end
 
       expect(response).to have_http_status(:ok)

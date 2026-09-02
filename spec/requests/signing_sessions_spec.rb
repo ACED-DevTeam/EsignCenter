@@ -240,6 +240,7 @@ describe 'Signing Sessions API' do
       put "/s/#{submitter.slug}", params: {
         completed: 'true',
         esign_consent: 'true',
+        esign_consent_version: EsignConsent::VERSION,
         timezone: 'America/Chicago',
         values: { field['uuid'] => 'Jane' }
       }

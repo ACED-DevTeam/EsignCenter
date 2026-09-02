@@ -26,6 +26,12 @@ module Templates
     three_months: 3.months
   }.with_indifferent_access.freeze
 
+  # A document still marked converting this long after its blob was stored
+  # has lost its job (a dead-set entry, a container killed mid-run): it is
+  # treated as failed so the user gets the failed card and its Remove
+  # button instead of a template blocked forever.
+  CONVERSION_STALE_AFTER = 30.minutes
+
   # Raised wherever a submission would be built from a template that still
   # has a Word document converting (or one that failed to convert): the PDF
   # pipeline needs a PDF behind every schema entry. `status` is 'converting'
@@ -46,9 +52,10 @@ module Templates
   # The attachments' own blob metadata decides — the schema flags are only a
   # cache the builder reads (see refresh_conversion_flags). A document still
   # converting anywhere on the template blocks, whether or not the schema
-  # lists it yet; a failed one blocks while the schema still lists it (the
-  # builder's "remove document" drops it from the schema, not from storage).
-  # A failed document outranks a converting one: it needs the user's action.
+  # lists it yet; a failed one (including a stale conversion) blocks while
+  # the schema still lists it (the builder's "remove document" drops it from
+  # the schema, not from storage). A failed document outranks a converting
+  # one: it needs the user's action.
   def documents_status(template)
     flagged = flagged_documents(template)
 
@@ -56,8 +63,8 @@ module Templates
 
     schema_uuids = template.schema.to_a.map { |item| item['attachment_uuid'] || item[:attachment_uuid] }
 
-    return 'failed' if flagged.any? { |d| d.metadata['conversion_failed'] && schema_uuids.include?(d.uuid) }
-    return 'converting' if flagged.any? { |d| d.metadata['converting'] }
+    return 'failed' if flagged.any? { |d| conversion_failed?(d) && schema_uuids.include?(d.uuid) }
+    return 'converting' if flagged.any? { |d| converting?(d) }
 
     nil
   end
@@ -66,6 +73,20 @@ module Templates
     template.documents.preload(:blob).select do |document|
       document.metadata['converting'] || document.metadata['conversion_failed']
     end
+  end
+
+  def converting?(document)
+    document.metadata['converting'].present? && !stale_conversion?(document)
+  end
+
+  def conversion_failed?(document)
+    document.metadata['conversion_failed'].present? || stale_conversion?(document)
+  end
+
+  # The blob's own timestamp is the last sign of progress: the Word upload,
+  # or the PDF the job swapped in half-way through.
+  def stale_conversion?(document)
+    document.metadata['converting'].present? && document.blob.created_at < CONVERSION_STALE_AFTER.ago
   end
 
   # Re-derives every schema item's `converting` / `conversion_failed` flag
@@ -80,8 +101,8 @@ module Templates
       item = item.to_h.stringify_keys.except('converting', 'conversion_failed')
       document = flagged[item['attachment_uuid']]
 
-      item['converting'] = true if document&.metadata&.dig('converting')
-      item['conversion_failed'] = true if document&.metadata&.dig('conversion_failed')
+      item['converting'] = true if document && converting?(document)
+      item['conversion_failed'] = true if document && conversion_failed?(document)
 
       item
     end

@@ -6,7 +6,9 @@
 # LibreOffice profile, under a hard wall-clock deadline, and the process group
 # is killed as a whole when that deadline passes. The converter never uses the
 # shell. Concurrency across the process is capped through `with_slot`, backed
-# by the same store the rate limiter uses. See docs/word-uploads.md.
+# by the same store the rate limiter uses: MAX_CONCURRENT slot keys, each
+# taken with an atomic set-if-absent and released only by its holder. See
+# docs/word-uploads.md.
 module WordConverter
   EXTENSIONS = %w[.docx .doc].freeze
   CONTENT_TYPES = {
@@ -26,7 +28,8 @@ module WordConverter
   TIMEOUT_SECONDS = 120
   MAX_CONCURRENT = 2
   BINARY = ENV.fetch('SOFFICE_PATH', 'soffice')
-  ACTIVE_KEY = 'word-conversion-active'
+  SLOT_KEY_PREFIX = 'word-conversion-slot-'
+  # A crashed holder's slot frees itself when this runs out.
   ACTIVE_TTL = 10.minutes
   # A LibreOffice that dies without output this soon after starting is a cold
   # first launch (font cache build), not a bad document: retried once.
@@ -89,36 +92,53 @@ module WordConverter
     end
   end
 
-  # Holds one of MAX_CONCURRENT conversion slots for the block. The counter
-  # lives in RateLimit.store with a TTL, so a crashed worker cannot pin a slot
-  # forever. Raises Busy when every slot is taken — and when the store cannot
-  # answer (a nil increment): the cap fails closed, the job's delayed retry
+  # Holds one of MAX_CONCURRENT conversion slots for the block. Each slot is
+  # a key in RateLimit.store taken with an atomic set-if-absent (SET NX on
+  # Redis, `unless_exist` on the memory store) and a TTL, so a crashed worker
+  # cannot pin a slot forever and two workers can never share one — there is
+  # no counter to race on. Raises Busy when every slot is taken, and when
+  # the store cannot answer: the cap fails closed, the job's delayed retry
   # comes back when the store does.
   def with_slot
-    active = RateLimit.store.increment(ACTIVE_KEY, 1, expires_in: ACTIVE_TTL)
-
-    raise Busy, 'conversion slot counter unavailable' if active.nil?
-
-    if active > MAX_CONCURRENT
-      release_slot
-
-      raise Busy, "#{active - 1} conversions already running"
-    end
-
-    acquired = true
+    key, token = acquire_slot
 
     yield
   ensure
-    release_slot if acquired
+    release_slot(key, token) if key
   end
 
-  # A counter at or below zero is deleted rather than kept: a stale key would
-  # otherwise drift negative (a decrement after the TTL expired recreates it
-  # below zero and widens the cap), and a fresh key gets a fresh TTL.
-  def release_slot
-    left = RateLimit.store.decrement(ACTIVE_KEY, 1)
+  def slot_keys
+    Array.new(MAX_CONCURRENT) { |i| "#{SLOT_KEY_PREFIX}#{i + 1}" }
+  end
 
-    RateLimit.store.delete(ACTIVE_KEY) if left && left <= 0
+  def acquire_slot
+    token = SecureRandom.uuid
+    key = slot_keys.find { |slot_key| claim_slot(slot_key, token) }
+
+    raise Busy, "#{MAX_CONCURRENT} conversions already running" if key.nil?
+
+    [key, token]
+  end
+
+  # true only when this call created the key. A store that raises or answers
+  # with anything but true (RedisCacheStore's error handler returns nil)
+  # counts as taken.
+  def claim_slot(key, token)
+    RateLimit.store.write(key, token, unless_exist: true, expires_in: ACTIVE_TTL) == true
+  rescue StandardError => e
+    Rails.logger.error(e)
+
+    false
+  end
+
+  # Only the holder releases its slot: a slot whose TTL ran out and was taken
+  # over by another worker carries that worker's token and is left alone.
+  def release_slot(key, token)
+    RateLimit.store.delete(key) if RateLimit.store.read(key) == token
+  rescue StandardError => e
+    Rails.logger.error(e)
+
+    nil
   end
 
   def convert(data, filename:)

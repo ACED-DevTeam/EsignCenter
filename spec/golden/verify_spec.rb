@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require 'rake'
+
 # Public /verify answers date + signer count only, never identities;
 # rate-limited and size-capped; records survive purge.
 #
@@ -9,10 +11,13 @@
 # digital signature checked against the platform trust set. A hit on both is
 # `verified` and shows the completion day and "N signers" — never the
 # signer's name, email, certificate subject, signing reason or time of day.
-# One file per request, 25 MB cap refused before parsing, ten posts a minute
-# per IP. The record has no foreign keys and no associations, so destroying
-# the submission and then the whole account changes nothing on the page.
-# See docs/verify.md.
+# One file per request, 25 MB cap refused before the file is read or parsed,
+# ten posts a minute per IP. The record has no foreign keys and no
+# associations, so destroying the submission and then the whole account
+# changes nothing on the page. A signature counts as ours only when its key
+# is the platform's (current or retired), an internal or operator account's
+# — never a TRUSTED_CERTS environment key — and the page never generates the
+# platform certificate. See docs/verify.md.
 RSpec.describe 'Public verify', type: :request do
   let!(:account) { create(:account) }
   let(:internal_account) { create(:account, :internal) }
@@ -51,6 +56,7 @@ RSpec.describe 'Public verify', type: :request do
   # The real interactive completion path, consent included (Phase A).
   def complete!(submitter)
     put "/s/#{submitter.slug}", params: { completed: 'true', esign_consent: 'true',
+                                          esign_consent_version: EsignConsent::VERSION,
                                           values: { text_field(submitter)['uuid'] => 'Jane' } }
 
     expect(response).to have_http_status(:ok)
@@ -94,6 +100,37 @@ RSpec.describe 'Public verify', type: :request do
 
   def unsigned_pdf
     Rails.root.join('spec/fixtures/sample-document.pdf').binread
+  end
+
+  def signer_public_keys(bytes)
+    HexaPDF::Document.new(io: StringIO.new(bytes)).signatures.map do |signature|
+      signature.signature_handler.signer_certificate.public_key.to_der
+    end
+  end
+
+  def public_key_of(pem)
+    OpenSSL::X509::Certificate.new(pem).public_key.to_der
+  end
+
+  # The fixture signed with an identity that is not ours (its own generated
+  # chain), the way any other PDF tool would sign it.
+  def pdf_signed_by(pkcs)
+    document = HexaPDF::Document.new(io: StringIO.new(unsigned_pdf))
+    io = StringIO.new
+
+    document.sign(io, certificate: pkcs.certificate, key: pkcs.key, certificate_chain: pkcs.ca_certs,
+                      reason: 'Signed elsewhere', write_options: { validate: false })
+
+    io.string
+  end
+
+  def capture_stdout
+    original = $stdout
+    $stdout = StringIO.new
+    yield
+    $stdout.string
+  ensure
+    $stdout = original
   end
 
   describe 'a completed document' do
@@ -197,17 +234,39 @@ RSpec.describe 'Public verify', type: :request do
       expect(error_class).to include('invalid_pdf')
     end
 
-    it 'refuses an oversized upload with 413 before parsing it' do
+    it 'refuses an oversized upload with 413 before reading or parsing it' do
       allow(HexaPDF::Document).to receive(:new).and_call_original
       allow(Marcel::MimeType).to receive(:for).and_call_original
 
-      verify("%PDF-1.7\n#{'a' * (VerifyController::MAX_FILE_SIZE + 1.megabyte)}")
+      verify("%PDF-1.7\n#{'a' * (VerifyController::MAX_FILE_SIZE + 2.megabytes)}")
 
       expect(response).to have_http_status(:content_too_large)
       expect(error_class).to include('file_too_large')
       expect(response.body).to include(I18n.t('verify_error_file_too_large', limit_mb: 25, locale: :en))
       expect(HexaPDF::Document).not_to have_received(:new)
       expect(Marcel::MimeType).not_to have_received(:for)
+    end
+
+    # The declared request length carries the multipart envelope on top of
+    # the file: the size rule is the file's own size, so a file right at the
+    # cap gets through to the PDF check instead of a 413.
+    it 'lets a file exactly at the cap through the size check' do
+      allow(Marcel::MimeType).to receive(:for).and_call_original
+
+      header = "%PDF-1.7\n"
+      verify(header + ('a' * (VerifyController::MAX_FILE_SIZE - header.bytesize)))
+
+      expect(response).not_to have_http_status(:content_too_large)
+      expect(Marcel::MimeType).to have_received(:for)
+      expect(error_class).to include('invalid_pdf')
+    end
+
+    it 'refuses a file one byte over the cap by its own size' do
+      header = "%PDF-1.7\n"
+      verify(header + ('a' * (VerifyController::MAX_FILE_SIZE - header.bytesize + 1)))
+
+      expect(response).to have_http_status(:content_too_large)
+      expect(error_class).to include('file_too_large')
     end
 
     it 'refuses a request without a file, and one with a file list' do
@@ -240,6 +299,129 @@ RSpec.describe 'Public verify', type: :request do
       expect(error_class).to include('too_many_requests')
       expect(response.body).to include(I18n.t('verify_error_too_many_requests', locale: :en))
       expect(response.body).to include('id="verify_form"')
+    end
+  end
+
+  describe 'what counts as our signature' do
+    # TRUSTED_CERTS lets the chain check pass; it must never make a stranger's
+    # signature an EsignCenter one.
+    it 'never verifies a signature made with a TRUSTED_CERTS-only key' do
+      platform_certificate!
+      other = GenerateCertificate.load_pkcs(GenerateCertificate.call('Elsewhere').transform_values(&:to_pem)
+                                                               .stringify_keys)
+      allow(Docuseal).to receive(:trusted_certs).and_return([other.certificate, *other.ca_certs])
+      bytes = pdf_signed_by(other)
+
+      expect(signer_public_keys(bytes)).to eq([other.certificate.public_key.to_der])
+      expect(Accounts.platform_verification_certs.map(&:to_pem)).to include(other.certificate.to_pem)
+      expect(Accounts.platform_signer_certs.map(&:to_pem)).not_to include(other.certificate.to_pem)
+
+      verify(bytes)
+
+      expect(response).to have_http_status(:ok)
+      expect(result_state).to eq('not_verified')
+    end
+
+    it 'still verifies our documents when one internal account row holds a corrupt PKCS#12', sidekiq: :inline do
+      platform_certificate!
+      create(:encrypted_config, account: internal_account, key: EncryptedConfig::ESIGN_CERTS_KEY,
+                                value: { 'custom' => [{ 'name' => 'Broken', 'status' => 'default',
+                                                        'data' => Base64.urlsafe_encode64('not a pkcs12 at all'),
+                                                        'password' => 'x' }] })
+      allow(ErrorReport).to receive(:error).and_call_original
+      submission = submission_for(account)
+      bytes = downloaded_bytes(complete!(submission.submitters.first))
+
+      verify(bytes)
+
+      expect(response).to have_http_status(:ok)
+      expect(result_state).to eq('verified')
+      expect(ErrorReport).to have_received(:error)
+        .with(instance_of(OpenSSL::PKCS12::PKCS12Error), hash_including(account_id: internal_account.id))
+        .at_least(:once)
+    end
+  end
+
+  describe 'the page never generates the platform certificate' do
+    it 'answers not verified with no platform row yet, and writes no row' do
+      create(:account, :operator)
+
+      expect(PlatformCertificate.current_row).to be_nil
+
+      expect { verify(unsigned_pdf) }.not_to change(EncryptedConfig, :count)
+
+      expect(response).to have_http_status(:ok)
+      expect(result_state).to eq('not_verified')
+      expect(PlatformCertificate.current_row).to be_nil
+    end
+
+    it 'answers not verified with no operator account at all, never a 500' do
+      expect(Account.exists?(account_kind: Account::OPERATOR_KIND)).to be(false)
+
+      expect { verify(unsigned_pdf) }.not_to change(EncryptedConfig, :count)
+
+      expect(response).to have_http_status(:ok)
+      expect(result_state).to eq('not_verified')
+    end
+
+    it 'keeps the API verify tool from generating it too' do
+      api_account = create(:account, :paid)
+      api_user = create(:user, account: api_account)
+
+      expect do
+        post '/api/tools/verify', headers: { 'x-auth-token': api_user.access_token.token },
+                                  params: { file: Base64.encode64(unsigned_pdf) }.to_json
+      end.not_to change(EncryptedConfig, :count)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body['checksum_status']).to eq('not_found')
+    end
+  end
+
+  describe 'platform certificate rotation' do
+    before do
+      Rails.application.load_tasks unless Rake::Task.task_defined?('operator:platform_cert:rotate')
+    end
+
+    after { Rake::Task['operator:platform_cert:rotate'].reenable }
+
+    it 'keeps verifying documents signed before the rotation and signs new ones with the new leaf',
+       sidekiq: :inline do
+      platform_certificate!
+      old_pems = PlatformCertificate.current_row.value
+      old_bytes = downloaded_bytes(complete!(submission_for(account).submitters.first))
+
+      expect(signer_public_keys(old_bytes)).to eq([public_key_of(old_pems.fetch('cert'))])
+
+      output = capture_stdout { Rake::Task['operator:platform_cert:rotate'].execute }
+
+      new_pems = PlatformCertificate.current_row.value
+      expect(new_pems.fetch('cert')).not_to eq(old_pems.fetch('cert'))
+      expect(output).to include(PlatformCertificate.fingerprint(old_pems.fetch('cert')))
+      expect(output).to include(PlatformCertificate.fingerprint(new_pems.fetch('cert')))
+      expect(output).not_to include('PRIVATE KEY')
+
+      expect(EncryptedConfig.where(key: EncryptedConfig::PLATFORM_ESIGN_CERTS_KEY).count).to eq(1)
+      retired = EncryptedConfig.find_by!(key: EncryptedConfig::PLATFORM_ESIGN_CERTS_RETIRED_KEY).value
+      expect(retired.size).to eq(1)
+      expect(retired.sole).to include('cert' => old_pems.fetch('cert'))
+      expect(retired.sole.keys).not_to include('key')
+
+      verify(old_bytes)
+
+      expect(response).to have_http_status(:ok)
+      expect(result_state).to eq('verified')
+      expect(response.body).to include(today)
+      expect(response.body).to include('1 signer')
+
+      new_bytes = downloaded_bytes(complete!(submission_for(account).submitters.first))
+
+      expect(signer_public_keys(new_bytes)).to eq([public_key_of(new_pems.fetch('cert'))])
+
+      verify(new_bytes)
+
+      expect(response).to have_http_status(:ok)
+      expect(result_state).to eq('verified')
     end
   end
 

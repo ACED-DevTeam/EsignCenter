@@ -1379,6 +1379,8 @@ export default {
       }
     })
 
+    this.mergeUnclaimedDocumentFields()
+
     this.syncConversionPolling()
   },
   unmounted () {
@@ -3318,6 +3320,47 @@ export default {
         this.scheduleConversionPoll(attachmentUuid)
       })
     },
+    // A Word conversion that finished while no builder was open left its
+    // extracted fields in the document's metadata and `pending_fields` on
+    // the schema item, with nothing in template.fields yet: merge them here
+    // exactly as the poll would have, then save (which also drops the
+    // marker, so a later mount never merges twice).
+    mergeUnclaimedDocumentFields () {
+      if (!this.editable) return
+
+      const merged = []
+
+      this.template.schema.forEach((item) => {
+        if (!item.pending_fields) return
+
+        const document = this.template.documents.find((doc) => doc.uuid === item.attachment_uuid)
+        const pdfFields = document?.metadata?.pdf?.fields
+
+        if (!pdfFields?.length) return
+
+        const claimed = this.template.fields.some((field) => {
+          return (field.areas || []).some((area) => area.attachment_uuid === item.attachment_uuid)
+        })
+
+        if (claimed) return
+
+        pdfFields.forEach((field) => {
+          field.submitter_uuid = this.selectedSubmitter.uuid
+
+          this.insertField(field)
+        })
+
+        merged.push(item.attachment_uuid)
+      })
+
+      if (merged.length) {
+        // save() clears the keep-or-remove prompt, so the prompt is raised
+        // after it — the same order the upload flow uses.
+        this.save()
+
+        this.pendingFieldAttachmentUuids.push(...merged)
+      }
+    },
     onConversionReady (attachmentUuid, data) {
       this.stopConversionPolling(attachmentUuid)
 
@@ -3348,8 +3391,6 @@ export default {
         const pdfFields = data.document?.metadata?.pdf?.fields
 
         if (pdfFields?.length) {
-          this.pendingFieldAttachmentUuids.push(attachmentUuid)
-
           pdfFields.forEach((field) => {
             field.submitter_uuid = this.selectedSubmitter.uuid
 
@@ -3357,7 +3398,13 @@ export default {
           })
         }
 
+        // save() clears the keep-or-remove prompt, so the prompt is raised
+        // after it — the same order the upload flow uses.
         this.save()
+
+        if (pdfFields?.length) {
+          this.pendingFieldAttachmentUuids.push(attachmentUuid)
+        }
       }
     },
     onConversionFailed (attachmentUuid, data) {

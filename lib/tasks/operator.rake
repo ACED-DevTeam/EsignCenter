@@ -48,8 +48,10 @@ namespace :operator do
 
       puts 'An operator account already exists; no changes made.' unless adopted
 
-      # The platform signing certificate is generated once, on the operator
-      # account, and only here: a re-run leaves the existing row alone.
+      # The platform signing certificate lives on the operator account and is
+      # generated at most once — here, or by the first customer signing if
+      # that comes first (PlatformCertificate.ensure!). A re-run leaves the
+      # existing row alone.
       PlatformCertificate.ensure!
 
       next
@@ -76,8 +78,10 @@ namespace :operator do
 
     OperatorSeed.adopt_legacy_fulltext_flag(account)
 
-    # Generated once, here and nowhere else; `rake operator:platform_cert:fingerprint`
-    # prints its fingerprint and `…:export` writes the offline custody copy.
+    # Generated at most once — here, or by the first customer signing if that
+    # comes first; no read path ever generates it. `rake
+    # operator:platform_cert:fingerprint` prints its fingerprint and
+    # `…:export` writes the offline custody copy.
     PlatformCertificate.ensure!
   end
 
@@ -92,7 +96,9 @@ namespace :operator do
       path = args[:path].to_s
       abort 'PATH is required: rake "operator:platform_cert:export[/secure/path/platform-cert.pem]"' if path.blank?
 
-      pems = PlatformCertificate.pems
+      # The row must already exist: export is custody of what signs today,
+      # never a way to generate it.
+      pems = PlatformCertificate.current_pems!
       # Written 0600 before a single byte of key material lands in it.
       File.open(path, File::WRONLY | File::CREAT | File::TRUNC, 0o600) do |file|
         file.write(PlatformCertificate::EXPORT_ORDER.filter_map { |key| pems[key] }.join)
@@ -102,6 +108,17 @@ namespace :operator do
       # Never the key material itself: only what identifies the bundle.
       puts "Platform signing certificate fingerprint: #{PlatformCertificate.fingerprint}"
       puts "Wrote #{File.size(path)} bytes to #{path} (mode 0600)."
+    end
+
+    desc 'Retire the current platform signing certificate (kept for verification) and generate a new one'
+    task rotate: :environment do
+      old_fingerprint, new_fingerprint = PlatformCertificate.rotate!
+
+      # Never the key material: the fingerprints identify the two identities.
+      puts "Retired platform signing certificate fingerprint: #{old_fingerprint}"
+      puts "New platform signing certificate fingerprint:     #{new_fingerprint}"
+      puts 'The retired chain stays trusted for verification. Export the new one now: ' \
+           'rake "operator:platform_cert:export[/secure/path/platform-cert.pem]"'
     end
   end
 end

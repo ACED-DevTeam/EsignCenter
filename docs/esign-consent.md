@@ -104,8 +104,8 @@ afterwards therefore cannot record the new version for a text the signer
 never saw: the server refuses it, the page shows "The signing disclosure was
 updated. Please reload the page and agree again." at the checkbox, and after
 a reload the signer sees the new disclosure and a fresh checkbox. A request
-that carries no version at all (a page loaded before this field existed) is
-taken as the current version.
+that carries no version at all is refused the same way: only a consent that
+names the current version is recorded.
 
 ## 7. Locale rule
 

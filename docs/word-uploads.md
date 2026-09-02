@@ -22,8 +22,14 @@ back — and a conversion is not.
 3. If the conversion fails, the card says **"We couldn't convert this Word
    document. Save it as a PDF and upload again."** with the normal Remove
    button. A conversion that is still running after 5 minutes shows "This is
-   taking longer than expected. Refresh the page later." (the job keeps
-   running; a later page load shows the result).
+   taking longer than expected. Refresh the page later." — also with the
+   Remove button (the job keeps running; a later page load shows the
+   result). A document still marked converting **30 minutes** after its file
+   was stored has lost its job; the app treats it as failed from then on, so
+   a template is never blocked forever.
+4. If the conversion finished while nobody had the builder open, the form
+   fields found in the Word file are added the next time the builder opens
+   (with the same keep-or-remove prompt), not lost.
 
 **Nothing can be sent while a document is converting.** A template whose
 document is still converting — or failed to convert — is not ready for
@@ -80,7 +86,11 @@ When every slot is busy the job waits 15 seconds and tries again, for up to
 about 10 minutes, before marking the document failed. A document that
 LibreOffice cannot convert, or that times out, is marked failed at once and
 reported to Sentry as a warning; it is not retried (the result would be the
-same). Storage or database errors are retried by Sidekiq as usual (3 tries).
+same). Storage or database errors are retried by Sidekiq as usual (3 tries);
+when those run out the document is marked failed too. The job keeps its
+"still converting" markers until the PDF is stored, the template updated and
+the Word file purged, so a retry after any step resumes where it left off
+without converting again.
 
 ## Operator switches
 
@@ -107,7 +117,8 @@ Both are optional; nothing else needs configuring.
   entry in `config/sidekiq.yml` is only a fetch weight: the embedded Sidekiq
   runs its `SIDEKIQ_THREADS` worker threads across every queue, so the queue
   itself does not limit how many conversions run. The real cap is the
-  two-slot counter (`WordConverter::MAX_CONCURRENT`): at most two LibreOffice
-  processes at once, whatever the worker pool is doing — and if the counter's
-  store (Redis) cannot answer, the job waits and retries rather than run
-  uncounted.
+  two slot keys in Redis (`WordConverter::MAX_CONCURRENT`), each taken
+  atomically and released only by the worker holding it: at most two
+  LibreOffice processes at once, whatever the worker pool is doing — and if
+  the store (Redis) cannot answer, the job waits and retries rather than run
+  unaccounted.

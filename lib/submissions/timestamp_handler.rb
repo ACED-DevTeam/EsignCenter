@@ -6,9 +6,12 @@ module Submissions
     TIMEOUT = 10
 
     # A timestamp authority that cannot be reached is a failed signature, never
-    # a silently degraded one: the signing job raises, Sidekiq retries it and
-    # Sentry sees the report. Before Session 4 this handler embedded a locally
-    # generated time instead, which looked like a trusted timestamp but was not.
+    # a silently degraded one: every configured URL is tried in turn, then the
+    # signing job raises, Sidekiq retries it and the job's own error report
+    # (Submissions::EnsureResultGenerated) reaches Sentry — this handler does
+    # not report on its own, so one failure is one report from the app.
+    # Before Session 4 this handler embedded a locally generated time instead,
+    # which looked like a trusted timestamp but was not.
     class TimestampError < StandardError
       attr_reader :urls, :original_error
 
@@ -21,10 +24,16 @@ module Submissions
       end
     end
 
-    attr_reader :tsa_url, :tsa_fallback_url
+    # Every comma-separated URL, in order; each is a fallback for the ones
+    # before it.
+    attr_reader :urls
 
     def initialize(tsa_url:)
-      @tsa_url, @tsa_fallback_url = tsa_url.split(',')
+      @urls = tsa_url.to_s.split(',').map(&:strip).compact_blank
+    end
+
+    def tsa_url
+      urls.first
     end
 
     def finalize_objects(_signature_field, signature)
@@ -47,10 +56,6 @@ module Submissions
       end
 
       raise_timestamp_error!(last_error)
-    end
-
-    def urls
-      [tsa_url, tsa_fallback_url].compact_blank
     end
 
     def build_payload(digest)
@@ -90,11 +95,11 @@ module Submissions
       OpenSSL::Timestamp::Response.new(response.body).token.to_der
     end
 
-    # One report per signing attempt, however many URLs were tried.
+    # Raised once per signing attempt, however many URLs were tried. Not
+    # reported here: the signing job's rescue reports it exactly once.
     def raise_timestamp_error!(last_error)
       error = TimestampError.new(urls, last_error)
 
-      ErrorReport.error(error)
       Rails.logger.error(error)
 
       raise error

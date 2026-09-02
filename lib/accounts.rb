@@ -139,36 +139,54 @@ module Accounts
   end
 
   # What a signature from this account should be checked against: the platform
-  # chain (every customer signs with it), plus this account's own chain when it
-  # is an internal/operator account that owns one, plus the TRUSTED_CERTS
-  # environment chain. A customer without a row is not an error here.
+  # chain and every retired platform chain (every customer signs with it),
+  # plus this account's own chain when it is an internal/operator account
+  # that owns one, plus the TRUSTED_CERTS environment chain. A customer
+  # without a row is not an error here. Never generates the platform key.
   def load_trusted_certs(account)
     encrypted_config = esign_certs_config_for(account) unless account.customer?
 
-    [*PlatformCertificate.trusted_certs,
+    [*platform_chains,
      *config_trusted_certs(encrypted_config&.value),
      *Docuseal.trusted_certs]
   end
 
-  # Everything the public verify page may trust: the platform chain, every
-  # internal and operator account's own chain (documents signed before the
-  # platform certificate existed, and internal accounts today), and
-  # TRUSTED_CERTS. Cached for 5 minutes — certificate rows change by hand.
+  # Everything the public verify page may trust when checking a signature's
+  # chain: our own signer certificates (platform_signer_certs) plus
+  # TRUSTED_CERTS. The environment certificates help build a chain but never
+  # make a signature "ours" — that is platform_signer_certs' job.
   def platform_verification_certs
+    [*platform_signer_certs, *Docuseal.trusted_certs]
+  end
+
+  # The certificates a signature must have been made with to count as an
+  # EsignCenter signature: the current and every retired platform chain, and
+  # every internal and operator account's own chain (documents signed before
+  # the platform certificate existed, and internal accounts today). Account
+  # rows are cached for 5 minutes — they change by hand. Never generates.
+  def platform_signer_certs
     pems = Rails.cache.fetch('platform_verification_certs', expires_in: 5.minutes) do
       account_certs_pems
     end
 
-    [*PlatformCertificate.trusted_certs,
-     *pems.map { |pem| OpenSSL::X509::Certificate.new(pem) },
-     *Docuseal.trusted_certs]
+    [*platform_chains, *pems.map { |pem| OpenSSL::X509::Certificate.new(pem) }]
   end
 
+  def platform_chains
+    [*PlatformCertificate.current_chain, *PlatformCertificate.retired_chains]
+  end
+
+  # One unreadable row (a corrupt custom PKCS#12, a bad password) is reported
+  # and skipped: it must not take verification down for every other account.
   def account_certs_pems
     accounts = Account.where(account_kind: [Account::INTERNAL_KIND, Account::OPERATOR_KIND])
 
     EncryptedConfig.where(account: accounts, key: EncryptedConfig::ESIGN_CERTS_KEY).flat_map do |config|
       config_trusted_certs(config.value).map(&:to_pem)
+    rescue OpenSSL::OpenSSLError, ArgumentError => e
+      ErrorReport.error(e, account_id: config.account_id, key: config.key)
+
+      []
     end
   end
 

@@ -14,10 +14,12 @@ require 'rake'
 # the operator falls back to the platform certificate, and with no operator
 # account at all signing stops loudly instead of picking some other identity.
 #
-# A timestamp authority that cannot be reached fails the signing job (Sentry
-# sees it, Sidekiq retries) instead of embedding a locally generated time, and
-# certificates and the timestamp server can only be managed by the platform
-# operator. See docs/operations.md.
+# A rotation retires the current chain (kept forever for verification) and
+# generates a new identity; no read path ever generates the certificate. A
+# timestamp authority that cannot be reached — after every configured URL was
+# tried — fails the signing job (reported once, Sidekiq retries) instead of
+# embedding a locally generated time, and certificates and the timestamp
+# server can only be managed by the platform operator. See docs/operations.md.
 RSpec.describe 'Platform certificate', type: :request do
   let!(:account) { create(:account) }
   let(:internal_account) { create(:account, :internal) }
@@ -65,6 +67,7 @@ RSpec.describe 'Platform certificate', type: :request do
   # The real interactive completion path, consent included (Phase A).
   def complete!(submitter)
     put "/s/#{submitter.slug}", params: { completed: 'true', esign_consent: 'true',
+                                          esign_consent_version: EsignConsent::VERSION,
                                           values: { text_field(submitter)['uuid'] => 'Jane' } }
 
     expect(response).to have_http_status(:ok)
@@ -181,6 +184,80 @@ RSpec.describe 'Platform certificate', type: :request do
       expect(pems).to include(internal_certificate_data.fetch(:cert))
       expect(pems).not_to include(customer_certificate_data.fetch(:cert))
     end
+
+    # TRUSTED_CERTS helps build a chain; it never makes a signature ours.
+    it 'keeps the environment chain out of the signer set' do
+      platform_certificate!
+      env_cert = GenerateCertificate.call('Env').fetch(:cert)
+      allow(Docuseal).to receive(:trusted_certs).and_return([env_cert])
+
+      expect(Accounts.platform_verification_certs.map(&:to_pem)).to include(env_cert.to_pem)
+      expect(Accounts.platform_signer_certs.map(&:to_pem)).not_to include(env_cert.to_pem)
+      expect(Accounts.platform_signer_certs.map(&:to_pem)).to include(platform_certificate_pems.fetch('cert'))
+    end
+
+    it 'reads nothing into existence: no row and no operator account both answer an empty platform chain' do
+      expect(Account.exists?(account_kind: Account::OPERATOR_KIND)).to be(false)
+
+      expect { expect(Accounts.platform_verification_certs).to eq([]) }.not_to change(EncryptedConfig, :count)
+      expect { expect(Accounts.load_trusted_certs(account)).to eq([]) }.not_to change(EncryptedConfig, :count)
+
+      create(:account, :operator)
+
+      expect { expect(PlatformCertificate.current_chain).to eq([]) }.not_to change(EncryptedConfig, :count)
+      expect { expect(Accounts.platform_signer_certs).to eq([]) }.not_to change(EncryptedConfig, :count)
+      expect { PlatformCertificate.fingerprint }.to raise_error(PlatformCertificate::MissingCertificateError, /seed/)
+    end
+  end
+
+  describe 'rotation' do
+    it 'retires the current chain, signs with a fresh one and keeps the retired chain trusted' do
+      platform_row = platform_certificate!
+      old_pems = platform_row.value
+      old_key = public_key_of(old_pems.fetch('cert'))
+
+      expect(Accounts.load_signing_pkcs(account).certificate.public_key.to_der).to eq(old_key)
+
+      old_fingerprint, new_fingerprint = PlatformCertificate.rotate!
+
+      expect(old_fingerprint).to eq(PlatformCertificate.fingerprint(old_pems.fetch('cert')))
+      expect(new_fingerprint).to eq(PlatformCertificate.fingerprint)
+      expect(new_fingerprint).not_to eq(old_fingerprint)
+
+      current_rows = EncryptedConfig.where(key: EncryptedConfig::PLATFORM_ESIGN_CERTS_KEY)
+      expect(current_rows.count).to eq(1)
+      expect(current_rows.sole.value.fetch('cert')).not_to eq(old_pems.fetch('cert'))
+
+      retired = EncryptedConfig.find_by!(key: EncryptedConfig::PLATFORM_ESIGN_CERTS_RETIRED_KEY).value
+      expect(retired.size).to eq(1)
+      expect(retired.sole).to include('cert' => old_pems.fetch('cert'), 'sub_ca' => old_pems.fetch('sub_ca'),
+                                      'root_ca' => old_pems.fetch('root_ca'))
+      expect(retired.sole['retired_at']).to be_present
+      expect(retired.sole.keys).not_to include('key', 'sub_key', 'root_key')
+
+      # New signatures use the new leaf (the memo did not survive the rotation) …
+      new_key = public_key_of(current_rows.sole.value.fetch('cert'))
+      expect(Accounts.load_signing_pkcs(account).certificate.public_key.to_der).to eq(new_key)
+      expect(new_key).not_to eq(old_key)
+
+      # … and every verifier still trusts the retired chain.
+      expect(PlatformCertificate.retired_chains.map(&:to_pem))
+        .to include(old_pems.fetch('cert'), old_pems.fetch('root_ca'))
+      expect(Accounts.platform_signer_certs.map(&:to_pem)).to include(old_pems.fetch('cert'))
+      expect(Accounts.load_trusted_certs(account).map(&:to_pem)).to include(old_pems.fetch('cert'))
+
+      PlatformCertificate.rotate!
+
+      expect(EncryptedConfig.find_by!(key: EncryptedConfig::PLATFORM_ESIGN_CERTS_RETIRED_KEY).value.size).to eq(2)
+      expect(current_rows.count).to eq(1)
+    end
+
+    it 'refuses to rotate what was never seeded' do
+      create(:account, :operator)
+
+      expect { PlatformCertificate.rotate! }.to raise_error(PlatformCertificate::MissingCertificateError, /seed/)
+      expect(EncryptedConfig.count).to eq(0)
+    end
   end
 
   describe 'timestamp server' do
@@ -210,32 +287,100 @@ RSpec.describe 'Platform certificate', type: :request do
   describe 'a timestamp authority failure is loud' do
     let(:tsa_url) { 'http://tsa.test/rfc3161' }
 
+    # A self-signed timestamping certificate and a real RFC 3161 response for
+    # the request the handler sends, so the third authority can answer.
+    let(:tsa_key) { OpenSSL::PKey::RSA.new(2048) }
+    let(:tsa_cert) do
+      cert = OpenSSL::X509::Certificate.new
+      cert.version = 2
+      cert.serial = 1
+      cert.subject = cert.issuer = OpenSSL::X509::Name.parse('/CN=Golden TSA')
+      cert.public_key = tsa_key.public_key
+      cert.not_before = 1.minute.ago
+      cert.not_after = 1.hour.from_now
+      extensions = OpenSSL::X509::ExtensionFactory.new
+      extensions.subject_certificate = extensions.issuer_certificate = cert
+      cert.add_extension(extensions.create_extension('extendedKeyUsage', 'timeStamping', true))
+      cert.add_extension(extensions.create_extension('basicConstraints', 'CA:FALSE', true))
+      cert.sign(tsa_key, 'sha256')
+    end
+
     before do
       platform_certificate!
       stub_const('Docuseal::TIMESERVER_URL', tsa_url)
       allow(ErrorReport).to receive(:error)
     end
 
+    def timestamp_response_for(request_der)
+      factory = OpenSSL::Timestamp::Factory.new
+      # OpenSSL wants a plain Time, not a TimeWithZone, and rejects the
+      # request with BAD_ALG unless its digest is explicitly allowed.
+      factory.gen_time = Time.current.to_time
+      factory.serial_number = 1
+      factory.default_policy_id = '1.2.3.4.5'
+      factory.allowed_digests = [Submissions::TimestampHandler::HASH_ALGORITHM.downcase]
+
+      factory.create_timestamp(tsa_key, tsa_cert, OpenSSL::Timestamp::Request.new(request_der)).to_der
+    end
+
     # Before Session 4 a failing TSA silently embedded a locally generated
-    # time that looked like a trusted timestamp. Now the signing job raises:
-    # Sidekiq retries it and Sentry gets exactly one report.
+    # time that looked like a trusted timestamp. Now the signing job raises,
+    # and the job's own rescue (EnsureResultGenerated) reports it exactly
+    # once — the handler does not report on its own.
     [
       ['an error response', -> { stub_request(:post, 'http://tsa.test/rfc3161').to_return(status: 500) }],
       ['a timeout', -> { stub_request(:post, 'http://tsa.test/rfc3161').to_timeout }]
     ].each do |description, build_stub|
-      it "fails the signing job on #{description} and writes no signed PDF" do
+      it "fails the signing job on #{description}, writes no signed PDF and reports once" do
         instance_exec(&build_stub)
 
         submitter = complete!(emailed_submitter_for(account))
 
         expect do
-          Submissions::GenerateResultAttachments.call(submitter)
+          Submissions::EnsureResultGenerated.call(submitter)
         end.to raise_error(Submissions::TimestampHandler::TimestampError, /#{Regexp.escape(tsa_url)}/)
 
         expect(submitter.documents.reload).to be_empty
         expect(ErrorReport).to have_received(:error)
           .with(instance_of(Submissions::TimestampHandler::TimestampError)).once
       end
+    end
+
+    it 'tries every configured authority in order and signs with the first one that answers' do
+      stub_const('Docuseal::TIMESERVER_URL',
+                 'http://tsa-a.test/rfc3161, http://tsa-b.test/rfc3161 ,http://tsa-c.test/rfc3161')
+      stub_request(:post, 'http://tsa-a.test/rfc3161').to_return(status: 500)
+      stub_request(:post, 'http://tsa-b.test/rfc3161').to_timeout
+      stub_request(:post, 'http://tsa-c.test/rfc3161')
+        .to_return { |request| { status: 200, body: timestamp_response_for(request.body) } }
+
+      submitter = complete!(emailed_submitter_for(account))
+
+      documents = Submissions::EnsureResultGenerated.call(submitter)
+
+      expect(documents).not_to be_empty
+      expect(submitter.documents.reload).not_to be_empty
+      expect(signer_public_keys(submitter.documents.first.download))
+        .to eq([public_key_of(platform_certificate_pems.fetch('cert'))])
+
+      expect(WebMock).to have_requested(:post, 'http://tsa-a.test/rfc3161').at_least_once
+      expect(WebMock).to have_requested(:post, 'http://tsa-b.test/rfc3161').at_least_once
+      expect(WebMock).to have_requested(:post, 'http://tsa-c.test/rfc3161').at_least_once
+      expect(ErrorReport).not_to have_received(:error)
+    end
+
+    it 'gives up only after the last configured authority failed' do
+      stub_const('Docuseal::TIMESERVER_URL', 'http://tsa-a.test/rfc3161,http://tsa-b.test/rfc3161,http://tsa-c.test/rfc3161')
+      %w[a b c].each { |name| stub_request(:post, "http://tsa-#{name}.test/rfc3161").to_return(status: 503) }
+
+      submitter = complete!(emailed_submitter_for(account))
+
+      expect { Submissions::EnsureResultGenerated.call(submitter) }
+        .to raise_error(Submissions::TimestampHandler::TimestampError, /tsa-a\.test.*tsa-b\.test.*tsa-c\.test/)
+
+      %w[a b c].each { |name| expect(WebMock).to have_requested(:post, "http://tsa-#{name}.test/rfc3161").once }
+      expect(submitter.documents.reload).to be_empty
+      expect(ErrorReport).to have_received(:error).once
     end
   end
 
@@ -278,6 +423,7 @@ RSpec.describe 'Platform certificate', type: :request do
 
     it 'shows an account admin the preferences only, never the certificate or timestamp-server surfaces' do
       operator_account
+      platform_certificate!
       act_as(account)
 
       get settings_esign_path
@@ -293,19 +439,41 @@ RSpec.describe 'Platform certificate', type: :request do
       # admin gets the card linking there, nobody gets an in-app dropzone.
       expect(response.body).to include(verify_path)
       expect(response.body).not_to include('name="files[]"')
+      # The platform identity is the operator's to see, nobody else's.
+      expect(response.body).not_to include(I18n.t('platform_signing_certificate'))
+      expect(response.body).not_to include(PlatformCertificate.fingerprint)
     end
 
-    it 'shows the operator the certificate table, the upload button and the timestamp-server form' do
+    it 'shows the operator the platform certificate read-only, then this account certificates and the TSA form' do
+      platform_certificate!
       sign_in(operator)
 
       get settings_esign_path
 
       expect(response).to have_http_status(:ok)
       expect(response.body).to include(I18n.t('signing_certificates'))
+      expect(response.body).to include(I18n.t('platform_signing_certificate'))
+      expect(response.body).to include(PlatformCertificate.fingerprint)
+      expect(response.body).to include(I18n.t('platform_certificate_used_by_every_customer_account'))
+      leaf = OpenSSL::X509::Certificate.new(platform_certificate_pems.fetch('cert'))
+      expect(response.body).to include(I18n.l(leaf.not_after.to_date, format: :long, locale: operator_account.locale))
+      # ERB escapes the apostrophe in the label.
+      expect(response.body).to include(ERB::Util.html_escape(I18n.t('this_account_certificates')))
+      expect(response.body).to include(I18n.t('this_account_certificates_hint'))
       expect(response.body).to include(I18n.t('timestamp_server'))
+      expect(response.body).to include(I18n.t('timestamp_server_operator_only_hint'))
       expect(response.body).to include(verify_path)
       expect(response.body).to include(new_settings_esign_path)
       expect(response.body).to include(I18n.t('preferences'))
+    end
+
+    it 'tells the operator to seed when there is no platform certificate yet, without creating one' do
+      sign_in(operator)
+
+      expect { get settings_esign_path }.not_to change(EncryptedConfig, :count)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include(I18n.t('platform_certificate_not_generated_yet'))
     end
 
     it 'lets the operator open the upload form and save a timestamp server' do
@@ -346,6 +514,7 @@ RSpec.describe 'Platform certificate', type: :request do
     after do
       Rake::Task['operator:seed'].reenable
       Rake::Task['operator:platform_cert:export'].reenable
+      Rake::Task['operator:platform_cert:rotate'].reenable
     end
 
     def platform_rows
@@ -389,6 +558,37 @@ RSpec.describe 'Platform certificate', type: :request do
       expect(output).not_to include('BEGIN CERTIFICATE')
     ensure
       FileUtils.rm_f(path)
+    end
+
+    it 'refuses to export or print a certificate that does not exist, instead of generating one' do
+      create(:account, :operator)
+      path = Rails.root.join("tmp/platform-cert-#{SecureRandom.hex(4)}.pem").to_s
+
+      expect do
+        Rake::Task['operator:platform_cert:export'].execute(Rake::TaskArguments.new([:path], [path]))
+      end.to raise_error(PlatformCertificate::MissingCertificateError, /seed/)
+      expect { Rake::Task['operator:platform_cert:fingerprint'].execute }
+        .to raise_error(PlatformCertificate::MissingCertificateError, /seed/)
+
+      expect(File.exist?(path)).to be(false)
+      expect(EncryptedConfig.count).to eq(0)
+    ensure
+      FileUtils.rm_f(path)
+    end
+
+    it 'rotates from the command line and prints both fingerprints and no key material' do
+      platform_row = platform_certificate!
+      old_fingerprint = PlatformCertificate.fingerprint(platform_row.value.fetch('cert'))
+
+      output = capture_stdout { Rake::Task['operator:platform_cert:rotate'].execute }
+
+      expect(output).to include(old_fingerprint)
+      expect(output).to include(PlatformCertificate.fingerprint)
+      expect(PlatformCertificate.fingerprint).not_to eq(old_fingerprint)
+      expect(output).to include('operator:platform_cert:export')
+      expect(output).not_to include('PRIVATE KEY')
+      expect(output).not_to include('BEGIN CERTIFICATE')
+      expect(EncryptedConfig.find_by!(key: EncryptedConfig::PLATFORM_ESIGN_CERTS_RETIRED_KEY).value.size).to eq(1)
     end
 
     it 'prints only the fingerprint of the platform certificate' do

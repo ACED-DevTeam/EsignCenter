@@ -32,12 +32,14 @@ module Templates
     end
 
     # `converting` stays on until the job's post-processing is done, so a
-    # PDF blob that is already stored still reads as converting here.
+    # PDF blob that is already stored still reads as converting here. A
+    # conversion that has gone stale (Templates::CONVERSION_STALE_AFTER)
+    # reads as failed: its job is lost and the user needs the Remove button.
     def status_for(document)
-      if document.metadata['converting']
-        'converting'
-      elsif document.metadata['conversion_failed']
+      if Templates.conversion_failed?(document)
         'failed'
+      elsif Templates.converting?(document)
+        'converting'
       else
         'ready'
       end

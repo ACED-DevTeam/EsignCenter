@@ -67,12 +67,42 @@ Session 7's deletion inventory must list `verified_documents` as **KEEP**.
 
 ## 6. Limits
 
-- One PDF per request, up to **25 MB**. Larger uploads are refused from the
-  declared size before the body is parsed.
+- One PDF per request, up to **25 MB**. A larger file is refused before it
+  is read into memory or parsed as a PDF: first from the request's declared
+  size (with a 1 MB allowance for the upload envelope, so a valid 25 MB file
+  is not turned away), then from the file's own size.
 - The file must actually be a PDF (the bytes are sniffed, the extension is
   ignored). Anything else, or a PDF that cannot be parsed, is refused.
 - **10 checks per minute** and **100 per hour** per IP address. The eleventh
   attempt gets a friendly "wait a minute" message with a 429 status.
+
+## 6a. What counts as "our" signature
+
+A signature is ours only when it was made with the platform certificate
+(current **or retired** — see below), or with an internal or operator
+account's own certificate. Extra root certificates listed in the
+`TRUSTED_CERTS` environment variable help check a signature's chain but never
+make a signature count as EsignCenter's.
+
+- **Rotating the platform certificate keeps old documents verifying.**
+  `rake operator:platform_cert:rotate` moves the old chain to a retired list
+  that the page trusts forever; nothing is deleted. Documents signed under a
+  retired certificate still answer **Verified** (docs/operations.md 8.3).
+- **The page never creates the platform certificate.** If it does not exist
+  yet, every upload answers "not verified" until the seed or the first
+  signing creates it — an anonymous visitor cannot trigger that.
+- **One unreadable certificate row does not break the page.** A corrupt
+  uploaded certificate on an internal account is reported to Sentry and
+  skipped; every other signature still verifies.
+- **Launch-gate check (pre-Session-4 history):** Session 1 turned every
+  pre-existing account into an internal one and copied one certificate row to
+  all of them, so no production document is expected to carry a signature
+  from a *customer-kind* account's own certificate. If one is ever found (the
+  page says "not verified" for a document that should verify), that
+  account's certificate row still exists in the database, so nothing is
+  lost — but making it count needs an engineer to add that row to the signer
+  set (`Accounts.account_certs_pems`); listing it in `TRUSTED_CERTS` alone
+  would not do it, for the reason above.
 
 ## 7. "Not on record" for older files
 

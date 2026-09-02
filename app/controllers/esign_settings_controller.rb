@@ -24,6 +24,8 @@ class EsignSettingsController < ApplicationController
   authorize_resource :encrypted_config, only: %i[update destroy show]
 
   def show
+    load_platform_certificate if operator_access?
+
     cert_data = @encrypted_config.value || {}
 
     default_pkcs = GenerateCertificate.load_pkcs(cert_data) if cert_data['cert'].present?
@@ -94,6 +96,18 @@ class EsignSettingsController < ApplicationController
   end
 
   private
+
+  # Read-only: the platform identity every customer signs with, shown so the
+  # operator can compare its fingerprint with the offline copy. Never
+  # generated from a page view (PlatformCertificate.current_row).
+  def load_platform_certificate
+    pems = PlatformCertificate.current_row&.value
+
+    return if pems.blank?
+
+    @platform_certificate = OpenSSL::X509::Certificate.new(pems['cert'])
+    @platform_certificate_fingerprint = PlatformCertificate.fingerprint_of(@platform_certificate)
+  end
 
   def load_encrypted_config
     @encrypted_config = EncryptedConfig.find_or_initialize_by(account: current_account,

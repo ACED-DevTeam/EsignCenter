@@ -1,9 +1,9 @@
 # frozen_string_literal: true
 
 # A consent is recorded for the disclosure version the signer actually saw:
-# the form sends the version it displayed, a different one is refused with a
-# reload message, and one submitter never gets two consent events even when
-# two requests record at once.
+# the form sends the version it displayed, a different one — or none at all —
+# is refused with a reload message, and one submitter never gets two consent
+# events even when two requests record at once.
 #
 # Companion to spec/golden/consent_spec.rb (which proves the gate on every
 # path); this file proves the version binding and the once-only guarantee.
@@ -55,13 +55,16 @@ RSpec.describe 'ESIGN consent version', type: :request do
       expect(consent_events(submitter).sole.data).to include('version' => EsignConsent::VERSION)
     end
 
-    # A page loaded before the version field existed sends no version; it saw
-    # the current text, so the consent is recorded for the current version.
-    it 'takes a consent without a version as the current version' do
+    # A request with no version at all is stale too: nothing vouches for which
+    # text that page showed, so the signer reloads and agrees again.
+    it 'refuses a consent without a version as stale and records nothing' do
       complete(submitter, esign_consent: 'true')
 
-      expect(response).to have_http_status(:ok)
-      expect(consent_events(submitter).sole.data).to include('version' => EsignConsent::VERSION)
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body).to eq('error' => 'esign_consent_version_stale')
+      expect(consent_events(submitter)).not_to exist
+      expect(submitter.reload.completed_at).to be_nil
+      expect(ProcessSubmitterCompletionJob.jobs).to be_empty
     end
 
     it 'refuses a stale version on the invite request too' do
@@ -98,8 +101,12 @@ RSpec.describe 'ESIGN consent version', type: :request do
       expect(consent_events(submitter).count).to eq(1)
     end
 
-    it 'raises before touching the database for a stale version' do
+    it 'raises before touching the database for a stale or missing version' do
       expect { EsignConsent.record!(submitter, request, version: 'v0') }
+        .to raise_error(EsignConsent::StaleVersionError)
+      expect { EsignConsent.record!(submitter, request, version: nil) }
+        .to raise_error(EsignConsent::StaleVersionError)
+      expect { EsignConsent.record!(submitter, request) }
         .to raise_error(EsignConsent::StaleVersionError)
 
       expect(consent_events(submitter)).not_to exist

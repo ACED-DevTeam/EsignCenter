@@ -384,7 +384,7 @@ Sessions 5–6 and are listed there when they land.
 | `SMTP_FROM` | Required with `SMTP_ADDRESS` | `lib/mail_configs.rb`, `config/initializers/email_delivery.rb` | **Boot refuses to start** in production when `SMTP_ADDRESS` is set and this is not — otherwise platform mail would go out under a tenant's From address. Format: `EsignCenter <noreply@esigncenter.com>`. |
 | `SMTP_DOMAIN`, `SMTP_AUTHENTICATION`, `SMTP_ENABLE_STARTTLS`, `SMTP_ENABLE_SSL`, `SMTP_ENABLE_TLS`, `SMTP_SSL_VERIFY`, `SMTP_OPEN_TIMEOUT`, `SMTP_READ_TIMEOUT` | Optional | `lib/mail_configs.rb` | Tuning for non-Postmark servers. Defaults: STARTTLS on, certificate verification on, 15 s open / 25 s read timeouts. Leave unset for Postmark. |
 | `EMAIL_DELIVERY_MODE` | Optional | `lib/mail_configs.rb`, `config/initializers/email_delivery.rb` | Defaults to `smtp` in production and `test` elsewhere. Set only to force one of those; any other value refuses to boot in production. In `test` mode no mail leaves the server. |
-| `TIMESERVER_URL` | **Required** | `lib/docuseal.rb`, `lib/accounts.rb`, `config/initializers/timestamp_server_guard.rb` | The trusted timestamp authority (the DigiCert URL chosen in Session 0) stamped into every signed PDF. **Boot refuses to start** in production when it is unset. If the authority is unreachable at signing time the signing job **fails loudly** — Sentry gets one report and Sidekiq retries the job — instead of embedding a locally generated time that only looked trusted (section 8). |
+| `TIMESERVER_URL` | **Required** | `lib/docuseal.rb`, `lib/accounts.rb`, `config/initializers/timestamp_server_guard.rb` | The trusted timestamp authority (the DigiCert URL chosen in Session 0) stamped into every signed PDF; several URLs may be listed comma-separated and every one is tried in turn. **Boot refuses to start** in production when it is unset. If no authority answers at signing time the signing job **fails loudly** — the app reports it once and Sidekiq retries the job — instead of embedding a locally generated time that only looked trusted (section 8.4). |
 | `REDIS_URL` | Optional today; required for managed Redis | `config/dotenv.rb`, `lib/rate_limit.rb`, Sidekiq | When unset the app derives a local URL and starts its own Redis inside the container (`lib/puma/plugin/redis_server.rb`). Setting it to a managed Redis URL turns the embedded one off automatically. See section 5. |
 | `SIDEKIQ_THREADS` | Optional | `lib/puma/plugin/sidekiq_embed.rb` | Background-job worker threads; default 5. |
 | `RUN_MIGRATIONS` | Optional | `config/initializers/migrate.rb` | Migrations run on every production boot unless set to `false`. Leave unset on Render; use `false` only for one-off consoles against a copy. |
@@ -527,9 +527,9 @@ review** (the checklist notes the PDF work already needs Standard).
 
 What shipped (Session 4 D): conversions run on the `documents` Sidekiq queue
 (a fetch weight on the shared worker pool, not a thread of its own), at most
-**two** LibreOffice processes at once — the two-slot counter
-(`WordConverter::MAX_CONCURRENT`) is the real cap, and it fails closed when
-Redis cannot answer — a 120-second hard timeout that kills the
+**two** LibreOffice processes at once — two slot keys in Redis
+(`WordConverter::MAX_CONCURRENT`), each taken atomically, are the real cap,
+and the cap fails closed when Redis cannot answer — a 120-second hard timeout that kills the
 whole process group, a 20 MB file cap, and 30 conversions per account per
 hour. Budget a few hundred megabytes per running conversion on top of the
 web server's working set when choosing the tier. `WORD_CONVERSION_ENABLED=false`
@@ -770,24 +770,43 @@ the running app is signing with a certificate you do not have a copy of.
 - **Restore:** the certificate comes back with the database (it is a row in
   `encrypted_configs`). The offline copy is the fallback for the case where
   the database is gone for good.
-- **Rotation** (only if the key is believed exposed): in the Render Shell,
-  delete the platform row and let the next signature generate a fresh one —
+- **Rotation** (only if the key is believed exposed) is one rake task:
 
   ```sh
-  bundle exec rails runner 'OperatorConfigs.account.encrypted_configs.find_by(key: EncryptedConfig::PLATFORM_ESIGN_CERTS_KEY)&.destroy!; puts PlatformCertificate.fingerprint'
+  bundle exec rake operator:platform_cert:rotate
   ```
 
-  then **export the new one immediately**. Consequence: documents signed
-  before the rotation stay valid and verifiable — the old certificate is
-  still trusted for verification — but new signatures carry the new
-  identity, and the two fingerprints differ. Never rotate casually.
+  It moves the current chain (certificate and its two authority
+  certificates — never the private keys) onto an append-only **retired
+  list** (`platform_esign_certs_retired` on the operator account), generates
+  a fresh identity into the current row, and prints both fingerprints: the
+  retired one and the new one. Then **export the new one immediately**
+  (section 8.2).
+
+  **Never delete the platform row to rotate.** The public `/verify` page and
+  the API verify tool trust the current chain *and every retired chain*, so
+  documents signed before a rotation keep verifying forever; a deleted row
+  would turn every one of them into "not verified". New signatures carry the
+  new identity, so the two fingerprints differ from that moment on. Never
+  rotate casually.
+- **Nothing generates the certificate except signing and the seed.** The
+  first customer signing (or `rake operator:seed`, whichever comes first)
+  creates the row; the `/verify` page, the API verify tool, the E-Signature
+  settings page and the export/fingerprint/rotate tasks only *read* it. With
+  no row yet, `/verify` simply answers "not verified" and the tasks say to
+  run the seed. No anonymous upload can mint the platform key.
 
 ### 8.4 The timestamp authority is loud now
 
 `TIMESERVER_URL` is required in production; the app refuses to boot without
-it. When the authority is unreachable or answers with an error, the signing
-job now **fails**: Sentry gets one report, Sidekiq retries the job (a short
-outage heals itself), and no document is written with a fake timestamp. The
+it. It may hold several URLs separated by commas; each one is a fallback for
+the ones before it and **every** one is tried in turn. When none of them
+answers, the signing job **fails**: the app reports the failure once (from
+the signing job's own error handler — the timestamp code itself does not
+report separately), Sidekiq retries the job (a short outage heals itself),
+and no document is written with a fake timestamp. Sidekiq's own Sentry
+integration is a second, independent channel: it files the retried job's
+exception on its own, so Sentry may show the failure under two events. The
 old behaviour embedded a locally generated time that looked like a trusted
 timestamp but proved nothing.
 
@@ -798,8 +817,17 @@ own.
 ### 8.5 Certificates and timestamps are operator-only surfaces
 
 In **Settings → E-Signature**, every admin still sees the signing
-preferences (multiple signatures, flatten, download filename). The
-certificate table, the certificate upload button, the timestamp-server form
-and the PDF-verification box are visible **only** to the platform operator;
-for everyone else those pages return 404, exactly as if the routes did not
-exist.
+preferences (multiple signatures, flatten, download filename) and the card
+linking to the public `/verify` page. The rest is visible **only** to the
+platform operator; for everyone else those routes return 404, exactly as if
+they did not exist. What the operator sees there:
+
+- **Platform signing certificate** — read-only: the product name, the
+  SHA-256 fingerprint (compare it with the offline copy) and the valid-until
+  date of the certificate every customer account signs with. It cannot be
+  changed on this page; the rake tasks in 8.2 and 8.3 manage it.
+- **This account's certificates** — the operator *account's own* rows. A
+  certificate uploaded here makes the **operator account** sign with it
+  instead of the platform certificate; it changes nothing for any customer.
+- **Timestamp server** — likewise the operator account's own pin. Customer
+  accounts always use `TIMESERVER_URL`; a row saved here does not reach them.

@@ -3,7 +3,7 @@
 RSpec.describe WordConverter do
   let(:docx) { Rails.root.join('spec/fixtures/fieldtags.docx').binread }
   let(:fixture_bin) { Rails.root.join('spec/fixtures/bin') }
-  let(:active_key) { described_class::ACTIVE_KEY }
+  let(:slot_keys) { described_class.slot_keys }
 
   before do
     described_class.reset!
@@ -90,53 +90,55 @@ RSpec.describe WordConverter do
   end
 
   describe '.with_slot' do
-    it 'raises Busy beyond MAX_CONCURRENT and leaves the counter where it was' do
-      described_class::MAX_CONCURRENT.times { RateLimit.store.increment(active_key, 1) }
+    def held_tokens
+      slot_keys.filter_map { |key| RateLimit.store.read(key) }
+    end
+
+    it 'gives each holder its own slot and refuses a third while two are held' do
+      described_class.with_slot do
+        described_class.with_slot do
+          expect(held_tokens.size).to eq(2)
+          expect(held_tokens.uniq.size).to eq(2)
+
+          expect { described_class.with_slot { raise 'never reached' } }
+            .to raise_error(WordConverter::Busy, /2 conversions already running/)
+
+          # The refused caller took nothing and released nothing.
+          expect(held_tokens.size).to eq(2)
+        end
+
+        expect(held_tokens.size).to eq(1)
+      end
+
+      expect(held_tokens).to be_empty
+    end
+
+    it 'frees the slot when the block raises' do
+      expect { described_class.with_slot { raise 'boom' } }.to raise_error('boom')
+
+      expect(held_tokens).to be_empty
+    end
+
+    # A holder whose TTL ran out mid-conversion finds its key taken over by
+    # another worker: releasing must not delete that worker's slot.
+    it 'never deletes a slot that carries another worker token' do
+      described_class.with_slot do
+        key = slot_keys.find { |slot_key| RateLimit.store.read(slot_key) }
+        RateLimit.store.write(key, 'other-worker-token')
+      end
+
+      expect(held_tokens).to eq(['other-worker-token'])
+    end
+
+    it 'fails closed when the store cannot claim a slot, whether it answers nil or raises' do
+      allow(RateLimit.store).to receive(:write).and_return(nil)
 
       expect { described_class.with_slot { raise 'never reached' } }.to raise_error(WordConverter::Busy)
-      expect(RateLimit.store.read(active_key)).to eq(described_class::MAX_CONCURRENT)
-    end
 
-    it 'holds a slot for the block and frees it afterwards, also when the block raises' do
-      described_class.with_slot do
-        expect(RateLimit.store.read(active_key)).to eq(1)
-      end
+      allow(RateLimit.store).to receive(:write).and_raise(StandardError, 'store down')
 
-      # A released last slot deletes the key (a fresh key gets a fresh TTL).
-      expect(RateLimit.store.read(active_key)).to be_nil
-
-      expect { described_class.with_slot { raise 'boom' } }.to raise_error('boom')
-      expect(RateLimit.store.read(active_key)).to be_nil
-    end
-
-    it 'never leaves the counter at or below zero, whatever it found' do
-      RateLimit.store.write(active_key, 0)
-
-      described_class.with_slot do
-        expect(RateLimit.store.read(active_key)).to eq(1)
-      end
-
-      expect(RateLimit.store.read(active_key)).to be_nil
-
-      # A stale key that drifted negative (decrement after the TTL expired).
-      RateLimit.store.write(active_key, -1)
-
-      described_class.with_slot do
-        expect(RateLimit.store.read(active_key)).to eq(0)
-      end
-
-      expect(RateLimit.store.read(active_key)).to be_nil
-    end
-
-    it 'fails closed when the store cannot count (nil increment) and touches nothing' do
-      allow(RateLimit.store).to receive(:increment).and_return(nil)
-      allow(RateLimit.store).to receive(:decrement).and_call_original
-
-      expect { described_class.with_slot { raise 'never reached' } }
-        .to raise_error(WordConverter::Busy, /unavailable/)
-
-      expect(RateLimit.store).not_to have_received(:decrement)
-      expect(RateLimit.store.read(active_key)).to be_nil
+      expect { described_class.with_slot { raise 'never reached' } }.to raise_error(WordConverter::Busy)
+      expect(held_tokens).to be_empty
     end
   end
 

@@ -34,6 +34,19 @@ RSpec.describe 'Word document uploads', type: :request do
     post '/templates_upload', params: { files: [file] }
   end
 
+  # fieldtags.docx converts to a PDF without an AcroForm (LibreOffice writes
+  # its text tags as plain text), so field detection is stubbed at its
+  # narrowest seam — Templates::FindAcroFields — and everything downstream
+  # (ProcessDocument storing them, the job's marker, the status payload) runs
+  # for real.
+  def stub_found_fields
+    allow(Templates::FindAcroFields).to receive(:call) do |_pdf, attachment, _data|
+      [{ 'uuid' => SecureRandom.uuid, 'name' => 'Full name', 'type' => 'text', 'required' => true,
+         'areas' => [{ 'attachment_uuid' => attachment.uuid, 'page' => 0,
+                       'x' => 0.1, 'y' => 0.1, 'w' => 0.3, 'h' => 0.05 }] }]
+    end
+  end
+
   def expect_refusal(message)
     expect(response).to redirect_to(root_path)
     expect(flash[:alert]).to eq(message)
@@ -213,6 +226,107 @@ RSpec.describe 'Word document uploads', type: :request do
       expect(ActiveStorage::Blob.exists?(word_blob_id)).to be(false)
     end
 
+    # The job never writes template.fields (an open builder would overwrite
+    # it): the fields it found ride in the document's metadata and the schema
+    # item carries `pending_fields`, so the builder merges them from the poll
+    # or on its next mount.
+    it 'hands the fields it found to the builder through the status payload and a pending_fields marker' do
+      stub_found_fields
+
+      upload_to_dashboard
+      template = Template.sole
+      attachment = template.documents.sole
+      fields_before = template.fields.deep_dup
+
+      ConvertWordDocumentJob.drain
+      Sidekiq::Worker.drain_all
+
+      template.reload
+      expect(template.fields).to eq(fields_before)
+      expect(template.schema.sole).to include('pending_fields' => true)
+      expect(template.schema.sole).not_to have_key('converting')
+
+      get "/templates/#{template.id}/documents/#{attachment.uuid}/status"
+
+      body = response.parsed_body
+      expect(body['status']).to eq('ready')
+      expect(body['schema_item']).to include('pending_fields' => true)
+      fields = body.dig('document', 'metadata', 'pdf', 'fields')
+      expect(fields).to be_present
+      expect(fields.sole).to include('name' => 'Full name', 'type' => 'text')
+      expect(fields.sole['areas'].sole).to include('attachment_uuid' => attachment.uuid, 'page' => 0)
+    end
+
+    it 'resumes after a failure inside the schema update without converting again and still purges the Word blob' do
+      allow(WordConverter).to receive(:call).and_call_original
+
+      upload_to_dashboard
+      template = Template.sole
+      attachment = template.documents.sole
+      word_blob_id = attachment.blob_id
+      job_args = ConvertWordDocumentJob.jobs.sole['args'].first
+
+      job = ConvertWordDocumentJob.new
+      calls = 0
+      allow(job).to receive(:update_schema_item).and_wrap_original do |original, *args, &block|
+        calls += 1
+
+        raise ActiveRecord::ConnectionTimeoutError, 'database hiccup' if calls == 1
+
+        original.call(*args, &block)
+      end
+
+      expect { job.perform(job_args) }.to raise_error(/database hiccup/)
+
+      # The PDF is stored, the markers are still on, the Word blob is still
+      # there: a retry has everything it needs and nothing is lost.
+      attachment.reload
+      expect(attachment.content_type).to eq('application/pdf')
+      expect(attachment.metadata).to include('converting' => true, 'conversion_stage' => 'pdf_stored')
+      expect(Templates.documents_status(template.reload)).to eq('converting')
+      expect(template.schema.sole).to include('converting' => true)
+      expect(ActiveStorage::Blob.exists?(word_blob_id)).to be(true)
+
+      ConvertWordDocumentJob.new.perform(job_args)
+      Sidekiq::Worker.drain_all
+
+      expect(WordConverter).to have_received(:call).once
+
+      attachment.reload
+      expect(attachment.metadata['converting']).to be_nil
+      expect(attachment.metadata['conversion_stage']).to be_nil
+      expect(attachment.metadata['word_blob_id']).to be_nil
+      expect(Templates.documents_status(template.reload)).to be_nil
+      expect(template.schema.sole).not_to have_key('converting')
+      expect(ActiveStorage::Blob.exists?(word_blob_id)).to be(false)
+    end
+
+    it 'marks the document failed when Sidekiq gives up retrying a transient error' do
+      allow(ErrorReport).to receive(:warning).and_call_original
+
+      upload_to_dashboard
+      template = Template.sole
+      attachment = template.documents.sole
+      job = ConvertWordDocumentJob.jobs.sole
+      error = ActiveRecord::ConnectionTimeoutError.new('storage down for good')
+
+      ConvertWordDocumentJob.sidekiq_retries_exhausted_block.call(job, error)
+
+      attachment.reload
+      expect(attachment.metadata['converting']).to be_nil
+      expect(attachment.metadata['conversion_failed']).to be(true)
+      expect(template.reload.schema.sole).to include('conversion_failed' => true)
+      expect(template.schema.sole).not_to have_key('converting')
+      expect(Templates.documents_status(template)).to eq('failed')
+      expect(ErrorReport).to have_received(:warning)
+        .with(error, template_id: template.id, attachment_uuid: attachment.uuid).once
+
+      get "/templates/#{template.id}/documents/#{attachment.uuid}/status"
+
+      expect(response.parsed_body).to include('status' => 'failed',
+                                              'schema_item' => hash_including('conversion_failed' => true))
+    end
+
     it 'refuses a Word file above the size cap before queueing anything' do
       big = Rack::Test::UploadedFile.new(StringIO.new('x' * (WordConverter::MAX_FILE_SIZE + 1.megabyte)), docx_type,
                                          original_filename: 'big.docx')
@@ -321,12 +435,12 @@ RSpec.describe 'Word document uploads', type: :request do
     end
   end
 
-  describe 'the conversion job under a full slot counter' do
+  describe 'the conversion job with every slot taken' do
     before do
       sign_in(user)
     end
 
-    it 're-enqueues itself with a delay and converts nothing' do
+    it 're-enqueues itself with a delay, converts nothing and touches nobody else slot' do
       allow(WordConverter).to receive(:call).and_call_original
 
       upload_to_dashboard
@@ -335,13 +449,15 @@ RSpec.describe 'Word document uploads', type: :request do
       job_args = ConvertWordDocumentJob.jobs.sole['args'].first
       ConvertWordDocumentJob.jobs.clear
 
-      WordConverter::MAX_CONCURRENT.times { RateLimit.store.increment(WordConverter::ACTIVE_KEY, 1) }
+      WordConverter.slot_keys.each do |key|
+        RateLimit.store.write(key, 'another-worker', unless_exist: true, expires_in: 10.minutes)
+      end
 
       ConvertWordDocumentJob.new.perform(job_args)
 
       expect(WordConverter).not_to have_received(:call)
       expect(attachment.reload.metadata['converting']).to be(true)
-      expect(RateLimit.store.read(WordConverter::ACTIVE_KEY)).to eq(WordConverter::MAX_CONCURRENT)
+      expect(WordConverter.slot_keys.map { |key| RateLimit.store.read(key) }).to all(eq('another-worker'))
 
       retry_job = ConvertWordDocumentJob.jobs.sole
       expect(retry_job['at']).to be_within(30).of(15.seconds.from_now.to_f)
@@ -515,6 +631,39 @@ RSpec.describe 'Word document uploads', type: :request do
 
       expect(response).to have_http_status(:unprocessable_content)
       expect(response.body).to include(failed_message)
+    end
+
+    # A job that never ran (lost with the container, dead-set) must not hold
+    # the template forever: half an hour after the file was stored the
+    # document counts as failed, with the failed message and the Remove card.
+    it 'treats a conversion still running 30 minutes after its file was stored as failed' do
+      attachment = template.documents.sole
+
+      expect(Templates.documents_status(template)).to eq('converting')
+
+      attachment.blob.update_columns(created_at: (Templates::CONVERSION_STALE_AFTER + 1.minute).ago)
+
+      expect(Templates.documents_status(template.reload)).to eq('failed')
+
+      post_api_submission
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body).to eq('error' => failed_message)
+
+      get "/templates/#{template.id}/documents/#{attachment.uuid}/status"
+
+      expect(response.parsed_body).to include('status' => 'failed',
+                                              'schema_item' => hash_including('conversion_failed' => true))
+      expect(response.parsed_body['schema_item']).not_to have_key('converting')
+
+      put "/templates/#{template.id}", as: :json, params: { template: { schema: [schema_item_without_flags] } }
+
+      expect(template.reload.schema.sole).to include('conversion_failed' => true)
+      expect(template.schema.sole).not_to have_key('converting')
+
+      put "/templates/#{template.id}", params: { template: { schema: [] } }, as: :json
+
+      expect(Templates.documents_status(template.reload)).to be_nil
     end
 
     # The builder autosaves the whole schema without the flags (they are not

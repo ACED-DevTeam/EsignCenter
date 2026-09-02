@@ -10,6 +10,8 @@ class VerifyController < ApplicationController
   layout 'form'
 
   MAX_FILE_SIZE = 25.megabytes
+  # Multipart boundaries and headers ride on top of the file itself.
+  MULTIPART_OVERHEAD = 1.megabyte
   MINUTE_LIMIT = 10
   HOUR_LIMIT = 100
 
@@ -26,9 +28,14 @@ class VerifyController < ApplicationController
   def create
     rate_limit!
 
-    # Refuse an oversized body from its declared length, before Rack parses
-    # the multipart upload into a tempfile.
-    return render_error(:file_too_large, :content_too_large) if request.content_length.to_i > MAX_FILE_SIZE
+    # Refuse an oversized body from its declared length before it is read
+    # into memory or parsed as a PDF (Rack has already spooled the multipart
+    # body to a tempfile by now; a body cap needs the proxy). The exact rule
+    # is the file's own size below; the declared length only gets the
+    # multipart overhead allowance so a valid 25 MB file is not turned away.
+    if request.content_length.to_i > MAX_FILE_SIZE + MULTIPART_OVERHEAD
+      return render_error(:file_too_large, :content_too_large)
+    end
 
     file = params[:file]
 
@@ -69,7 +76,8 @@ class VerifyController < ApplicationController
   # after signing, or signed before the record existed); not_verified: none.
   def build_result(record, pdf)
     trusted = Accounts.platform_verification_certs
-    signed_by_us = pdf.signatures.any? { |signature| trusted_signature?(signature, trusted) }
+    ours = Accounts.platform_signer_certs
+    signed_by_us = pdf.signatures.any? { |signature| trusted_signature?(signature, trusted, ours) }
 
     if record && signed_by_us
       { state: 'verified', signed_on: record.signed_at.utc.to_date, signers_count: record.signers_count }
@@ -81,15 +89,16 @@ class VerifyController < ApplicationController
   end
 
   # A signature counts only when HexaPDF reports no error-level finding
-  # (integrity, byte range, chain) AND the signer certificate's public key is
-  # one of ours — the chain check alone would accept any certificate the
-  # trust set happens to vouch for.
-  def trusted_signature?(signature, trusted)
+  # (integrity, byte range, chain against `trusted`) AND the signer
+  # certificate's public key is one of `ours` — the chain check alone would
+  # accept any certificate the trust set happens to vouch for, and the
+  # TRUSTED_CERTS environment chain is in `trusted` but never in `ours`.
+  def trusted_signature?(signature, trusted, ours)
     return false unless signature.verify(trusted_certs: trusted).success?
 
     signer_key = signature.signature_handler.signer_certificate.public_key.to_der
 
-    trusted.any? { |certificate| certificate.public_key.to_der == signer_key }
+    ours.any? { |certificate| certificate.public_key.to_der == signer_key }
   rescue HexaPDF::Error, OpenSSL::OpenSSLError, NoMethodError
     false
   end

@@ -35,6 +35,13 @@
         <p class="mt-1 text-sm text-base-content/60 break-all">
           {{ filename }}
         </p>
+        <button
+          v-if="editable"
+          class="btn btn-outline btn-sm mt-5 converting-document-remove"
+          @click.prevent="$emit('remove', item)"
+        >
+          {{ t('remove') }}
+        </button>
       </template>
       <template v-else>
         <IconInnerShadowTop
