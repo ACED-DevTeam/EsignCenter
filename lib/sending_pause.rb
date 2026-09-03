@@ -30,7 +30,7 @@ module SendingPause
   def state(account)
     billing = Plans.billing_account(account)
 
-    return [nil, nil] if billing.internal? || billing.operator?
+    return [nil, nil] unless billing.customer?
 
     Account.where(id: billing.id).pick(:sending_paused_at, :sending_pause_reason)
   end
@@ -43,7 +43,7 @@ module SendingPause
   def pause!(account, reason:, details: {})
     billing = Plans.billing_account(account)
 
-    return billing if billing.internal? || billing.operator?
+    return billing unless billing.customer?
 
     # The flag is written under the same lock as the pause, so a resume that
     # lands right after sees (and resolves) it instead of racing past it.

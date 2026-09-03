@@ -149,29 +149,21 @@ RSpec.describe 'Usage page', type: :request do
     expect(doc.at('[data-usage-upgrade]')).to be_nil
   end
 
-  it 'shows the sending-paused banner with the complaint reason and the support address', sidekiq: :inline do
-    SendingPause.pause!(free_account, reason: 'complaint')
-    act_as(free_account)
+  # Whichever reason paused sending is the one named, the other is not, and
+  # the support address is there either way.
+  [%w[complaint bounce_rate], %w[bounce_rate complaint]].each do |reason, other_reason|
+    it "shows the sending-paused banner with the #{reason} reason and the support address", sidekiq: :inline do
+      SendingPause.pause!(free_account, reason:)
+      act_as(free_account)
 
-    banner = page.at('[data-sending-paused-banner]')
+      banner = page.at('[data-sending-paused-banner]')
 
-    expect(banner).to be_present
-    expect(banner.at('[data-sending-pause-reason="complaint"]').text).to eq(I18n.t('sending_pause_reason_complaint'))
-    expect(banner.text).not_to include(I18n.t('sending_pause_reason_bounce_rate'))
-    expect(banner.text).to include(I18n.t('sending_paused_banner', email: Docuseal::SUPPORT_EMAIL))
-    expect(banner.text).to include(Docuseal::SUPPORT_EMAIL)
-  end
-
-  it 'names the bounce rate as the reason when that is what paused sending', sidekiq: :inline do
-    SendingPause.pause!(free_account, reason: 'bounce_rate')
-    act_as(free_account)
-
-    banner = page.at('[data-sending-paused-banner]')
-
-    expect(banner.at('[data-sending-pause-reason="bounce_rate"]').text)
-      .to eq(I18n.t('sending_pause_reason_bounce_rate'))
-    expect(banner.text).not_to include(I18n.t('sending_pause_reason_complaint'))
-    expect(banner.text).to include(I18n.t('sending_paused_banner', email: Docuseal::SUPPORT_EMAIL))
+      expect(banner).to be_present
+      expect(banner.at(%([data-sending-pause-reason="#{reason}"])).text).to eq(I18n.t("sending_pause_reason_#{reason}"))
+      expect(banner.text).not_to include(I18n.t("sending_pause_reason_#{other_reason}"))
+      expect(banner.text).to include(I18n.t('sending_paused_banner', email: Docuseal::SUPPORT_EMAIL))
+      expect(banner.text).to include(Docuseal::SUPPORT_EMAIL)
+    end
   end
 
   it 'shows seats neutral at 1 of 1 and red only past the seats, at 2 of 1' do

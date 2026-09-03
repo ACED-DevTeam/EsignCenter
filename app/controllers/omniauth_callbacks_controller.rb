@@ -61,7 +61,7 @@ class OmniauthCallbacksController < Devise::OmniauthCallbacksController
                                       timezone: request.env.dig('omniauth.params', 'timezone'))
     user.skip_confirmation!
 
-    return user if save_new(user)
+    return user if Registrations.save_signup(user)
 
     refuse(refusal_message(user))
   rescue RateLimit::LimitApproached
@@ -76,16 +76,6 @@ class OmniauthCallbacksController < Devise::OmniauthCallbacksController
     return I18n.t('google_sign_in_failed') unless error
 
     error.type == :taken ? error.full_message : error.message
-  end
-
-  # Two sign-ups for one address at the same moment: the loser hits the
-  # unique index instead of the validation, and is told the same thing.
-  def save_new(user)
-    user.save(context: :registration)
-  rescue ActiveRecord::RecordNotUnique
-    user.errors.add(:email, :taken)
-
-    false
   end
 
   def refuse(message)
