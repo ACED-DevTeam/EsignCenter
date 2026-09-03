@@ -249,13 +249,32 @@ module StripeBilling
     def customer_subscriptions(customer_id)
       return [] if customer_id.blank?
 
-      found = []
-      params = { customer: customer_id, status: 'all', limit: LIST_PAGE_SIZE }
+      found = paginate({ customer: customer_id, status: 'all' }) do |params|
+        StripeBilling.client.v1.subscriptions.list(params)
+      end
 
+      # A list we could not finish is not a list: deciding "no live
+      # subscription" on it could sell a second one.
+      if found.nil?
+        raise StripeBilling::ListIncomplete,
+              "customer #{customer_id} has more than #{LIST_PAGE_SIZE * LIST_PAGE_LIMIT} subscriptions"
+      end
+
+      found
+    end
+
+    # Every page of a Stripe list, up to the cap, or nil when the cap was
+    # reached with Stripe still saying `has_more`. The caller decides what an
+    # unfinished list means — refusing to sell a second subscription on one,
+    # refusing to call a partial refund a whole one — but nobody may treat it
+    # as "that was everything", so it never comes back as a short array.
+    def paginate(params)
+      found = []
+      params = params.merge(limit: LIST_PAGE_SIZE)
       more = true
 
       LIST_PAGE_LIMIT.times do
-        page = StripeBilling.client.v1.subscriptions.list(params)
+        page = yield(params)
         found.concat(Array(page.data))
         more = SubscriptionSync.truthy?(SubscriptionSync.field(page, :has_more)) && page.data.any?
 
@@ -264,14 +283,7 @@ module StripeBilling
         params = params.merge(starting_after: SubscriptionSync.field(page.data.last, :id))
       end
 
-      # A list we could not finish is not a list: deciding "no live
-      # subscription" on it could sell a second one.
-      if more
-        raise StripeBilling::ListIncomplete,
-              "customer #{customer_id} has more than #{LIST_PAGE_SIZE * LIST_PAGE_LIMIT} subscriptions"
-      end
-
-      found
+      more ? nil : found
     end
 
     # The row holds nothing yet. A newcomer that is not ours is never written
@@ -715,23 +727,12 @@ module StripeBilling
     # them. A list we could not finish is not a list: refunding on it would
     # return part of the money and call it all of it.
     def paid_invoices(subscription_id)
-      found = []
-      params = { subscription: subscription_id, status: PAID_INVOICE_STATUS, limit: LIST_PAGE_SIZE,
-                 expand: INVOICE_EXPAND }
-
-      more = true
-
-      LIST_PAGE_LIMIT.times do
-        page = StripeBilling.client.v1.invoices.list(params)
-        found.concat(Array(page.data))
-        more = SubscriptionSync.truthy?(SubscriptionSync.field(page, :has_more)) && page.data.any?
-
-        break unless more
-
-        params = params.merge(starting_after: SubscriptionSync.field(page.data.last, :id))
+      found = paginate({ subscription: subscription_id, status: PAID_INVOICE_STATUS,
+                         expand: INVOICE_EXPAND }) do |params|
+        StripeBilling.client.v1.invoices.list(params)
       end
 
-      if more
+      if found.nil?
         raise RefundUnavailable,
               "subscription #{subscription_id} has more than #{LIST_PAGE_SIZE * LIST_PAGE_LIMIT} paid invoices"
       end

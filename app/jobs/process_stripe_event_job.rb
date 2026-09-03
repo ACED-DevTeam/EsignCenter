@@ -97,12 +97,9 @@ class ProcessStripeEventJob
 
     return ignore!(inbox, "checkout session mode #{session['mode']}") unless session['mode'] == 'subscription'
 
-    subscription_row = checkout_subscription_row(session)
+    subscription_row = claim_row!(inbox, checkout_subscription_row(session))
 
-    return unknown!(inbox) if subscription_row.nil?
-    return ignore!(inbox, NON_CUSTOMER_ACCOUNT) unless customer_row?(subscription_row)
-
-    inbox.update!(account_id: subscription_row.account_id)
+    return if subscription_row.nil?
 
     new_subscription_id = session['subscription']
 
@@ -113,12 +110,10 @@ class ProcessStripeEventJob
 
   def handle_subscription(inbox)
     object = inbox.event_object
-    subscription_row = row_for(subscription_id: object['id'], customer_id: object['customer'])
+    subscription_row = claim_row!(inbox, row_for(subscription_id: object['id'],
+                                                 customer_id: object['customer']))
 
-    return unknown!(inbox) if subscription_row.nil?
-    return ignore!(inbox, NON_CUSTOMER_ACCOUNT) unless customer_row?(subscription_row)
-
-    inbox.update!(account_id: subscription_row.account_id)
+    return if subscription_row.nil?
 
     subscription_id = object['id'].presence || subscription_row.stripe_subscription_id
 
@@ -136,12 +131,9 @@ class ProcessStripeEventJob
   def handle_invoice(inbox)
     object = inbox.event_object
     subscription_id = invoice_subscription_id(object)
-    subscription_row = row_for(subscription_id:, customer_id: object['customer'])
+    subscription_row = claim_row!(inbox, row_for(subscription_id:, customer_id: object['customer']))
 
-    return unknown!(inbox) if subscription_row.nil?
-    return ignore!(inbox, NON_CUSTOMER_ACCOUNT) unless customer_row?(subscription_row)
-
-    inbox.update!(account_id: subscription_row.account_id)
+    return if subscription_row.nil?
 
     subscription_id = subscription_id.presence || subscription_row.stripe_subscription_id
 
@@ -205,11 +197,24 @@ class ProcessStripeEventJob
       nil
   end
 
-  # Internal and operator accounts never bill (Plans::INTERNAL). A row that
-  # somehow carries a Stripe id on such an account is a mistake, not an
-  # instruction: nothing is applied and nothing is cancelled for it.
-  def customer_row?(subscription_row)
-    Plans.billing_account(subscription_row.account).customer?
+  # The same two questions every door asks before it touches Stripe: does this
+  # event belong to a row at all, and is that row one an account actually pays
+  # through (internal and operator accounts never bill — a Stripe id on one is
+  # a mistake, not an instruction: nothing is applied and nothing is cancelled
+  # for it). A row that passes both is stamped onto the inbox and handed back;
+  # otherwise the event has already been given its verdict and nil says so.
+  def claim_row!(inbox, subscription_row)
+    if subscription_row.nil?
+      unknown!(inbox)
+    elsif !subscription_row.billing_customer?
+      ignore!(inbox, NON_CUSTOMER_ACCOUNT)
+    else
+      inbox.update!(account_id: subscription_row.account_id)
+
+      return subscription_row
+    end
+
+    nil
   end
 
   # An event for a customer or subscription no account owns is a fact about

@@ -12,20 +12,15 @@
 # The two actors in the fixtures:
 #   A  sub_1UBSbL…AD6ynIIK / cus_VBqHCUoJle1zGV — trialing → active → canceling → canceled
 #   B  sub_1UBSds…s81X4tCG / cus_VBqKHh0NHYmvT1 — active → past_due → active (real test clock)
-RSpec.describe 'Stripe billing', type: :request do # rubocop:disable RSpec/MultipleDescribes
+
+# The two fixture actors, the credentials every example runs against and the
+# reader for the captures — shared by both top-level groups below, so a
+# fixture id or a key can never drift between them.
+RSpec.shared_context 'with a Stripe test account' do
   let(:subscription_a) { 'sub_1UBSbL4rEeOqtLcXAD6ynIIK' }
-  let(:account) { create(:account) }
-  let(:user) { create(:user, account:) }
-  let(:api_headers) { { 'x-auth-token': user.access_token.token } }
   let(:customer_a) { 'cus_VBqHCUoJle1zGV' }
   let(:subscription_b) { 'sub_1UBSds4rEeOqtLcXs81X4tCG' }
   let(:customer_b) { 'cus_VBqKHh0NHYmvT1' }
-  # The customer the `stripe trigger invoice.payment_failed` fixture made: no
-  # account here owns it, which is exactly what makes it the unknown case.
-  let(:customer_unknown) { 'cus_VBqJXVDDFKe0Zk' }
-
-  # One MCP token per user for the whole example (see mcp_token_for).
-  let(:mcp_tokens) { {} }
   let(:webhook_secret) { 'whsec_testsecret' }
   let(:fixture_price) { 'price_1UAt8N4rEeOqtLcX1amJxYdZ' }
 
@@ -38,15 +33,31 @@ RSpec.describe 'Stripe billing', type: :request do # rubocop:disable RSpec/Multi
     ENV['STRIPE_PRICE_ID'] = fixture_price
     ENV['STRIPE_PORTAL_CONFIGURATION_ID'] = 'bpc_test'
     ENV['BILLING_ENABLED'] = 'true'
-
-    # Every duplicate the app cancels is asked what it ever collected. Unless
-    # an example says otherwise the answer is "nothing" — a later stub in the
-    # example itself wins over this one.
-    stub_invoice_list(nil, [])
   end
 
   def fixture_body(name)
     Rails.root.join("spec/fixtures/stripe/#{name}.json").read
+  end
+end
+
+RSpec.describe 'Stripe billing', type: :request do # rubocop:disable RSpec/MultipleDescribes
+  include_context 'with a Stripe test account'
+
+  let(:account) { create(:account) }
+  let(:user) { create(:user, account:) }
+  let(:api_headers) { { 'x-auth-token': user.access_token.token } }
+  # The customer the `stripe trigger invoice.payment_failed` fixture made: no
+  # account here owns it, which is exactly what makes it the unknown case.
+  let(:customer_unknown) { 'cus_VBqJXVDDFKe0Zk' }
+
+  # One MCP token per user for the whole example (see mcp_token_for).
+  let(:mcp_tokens) { {} }
+
+  before do
+    # Every duplicate the app cancels is asked what it ever collected. Unless
+    # an example says otherwise the answer is "nothing" — a later stub in the
+    # example itself wins over this one.
+    stub_invoice_list(nil, [])
   end
 
   def fixture_json(name)
@@ -3149,25 +3160,9 @@ end
 # transaction — a real row lock between two real connections is the thing
 # being proved (see the creation-lock group in quota_spec).
 RSpec.describe 'Two Stripe workers on one account', type: :request do
+  include_context 'with a Stripe test account'
+
   self.use_transactional_tests = false
-
-  let(:subscription_a) { 'sub_1UBSbL4rEeOqtLcXAD6ynIIK' }
-  let(:customer_a) { 'cus_VBqHCUoJle1zGV' }
-
-  stash_env(*StripeBilling::CONFIG_KEYS.keys, 'BILLING_ENABLED')
-
-  before do
-    ENV['STRIPE_SECRET_KEY'] = 'sk_test_fake'
-    ENV['STRIPE_PUBLISHABLE_KEY'] = 'pk_test_fake'
-    ENV['STRIPE_WEBHOOK_SECRET'] = 'whsec_testsecret'
-    ENV['STRIPE_PRICE_ID'] = 'price_1UAt8N4rEeOqtLcX1amJxYdZ'
-    ENV['STRIPE_PORTAL_CONFIGURATION_ID'] = 'bpc_test'
-    ENV['BILLING_ENABLED'] = 'true'
-  end
-
-  def fixture_body(name)
-    Rails.root.join("spec/fixtures/stripe/#{name}.json").read
-  end
 
   def inbox_row(event_id, created_at)
     StripeEventInbox.create!(stripe_event_id: event_id, event_type: 'customer.subscription.updated',

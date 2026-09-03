@@ -43,4 +43,14 @@ class AccountSubscription < ApplicationRecord
 
   validates :access_state, inclusion: { in: Plans::ACCESS_STATES }
   validates :quantity, numericality: { only_integer: true, greater_than_or_equal_to: 1 }
+
+  # Is this row one an account actually pays through? Internal and operator
+  # accounts never bill (Plans::INTERNAL), and a linked child is paid for by
+  # its parent — so a row carrying Stripe ids on a non-customer billing
+  # account is a mistake, not an instruction. The webhook processor and the
+  # nightly sweep both refuse to apply or cancel anything for such a row, and
+  # they have to ask the question exactly the same way.
+  def billing_customer?
+    Plans.billing_account(account).customer?
+  end
 end
