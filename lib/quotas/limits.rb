@@ -26,6 +26,18 @@ module Quotas
     # Registration (Phase C reads these).
     SIGNUPS_PER_IP_PER_HOUR = 5
     SIGNUPS_PER_IP_PER_DAY = 20
+    # Attempts, not sign-ups: every POST to the sign-up form and every hit on
+    # an OmniAuth endpoint, however it ends. The two rows above count what was
+    # created and are spent only on success (a typo must not lock an office
+    # out); these count what was asked for and are spent whatever the answer,
+    # because each attempt costs the server an outbound HTTPS call — Cloudflare
+    # for the form, Google's token endpoint for the OmniAuth path — that holds
+    # a web thread for up to five seconds while it waits. Set far above honest
+    # use (a whole office behind one address, fumbling the CAPTCHA and starting
+    # over, is nowhere near 30 sign-up attempts or 60 Google round-trips in an
+    # hour) and far below the sustained rate a thread-exhaustion attempt needs.
+    SIGNUP_ATTEMPTS_PER_IP_PER_HOUR = 30
+    OAUTH_ATTEMPTS_PER_IP_PER_HOUR = 60
 
     # Abuse policy — any customer account (lib/sending_pause.rb).
     COMPLAINTS_TO_PAUSE = 1   # one spam complaint pauses sending

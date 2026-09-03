@@ -39,9 +39,16 @@ back a verified email address; then:
   above, except the user is confirmed at once (Google verified the mailbox)
   and given a random password. They can set their own from *Forgot your
   password?* later. Signed in straight away.
-- **Existing user, not yet confirmed** → confirmed and signed in. No second
-  account is ever created for an address that already has a user.
-- **Existing confirmed user** → signed in.
+- **Existing user, not yet confirmed** → the password on that account is
+  replaced with a random one, then the account is confirmed and signed in.
+  An unconfirmed account is one nobody ever proved they own: anybody can type
+  somebody else's address into the sign-up form, and the password on the
+  account would be theirs. Google has just proved the mailbox, so the account
+  is kept — but whatever password was on it stops working, and the owner sets
+  their own from *Forgot your password?*. No second account is ever created
+  for an address that already has a user.
+- **Existing confirmed user** → signed in, and their password is left
+  alone: they proved the mailbox themselves, so it is theirs to keep.
 - **User with two-factor authentication** → sent back to the password form
   with a message: the one-time code is entered there, Google never bypasses
   it.
@@ -50,7 +57,7 @@ back a verified email address; then:
   page with a plain-English message; nothing is created.
 
 The Google path skips Turnstile (Google already gated the request) but keeps
-the per-network limit and the disposable-address blocklist.
+the per-network limits and the disposable-address blocklist.
 
 Sign-in with Google requires a Google OAuth app. Until that app is published
 in Google's console it runs in **Testing** mode: only the test users listed
@@ -61,13 +68,14 @@ email path.
 and the button does not exist; adding it is a launch-gate item, not part of
 this build.
 
-## 3. The three abuse guards
+## 3. The four abuse guards
 
 | Guard | What it does | Numbers |
 | --- | --- | --- |
 | Cloudflare Turnstile | Every email sign-up carries a one-time token from the widget; the server asks Cloudflare whether it is genuine. A blank token, a Cloudflare outage or a missing secret all **fail closed** — the form re-renders with *Please complete the verification and try again* and nothing is written. There is no environment bypass; the test suite stubs the HTTP call. | one check per submission, 5 s timeout |
 | Disposable-address blocklist | Addresses at throwaway-mail domains (the `valid_email2` list, e.g. mailinator.com) are refused with *Please use a permanent email address*. Sign-up only: an admin may still invite such an address to their own account, and internal provisioning is untouched. The domain list is checked, never DNS. | — |
 | Per-network limits | Sign-ups from one IP address are counted — sign-ups, not attempts. On the email path an attempt counts only once the Turnstile check and the form's own checks (a valid, permanent, untaken address; a long enough password) have passed, immediately before the account is written; a typo, a taken address or a failed CAPTCHA never spends the budget, so five mistakes from one office never lock the office out. On the Google path only the creation of a new account counts (an existing user signing in with Google is not a sign-up). Past the limit the form answers *Too many sign-ups from this network* with status 429 and the Google path returns to the sign-in page with the same message. Invitations and sign-in are not counted. Redis-backed like the other velocity limits: if Redis is down the limit is off, never the sign-up. | 5 per hour, 20 per day |
+| Per-network attempt ceiling | A second, separate count: every sign-up **attempt** from one IP address, however it ends, and every hit on a Google `/auth/...` endpoint. Checked first, before anything outbound happens — the Turnstile check is a call to Cloudflare that waits up to five seconds, and the Google callback makes OmniAuth call Google, so an attempt anyone can replay for free is a web thread they can hold for free. Past the ceiling the form answers *Too many sign-ups from this network* (429) and the Google endpoints answer 429 with an empty body. Set far above honest use: a whole office behind one address never gets near it. Redis-backed and fails open the same way. | 30 sign-up attempts per hour, 60 Google hits per hour |
 
 ## 4. The switch
 

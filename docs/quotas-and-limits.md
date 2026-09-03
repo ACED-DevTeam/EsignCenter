@@ -19,7 +19,9 @@ sending pause is `lib/sending_pause.rb`; storage is `lib/quotas/storage.rb`.
 | Fair-use review | 500 completions per seat per month | Paid | Nothing is blocked. An email at 80%, a review flag for the operator at 100%. |
 | Send velocity | 200 sends per seat per day | Paid | Nothing is blocked; a warn-flag for the operator. |
 | Open documents | 50 per seat | Paid | Nothing is blocked; a warn-flag for the operator. |
-| Sign-ups per IP | 5 per hour, 20 per day | Registration | Further sign-ups from that network are refused for the window. |
+| Sign-ups per IP | 5 per hour, 20 per day | Registration | Further sign-ups from that network are refused for the window. Counts sign-ups, not attempts. |
+| Sign-up attempts per IP | 30 per hour | Registration | Further tries from that network are refused with *Too many sign-ups from this network* before the Cloudflare check is even asked. Counts every try, however it ends. |
+| Google endpoint hits per IP | 60 per hour | Registration | Further hits on `/auth/...` are refused (429, empty body) in front of Google, so no token exchange is made. |
 | Spam complaints | 1 | Any customer account | Sending pauses until the operator reviews (section 3). |
 | Hard bounces | 20% of the last 20 sends, once 10 have gone out | Any customer account | Sending pauses until the operator reviews (section 3). |
 

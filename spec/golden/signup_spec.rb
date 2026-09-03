@@ -297,6 +297,25 @@ RSpec.describe 'Self-serve registration', type: :request do
       expect(response.body).to include(I18n.t('too_many_sign_ups_from_this_network'))
     end
 
+    # The other per-network limit, and the reason it is checked first: the
+    # Turnstile check is an outbound call with a five-second timeout, so an
+    # attempt a stranger can replay for free is a web thread they can hold for
+    # free. Past the ceiling nothing outbound happens at all, and the sign-up
+    # budget — a separate counter, spent only on success — is untouched.
+    it 'refuses attempts past the per-network ceiling without calling Cloudflare or spending the budget' do
+      enable_registration!
+      verification = stub_turnstile(success: true)
+      Quotas::Limits::SIGNUP_ATTEMPTS_PER_IP_PER_HOUR.times { Registrations.assert_ip_attempt_allowed!('127.0.0.1') }
+
+      expect { sign_up }.not_to change(User, :count)
+      expect(response).to have_http_status(:too_many_requests)
+      expect(response.body).to include(I18n.t('too_many_sign_ups_from_this_network'))
+      expect(verification).not_to have_been_requested
+
+      expect { Quotas::Limits::SIGNUPS_PER_IP_PER_HOUR.times { Registrations.assert_ip_allowed!('127.0.0.1') } }
+        .not_to raise_error
+    end
+
     it 'tells the loser of two simultaneous sign-ups for one address that it is taken, without a 500' do
       enable_registration!
       stub_turnstile(success: true)
@@ -342,6 +361,72 @@ RSpec.describe 'Self-serve registration', type: :request do
       expect(user.reload.confirmed_at).to be_present
       expect(User.where(email: 'pending@example.com').count).to eq(1)
       expect_signed_in
+    end
+
+    # The pre-hijack: anybody can type somebody else's address into the
+    # sign-up form, and the unconfirmed row that writes carries the typist's
+    # password. Confirming that row for the real owner without killing the
+    # password would hand the typist a working sign-in at /sign_in to every
+    # document the owner goes on to create.
+    it 'kills the password on the unconfirmed row it adopts, so the stranger who typed the address cannot sign in' do
+      stub_turnstile(success: true)
+      post registration_path, params: signup_params(email: 'victim@example.com', name: 'Not The Owner',
+                                                    password: 'stranger-password')
+      expect(User.find_by(email: 'victim@example.com')).to be_present
+
+      mock_google(email: 'victim@example.com')
+
+      expect { sign_in_with_google! }.not_to change(User, :count)
+      expect(response).to redirect_to(root_path)
+      expect_signed_in
+
+      delete destroy_user_session_path
+
+      post user_session_path, params: { user: { email: 'victim@example.com', password: 'stranger-password' } }
+
+      expect(response).not_to redirect_to(root_path)
+      expect_signed_out
+    end
+
+    # The other side of that fix: a confirmed user proved the mailbox
+    # themselves, so the password on their row is their own and Google
+    # signing them in must not lock them out of it.
+    it 'leaves a confirmed user their own password after they sign in with Google' do
+      create(:user, email: 'both@example.com', password: 'their-own-password')
+      mock_google(email: 'both@example.com')
+
+      sign_in_with_google!
+      expect(response).to redirect_to(root_path)
+      expect_signed_in
+
+      delete destroy_user_session_path
+
+      post user_session_path, params: { user: { email: 'both@example.com', password: 'their-own-password' } }
+
+      expect(response).to have_http_status(:redirect)
+      expect_signed_in
+    end
+
+    # The callback's outbound token exchange with Google is made by OmniAuth's
+    # own middleware, before any controller of ours runs, so the ceiling that
+    # protects it sits in RegistrationGateMiddleware in front of the strategy.
+    it 'refuses the OmniAuth endpoints past the per-network attempt ceiling, in front of Google' do
+      mock_google(email: 'grace@example.com')
+
+      post user_google_oauth2_omniauth_authorize_path
+      expect(response).to have_http_status(:redirect)
+
+      # The honest request above is one of the hour's sixty; this fills the rest.
+      (Quotas::Limits::OAUTH_ATTEMPTS_PER_IP_PER_HOUR - 1).times do
+        Registrations.assert_oauth_attempt_allowed!('127.0.0.1')
+      end
+
+      post user_google_oauth2_omniauth_authorize_path
+      expect(response).to have_http_status(:too_many_requests)
+
+      get user_google_oauth2_omniauth_callback_path
+      expect(response).to have_http_status(:too_many_requests)
+      expect(User.count).to eq(1)
     end
 
     it 'signs an existing confirmed user in without touching their account' do
