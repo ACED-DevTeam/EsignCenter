@@ -9,9 +9,14 @@
 #  cancel_at_period_end   :boolean          default(FALSE), not null
 #  current_period_end     :datetime
 #  current_period_start   :datetime
+#  last_stripe_event_at   :datetime
+#  past_due_since         :datetime
 #  quantity               :integer          default(1), not null
 #  status                 :string
+#  stripe_status          :string
+#  synced_at              :datetime
 #  trial_end              :datetime
+#  trial_used_at          :datetime
 #  created_at             :datetime         not null
 #  updated_at             :datetime         not null
 #  account_id             :bigint           not null

@@ -266,11 +266,15 @@ class StartFormController < ApplicationController
       end
     end
 
+    # D73 lineage: a Resubmit copy points at the document it corrects, so
+    # metering counts the family's first completion once
+    # (Submissions::Lineage). nil on an ordinary share-link start.
     submitter.submission ||= Submission.new(template:,
                                             account_id: template.account_id,
                                             template_submitters: template.submitters,
                                             expire_at: Templates.build_default_expire_at(template),
                                             submitters: [submitter],
+                                            resubmitted_from_id: @resubmit_submitter&.submission_id,
                                             source: :link)
 
     Submissions::CreateFromSubmitters.maybe_set_dynamic_documents(submitter.submission)

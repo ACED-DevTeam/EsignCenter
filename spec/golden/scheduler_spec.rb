@@ -17,7 +17,7 @@ RSpec.describe 'Scheduler', type: :lib do
   end
 
   it 'declares the heartbeat every minute on the recurrent queue' do
-    expect(schedule.keys).to eq(['scheduler_heartbeat'])
+    expect(schedule.keys).to contain_exactly('scheduler_heartbeat', 'stripe_reconciliation')
     expect(schedule['scheduler_heartbeat']).to include(
       'cron' => '* * * * *', 'class' => 'SchedulerHeartbeatJob', 'queue' => 'recurrent'
     )
@@ -26,6 +26,27 @@ RSpec.describe 'Scheduler', type: :lib do
 
     expect(queues).to include('recurrent')
     expect(queues).not_to include('rollbar')
+  end
+
+  # Webhooks get lost; the nightly sweep is what makes that survivable
+  # (StripeReconciliationJob, docs/billing.md).
+  it 'declares the Stripe reconciliation daily on its own billing queue' do
+    expect(schedule['stripe_reconciliation']).to include(
+      'cron' => '0 6 * * *', 'class' => 'StripeReconciliationJob', 'queue' => 'billing'
+    )
+
+    queues = YAML.load_file(Rails.root.join('config/sidekiq.yml')).fetch('queues').map(&:first)
+
+    expect(queues).to include('billing')
+
+    Sidekiq::Cron::ScheduleLoader.new.load_schedule
+
+    job = Sidekiq::Cron::Job.find('stripe_reconciliation')
+
+    expect(job).to be_present
+    expect(job.source).to eq('schedule')
+    expect(job.klass).to eq('StripeReconciliationJob')
+    expect(job.queue_name_with_prefix).to eq('billing')
   end
 
   # sidekiq-cron's own startup hook loads its default schedule file; the app

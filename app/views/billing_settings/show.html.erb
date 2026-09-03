@@ -1,0 +1,60 @@
+<%# The account's billing page. Every state tells the truth about what Stripe
+    is doing and offers exactly the one action that state allows: a child
+    account and an operator-granted plan get no buttons at all. %>
+<div class="flex-wrap space-y-4 md:flex md:flex-nowrap md:space-y-0 md:space-x-10">
+  <%= render 'shared/settings_nav' %>
+  <div class="md:flex-grow">
+    <div class="max-w-2xl" data-billing-state="<%= @view_state %>">
+      <h1 class="text-4xl font-bold mb-2">
+        <%= t('billing') %>
+      </h1>
+      <p class="text-base-content/70 mb-5" dir="auto"><%= t('billing_page_intro') %></p>
+
+      <div class="flex flex-wrap items-center gap-2 mb-5">
+        <span class="badge badge-neutral badge-lg" data-billing-state-badge><%= t("billing_state_#{@view_state}") %></span>
+        <% if @view_state.in?(%w[trialing active canceling past_due suspended]) %>
+          <span class="badge badge-outline badge-lg"><%= t('seats_label', count: @seats_in_use) %></span>
+        <% end %>
+      </div>
+
+      <% if @read_only %>
+        <div class="alert items-start bg-base-100 border border-base-300 mb-5" data-billing-parent-banner>
+          <%= svg_icon('info_circle', class: 'stroke-current shrink-0 h-6 w-6 mt-0.5') %>
+          <div dir="auto" class="text-sm space-y-1">
+            <p class="font-semibold"><%= t('billing_managed_by_parent', account: @parent_name) %></p>
+            <p class="text-base-content/70"><%= t('billing_managed_by_parent_hint') %></p>
+          </div>
+        </div>
+      <% end %>
+
+      <% if @view_state == 'past_due' %>
+        <div class="alert items-start bg-base-100 border border-amber-500 text-amber-600 mb-5" data-billing-banner="past_due">
+          <%= svg_icon('alert_circle', class: 'stroke-current shrink-0 h-6 w-6 mt-0.5') %>
+          <p dir="auto" class="text-sm"><%= t('billing_past_due_banner') %></p>
+        </div>
+      <% elsif @view_state == 'suspended' %>
+        <div class="alert items-start bg-base-100 border border-red-400 text-red-400 mb-5" data-billing-banner="suspended">
+          <%= svg_icon('alert_circle', class: 'stroke-current shrink-0 h-6 w-6 mt-0.5') %>
+          <p dir="auto" class="text-sm"><%= t('billing_suspended_banner') %></p>
+        </div>
+      <% end %>
+
+      <% if @view_state == 'manual' %>
+        <div class="card bg-base-200 border border-base-300" data-billing-card="manual">
+          <div class="card-body p-5 md:p-6 gap-2">
+            <p class="text-lg font-semibold leading-tight" dir="auto"><%= t('billing_state_manual') %></p>
+            <p class="text-sm text-base-content/70" dir="auto"><%= t('billing_managed_by_operator') %></p>
+          </div>
+        </div>
+      <% elsif @view_state.in?(%w[free ended]) %>
+        <%= render 'billing_settings/choose_plan' %>
+      <% else %>
+        <%= render 'billing_settings/current_plan' %>
+      <% end %>
+
+      <p class="mt-6 text-sm">
+        <%= link_to t('billing_view_usage'), settings_usage_path, class: 'link', data: { billing_usage_link: true } %>
+      </p>
+    </div>
+  </div>
+</div>

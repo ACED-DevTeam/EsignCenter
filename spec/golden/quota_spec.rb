@@ -253,6 +253,182 @@ RSpec.describe 'Quotas', type: :request do # rubocop:disable RSpec/MultipleDescr
     end
   end
 
+  # D73: a corrected resend of a document is the SAME document. The new
+  # submission records the one it was copied from
+  # (submissions.resubmitted_from_id) and metering counts the whole family's
+  # first completion once. Sends still count per copy — that cap is what
+  # bounds the loop. Both real doors are driven here: the owner's dashboard
+  # Resubmit (PUT /submitters_resubmit/:id) and the signer's Resubmit on the
+  # completed page (PUT /resubmit_form?resubmit=<slug>).
+  describe 'resubmit lineage (D73)' do
+    # The dashboard offers Resubmit only for the signed-in user's own row.
+    def own_submitter(account, template:)
+      send_one(account, template:).submitters.first.tap { |s| s.update!(email: admin_for(account).email) }
+    end
+
+    def resubmit_as_owner!(submitter)
+      put "/submitters_resubmit/#{submitter.id}"
+
+      Submitter.order(:id).last.tap { |copy| expect(response).to redirect_to("/s/#{copy.slug}") }
+    end
+
+    it 'counts one completion for a signed document and the corrected copy the owner resubmits',
+       sidekiq: :inline do
+      template = text_template_for(free_account)
+      original = own_submitter(free_account, template:)
+      complete!(original)
+
+      expect(Quotas.completions_this_month(free_account)).to eq(1)
+
+      act_as(free_account)
+      copy = resubmit_as_owner!(original)
+
+      expect(copy.submission.resubmitted_from_id).to eq(original.submission_id)
+
+      complete!(copy)
+
+      expect(Quotas.completions_this_month(free_account)).to eq(1)
+      expect(CompletedSubmitter.find_by!(submitter: copy).is_first).to be(false)
+      expect(CompletedSubmitter.find_by!(submitter: original).is_first).to be(true)
+      # Two documents went out, so two sends were spent.
+      expect(Quotas.sends_this_month(free_account)).to eq(2)
+    end
+
+    it 'counts one completion when the signer resubmits from the completed page', sidekiq: :inline do
+      template = text_template_for(free_account)
+      original = send_one(free_account, template:).submitters.first
+      complete!(original)
+
+      expect(Quotas.completions_this_month(free_account)).to eq(1)
+
+      anonymous!
+      put '/resubmit_form', params: { resubmit: original.slug }
+
+      copy = Submitter.order(:id).last
+
+      expect(response).to redirect_to("/s/#{copy.slug}")
+      expect(copy.submission.resubmitted_from_id).to eq(original.submission_id)
+
+      complete!(copy)
+
+      expect(Quotas.completions_this_month(free_account)).to eq(1)
+      expect(CompletedSubmitter.find_by!(submitter: copy).is_first).to be(false)
+      expect(Quotas.sends_this_month(free_account)).to eq(2)
+    end
+
+    it 'counts one when the original was never signed and only the corrected copy is', sidekiq: :inline do
+      template = text_template_for(free_account)
+      original = own_submitter(free_account, template:)
+      act_as(free_account)
+      copy = resubmit_as_owner!(original)
+
+      expect(Quotas.completions_this_month(free_account)).to eq(0)
+
+      complete!(copy)
+
+      expect(Quotas.completions_this_month(free_account)).to eq(1)
+      expect(CompletedSubmitter.find_by!(submitter: copy).is_first).to be(true)
+    end
+
+    it 'still counts two unrelated documents as two', sidekiq: :inline do
+      template = text_template_for(free_account)
+
+      complete_one!(free_account, template:)
+      complete_one!(free_account, template:)
+
+      expect(Quotas.completions_this_month(free_account)).to eq(2)
+      expect(Submission.where(account: free_account).where.not(resubmitted_from_id: nil)).not_to exist
+    end
+
+    it 'counts a chain of corrections once when only the last copy is signed', sidekiq: :inline do
+      template = text_template_for(free_account)
+      first = own_submitter(free_account, template:)
+      act_as(free_account)
+
+      second = resubmit_as_owner!(first)
+      third = resubmit_as_owner!(second)
+
+      expect(second.submission.resubmitted_from_id).to eq(first.submission_id)
+      expect(third.submission.resubmitted_from_id).to eq(second.submission_id)
+      expect(Submissions::Lineage.ids(third.submission))
+        .to eq([third.submission_id, second.submission_id, first.submission_id])
+      expect(Submissions::Lineage.root_id(third.submission)).to eq(first.submission_id)
+
+      complete!(third)
+
+      expect(Quotas.completions_this_month(free_account)).to eq(1)
+      expect(Quotas.sends_this_month(free_account)).to eq(3)
+    end
+
+    it 'counts a chain once when the original and the last copy are both signed', sidekiq: :inline do
+      template = text_template_for(free_account)
+      first = own_submitter(free_account, template:)
+
+      complete!(first)
+      act_as(free_account)
+
+      third = resubmit_as_owner!(resubmit_as_owner!(first))
+
+      complete!(third)
+
+      expect(Quotas.completions_this_month(free_account)).to eq(1)
+      expect(CompletedSubmitter.find_by!(submitter: third).is_first).to be(false)
+      expect(Quotas.sends_this_month(free_account)).to eq(3)
+    end
+
+    it 'spends a send on every copy and refuses the resubmit once the month\'s 15 sends are gone',
+       sidekiq: :inline do
+      template = text_template_for(free_account)
+      original = own_submitter(free_account, template:)
+      complete!(original)
+      act_as(free_account)
+
+      expect(Quotas.sends_this_month(free_account)).to eq(1)
+
+      complete!(resubmit_as_owner!(original))
+
+      expect(Quotas.sends_this_month(free_account)).to eq(2)
+      expect(Quotas.completions_this_month(free_account)).to eq(1)
+
+      send_many(free_account, template:, count: 13, resolve: 8)
+
+      expect(Quotas.sends_this_month(free_account)).to eq(15)
+
+      refusing { put "/submitters_resubmit/#{original.id}" }
+
+      expect(response).to redirect_to("/s/#{original.slug}")
+      expect(flash[:alert]).to eq(sends_alert)
+    end
+
+    it 'never re-fires the 4-of-5 warning for a copy whose original already counted', sidekiq: :inline do
+      template = text_template_for(free_account)
+      warnings = -> { deliveries.count { |m| m.subject.start_with?('You have used') } }
+      2.times { complete_one!(free_account, template:) }
+      original = own_submitter(free_account, template:)
+
+      complete!(original)
+      complete_one!(free_account, template:)
+
+      expect(Quotas.completions_this_month(free_account)).to eq(4)
+      expect(warnings.call).to eq(1)
+
+      act_as(free_account)
+      allow(Quotas).to receive(:after_first_completion).and_call_original
+
+      complete!(resubmit_as_owner!(original))
+
+      expect(Quotas).not_to have_received(:after_first_completion)
+      expect(Quotas.completions_this_month(free_account)).to eq(4)
+      expect(warnings.call).to eq(1)
+
+      # The control: a document with no lineage still reaches the counter.
+      complete_one!(free_account, template:)
+
+      expect(Quotas).to have_received(:after_first_completion).once
+      expect(Quotas.completions_this_month(free_account)).to eq(5)
+    end
+  end
+
   describe 'the seven creation paths on a free account at 5 completions' do
     let(:template) { text_template_for(free_account) }
     let(:capped) { cap_completions!(free_account, template:) }

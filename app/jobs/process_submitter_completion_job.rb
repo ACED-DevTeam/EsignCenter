@@ -8,8 +8,10 @@ class ProcessSubmitterCompletionJob
 
     completed_submitter = create_completed_submitter!(submitter)
 
-    # Metering (D41): a document counts the first time ANY signer completes
-    # it; later signers, corrections and resubmits never add. Internal and
+    # Metering (D41/D73): a document counts the first time ANY signer
+    # completes it; later signers, corrections and resubmits never add — a
+    # resubmitted copy inherits its origin's count through
+    # Submissions::Lineage in create_completed_submitter! below. Internal and
     # operator accounts are not metered. Counting and its warning mail must
     # never be able to stop the completion pipeline below (the signed PDF is
     # generated further down), so a failure here is reported and swallowed —
@@ -68,7 +70,7 @@ class ProcessSubmitterCompletionJob
     completed_submitter.assign_attributes(
       submission_id: submitter.submission_id,
       account_id: submission.account_id,
-      is_first: !CompletedSubmitter.exists?(submission: submitter.submission_id, is_first: true),
+      is_first: !Submissions::Lineage.first_completion_exists?(submission),
       template_id: submission.template_id,
       source: submission.source,
       sms_count: sms_events.sum { |e| e.data['segments'] || 1 },

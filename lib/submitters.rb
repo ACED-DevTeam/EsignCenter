@@ -315,6 +315,13 @@ module Submitters
     )
   end
 
+  # Legacy one-shot backfill for the day `is_first` was added: it recomputes
+  # the flag per SUBMISSION, not per resubmit lineage (D73). Deliberately
+  # left that way — nothing calls it any more, and every row it could touch
+  # predates `submissions.resubmitted_from_id`, so every one of those rows
+  # has a NULL origin and a lineage-aware pass would compute exactly the same
+  # answer. Live metering is lineage-aware in
+  # ProcessSubmitterCompletionJob#create_completed_submitter!.
   def populate_completed_is_first
     Account.find_each do |account|
       submissions_index = {}

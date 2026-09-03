@@ -49,6 +49,7 @@ gem 'sidekiq'
 gem 'sidekiq-cron'
 gem 'sqlite3', require: false
 gem 'strip_attributes'
+gem 'stripe'
 gem 'trilogy', require: false
 gem 'turbo-rails'
 gem 'twitter_cldr', require: false

@@ -22,7 +22,9 @@ class ApplicationController < ActionController::Base
                 :form_link_host,
                 :svg_icon,
                 :account_logo_url,
-                :test_mode_available?
+                :test_mode_available?,
+                :billing_available?,
+                :upgrade_cta_path
 
   impersonates :user, with: ->(uuid) { User.find_by(uuid:) }
 
@@ -112,6 +114,22 @@ class ApplicationController < ActionController::Base
 
   def current_account
     current_user&.account
+  end
+
+  # Whether this signed-in person can actually buy: the billing switch is on,
+  # the account they are billed through is a customer (internal and operator
+  # accounts never pay), and they administer it.
+  def billing_available?
+    return false unless Docuseal.billing_enabled? && current_account
+
+    can?(:manage, current_account) && Plans.billing_account(current_account).customer?
+  end
+
+  # Where an upgrade call-to-action goes. The billing page when there is one
+  # to go to, the usage page otherwise — never a dead link, and never a link
+  # that lands the visitor on a refusal.
+  def upgrade_cta_path
+    billing_available? ? settings_billing_path : Quotas::USAGE_PATH
   end
 
   def test_mode_available?

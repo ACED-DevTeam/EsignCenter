@@ -16,6 +16,12 @@
         <li>
           <%= link_to t('usage'), settings_usage_path, class: 'text-base hover:bg-base-300' %>
         </li>
+        <%# Billing sits next to Usage and only for someone who could act on it: the switch on, a customer account, and an admin of it. %>
+        <% if billing_available? %>
+          <li>
+            <%= link_to t('billing'), settings_billing_path, class: 'text-base hover:bg-base-300' %>
+          </li>
+        <% end %>
       <% end %>
       <%# Per-account SMTP is a paid row: the entry stays discoverable for everyone who may read the config (the page renders the upgrade CTA when the plan lacks it). %>
       <% if can?(:read, EncryptedConfig.new(key: EncryptedConfig::EMAIL_SMTP_KEY, account: current_account)) && true_user == current_user %>
