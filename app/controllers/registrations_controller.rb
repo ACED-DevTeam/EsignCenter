@@ -40,7 +40,9 @@ class RegistrationsController < Devise::RegistrationsController
     return refuse(:unprocessable_content) unless @user.valid?(:registration)
     return refuse(:too_many_requests) unless ip_allowed?
 
-    if save_signup
+    # The confirmation mail goes out from Devise's after_commit, through the
+    # platform mail server (devise_mail override).
+    if Registrations.save_signup(@user)
       session[:signup_email] = @user.email
 
       redirect_to after_inactive_sign_up_path_for(@user), status: :see_other
@@ -69,20 +71,6 @@ class RegistrationsController < Devise::RegistrationsController
     clean_up_passwords(@user)
 
     render :new, status:
-  end
-
-  # The DB transaction is the user save: belongs_to autosaves the new account
-  # first, and a validation failure (taken email, short password, disposable
-  # address) writes nothing. The confirmation mail goes out from Devise's
-  # after_commit, through the platform mail server (devise_mail override).
-  def save_signup
-    @user.save(context: :registration)
-  rescue ActiveRecord::RecordNotUnique
-    # Two sign-ups for one address at the same moment: the loser hits the
-    # unique index instead of the validation, and is told the same thing.
-    @user.errors.add(:email, :taken)
-
-    false
   end
 
   def ip_allowed?

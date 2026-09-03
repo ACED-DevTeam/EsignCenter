@@ -29,6 +29,20 @@ module Registrations
     ValidEmail2::Address.new(email.to_s).disposable_domain?
   end
 
+  # Saving a sign-up: the DB transaction is the user save (belongs_to
+  # autosaves the new account first), so a validation failure — taken email,
+  # short password, disposable address — writes nothing. Two sign-ups for one
+  # address at the same moment: the loser hits the unique index instead of
+  # the validation, and is told the same thing instead of a 500. Both sign-up
+  # doors save through here.
+  def save_signup(user)
+    user.save(context: :registration)
+  rescue ActiveRecord::RecordNotUnique
+    user.errors.add(:email, :taken)
+
+    false
+  end
+
   # A brand-new customer account for a stranger, with its admin user
   # (unbuilt, unsaved): the person's name is the account name until they
   # change it in Settings, the timezone is what their browser reported, the

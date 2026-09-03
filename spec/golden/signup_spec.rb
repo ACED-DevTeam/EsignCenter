@@ -413,36 +413,27 @@ RSpec.describe 'Self-serve registration', type: :request do
       expect(User.count).to eq(1)
     end
 
-    it 'answers 404 for the Google endpoints while the Google client id is unset, instead of bouncing to Google' do
-      ENV.delete('GOOGLE_OAUTH_CLIENT_ID')
-      mock_google(email: 'grace@example.com')
+    # Either credential missing is the same answer: no Google endpoints and no
+    # button — both are required (with only the id the button would render and
+    # the exchange would fail after the bounce to Google).
+    [['GOOGLE_OAUTH_CLIENT_ID', 'the Google client id is unset, instead of bouncing to Google'],
+     ['GOOGLE_OAUTH_CLIENT_SECRET', 'only the client secret is unset (both credentials are required)']]
+      .each do |variable, description|
+      it "answers 404 for the Google endpoints while #{description}" do
+        ENV.delete(variable)
+        mock_google(email: 'grace@example.com')
 
-      post user_google_oauth2_omniauth_authorize_path
-      expect(response).to have_http_status(:not_found)
+        post user_google_oauth2_omniauth_authorize_path
+        expect(response).to have_http_status(:not_found)
 
-      get user_google_oauth2_omniauth_callback_path
-      expect(response).to have_http_status(:not_found)
-      expect(User.count).to eq(1)
+        get user_google_oauth2_omniauth_callback_path
+        expect(response).to have_http_status(:not_found)
+        expect(User.count).to eq(1)
 
-      get new_registration_path
-      expect(response).to have_http_status(:ok)
-      expect(response.body).not_to include(google_button)
-    end
-
-    it 'answers 404 for the Google endpoints while only the client secret is unset (both credentials are required)' do
-      ENV.delete('GOOGLE_OAUTH_CLIENT_SECRET')
-      mock_google(email: 'grace@example.com')
-
-      post user_google_oauth2_omniauth_authorize_path
-      expect(response).to have_http_status(:not_found)
-
-      get user_google_oauth2_omniauth_callback_path
-      expect(response).to have_http_status(:not_found)
-      expect(User.count).to eq(1)
-
-      get new_registration_path
-      expect(response).to have_http_status(:ok)
-      expect(response.body).not_to include(google_button)
+        get new_registration_path
+        expect(response).to have_http_status(:ok)
+        expect(response.body).not_to include(google_button)
+      end
     end
 
     it 'refuses a locked user (too many wrong passwords) instead of signing them in through Google' do

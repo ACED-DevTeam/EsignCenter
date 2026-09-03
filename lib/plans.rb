@@ -41,7 +41,7 @@ module Plans
 
     billing = billing_account(account)
 
-    return INTERNAL if billing.internal? || billing.operator?
+    return INTERNAL unless billing.customer?
 
     paid_subscription?(billing) ? PAID : FREE
   end
