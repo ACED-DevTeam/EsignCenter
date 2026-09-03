@@ -631,6 +631,23 @@ RSpec.describe 'Billing page', type: :request do # rubocop:disable RSpec/Multipl
       expect(session['configuration']).to eq(portal_configuration_id)
       expect(session['return_url']).to end_with('/settings/billing')
     end
+
+    # The portal link IS the credential — it signs whoever opens it into this
+    # customer's billing — and Rails logs every redirect destination at INFO.
+    # The line the log gets must not be usable.
+    it 'keeps the Customer Portal link out of the log' do
+      stub_portal_create
+
+      logged = []
+
+      ActiveSupport::Notifications.subscribed(->(*, payload) { logged << payload[:location] },
+                                              'redirect_to.action_controller') do
+        post '/settings/billing/portal'
+      end
+
+      expect(response).to redirect_to(portal_url)
+      expect(logged).to eq(['[FILTERED]'])
+    end
   end
 
   describe 'the states a subscription can be in' do
