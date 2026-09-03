@@ -76,7 +76,17 @@ this order, and nothing else happens on that request:
 2. **Store once.** The exact bytes Stripe signed go into the
    `stripe_event_inboxes` table, keyed by Stripe's event id. Stripe retries a
    delivery until it is acknowledged, so the same event arrives more than
-   once as a matter of course; the second copy is acknowledged and dropped.
+   once as a matter of course; the second copy never makes a second row. It
+   is not simply thrown away, though: if the stored copy has not been decided
+   yet, the repeat puts it back on the queue. That covers the case where the
+   row was saved but its job was not (the queue was unreachable, or the
+   worker died) — without it the event would sit until the next 06:00 sweep.
+   Only a copy that is genuinely *waiting* is put back: an event already
+   processed or ignored queues nothing, one a worker is holding right now
+   queues nothing (deciding that worker died belongs to the stuck-row sweep,
+   and a second job would spend one of the event's five retries for nothing),
+   and one that has already spent all five is left where the operator can see
+   it rather than quietly restarted by a dashboard "Resend".
 3. **Enqueue.** A background job is queued. Nothing is processed on the web
    request.
 4. **Acknowledge.** `200 {"received": true}`, immediately.
@@ -126,38 +136,141 @@ hand in the dashboard. A subscription is ours only if it carries an item on
 account's id. Anything else is never adopted (no paid access for a purchase
 that was not ours) and never cancelled (it is somebody's real purchase); it is
 logged as *"foreign subscription … left alone"* and named in the nightly
-summary. When a customer somehow holds several live subscriptions of ours and
-the row names none of them (a Checkout the app never heard back from), the
-survivor is decided the same way every time: one on our price beats one that
-is merely tagged, and among those the **earliest created** wins; the rest are
-duplicates.
+summary. When a customer somehow holds several live subscriptions of ours, the
+survivor is decided the same way every time, in three steps: one on our price
+beats one that is merely tagged; then the one that is actually **collecting**
+(`active`, `trialing`) beats one Stripe is still dunning (`past_due`,
+`unpaid`, `paused`), which in turn beats one that has never charged at all
+(`incomplete` — an abandoned card confirmation); and only between two equally
+healthy subscriptions does the **earliest created** win. The rest are
+duplicates. Health comes before age on purpose: keeping a subscription that
+cannot collect, and cancelling and refunding the one that can, would take the
+product away from a customer who is paying for it.
 
-**Refunding a duplicate — only what we cancelled.** Cancelling a duplicate is
-only half the job: an account whose trial is spent pays its first invoice
-during Checkout, before we ever hear about it. So after the cancellation the
-duplicate's latest invoice is read; if it collected money, a refund is created
-against its payment (reason *duplicate*), the refund id goes into the operator
-alert, and the customer's page says *"…the duplicate was cancelled and its
-charge of $X refunded."* Every cancellation the app makes is stamped with its
-own marker (`cancellation_details.comment = esigncenter:duplicate`), and a
-refund is issued only for a subscription the app cancelled — in this attempt,
-or in an earlier one whose refund step failed (the marker proves it). A
-candidate that is **already over** when looked at and carries no marker — a
-stale webhook about an old, legitimately ended subscription, a bookmarked
-return URL — is ignored: nothing is cancelled, nothing is refunded, nothing is
-reported as cancelled.
+**Refunding a duplicate — which one was cancelled decides whether money goes
+back at all.** Cancelling a duplicate is only half the job: an account whose
+trial is spent pays its first invoice during Checkout, before we ever hear
+about it. But *"is this a double charge?"* has two very different answers,
+and which one applies is settled by one comparison — was the cancelled
+subscription created **after** the one that survived, or **before** it? If
+that comparison cannot be made at all — no surviving subscription to compare
+against, or a creation date missing from either — the app treats it as the
+**older**-loser case: an unproven comparison never moves money on its own, so
+the duplicate is still cancelled and a person is asked to look.
+
+**The newer one lost (the ordinary case): everything it collected comes
+back.** A subscription created after the survivor never bought anything the
+survivor was not already billing for, so every paid invoice of its life is a
+second charge. The app asks Stripe what it ever collected — **every** paid
+invoice, not just its last one, because a duplicate nobody noticed for three
+months charged three times — and sends the money back with the reason
+*duplicate*.
+
+**The older one lost: nothing comes back automatically, and a person is
+told.** Sometimes the loser is the customer's *original* subscription: their
+card started failing, it went `past_due` or never confirmed at all, a healthy
+new one appeared and won on health (above). Cancelling the old one is right;
+refunding the year it billed honestly is not. At most part of one cycle was
+charged twice, and no field on a Stripe invoice says how much of it — so the
+app refuses to guess. The old subscription is cancelled under its own marker
+(`esigncenter:duplicate-manual`), **no refund is ever issued for it**, the
+customer keeps paid access on the survivor, and the operator gets a **manual
+refund review** note naming the subscription we cancelled, the one that took
+over and when it started, and the last invoice the cancelled one collected —
+everything needed to settle the part-cycle by hand in the Stripe dashboard.
+The nightly sweep lists these under their own heading in its summary.
+
+Two more rules keep the automatic refund honest.
+
+**One refund per payment, never per invoice.** A refund is made against a
+*PaymentIntent* — one card charge — and Stripe lets one charge settle several
+invoices. So the duplicate's paid invoices are collapsed onto the payments
+that settled them: two invoices behind one $60 charge are **one** debt and get
+**one** refund of $60. (Refunding them separately would either return $120 or,
+because the two would carry different idempotency keys, fail forever on the
+second.) Each refund is capped twice over: by what those invoices collected
+through that payment, and by what the charge still has left.
+
+**Only what has not already come back.** For each payment the app reads the
+charge behind it and refunds **only the part still outstanding**. A charge an
+operator already refunded by hand, or one an earlier attempt of ours returned
+before it fell over, counts as returned and is not touched again. That is
+what lets a refund that failed half-way simply be retried: the payments
+already square are skipped and the rest are finished.
+
+**Never more than three payments unattended.** If a duplicate still owes more
+than **three** payments, the app refuses to refund automatically. The
+duplicate is cancelled anyway, but the operator gets *"REFUND FAILED — refund
+manually"* naming how many payments and how much (*"needs manual review: 4
+payments, $120.00 still to return"*), and the event is retried — **for five
+attempts, then it pages**. Once a person has refunded by hand there is nothing
+outstanding left on any payment, so the next attempt converges quietly and its
+note says the charges *"had already been returned"* — never *"nothing was
+charged twice"* about a duplicate that took money. A refund that large is not
+a duplicate the app understands, and money does not leave automatically faster
+than a person can notice.
+
+The total returned (what was already back, plus what went back now) is then
+checked against the total those invoices say was collected. If it is short by
+a cent, the job **fails loudly** rather than recording a partial return as a
+full one: same *"REFUND FAILED — refund manually"*, and the event is retried.
+So the figure in the operator alert and in the customer's *"…the duplicate was
+cancelled and its charge of $X refunded"* is always a true amount — and when
+nothing was actually refunded, the customer is never told one was.
+
+**Every page of the invoices, or none.** The paid-invoice list is read page by
+page and stops at a thousand, exactly like the subscription list below; if
+Stripe still says there is more, the read is refused rather than treated as
+"nothing else was charged" — refunding on half a list would return part of the
+money and call it all of it.
+
+Every cancellation the app makes is stamped with one of its two markers —
+`duplicate` for a newer loser, `duplicate-manual` for an older one — written
+into the subscription's **metadata** at Stripe (`esigncenter_cancelled`,
+alongside `esigncenter_cancelled_at`), immediately before the cancellation
+itself. Metadata is the marker's authority because only our secret API key can
+write it. The same marker is also written in plain words into the
+subscription's cancellation comment (`esigncenter:duplicate` /
+`esigncenter:duplicate-manual`) purely so it reads sensibly in the Stripe
+dashboard — that comment is **never** consulted by the app, because the
+Customer Portal's own "tell us more" box writes that same field and a customer
+could otherwise type their way to a refund of everything they have honestly
+paid. If the metadata write fails, nothing is cancelled: a cancellation
+without its marker is a debt the app would forget. A refund is issued only
+for a subscription the app cancelled — in this attempt, or in an earlier one
+whose refund step failed (the marker proves it). Both markers mean *"we ended
+this"*; only the first means *"and we owe its money"*. That earlier attempt is
+not forgotten: if the app later finds that the subscription a row still names
+is dead **with our automatic marker on it**, it settles that refund before the
+row moves on to any other subscription — on the webhook path *and* on the
+nightly sweep, which is the only thing left that will ever look once the
+subscription is dead (a dead subscription raises no more webhooks). The marker
+alone is enough to know the debt: we only ever write it on a subscription
+created after the survivor, so its whole paid life is owed, and no surviving
+subscription has to still exist for the settlement to be right. A dead
+subscription carrying the *manual* marker is left exactly as it is: nothing
+sent, nothing said, because a person already has it. The sweep names what it
+settled in its summary: *"refund settled: $30.00 for sub_…"*.
+A candidate that is **already
+over** when looked at and carries no marker — a stale webhook about an old,
+legitimately ended subscription, a bookmarked return URL — is ignored:
+nothing is cancelled, nothing is refunded, nothing is reported as cancelled.
 
 **Two live subscriptions of ours, both real.** If the row holds one and news
 of another live one arrives, the survivor policy above decides which the
-account keeps (our price first, then the earliest created) — not the order
-the webhooks happened to arrive in. The loser, whichever it is, goes through
-the same cancel-and-refund path. A trial duplicate has a $0 invoice and nothing to refund, and the
-page says *"…you will not be charged for it."* If the refund itself fails the
-job fails and retries, and the alert says **REFUND FAILED — refund manually**
-so a person looks. Refunds carry Stripe idempotency keys, so a retry can
-never refund the same invoice twice. At most three Stripe calls decide the
-duplicate path (the row's own subscription, the duplicate, the cancellation)
-plus the refund when there is money to return.
+account keeps (our price, then health, then the earliest created) — not the
+order the webhooks happened to arrive in. The loser, whichever it is, goes
+through the same cancel-and-refund path. A trial duplicate has paid no
+invoice and there is nothing to refund, and the page says *"…you will not be
+charged for it."* If the refund itself fails the job fails and retries, and
+the alert says **REFUND FAILED — refund manually** so a person looks. Refunds
+carry Stripe idempotency keys (one per payment), so a retry inside Stripe's
+own 24-hour window lands on the same refund; past that window the charge
+itself is what stops a second payout, because only the outstanding part is
+ever asked for. Four Stripe calls decide the duplicate path (the row's own
+subscription, the duplicate, the cancellation, and what the duplicate ever
+collected), then one read of the charge behind each payment that has money in
+it, plus one refund per payment there is money to return.
 
 Whether the account is **past due** is decided the same way: from the state
 Stripe just reported, not from the kind of event that arrived. A replayed
@@ -188,12 +301,27 @@ every subscription the app thinks it has, straight from Stripe:
 
 - a row that disagrees with Stripe is rewritten to match (counted only once
   the repair has actually gone through);
-- a customer Stripe says has **two** live subscriptions of ours keeps the one
-  the row names; the others go through the same duplicate path as a webhook
-  (cancelled, refunded, reported) — and only what was actually cancelled is
-  reported as cancelled. The sweep is never allowed to re-point a row on the
-  strength of a list, and it skips the duplicate check entirely for a row
-  whose repair failed: a stale row is no basis for cancelling anything;
+- a customer Stripe says has **two** live subscriptions of ours ends up on
+  one of them, and the other goes through the same duplicate path as a
+  webhook (cancelled, refunded, reported) — only what was actually cancelled
+  is reported as cancelled. Which one survives is the survivor policy's
+  decision, not the row's: both are re-read from Stripe under the row lock
+  first, so if the subscription the row names is the sicker one, the row is
+  moved onto the one that is collecting and the sick one is the duplicate.
+  When the one cancelled was the **older** of the two, nothing is refunded
+  automatically and the summary lists it under its own **manual refund
+  review** heading, with the last invoice it collected, for a person to
+  settle by hand;
+  What the sweep never does is **adopt**: a live subscription the row has
+  never heard of is only named in the summary for a person to look at, never
+  written onto the row on the strength of a list. It also skips the duplicate
+  check entirely for a row whose repair failed: a stale row is no basis for
+  cancelling anything;
+- a row still naming a subscription **we** cancelled as a newer duplicate and
+  never refunded gets that refund settled here (see above) and named in the
+  summary as *"refund settled: $X for sub_…"*. This is the last backstop for
+  it: once the subscription is dead, no webhook about it will ever arrive
+  again. One carrying the *manual* marker is left alone — a person owns it;
 - **every page** of the customer's subscriptions is read (Stripe pages them;
   ten dead subscriptions cannot hide a live one on the next page). The read
   stops at a thousand; if Stripe still says there is more, the list is

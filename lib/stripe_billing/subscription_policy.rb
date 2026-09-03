@@ -51,14 +51,35 @@ module StripeBilling
       SubscriptionSync.field(SubscriptionSync.field(stripe_subscription, :metadata), :account_id).to_s
     end
 
+    # How well a live subscription is actually collecting. Age alone is not
+    # enough to pick a survivor: an `incomplete` subscription (abandoned 3-D
+    # Secure) has never taken a cent and never will, and one in dunning is
+    # only trying — so neither may beat one that is genuinely charging the
+    # card, however much older it is. Cancelling the collecting one and
+    # keeping the sick one costs the customer their access AND refunds us to
+    # zero.
+    COLLECTING_STRIPE_STATUSES = %w[active trialing].freeze
+    DUNNING_STRIPE_STATUSES = %w[past_due unpaid paused].freeze
+
+    def health_rank(stripe_subscription)
+      case SubscriptionSync.field(stripe_subscription, :status).to_s
+      when *COLLECTING_STRIPE_STATUSES then 0
+      when *DUNNING_STRIPE_STATUSES then 1
+      else 2
+      end
+    end
+
     # Which of several live subscriptions the account keeps: one on our price
-    # beats one that is merely tagged, and among those the EARLIEST created
-    # wins — it is the one that has been charging longest and the one the
-    # customer most likely knows about. Everything after the first is a
-    # duplicate. Deterministic, so two workers reach the same answer.
+    # beats one that is merely tagged; among those the HEALTHIER one beats a
+    # sicker one (see health_rank); and only between two equally healthy ones
+    # does the EARLIEST created win — it is the one that has been charging
+    # longest and the one the customer most likely knows about. Everything
+    # after the first is a duplicate. Deterministic, so two workers reach the
+    # same answer.
     def survivor_order(subscriptions)
       subscriptions.sort_by do |subscription|
         [on_our_price?(subscription) ? 0 : 1,
+         health_rank(subscription),
          SubscriptionSync.field(subscription, :created).to_i,
          SubscriptionSync.field(subscription, :id).to_s]
       end

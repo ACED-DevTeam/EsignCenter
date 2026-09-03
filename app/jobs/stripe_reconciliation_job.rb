@@ -14,16 +14,19 @@ class StripeReconciliationJob < ApplicationJob
   # Rows the operator granted by hand are not Stripe's to correct.
   MANUAL_STATUS = 'manual'
 
-  Report = Struct.new(:repaired, :errors, :requeued, :duplicates, :foreign, :unlinked) do
+  Report = Struct.new(:repaired, :errors, :requeued, :duplicates, :foreign, :unlinked, :settled,
+                      :manual_refunds) do
     def anything?
-      repaired.any? || errors.any? || duplicates.any? || foreign.any? || unlinked.any? || requeued.positive?
+      repaired.any? || errors.any? || duplicates.any? || foreign.any? || unlinked.any? || settled.any? ||
+        manual_refunds.any? || requeued.positive?
     end
   end
 
   def perform
     return if StripeBilling.api_key.blank?
 
-    report = Report.new(repaired: [], errors: [], requeued: 0, duplicates: [], foreign: [], unlinked: [])
+    report = Report.new(repaired: [], errors: [], requeued: 0, duplicates: [], foreign: [], unlinked: [],
+                        settled: [], manual_refunds: [])
 
     sweep(report)
     report.requeued = requeue_stuck_events
@@ -95,13 +98,20 @@ class StripeReconciliationJob < ApplicationJob
   end
 
   # A customer with two live subscriptions of ours is being charged twice.
-  # The row's own subscription is the one the account keeps; every other
-  # live one of OURS goes through the Linker's duplicate path (cancelled at
-  # Stripe, refunded, operator told) — and only what the Linker actually
-  # cancelled is reported as cancelled. The Linker is told it may not adopt:
-  # the row was repaired from Stripe a moment ago, and a list is no reason
-  # to repoint it. A live subscription that is not ours is left alone and
-  # named in the summary.
+  # Every live one of OURS that the row does not name goes through the
+  # Linker's duplicate path (cancelled at Stripe, refunded, operator told) —
+  # and only what the Linker actually cancelled is reported as cancelled.
+  #
+  # Which of the two survives is the survivor policy's decision, not the
+  # row's: the Linker re-fetches BOTH under the row lock, and if the
+  # subscription the row names is the sicker one (an `incomplete` that never
+  # charged, one in dunning) the row is repointed to the one that is
+  # actually collecting and the sick one is the duplicate. That is
+  # resolution between two subscriptions we hold in hand, not adoption: the
+  # Linker is told it may not adopt (`allow_adopt: false`), so a subscription
+  # the row has never heard of is never written onto it on the strength of a
+  # list — it is only named in the summary for a person. A live subscription
+  # that is not ours is left alone and named too.
   def cancel_extra_subscriptions(subscription_row, report)
     live = StripeBilling::Linker.live_subscriptions(subscription_row.stripe_customer_id, subscription_row.account_id)
     own_id = subscription_row.stripe_subscription_id
@@ -110,6 +120,7 @@ class StripeReconciliationJob < ApplicationJob
     note_foreign(subscription_row, live.foreign, report)
 
     unless ours.include?(own_id)
+      settle_owed_refund(subscription_row, report)
       note_unlinked(subscription_row, ours, report)
 
       return
@@ -121,9 +132,34 @@ class StripeReconciliationJob < ApplicationJob
 
       next unless outcome.verdict == :duplicate_cancelled
 
-      report.duplicates << { account_id: subscription_row.account_id, cancelled: duplicate_id,
+      cancelled = outcome.cancelled_id || duplicate_id
+
+      report.duplicates << { account_id: subscription_row.account_id, cancelled:,
                              refunded: outcome.refund&.formatted_amount }
+
+      next if outcome.manual_note.blank?
+
+      report.manual_refunds << { account_id: subscription_row.account_id, cancelled:, note: outcome.manual_note }
     end
+  end
+
+  # The row's own subscription is not among the live ones — and it may be one
+  # WE cancelled as a duplicate and never refunded, because the attempt died
+  # between the cancellation at Stripe and the money going back. Nothing else
+  # will ever look at it: a dead subscription raises no more webhooks, and
+  # this row is about to be left alone. So the sweep settles that debt, the
+  # same way the webhook path does and through the same locked Linker call
+  # (which re-fetches the subscription itself — a list is never enough to
+  # move money on). Which marker is on it decides: only the one we write on a
+  # duplicate created AFTER the survivor is refunded automatically.
+  def settle_owed_refund(subscription_row, report)
+    refund = StripeBilling::Linker.settle_owed_refund!(subscription_row, notify: false)
+
+    return if refund.nil?
+
+    report.settled << { account_id: subscription_row.account_id,
+                        subscription: subscription_row.stripe_subscription_id,
+                        refunded: refund.formatted_amount }
   end
 
   def note_foreign(subscription_row, foreign, report)
@@ -181,10 +217,13 @@ class StripeReconciliationJob < ApplicationJob
               "#{report.duplicates.size} duplicate subscription(s) cancelled, " \
               "#{report.foreign.size} foreign subscription(s) left alone, " \
               "#{report.unlinked.size} live subscription(s) not linked to any row, " \
+              "#{report.settled.size} owed refund(s) settled, " \
+              "#{report.manual_refunds.size} duplicate(s) awaiting a manual refund review, " \
               "#{report.requeued} stuck event(s) re-enqueued, #{report.errors.size} account(s) errored"
 
     ErrorReport.warning(summary, repaired: report.repaired, duplicates: report.duplicates, foreign: report.foreign,
-                                 unlinked: report.unlinked, errors: report.errors)
+                                 unlinked: report.unlinked, settled: report.settled,
+                                 manual_refunds: report.manual_refunds, errors: report.errors)
 
     OperatorAlert.deliver(
       subject: 'Stripe reconciliation found work to do',
@@ -194,6 +233,9 @@ class StripeReconciliationJob < ApplicationJob
             "#{format_customer_subscriptions(report.foreign)}\n\n" \
             "Live subscriptions of ours not linked to any account row (somebody may be paying for nothing):\n" \
             "#{format_customer_subscriptions(report.unlinked)}\n\n" \
+            "Refunds an earlier attempt owed and this sweep settled:\n#{format_settled(report)}\n\n" \
+            'Duplicates cancelled that need a manual refund review (older than the subscription that ' \
+            "survived — nothing was refunded automatically):\n#{format_manual_refunds(report)}\n\n" \
             "Errors:\n#{report.errors.join("\n")}\n"
     )
   end
@@ -208,6 +250,16 @@ class StripeReconciliationJob < ApplicationJob
 
       d[:refunded] ? "#{line}, refunded #{d[:refunded]}" : line
     end.join("\n")
+  end
+
+  def format_settled(report)
+    report.settled.map do |s|
+      "  account #{s[:account_id]}: refund settled: #{s[:refunded]} for #{s[:subscription]}"
+    end.join("\n")
+  end
+
+  def format_manual_refunds(report)
+    report.manual_refunds.map { |m| "  account #{m[:account_id]}:\n#{m[:note]}" }.join("\n")
   end
 
   def format_customer_subscriptions(entries)
