@@ -39,6 +39,20 @@ module Quotas
     SIGNUP_ATTEMPTS_PER_IP_PER_HOUR = 30
     OAUTH_ATTEMPTS_PER_IP_PER_HOUR = 60
 
+    # Email-2FA verification codes a share link may send in an hour, counted
+    # per account. The anonymous send endpoint mails an address nobody has
+    # confirmed and creates no Submission row, so neither the monthly sends
+    # quota nor anything else on the account grows with it — without a row of
+    # its own the only brake is the per-IP one in lib/submitters.rb, and a
+    # pool of proxies walks straight around that. The account cannot be
+    # swapped the same way, so this is where the brake belongs. An honest link
+    # sends one code per visitor who starts the form plus the odd resend; a
+    # free account can only ever start 15 documents in a whole month, and even
+    # a busy paid link does not admit a signer every thirty-six seconds for an
+    # hour on end. Well above honest use, far below the volume that would make
+    # a relay run worth mounting.
+    SHARED_LINK_CODES_PER_ACCOUNT_PER_HOUR = 100
+
     # Abuse policy — any customer account (lib/sending_pause.rb).
     COMPLAINTS_TO_PAUSE = 1   # one spam complaint pauses sending
     BOUNCE_WINDOW = 20        # hard bounces among the last 20 sends...
