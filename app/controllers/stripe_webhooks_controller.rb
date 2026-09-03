@@ -48,7 +48,8 @@ class StripeWebhooksController < ApplicationController
 
   # The event id is the deduplication key: Stripe retries a delivery until it
   # is acknowledged, so the same event arrives more than once as a matter of
-  # course. A second copy is acknowledged without a second job.
+  # course. A second copy never makes a second ROW — but it does put the
+  # stored one back on the queue when it has not been decided yet.
   def store_and_enqueue(raw_body, event)
     inbox = StripeEventInbox.new(
       stripe_event_id: event['id'],
@@ -62,9 +63,43 @@ class StripeWebhooksController < ApplicationController
     if inbox.save
       ProcessStripeEventJob.perform_async(inbox.id)
     else
-      Rails.logger.info("Stripe webhook #{event['id']} already stored; not re-enqueued")
+      requeue_stored(event)
     end
   rescue ActiveRecord::RecordNotUnique
-    Rails.logger.info("Stripe webhook #{event['id']} raced a duplicate delivery; not re-enqueued")
+    requeue_stored(event)
+  end
+
+  # The row committed but its job did not: `perform_async` raised (Redis was
+  # down) and Stripe got a 500, or the worker that had it died. Stripe's own
+  # retry is the earliest chance to put it back on the queue — otherwise it
+  # waits for the 06:00 sweep.
+  def requeue_stored(event)
+    stored = StripeEventInbox.find_by(stripe_event_id: event['id'])
+
+    unless requeuable?(stored)
+      Rails.logger.info("Stripe webhook #{event['id']} needs no second job; not re-enqueued")
+
+      return
+    end
+
+    Rails.logger.info("Stripe webhook #{event['id']} already stored; re-enqueued")
+
+    ProcessStripeEventJob.perform_async(stored.id)
+  end
+
+  # Only a row that is genuinely waiting for a worker. A `processing` row
+  # belongs to a worker right now — the stuck-row sweep is what decides that
+  # worker died, and a second job would bump `attempts` a second time and
+  # could push a retryable row out of the retry budget. A `failed` row that
+  # has spent MAX_ATTEMPTS was deliberately given up on; re-enqueueing it
+  # from a dashboard "Resend" would make this door disagree with
+  # `StripeEventInbox.retryable` and with the reconciliation sweep. Anything
+  # already processed or ignored has its verdict.
+  def requeuable?(stored)
+    case stored&.status
+    when StripeEventInbox::PENDING then true
+    when StripeEventInbox::FAILED then stored.attempts < StripeEventInbox::MAX_ATTEMPTS
+    else false
+    end
   end
 end

@@ -32,6 +32,9 @@ RSpec.describe 'Billing page', type: :request do # rubocop:disable RSpec/Multipl
 
     stub_subscription_list
     stub_customer_search([])
+    # Every duplicate the app cancels is asked what it ever collected;
+    # unless an example says otherwise, the answer is "nothing".
+    stub_invoice_list
   end
 
   def admin_for(record)
@@ -118,11 +121,31 @@ RSpec.describe 'Billing page', type: :request do # rubocop:disable RSpec/Multipl
                                expand: StripeBilling::Linker::DUPLICATE_EXPAND)
   end
 
+  # The marker's authority is the metadata write that comes first — only a
+  # secret key can make it — and the comment beside it is what a person reads.
   def stub_cancel(id, subscription, invoice: unpaid_invoice(id))
+    stub_request(:post, %r{\Ahttps://api\.stripe\.com/v1/subscriptions/#{id}})
+      .with(body: hash_including('metadata' => hash_including(
+        StripeBilling::DUPLICATE_CANCEL_METADATA_KEY => StripeBilling::DUPLICATE_CANCEL_METADATA
+      )),
+            headers: { 'Idempotency-Key' => "mark-duplicate-#{id}" })
+      .to_return(**stripe_json({ 'id' => id, 'object' => 'subscription' }))
+
     stub_request(:delete, %r{\Ahttps://api\.stripe\.com/v1/subscriptions/#{id}})
       .with(query: hash_including('expand' => StripeBilling::Linker::DUPLICATE_EXPAND,
                                   'cancellation_details' => { 'comment' => StripeBilling::DUPLICATE_CANCEL_MARKER }))
       .to_return(**stripe_json(subscription.merge('id' => id, 'status' => 'canceled', 'latest_invoice' => invoice)))
+  end
+
+  # What the app is told a subscription ever collected. A refund is made per
+  # paid invoice, so an example that expects one names its invoices here.
+  def stub_invoice_list(subscription_id = nil, invoices = [], has_more: false)
+    query = { 'status' => 'paid' }
+    query['subscription'] = subscription_id if subscription_id
+
+    stub_request(:get, %r{\Ahttps://api\.stripe\.com/v1/invoices})
+      .with(query: hash_including(query))
+      .to_return(**stripe_json(object: 'list', data: invoices, has_more:))
   end
 
   def unpaid_invoice(subscription_id)
@@ -130,11 +153,24 @@ RSpec.describe 'Billing page', type: :request do # rubocop:disable RSpec/Multipl
       payments: { object: 'list', data: [] } }
   end
 
-  def paid_invoice(subscription_id, amount:)
-    { id: "in_paid_#{subscription_id}", object: 'invoice', amount_paid: amount, currency: 'usd',
+  # An invoice the duplicate collected. `created` is only used to pick the
+  # latest one for an operator note; what is refunded is decided per
+  # PaymentIntent, not per invoice.
+  def paid_invoice(subscription_id, amount:, created: 1_788_411_000)
+    { id: "in_paid_#{subscription_id}", object: 'invoice', amount_paid: amount, currency: 'usd', created:,
       payments: { object: 'list',
                   data: [{ object: 'invoice_payment', status: 'paid',
                            payment: { type: 'payment_intent', payment_intent: "pi_#{subscription_id}" } }] } }
+  end
+
+  # What the payment took and how much has already come back, read off the
+  # charge behind the PaymentIntent.
+  def stub_payment_intent(payment_intent, amount:, refunded: 0)
+    stub_request(:get, %r{\Ahttps://api\.stripe\.com/v1/payment_intents/#{Regexp.escape(payment_intent)}})
+      .to_return(**stripe_json(id: payment_intent, object: 'payment_intent',
+                               latest_charge: { id: "ch_#{payment_intent}", object: 'charge', amount:,
+                                                amount_captured: amount, amount_refunded: refunded,
+                                                currency: 'usd' }))
   end
 
   # The row Checkout leaves behind before the customer ever reaches Stripe's
@@ -896,6 +932,8 @@ RSpec.describe 'Billing page', type: :request do # rubocop:disable RSpec/Multipl
       invoice = paid_invoice(subscription['id'], amount: 3000)
       stub_duplicate(subscription['id'], subscription, invoice:)
       stub_cancel(subscription['id'], subscription, invoice:)
+      stub_invoice_list(subscription['id'], [invoice])
+      stub_payment_intent("pi_#{subscription['id']}", amount: 3000)
       refund_call = stub_request(:post, 'https://api.stripe.com/v1/refunds')
                     .with(body: hash_including('payment_intent' => "pi_#{subscription['id']}",
                                                'reason' => 'duplicate'))

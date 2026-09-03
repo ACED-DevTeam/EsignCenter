@@ -89,10 +89,41 @@ module StripeBilling
   TRIAL_PERIOD_DAYS = 14
 
   # Written into `cancellation_details.comment` of every subscription THIS
-  # app cancels as a duplicate. Only we write it, so a dead subscription
-  # carrying it is one we cancelled (and may still owe a refund on); a dead
-  # one without it is somebody else's history and is never refunded.
+  # app cancels as a duplicate — for a HUMAN reading the Stripe dashboard.
+  # It is documentation, never authority: the Customer Portal's "tell us
+  # more" box writes that same field, so a customer can type this string
+  # themselves. No money decision may ever be made on it. See
+  # DUPLICATE_CANCEL_METADATA_KEY for the field that does decide.
   DUPLICATE_CANCEL_MARKER = 'esigncenter:duplicate'
+
+  # The same, for a duplicate we cancelled that was created BEFORE the one
+  # that survived — the customer's original subscription, ended because it
+  # had stopped collecting and a healthy newer one took over. We ended it,
+  # but its history bought real service: at most part of one cycle was
+  # billed twice and only a person can judge that, so a subscription
+  # carrying this marker is NEVER refunded automatically.
+  DUPLICATE_CANCEL_MANUAL_MARKER = 'esigncenter:duplicate-manual'
+
+  # Where the marker's AUTHORITY lives. Subscription metadata can only be
+  # written with a secret API key — not by the Customer Portal, not by the
+  # customer, not by any field they can fill in — so a dead subscription
+  # carrying this key is one WE cancelled, and its value alone says whether
+  # its money is ours to send back automatically. Written by
+  # `subscriptions.update` immediately before the cancel; if that write
+  # fails, nothing is cancelled.
+  DUPLICATE_CANCEL_METADATA_KEY = 'esigncenter_cancelled'
+
+  # When we did it — for a person reconstructing the sequence later. Never
+  # read by any decision.
+  DUPLICATE_CANCEL_METADATA_AT_KEY = 'esigncenter_cancelled_at'
+
+  # The metadata value that means "we ended this as a newer duplicate and we
+  # owe its money back".
+  DUPLICATE_CANCEL_METADATA = 'duplicate'
+
+  # And the value that means "we ended this, but only a person may decide
+  # what — if anything — comes back".
+  DUPLICATE_CANCEL_MANUAL_METADATA = 'duplicate-manual'
 
   # Raised when a customer's subscription list could not be read to the end
   # (the page cap was hit with Stripe still saying `has_more`): nothing that
