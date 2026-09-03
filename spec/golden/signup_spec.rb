@@ -552,8 +552,10 @@ RSpec.describe 'Self-serve registration', type: :request do
       get new_user_session_path
       expect(response.headers['Content-Security-Policy']).not_to include('challenges.cloudflare.com')
 
+      # The check-your-email page has no widget, so the exception does not
+      # reach it: the policy stays as tight as every other page's.
       get confirm_registration_path
-      expect(response.headers['Content-Security-Policy']).to include('challenges.cloudflare.com')
+      expect(response.headers['Content-Security-Policy']).not_to include('challenges.cloudflare.com')
     end
   end
 

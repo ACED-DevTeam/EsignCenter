@@ -59,8 +59,10 @@ archived. Counted live from the documents themselves.
 All monthly limits use the UTC calendar month. They reset at 00:00 UTC on the
 first of the next month, by themselves: nothing is stored that says "this
 account is capped", so there is no job to run and nothing to reset. A share
-link that showed "not accepting new responses" on the 31st simply works
-again on the 1st.
+link that was closed by a monthly cap (completions or sends) on the 31st simply
+works again on the 1st. A link closed because ten documents are still waiting
+for signatures reopens as soon as one of them completes, is declined, expires
+or is deleted; a sending pause is lifted only by the operator.
 
 ### Children roll up to their parent
 

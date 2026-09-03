@@ -17,9 +17,13 @@ class RegistrationsController < Devise::RegistrationsController
 
   before_action :require_registration_enabled!
   # Runs after ApplicationController#set_csp (same condition), so the policy
-  # it appends to is the one the response will carry. Registration-only:
-  # the global policy never allows a third-party script.
-  before_action :allow_turnstile, if: -> { request.get? && !request.headers['HTTP_X_TURBO'] }
+  # it appends to is the one the response will carry. The sign-up form is the
+  # only page that carries the widget, so it is the only page whose policy is
+  # widened — the check-your-email page and the global policy never allow a
+  # third-party script. (`create` re-renders `new` on a refusal, but set_csp
+  # itself only runs on GET, so there is no policy to widen there.)
+  before_action :allow_turnstile, only: %i[new],
+                                  if: -> { request.get? && !request.headers['HTTP_X_TURBO'] }
 
   around_action :with_browser_locale
 

@@ -439,7 +439,8 @@ Two things email the operator automatically (`lib/operator_alert.rb`): a
 sending pause (docs/quotas-and-limits.md section 3) and a **reported
 document** — every signing page carries a small "Report this document" link
 to an anonymous form (`/report/<signer slug>`, four reasons plus free text,
-limited to 5 reports per hour per network and 3 per document). Each report
+limited to 5 reports per hour per network and 3 per signer link, so each
+signer keeps their own budget). Each report
 is an `abuse_flags` row of kind `document_report` on the sending account,
 with the reason, details, reporter IP and browser, and the submission it
 points at. The alert goes to the `operator_alert_email` operator config when
