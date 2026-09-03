@@ -1,8 +1,9 @@
 # frozen_string_literal: true
 
 # "Continue with Google" (docs/signup.md). Google hands back a verified email;
-# an existing user with that address signs in (an unconfirmed one is
-# confirmed first — Google already proved the mailbox), a stranger gets a
+# an existing user with that address signs in (an unconfirmed one has its
+# password replaced and is then confirmed — Google already proved the
+# mailbox, but nobody ever proved it before), a stranger gets a
 # new customer account behind the same per-IP and blocklist guards as the
 # email path (no Turnstile: Google gated the request). A user who enrolled
 # two-factor authentication is sent to the password form instead — the
@@ -27,7 +28,7 @@ class OmniauthCallbacksController < Devise::OmniauthCallbacksController
     return refuse(I18n.t('google_sign_in_not_available_with_2fa')) if user.otp_required_for_login?
     return refuse(I18n.t('this_account_is_no_longer_active')) if user.archived_at? || user.account.archived_at?
 
-    user.confirm unless user.confirmed?
+    adopt(user) unless user.confirmed?
 
     # Devise's own gate (a lockout above all): the reason in Devise's words.
     return refuse(inactive_message_for(user)) unless user.active_for_authentication?
@@ -43,6 +44,28 @@ class OmniauthCallbacksController < Devise::OmniauthCallbacksController
 
   def email_verified?(auth)
     auth.extra&.raw_info&.email_verified == true
+  end
+
+  # Adopting an unconfirmed row: the password on it dies first, then the row
+  # is confirmed. An unconfirmed row is proof that nobody ever opened a link
+  # at that mailbox, so the person who typed the address into the sign-up
+  # form may be a stranger who typed someone else's — and the password on the
+  # row is theirs, not the owner's. Google has just proved the mailbox
+  # belongs to the person in front of us, so the row is theirs to keep; but
+  # confirming it while the stranger's password still works would hand that
+  # stranger a working sign-in at /sign_in to everything the owner goes on to
+  # create. A random password nobody holds ends that: the owner sets their
+  # own from "Forgot your password?", exactly like a stranger who signs up
+  # with Google in the first place (see `register`). Written before the
+  # confirm, and without validations, so nothing can leave the old password
+  # alive on a confirmed row. A user who is ALREADY confirmed is the opposite
+  # case — they proved the mailbox themselves, so the password is their own
+  # and is never touched.
+  def adopt(user)
+    user.password = Devise.friendly_token
+    user.save!(validate: false)
+
+    user.confirm
   end
 
   def inactive_message_for(user)

@@ -22,6 +22,30 @@ module Registrations
     RateLimit.call("signup-ip-day-#{remote_ip}", limit: Quotas::Limits::SIGNUPS_PER_IP_PER_DAY, ttl: 1.day)
   end
 
+  # Per-IP sign-up ATTEMPT ceiling, a different thing from the budget above:
+  # it counts every try, spent before the work an attempt costs us rather
+  # than after a success. The sign-up form's first act is an outbound call to
+  # Cloudflare with a five-second timeout, so a stranger replaying POSTs with
+  # a junk token ties up one web thread per request for free — a few dozen
+  # parallel connections and the app answers nobody. This is checked first,
+  # before that call is made. Same fail-open-on-Redis-down behaviour as every
+  # other velocity limit. Raises RateLimit::LimitApproached.
+  def assert_ip_attempt_allowed!(remote_ip)
+    RateLimit.call("signup-attempt-ip-hour-#{remote_ip}",
+                   limit: Quotas::Limits::SIGNUP_ATTEMPTS_PER_IP_PER_HOUR, ttl: 1.hour)
+  end
+
+  # The same ceiling for the OmniAuth endpoints, counted separately because
+  # one Google sign-in is two requests (authorize, then callback) and because
+  # its cost is Google's token exchange, not Cloudflare's. Checked in
+  # RegistrationGateMiddleware: OmniAuth's own middleware makes that outbound
+  # call before any controller of ours runs, so nothing at the controller
+  # level can protect this door.
+  def assert_oauth_attempt_allowed!(remote_ip)
+    RateLimit.call("oauth-attempt-ip-hour-#{remote_ip}",
+                   limit: Quotas::Limits::OAUTH_ATTEMPTS_PER_IP_PER_HOUR, ttl: 1.hour)
+  end
+
   # The domain list only, never the MX lookup: no DNS on the request path.
   def disposable_email?(email)
     return false if email.blank?

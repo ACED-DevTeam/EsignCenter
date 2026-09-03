@@ -2,14 +2,18 @@
 
 # Self-serve sign-up by email and password (docs/signup.md). Only `new`,
 # `create` and the check-your-email page exist — edit/update/destroy are not
-# routed. Every create runs the abuse guards in order — Turnstile, then the
-# form's own checks (the disposable-address blocklist among them), then the
-# per-IP limit — before anything is written, saves the account and its admin
-# in one transaction, and never signs the user in: Devise mails a
-# confirmation link and the person signs in after opening it. The per-IP
-# limit counts sign-ups, not attempts: it is spent only once the CAPTCHA and
-# the validation have passed, so five typos from one office never lock the
-# office out.
+# routed. Every create runs the abuse guards in order — the per-IP attempt
+# ceiling, then Turnstile, then the form's own checks (the disposable-address
+# blocklist among them), then the per-IP sign-up budget — before anything is
+# written, saves the account and its admin in one transaction, and never
+# signs the user in: Devise mails a confirmation link and the person signs in
+# after opening it. The two per-IP limits are different things and the order
+# is the point of both: the budget counts sign-ups and is spent only once the
+# CAPTCHA and the validation have passed, so five typos from one office never
+# lock the office out; the ceiling counts attempts and is spent first,
+# because everything after it — the Cloudflare call above all — costs the
+# server real work that an anonymous stranger must not be able to order in
+# bulk.
 class RegistrationsController < Devise::RegistrationsController
   include LaunchGates
 
@@ -36,6 +40,7 @@ class RegistrationsController < Devise::RegistrationsController
   def create
     build_signup(sign_up_params)
 
+    return refuse(:too_many_requests) unless ip_attempt_allowed?
     return refuse(:unprocessable_content) unless turnstile_verified?
     return refuse(:unprocessable_content) unless @user.valid?(:registration)
     return refuse(:too_many_requests) unless ip_allowed?
@@ -78,9 +83,31 @@ class RegistrationsController < Devise::RegistrationsController
 
     true
   rescue RateLimit::LimitApproached
-    @user.errors.add(:base, I18n.t('too_many_sign_ups_from_this_network'))
+    over_limit
 
     false
+  end
+
+  # The attempt ceiling, checked before the Cloudflare round-trip so that a
+  # refused network costs us nothing but a render: the whole point of it is
+  # that no stranger can make us hold a web thread on an outbound call they
+  # can replay for free. Deliberately not merged with the budget above — that
+  # one counts sign-ups and is spent only on success, this one counts tries.
+  def ip_attempt_allowed?
+    Registrations.assert_ip_attempt_allowed!(request.remote_ip)
+
+    true
+  rescue RateLimit::LimitApproached
+    over_limit
+
+    false
+  end
+
+  # Both per-network refusals say the same thing to the visitor: they are one
+  # network being asked to come back later, and which counter ran out is our
+  # business, not theirs.
+  def over_limit
+    @user.errors.add(:base, I18n.t('too_many_sign_ups_from_this_network'))
   end
 
   def turnstile_verified?
