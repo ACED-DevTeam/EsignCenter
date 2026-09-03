@@ -39,15 +39,11 @@ class BillingSettingsController < ApplicationController
 
   helper_method :billing_date
 
-  rescue_from Stripe::StripeError do |e|
-    ErrorReport.error(e, account_id: @billing&.id)
-
-    redirect_to settings_billing_path, alert: I18n.t('billing_provider_unreachable')
-  end
-
-  # The customer's subscription list could not be read to the end, so "no
-  # live subscription" cannot be concluded and nothing is sold on it.
-  rescue_from StripeBilling::ListIncomplete do |e|
+  # Stripe could not be reached — or its answer could not be used: a customer
+  # subscription list that stopped short of the end means "no live
+  # subscription" cannot be concluded, and nothing is sold on it. Either way
+  # the page says the provider is unreachable rather than 500ing.
+  rescue_from Stripe::StripeError, StripeBilling::ListIncomplete do |e|
     ErrorReport.error(e, account_id: @billing&.id)
 
     redirect_to settings_billing_path, alert: I18n.t('billing_provider_unreachable')

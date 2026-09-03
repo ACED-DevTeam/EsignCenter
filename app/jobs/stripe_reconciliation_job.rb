@@ -62,7 +62,7 @@ class StripeReconciliationJob < ApplicationJob
   # cancelled for.
   def each_row(scope, report)
     scope.find_each do |subscription_row|
-      next unless customer_row?(subscription_row)
+      next unless subscription_row.billing_customer?
 
       yield subscription_row
     rescue StandardError => e
@@ -70,10 +70,6 @@ class StripeReconciliationJob < ApplicationJob
 
       ErrorReport.error(e, account_id: subscription_row.account_id)
     end
-  end
-
-  def customer_row?(subscription_row)
-    Plans.billing_account(subscription_row.account).customer?
   end
 
   # The fetch, the comparison and the write all happen under the row lock the
@@ -162,15 +158,15 @@ class StripeReconciliationJob < ApplicationJob
                         refunded: refund.formatted_amount }
   end
 
+  # "A stranger's subscription on our customer, left alone" is reported in
+  # exactly the words the Linker uses on the Checkout path — one sentence, one
+  # place — and the sweep adds only its own line in the nightly summary.
   def note_foreign(subscription_row, foreign, report)
+    StripeBilling::Linker.report_foreign(subscription_row, foreign)
+
     foreign.each do |subscription|
-      id = StripeBilling::SubscriptionSync.field(subscription, :id)
-
-      ErrorReport.warning("foreign subscription #{id} on customer #{subscription_row.stripe_customer_id} left alone",
-                          account_id: subscription_row.account_id)
-
       report.foreign << { account_id: subscription_row.account_id, customer: subscription_row.stripe_customer_id,
-                          subscription: id }
+                          subscription: StripeBilling::SubscriptionSync.field(subscription, :id) }
     end
   end
 
