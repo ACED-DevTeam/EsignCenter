@@ -512,9 +512,7 @@ module StripeBilling
         return [already, stored_marker(already)]
       end
 
-      marker = duplicate_marker(duplicate, survivor)
-
-      [cancel_at_stripe!(duplicate, marker), marker]
+      cancel_at_stripe!(duplicate, duplicate_marker(duplicate, survivor))
     end
 
     # The automatic marker is the one that moves money, so it has to be
@@ -559,27 +557,29 @@ module StripeBilling
                            "EsignCenter subscription (account #{account_subscription.account_id})"
     end
 
-    # Returns the cancelled subscription as Stripe now sees it, stamped with
-    # our marker; or nil when it was already gone by someone else's hand
+    # Returns the cancelled subscription as Stripe now sees it and the marker
+    # that GOVERNS it — which is not always the one this attempt wanted: a
+    # retry of a half-finished attempt finds the marker its first attempt
+    # already wrote, and that one stands (mark_duplicate_at_stripe!). The
+    # subscription is nil when it was already gone by someone else's hand
     # (nothing of ours to refund). Only "it is already gone" is swallowed:
     # any other invalid request means the duplicate may still be billing
     # somebody, and the job must retry rather than record a cancellation
     # that never happened.
     def cancel_at_stripe!(duplicate, marker)
       duplicate_id = SubscriptionSync.field(duplicate, :id)
+      marker = mark_duplicate_at_stripe!(duplicate_id, marker)
 
-      mark_duplicate_at_stripe!(duplicate_id, marker)
-
-      StripeBilling.client.v1.subscriptions.cancel(
+      [StripeBilling.client.v1.subscriptions.cancel(
         duplicate_id,
         { expand: DUPLICATE_EXPAND, cancellation_details: { comment: marker } }
-      )
+      ), marker]
     rescue Stripe::InvalidRequestError => e
       raise unless already_gone?(e, duplicate_id)
 
       Rails.logger.info("Duplicate subscription #{duplicate_id} was already gone (#{e.message})")
 
-      nil
+      [nil, marker]
     end
 
     # Stamps the marker into the subscription's metadata BEFORE the cancel,
@@ -591,20 +591,48 @@ module StripeBilling
     # the shared "it is already gone" rescue in the caller, which is not a
     # failure at all — there is nothing left to cancel).
     #
-    # Keyed idempotently on the subscription so a retry inside Stripe's
-    # window re-writes the same marker rather than a second one, and the
-    # answer is discarded: the cancel that follows returns the subscription
-    # this path actually reads.
+    # Keyed idempotently on the subscription so two workers racing on the same
+    # duplicate write one marker rather than two. That key is STABLE and the
+    # body carries the moment it was written, which is what a retry trips
+    # over: the write landed, the cancel behind it did not, and the retry
+    # sends the same key with a later clock. Stripe refuses that outright —
+    # same key, different parameters — and before this rescue existed every
+    # retry inside Stripe's 24-hour window failed the same way, so the
+    # duplicate was never cancelled and went on charging until the retries
+    # ran out.
+    #
+    # That refusal is not a failure: it is Stripe saying the marker is
+    # already written. So the subscription is re-fetched and, when our key is
+    # on it, THAT marker is what the rest of the pass runs on — never the one
+    # this attempt happened to want, or a retry could promote a duplicate a
+    # previous attempt marked for manual review into an automatic refund.
+    # Only if the metadata is somehow absent (a key reused by something else)
+    # is the write re-issued under a fresh key, because a cancel must never
+    # happen with nothing stamped.
+    #
+    # Returns the marker that governs; the update's own answer is discarded,
+    # since the cancel that follows returns the subscription this path reads.
     def mark_duplicate_at_stripe!(duplicate_id, marker)
+      StripeBilling.client.v1.subscriptions.update(duplicate_id, marker_metadata_body(marker),
+                                                   idempotency_key: "mark-duplicate-#{duplicate_id}")
+
+      marker
+    rescue Stripe::IdempotencyError
+      written = stored_marker(StripeBilling.subscription_for(duplicate_id, expand: DUPLICATE_EXPAND))
+
+      return written if written
+
       StripeBilling.client.v1.subscriptions.update(
-        duplicate_id,
-        { metadata: { StripeBilling::DUPLICATE_CANCEL_METADATA_KEY =>
-                        DUPLICATE_CANCEL_METADATA_FOR.fetch(marker),
-                      StripeBilling::DUPLICATE_CANCEL_METADATA_AT_KEY => Time.now.to_i.to_s } },
-        idempotency_key: "mark-duplicate-#{duplicate_id}"
+        duplicate_id, marker_metadata_body(marker),
+        idempotency_key: "mark-duplicate-#{duplicate_id}-#{SecureRandom.hex(4)}"
       )
 
-      nil
+      marker
+    end
+
+    def marker_metadata_body(marker)
+      { metadata: { StripeBilling::DUPLICATE_CANCEL_METADATA_KEY => DUPLICATE_CANCEL_METADATA_FOR.fetch(marker),
+                    StripeBilling::DUPLICATE_CANCEL_METADATA_AT_KEY => Time.now.to_i.to_s } }
     end
 
     # Stripe explicitly calls it finished (or never heard of it). A missing
