@@ -62,6 +62,22 @@ RSpec.describe 'Self-serve registration', type: :request do
     follow_redirect!
   end
 
+  # OmniAuth's own request phase, with the mock switched off just long enough
+  # for the strategy to mint a real `state` and store it in this session (it
+  # only builds Google's authorize URL — nothing goes out). Returns that
+  # state: the one thing a callback must carry to reach the token exchange.
+  def start_google_flow!
+    OmniAuth.config.test_mode = false
+
+    post user_google_oauth2_omniauth_authorize_path
+
+    expect(response).to have_http_status(:redirect)
+
+    CGI.parse(URI.parse(response.location).query)['state'].sole
+  ensure
+    OmniAuth.config.test_mode = true
+  end
+
   # The root serves a landing page to visitors, so the probe is a page only
   # a signed-in user can open.
   def expect_signed_in
@@ -410,23 +426,54 @@ RSpec.describe 'Self-serve registration', type: :request do
     # The callback's outbound token exchange with Google is made by OmniAuth's
     # own middleware, before any controller of ours runs, so the ceiling that
     # protects it sits in RegistrationGateMiddleware in front of the strategy.
-    it 'refuses the OmniAuth endpoints past the per-network attempt ceiling, in front of Google' do
+    # One request reaches that exchange and so one request spends a count: a
+    # callback carrying the state OmniAuth minted for this session. Someone
+    # driving the whole flow in their own browser can repeat that as fast as
+    # they like — and is refused once the hour's sixty are gone.
+    it 'refuses the state-carrying callback past the per-network attempt ceiling, in front of Google' do
       mock_google(email: 'grace@example.com')
 
-      post user_google_oauth2_omniauth_authorize_path
-      expect(response).to have_http_status(:redirect)
+      Quotas::Limits::OAUTH_ATTEMPTS_PER_IP_PER_HOUR.times do
+        get user_google_oauth2_omniauth_callback_path(state: start_google_flow!)
 
-      # The honest request above is one of the hour's sixty; this fills the rest.
-      (Quotas::Limits::OAUTH_ATTEMPTS_PER_IP_PER_HOUR - 1).times do
-        Registrations.assert_oauth_attempt_allowed!('127.0.0.1')
+        expect(response).to have_http_status(:redirect)
       end
 
-      post user_google_oauth2_omniauth_authorize_path
-      expect(response).to have_http_status(:too_many_requests)
+      get user_google_oauth2_omniauth_callback_path(state: start_google_flow!)
 
-      get user_google_oauth2_omniauth_callback_path
       expect(response).to have_http_status(:too_many_requests)
-      expect(User.count).to eq(1)
+      expect(User.count).to eq(2)
+    end
+
+    # The ceiling must never become a weapon against our own users: a
+    # malicious page can make an innocent visitor's browser issue requests
+    # under the OmniAuth prefix cross-origin (plain <img> tags will do), and
+    # it cannot read or set that browser's OmniAuth state. So everything that
+    # could not reach Google's token endpoint passes through uncounted — a
+    # path that routes nowhere, a callback with no state, a callback carrying
+    # a state from somewhere else — and the visitor's hour is untouched.
+    it 'spends no attempt on a stray path or a callback without this session\'s state' do
+      mock_google(email: 'grace@example.com')
+
+      (Quotas::Limits::OAUTH_ATTEMPTS_PER_IP_PER_HOUR + 1).times do
+        expect { get '/auth/anything' }.to raise_error(ActionController::RoutingError)
+
+        get user_google_oauth2_omniauth_callback_path
+        expect(response).to have_http_status(:redirect)
+
+        get user_google_oauth2_omniauth_callback_path(state: 'a-state-from-somewhere-else')
+        expect(response).to have_http_status(:redirect)
+      end
+
+      # The honest visitor still gets in...
+      sign_in_with_google!
+
+      expect(response).to redirect_to(root_path)
+      expect_signed_in
+
+      # ...on an allowance not one of those 183 requests touched.
+      expect { Quotas::Limits::OAUTH_ATTEMPTS_PER_IP_PER_HOUR.times { Registrations.assert_oauth_attempt_allowed!('127.0.0.1') } }
+        .not_to raise_error
     end
 
     it 'signs an existing confirmed user in without touching their account' do

@@ -236,12 +236,38 @@ module Submitters
     "#{filename}.#{blob.filename.extension}"
   end
 
+  # Both doors that mail a share-link verification code come through here (the
+  # start form's 2FA branch and the "resend" button's own endpoint), so the
+  # two guards live here rather than in either controller.
+  #
+  # The submitter is an unsaved, in-memory record built from whatever an
+  # anonymous visitor posted: no model validation has ever run on this
+  # address, and ActionMailer's `mail(to:)` splits a comma-separated string
+  # into as many recipients as it holds. Left unchecked the endpoint is an
+  # open relay — one POST, a list of strangers mailed from our own sending
+  # account, and no Submission row for any quota to count. So: exactly one
+  # well-formed address, matched against the anchored single-address pattern
+  # the API validators already use (Params::BaseValidator), which admits no
+  # comma, semicolon, angle bracket, space, newline or carriage return.
+  #
+  # The per-account ceiling sits on top of the per-IP one because a pool of
+  # proxies walks around a per-IP limit while the account — the thing actually
+  # being abused — cannot be changed without signing up again.
   def send_shared_link_email_verification_code(submitter, request:)
-    RateLimit.call("send-otp-code-#{request.remote_ip}", limit: 2, ttl: 45.seconds, enabled: true)
+    template = submitter.submission.template
 
-    TemplateMailer.otp_verification_email(submitter.submission.template, email: submitter.email).deliver_later!
+    unless submitter.email.to_s.match?(User::FULL_EMAIL_REGEXP)
+      raise UnableToSendCode, submitter.errors.full_message(:email, I18n.t('errors.messages.invalid'))
+    end
+
+    RateLimit.call("send-otp-code-#{request.remote_ip}", limit: 2, ttl: 45.seconds, enabled: true)
+    RateLimit.call("send-otp-code-account-#{template.account_id}",
+                   limit: Quotas::Limits::SHARED_LINK_CODES_PER_ACCOUNT_PER_HOUR, ttl: 1.hour,
+                   enabled: template.account.customer?)
+
+    TemplateMailer.otp_verification_email(template, email: submitter.email).deliver_later!
   rescue RateLimit::LimitApproached
-    ErrorReport.warning("Limit verification code for template: #{submitter.submission.template.id}")
+    ErrorReport.warning("Limit verification code for template: #{template.id}")
 
     raise UnableToSendCode, I18n.t('too_many_attempts')
   end

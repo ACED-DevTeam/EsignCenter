@@ -11,6 +11,13 @@ class StartFormEmail2faSendController < ApplicationController
 
     Templates.assert_documents_ready!(@template)
 
+    # A code only for a link that actually asks for one. The start form sends
+    # one from a single branch — preferences['shared_link_2fa'] == true — and
+    # this endpoint exists to resend what that branch sent, so any other
+    # template's slug gets its form back instead of an email its owner never
+    # asked us to put in someone's inbox.
+    return redirect_to start_form_path(@template.slug) unless @template.preferences['shared_link_2fa'] == true
+
     # No verification code for a form that cannot be started right now.
     if (reason = Quotas.share_link_paused?(@template.account))
       return render json: { error: Quotas.pause_message(@template.account, reason) },

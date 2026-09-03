@@ -21,7 +21,7 @@ sending pause is `lib/sending_pause.rb`; storage is `lib/quotas/storage.rb`.
 | Open documents | 50 per seat | Paid | Nothing is blocked; a warn-flag for the operator. |
 | Sign-ups per IP | 5 per hour, 20 per day | Registration | Further sign-ups from that network are refused for the window. Counts sign-ups, not attempts. |
 | Sign-up attempts per IP | 30 per hour | Registration | Further tries from that network are refused with *Too many sign-ups from this network* before the Cloudflare check is even asked. Counts every try, however it ends. |
-| Google endpoint hits per IP | 60 per hour | Registration | Further hits on `/auth/...` are refused (429, empty body) in front of Google, so no token exchange is made. |
+| Google sign-in round-trips per IP | 60 per hour | Registration | Only the one request that makes us call Google counts: the return trip from Google carrying the code this browser started with. Past 60 that return trip is refused (429, empty body) in front of Google, so no token exchange is made. Every other `/auth/...` request is answered normally and counts for nothing, so a page elsewhere on the web cannot spend a visitor's allowance for them. |
 | Spam complaints | 1 | Any customer account | Sending pauses until the operator reviews (section 3). |
 | Hard bounces | 20% of the last 20 sends, once 10 have gone out | Any customer account | Sending pauses until the operator reviews (section 3). |
 
@@ -108,7 +108,15 @@ These are speed limits rather than monthly caps, kept in Redis:
 | API template / signing-session creation | 300 per minute |
 | Resend an invitation / reminder / signer copy | one per 10 h / 10 h / 4 h |
 | "Send me a copy" of documents | 2 per 5 minutes |
-| Share-link email-verification code | 2 per 45 seconds |
+| Share-link email-verification code | 2 per 45 seconds per IP, and 100 per hour per account |
+
+**One code, one inbox.** The share link's verification code goes to exactly
+one properly-formed address. Anything else typed into that box — two
+addresses, a list, a name in angle brackets, a stray line break — is answered
+with *Email is invalid* and nothing is sent. Otherwise one visitor could mail
+a whole list of strangers from the platform's own sending account, and the
+account's hourly ceiling above is what stops anyone doing it one address at a
+time.
 
 **Fail-open rule.** The Redis throttles above fail open by design: if Redis
 is unreachable the limit is off until it is back, and the outage is reported.
