@@ -125,6 +125,27 @@ module StripeBilling
   # what — if anything — comes back".
   DUPLICATE_CANCEL_MANUAL_METADATA = 'duplicate-manual'
 
+  # Stamped on a subscription we cancelled as a REFUNDABLE duplicate whose
+  # refund the app then refused to make on its own — more separate payments
+  # than it will return unattended, an invoice naming no payment, a
+  # paid-invoice list it could not read to the end. Being owed money is not
+  # a reason to keep a paying customer off the plan they are being charged
+  # for, so the account's row moves on to the live subscription; but once it
+  # has, nothing looks at this dead one again (the nightly backstop only
+  # ever re-checks the subscription the row still names). This key is what a
+  # person finds in its place — metadata, so only our secret key can have
+  # written it — and it is the durable half of the alert that went out at
+  # the same moment.
+  MANUAL_REFUND_OWED_METADATA_KEY = 'esigncenter_manual_refund_owed'
+
+  # When the app gave up on returning it automatically. For a person
+  # reconstructing the sequence; never read by any decision.
+  MANUAL_REFUND_OWED_AT_KEY = 'esigncenter_manual_refund_owed_at'
+
+  # The value that key carries: this money is still owed, and only a person
+  # can send it.
+  MANUAL_REFUND_OWED_METADATA = 'owed'
+
   # Raised when a customer's subscription list could not be read to the end
   # (the page cap was hit with Stripe still saying `has_more`): nothing that
   # depends on "does this customer already have one?" may proceed on it.

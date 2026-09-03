@@ -135,20 +135,36 @@ module StripeBilling
     # when the charge itself took more (it was also paying for something
     # else).
     #
-    # `refundable` is the only thing the app may send: capped at what the
-    # charge still has left, because asking Stripe for money that is already
-    # back would either error (the charge is spent) or, worse, be read as a
-    # second refund. `returned` is what has already come back that counts
-    # against this debt.
+    # `returned` is what has already come back that counts against THIS debt
+    # — an earlier attempt of ours past Stripe's idempotency window, or an
+    # operator refunding by hand.
+    #
+    # `refundable` is the only thing the app may send, and it is capped
+    # twice. By what is still OWED (`owed - returned`), because the debt is
+    # the whole point: a $60 charge shared with something else that owes
+    # this duplicate $30, $10 of which is already back, has $20 left to
+    # send and not a cent more — reading the cap off the charge alone (the
+    # shape this replaces) offered $30 against a $20 obligation, and the
+    # end-of-refund check only ever rejected coming up SHORT, so the excess
+    # went out. And by what the CHARGE still has left, because asking Stripe
+    # for money that is already back would either error (the charge is
+    # spent) or, worse, be read as a second refund.
     Payment = Struct.new(:payment_intent, :owed, :amount, :refunded, :currency) do
       def returned
         [refunded.to_i, owed.to_i].min
       end
 
       def refundable
-        [owed.to_i, amount.to_i - refunded.to_i].min.clamp(0..)
+        [owed.to_i - returned, amount.to_i - refunded.to_i].min.clamp(0..)
       end
     end
+
+    # One entry of an invoice's `payments` list: the PaymentIntent that
+    # settled some part of that invoice, and what THAT payment paid.
+    # `amount` is nil when Stripe stated none — which is not zero and not
+    # the invoice's total, but "unknown", and only an invoice settled by a
+    # single payment can survive it (grouped_payments).
+    InvoicePayment = Struct.new(:intent, :amount)
 
     # What settling one duplicate came to. `refund` is what THIS pass sent
     # back (nil when nothing needed sending); `already_returned` is what the
@@ -318,6 +334,12 @@ module StripeBilling
 
         settle_between_live!(account_subscription, own, subscription_id, event_id:, event_at:, notify:)
       else
+        # The debt on our own dead subscription is settled BEFORE the row
+        # moves on, because once it moves nothing looks at that subscription
+        # again. A transient Stripe failure raises out of here and the row
+        # stays where it is, on purpose; a refund the app has decided a
+        # person must make does not block the adoption behind it — the
+        # customer is paying for the live one either way (settle_own_refund!).
         settle_own_refund!(account_subscription, own, event_id:, notify:)
 
         if allow_adopt
@@ -342,6 +364,31 @@ module StripeBilling
     # created after the survivor, so every cycle it collected was a second
     # charge. A subscription carrying the MANUAL marker is settled as far as
     # this path is concerned — no refund, no alert; a person owns it.
+    #
+    # The two ways this can fail are not the same failure, and treating them
+    # alike used to cost the customer their plan:
+    #
+    #   * a Stripe error is TRANSIENT — the network, an outage, a 500. It
+    #     raises, so the job retries and, crucially, the row still names this
+    #     dead subscription: that is exactly what lets the nightly
+    #     settle_owed_refund! backstop find the debt again. Nothing may adopt
+    #     past it.
+    #   * a RefundUnavailable is PERMANENT and deliberate — the app has
+    #     decided a person must settle this (more payments than it returns
+    #     unattended, an invoice naming no payment, a paid-invoice list it
+    #     could not finish). Retrying decides the same thing every time, and
+    #     while it raised, `decide_between` never reached the adoption behind
+    #     it: the live subscription the customer is being charged for was
+    #     never applied, so every webhook and every nightly sweep failed the
+    #     same way and the customer sat on the free plan paying full price.
+    #     So it is reported exactly as loudly as before (the operator alert
+    #     still goes out on every pass) and then lets the adoption through.
+    #
+    # Adoption re-points the row, so the sweep's backstop will never look at
+    # this dead subscription again — the alert would be the only record, and
+    # alerts are read once. The debt is therefore stamped into the dead
+    # subscription's own metadata at Stripe, beside the marker it already
+    # carries, where a person auditing the account finds it.
     def settle_own_refund!(account_subscription, own, event_id:, notify:)
       return nil unless auto_refundable?(own)
 
@@ -352,11 +399,50 @@ module StripeBilling
       report_owed_refund(account_subscription, SubscriptionSync.field(own, :id), settlement:, event_id:, notify:)
 
       settlement.refund
-    rescue Stripe::StripeError, RefundUnavailable => e
+    rescue Stripe::StripeError => e
       report_owed_refund(account_subscription, SubscriptionSync.field(own, :id),
                          refund_error: e, event_id:, notify: true)
 
       raise
+    rescue RefundUnavailable => e
+      report_owed_refund(account_subscription, SubscriptionSync.field(own, :id),
+                         refund_error: e, event_id:, notify: true)
+      mark_manual_refund_owed!(account_subscription, own)
+
+      nil
+    end
+
+    # The durable half of that alert: "we cancelled this as a duplicate, we
+    # owe its money, and only a person can send it". Written the same way
+    # every other marker is — metadata under a secret key, so nothing the
+    # customer can reach could have put it there — and keyed idempotently on
+    # the subscription, so the second pass over the same debt writes nothing
+    # new (Stripe refuses the repeated key because the body carries the
+    # moment it was written, which is the answer we want: it is already
+    # stamped).
+    #
+    # Best effort ON PURPOSE. This runs on the path that hands a paying
+    # customer the access they are paying for, and a failed metadata write
+    # must not be the thing that takes it away again: the operator alert has
+    # already gone out, and losing the note is worth less than losing the
+    # plan. The failure itself is still reported.
+    def mark_manual_refund_owed!(account_subscription, own)
+      subscription_id = SubscriptionSync.field(own, :id)
+
+      StripeBilling.client.v1.subscriptions.update(
+        subscription_id, manual_refund_owed_body,
+        idempotency_key: "manual-refund-owed-#{subscription_id}"
+      )
+    rescue Stripe::IdempotencyError
+      nil
+    rescue Stripe::StripeError => e
+      ErrorReport.warning("could not stamp the manual-refund-owed marker on #{subscription_id}",
+                          account_id: account_subscription.account_id, refund_error: e.message)
+    end
+
+    def manual_refund_owed_body
+      { metadata: { StripeBilling::MANUAL_REFUND_OWED_METADATA_KEY => StripeBilling::MANUAL_REFUND_OWED_METADATA,
+                    StripeBilling::MANUAL_REFUND_OWED_AT_KEY => Time.now.to_i.to_s } }
     end
 
     # The nightly sweep's backstop for the same debt. The row still names a
@@ -690,24 +776,26 @@ module StripeBilling
     # whole paid-invoice list is owed. (The older-loser case never reaches
     # here; it is a person's decision.)
     #
-    # Two rules keep the amount honest:
+    # Three rules keep the amount honest:
     #
     #   * one refund per PaymentIntent, never per invoice: Stripe lets one
     #     card charge settle several invoices, and two refunds against one
     #     charge is either a double return or a permanently failing event;
-    #   * each refund is capped both by what those invoices collected through
-    #     that intent and by what the charge still has left, and the
-    #     shortfall check counts what has already come back as returned, so
-    #     a half-finished attempt finishes rather than failing forever.
+    #   * each invoice's money is split across the payments that actually
+    #     settled it (invoice_allocation), so the reverse case — one invoice
+    #     settled by SEVERAL payments — is one debt per payment of what that
+    #     payment took, never the whole invoice counted once per payment;
+    #   * each refund is capped both by what is still owed on that intent
+    #     after whatever has already come back, and by what the charge still
+    #     has left — so a half-finished attempt finishes rather than failing
+    #     forever, and cannot overshoot while finishing.
     #
     # Above the cap nothing is sent at all (refuse_uncapped_refund!). The
     # total returned is then checked against what the invoices say was
-    # collected: a refund that came up short must fail loudly, or a partial
-    # return would be reported to the operator and to the customer as if the
-    # whole charge had gone back. A trial duplicate has no paid invoice at
-    # all and nothing to refund; one already refunded by hand has nothing
-    # left to send, and neither may tell the customer money was sent back
-    # now.
+    # collected, in both directions (refuse_dishonest_total!). A trial
+    # duplicate has no paid invoice at all and nothing to refund; one
+    # already refunded by hand has nothing left to send, and neither may
+    # tell the customer money was sent back now.
     def refund_duplicate_charge!(cancelled)
       invoices = paid_invoices(SubscriptionSync.field(cancelled, :id))
       collected = invoices.sum { |invoice| SubscriptionSync.field(invoice, :amount_paid).to_i }
@@ -719,18 +807,36 @@ module StripeBilling
       refuse_uncapped_refund!(cancelled, payments)
 
       refunds = payments.filter_map { |payment| refund_payment!(payment) }
-      returned = payments.sum(&:returned) + refunds.sum(&:amount)
 
-      if returned < collected
-        raise RefundUnavailable, "duplicate #{SubscriptionSync.field(cancelled, :id)} collected #{collected} " \
-                                 "but only #{returned} could be returned"
-      end
+      refuse_dishonest_total!(cancelled, collected, payments.sum(&:returned) + refunds.sum(&:amount))
 
       return Settlement.new(refund: nil, already_returned: collected) if refunds.empty?
 
       Settlement.new(refund: Refund.new(id: refunds.map(&:id).join(', '), amount: refunds.sum(&:amount),
                                         currency: refunds.first.currency),
                      already_returned: 0)
+    end
+
+    # The total has to add up in BOTH directions against what the duplicate's
+    # invoices actually collected.
+    #
+    # SHORT is the older danger: a partial return would be reported to the
+    # operator and to the customer as if the whole charge had gone back.
+    # OVER is the worse one, and it is checked here because nothing else
+    # would ever catch it — money that was never taken cannot be handed
+    # back, so a total above what was collected means the split onto
+    # PaymentIntents above is wrong and every figure downstream is fiction.
+    # By the time this runs the refunds are already made, so this is a loud
+    # stop for a person, not a guard: the guards that PREVENT an over-refund
+    # are the per-invoice allocation and the per-payment cap.
+    def refuse_dishonest_total!(cancelled, collected, returned)
+      return if returned == collected
+
+      shortfall = returned < collected
+      detail = shortfall ? "only #{returned} could be returned" : "#{returned} was returned"
+
+      raise RefundUnavailable, "duplicate #{SubscriptionSync.field(cancelled, :id)} collected #{collected} " \
+                               "but #{detail}"
     end
 
     # An automatic refund puts a double charge right; it does not empty an
@@ -779,24 +885,87 @@ module StripeBilling
       currencies = {}
 
       invoices.each do |invoice|
-        amount_paid = SubscriptionSync.field(invoice, :amount_paid).to_i
-
-        next unless amount_paid.positive?
-
-        intents = paid_payment_intents(invoice)
-
-        if intents.empty?
-          raise RefundUnavailable, "invoice #{SubscriptionSync.field(invoice, :id)} collected #{amount_paid} " \
-                                   'but names no payment intent to refund'
-        end
-
-        intents.each do |intent|
-          owed[intent] += amount_paid
+        invoice_allocation(invoice).each do |intent, cents|
+          owed[intent] += cents
           currencies[intent] ||= SubscriptionSync.field(invoice, :currency)
         end
       end
 
       owed.map { |intent, cents| payment_state(intent, cents, currencies[intent]) }
+    end
+
+    # What ONE invoice owes each PaymentIntent that settled it.
+    #
+    # An invoice can be settled by SEVERAL payments, and each of them states
+    # what it itself paid. Handing the invoice's whole `amount_paid` to
+    # every intent — the shape this replaces — recorded a $30 invoice
+    # settled by two payments as $30 owed on EACH of them; each refund is
+    # capped only by what its own charge still has, so $60 went back against
+    # $30 collected and the customer was handed money nobody ever took.
+    #
+    # So the invoice total belongs to one payment only when there IS one —
+    # the ordinary invoice, the one every cycle of a normal duplicate has,
+    # whose single payment took all of it whether or not Stripe bothered to
+    # restate the figure. Several payments each take their own stated
+    # amount, and a payment that states no amount of its own is refused
+    # outright: there is no honest way to split a total between payments
+    # that do not say what they took, and a guess here moves real money.
+    def invoice_allocation(invoice)
+      amount_paid = SubscriptionSync.field(invoice, :amount_paid).to_i
+
+      return {} unless amount_paid.positive?
+
+      payments = paid_invoice_payments(invoice)
+
+      refuse_unallocatable_invoice!(invoice, payments, amount_paid)
+
+      return { payments.first.intent => amount_paid } if sole_unstated_payment?(payments)
+
+      payments.each_with_object(Hash.new(0)) { |payment, split| split[payment.intent] += payment.amount.to_i }
+    end
+
+    # The one shape that may be allocated without every payment stating its
+    # amount: a single payment, which by definition took everything the
+    # invoice collected.
+    def sole_unstated_payment?(payments)
+      payments.one? && payments.first.amount.nil?
+    end
+
+    # The three ways an invoice cannot be turned into honest debts. Each is
+    # a refusal rather than a skip or a guess, because every one of them
+    # ends with the app either returning less than it collected and calling
+    # it whole, or returning more than it ever took.
+    def refuse_unallocatable_invoice!(invoice, payments, amount_paid)
+      invoice_id = SubscriptionSync.field(invoice, :id)
+
+      if payments.empty?
+        raise RefundUnavailable, "invoice #{invoice_id} collected #{amount_paid} " \
+                                 'but names no payment intent to refund'
+      end
+
+      return if sole_unstated_payment?(payments)
+
+      refuse_unstated_payment!(invoice_id, payments, amount_paid)
+      refuse_overstated_payments!(invoice_id, payments, amount_paid)
+    end
+
+    def refuse_unstated_payment!(invoice_id, payments, amount_paid)
+      return if payments.none? { |payment| payment.amount.nil? }
+
+      raise RefundUnavailable, "invoice #{invoice_id} collected #{amount_paid} through #{payments.size} payments " \
+                               'and at least one of them states no amount of its own to return'
+    end
+
+    # Payments claiming more than the invoice ever collected is Stripe and
+    # the app disagreeing about the money, which is the exact condition the
+    # old code failed silently on. Nothing is sent until a person has looked.
+    def refuse_overstated_payments!(invoice_id, payments, amount_paid)
+      stated = payments.sum { |payment| payment.amount.to_i }
+
+      return unless stated > amount_paid
+
+      raise RefundUnavailable, "invoice #{invoice_id} collected #{amount_paid} but its #{payments.size} payments " \
+                               "claim #{stated} between them"
     end
 
     # The charge behind a PaymentIntent is the only record of what it really
@@ -840,21 +1009,34 @@ module StripeBilling
 
     # In this API version an invoice's payments live under `payments` (a
     # list, expanded on request); each names the PaymentIntent that settled
-    # it — a bare id when unexpanded, an object when expanded. All of them,
-    # because one invoice can be settled by several payments.
-    def paid_payment_intents(invoice)
+    # it — a bare id when unexpanded, an object when expanded — and, when
+    # Stripe states one, the amount that payment itself paid (`amount_paid`
+    # on the InvoicePayment, which is NOT the invoice's `amount_paid` beside
+    # it). All of them, because one invoice can be settled by several
+    # payments; two entries naming the same intent are one debt and the
+    # caller adds them up.
+    def paid_invoice_payments(invoice)
       payments = Array(SubscriptionSync.field(SubscriptionSync.field(invoice, :payments), :data))
 
-      intents = payments.filter_map do |payment|
+      payments.filter_map do |payment|
         next unless SubscriptionSync.field(payment, :status).to_s == 'paid'
         next unless SubscriptionSync.field(SubscriptionSync.field(payment, :payment), :type).to_s == 'payment_intent'
 
         intent = SubscriptionSync.field(SubscriptionSync.field(payment, :payment), :payment_intent)
+        intent = SubscriptionSync.field(intent, :id) unless intent.is_a?(String)
 
-        intent.is_a?(String) ? intent : SubscriptionSync.field(intent, :id)
+        next if intent.blank?
+
+        InvoicePayment.new(intent:, amount: stated_payment_amount(payment))
       end
+    end
 
-      intents.compact_blank.uniq
+    # What one InvoicePayment says IT paid, or nil when it says nothing. The
+    # difference matters: nil is "unknown" and may only be allocated when
+    # the payment is the invoice's only one, while a stated zero is a
+    # payment that took nothing and owes nothing.
+    def stated_payment_amount(payment)
+      SubscriptionSync.field(payment, :amount_paid)&.to_i
     end
 
     def report_duplicate(account_subscription, duplicate_id, event_id:, notify:, settlement: nil, refund_error: nil)

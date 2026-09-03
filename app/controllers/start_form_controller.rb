@@ -209,7 +209,13 @@ class StartFormController < ApplicationController
     return redirect_to submit_form_path(@resubmit_submitter.slug) if @resubmit_submitter && @template.archived_at?
     return redirect_to start_form_path(@template.slug) if @template.archived_at?
 
-    return if @resubmit_submitter
+    # A resubmit slug is the signing link of a document the visitor already
+    # holds, so it opens that document's own template even when the template is
+    # private. It unlocks nothing else: load_template pins @template to the
+    # resubmit submitter's template, and that is re-checked here rather than
+    # assumed, so a slug from elsewhere can never open a template the visitor
+    # could not otherwise read.
+    return if @resubmit_submitter && @resubmit_submitter.submission.template_id == @template.id
     return if @template.shared_link? || (current_user && current_ability.can?(:read, @template))
 
     ErrorReport.warning("Not shared template: #{@template.id}")
@@ -228,8 +234,7 @@ class StartFormController < ApplicationController
 
     submitter ||=
       Submitter
-      .where(submission: template.submissions.where(expire_at: Time.current..)
-                                 .or(template.submissions.where(expire_at: nil)).where(archived_at: nil))
+      .where(submission: resumable_submissions(template))
       .order(id: :desc)
       .where(declined_at: nil)
       .where(external_id: nil)
@@ -246,6 +251,21 @@ class StartFormController < ApplicationController
     end
 
     submitter
+  end
+
+  # Which of the template's documents this door may hand back instead of
+  # starting a new one. Only the ones this door itself created (source :link):
+  # typing an email is not proof of owning it, so a submitter the sender
+  # invited by email — or created through the API, an embed or a bulk send —
+  # must never be adopted by a visitor who guessed the address. Doing so would
+  # hand a stranger that person's secret signing link and let them sign in
+  # their place. Those flows start a fresh document instead; a signer resuming
+  # the share link they started themselves still finds it.
+  def resumable_submissions(template)
+    template.submissions
+            .where(expire_at: Time.current..)
+            .or(template.submissions.where(expire_at: nil))
+            .where(archived_at: nil, source: :link)
   end
 
   def assign_submission_attributes(submitter, template)
@@ -301,9 +321,21 @@ class StartFormController < ApplicationController
     end
   end
 
+  # A resubmit slug names its own document, so the template being started is
+  # that submitter's template — never one named in the URL. The Resubmit button
+  # posts to /resubmit_form, which carries no slug at all; only the email-2FA
+  # code form posts back to /d/:slug with the resubmit slug alongside, and that
+  # slug is the same template. Anything else is an attempt to unlock some other
+  # template with a slug that does not belong to it, and is not found.
   def load_template
     @template =
       if @resubmit_submitter
+        slug = params[:slug] || params[:start_form_slug]
+
+        if slug.present? && slug != @resubmit_submitter.submission.template&.slug
+          raise ActionController::RoutingError, I18n.t('not_found')
+        end
+
         @resubmit_submitter.template
       else
         Template.find_by!(slug: params[:slug] || params[:start_form_slug])

@@ -118,6 +118,20 @@ RSpec.describe 'Stripe billing', type: :request do # rubocop:disable RSpec/Multi
                  headers: { 'Content-Type' => 'application/json' })
   end
 
+  # The durable "a person still owes this refund" stamp the app leaves on a
+  # dead duplicate it could not return on its own. Metadata again — only our
+  # secret key can write it — and keyed idempotently on the subscription, so
+  # a later pass over the same debt writes nothing new.
+  def stub_manual_refund_owed(id)
+    stub_request(:post, subscription_url(id))
+      .with(body: hash_including('metadata' => hash_including(
+        StripeBilling::MANUAL_REFUND_OWED_METADATA_KEY => StripeBilling::MANUAL_REFUND_OWED_METADATA
+      )),
+            headers: { 'Idempotency-Key' => "manual-refund-owed-#{id}" })
+      .to_return(status: 200, body: { id:, object: 'subscription' }.to_json,
+                 headers: { 'Content-Type' => 'application/json' })
+  end
+
   # And cancelled with the same expansion, so the answer says what it charged
   # — stamped with the marker its age earns, so a later look can tell both
   # that we did it and whether its money is ours to send back automatically.
@@ -170,11 +184,21 @@ RSpec.describe 'Stripe billing', type: :request do # rubocop:disable RSpec/Multi
   def paid_invoice(subscription_id, amount:, payment_intent: "pi_#{subscription_id}", payments: [payment_intent],
                    id: "in_paid_#{subscription_id}", created: 1_788_411_000)
     { id:, object: 'invoice', amount_paid: amount, currency: 'usd', created:,
-      payments: { object: 'list',
-                  data: payments.map do |intent|
-                          { object: 'invoice_payment', status: 'paid',
-                            payment: { type: 'payment_intent', payment_intent: intent } }
-                        end } }
+      payments: { object: 'list', data: payments.map { |payment| invoice_payment(payment) } } }
+  end
+
+  # One entry of that `payments` list. A bare intent id is the ordinary
+  # invoice settled by a single payment. A Hash names the intent AND what
+  # that payment itself paid — the InvoicePayment's own `amount_paid`, which
+  # is what Stripe states when several payments settle one invoice and the
+  # only honest way to split the invoice between them. `amount: nil` is the
+  # payment that states nothing.
+  def invoice_payment(payment)
+    intent, amount = payment.is_a?(Hash) ? payment.values_at(:intent, :amount) : [payment, nil]
+    entry = { object: 'invoice_payment', status: 'paid',
+              payment: { type: 'payment_intent', payment_intent: intent } }
+
+    amount.nil? ? entry : entry.merge(amount_paid: amount)
   end
 
   # What Stripe answers when the app asks what a subscription ever collected.
@@ -894,7 +918,9 @@ RSpec.describe 'Stripe billing', type: :request do # rubocop:disable RSpec/Multi
 
     # C2/X2: one invoice can be settled by more than one payment (a card that
     # covered part of it, then another). Refunding "the" payment returns half
-    # the money and tells the operator the whole charge went back.
+    # the money and tells the operator the whole charge went back. Each of
+    # those payments states what IT paid, which is how the invoice is split
+    # between them.
     it 'refunds every payment that settled the duplicate\'s invoice, and states the true total' do
       row = cancelled_row
       stub_subscription(subscription_a, 'subscription-trialing')
@@ -902,7 +928,8 @@ RSpec.describe 'Stripe billing', type: :request do # rubocop:disable RSpec/Multi
       drain_stripe_jobs
 
       intents = ["pi_first_#{subscription_b}", "pi_second_#{subscription_b}"]
-      invoice = paid_invoice(subscription_b, amount: 3000, payments: intents)
+      invoice = paid_invoice(subscription_b, amount: 3000,
+                                             payments: intents.map { |intent| { intent:, amount: 1500 } })
       stub_duplicate(subscription_b, 'subscription-active', invoice:)
       stub_cancel(subscription_b, invoice:)
       stub_invoice_list(subscription_b, [invoice])
@@ -927,6 +954,143 @@ RSpec.describe 'Stripe billing', type: :request do # rubocop:disable RSpec/Multi
       end
 
       expect(alerts.sole[:body]).to include('charge of $30.00 was refunded')
+      expect(row.reload.stripe_subscription_id).to eq(subscription_a)
+      expect(StripeEventInbox.order(:id).last).to have_attributes(status: 'processed')
+
+      expect_paid_access
+    end
+
+    # The reverse of M2, and the one that hands money away rather than
+    # keeping it: one invoice settled by TWO payments, each of which sits on
+    # a big card charge that was also paying for something else. Giving each
+    # payment the whole invoice recorded $30 owed twice over, each refund was
+    # capped only by what its own charge still held (plenty), and the
+    # end-of-refund check only ever rejected coming up SHORT — so $60 went
+    # back against $30 collected. Each payment may only return what it
+    # itself took.
+    it 'returns one invoice settled by two payments once over, not once per payment' do
+      row = cancelled_row
+      stub_subscription(subscription_a, 'subscription-trialing')
+      post_stripe_event('event-customer.subscription.created-trialing')
+      drain_stripe_jobs
+
+      intents = ["pi_shared_one_#{subscription_b}", "pi_shared_two_#{subscription_b}"]
+      invoice = paid_invoice(subscription_b, amount: 3000,
+                                             payments: intents.map { |intent| { intent:, amount: 1500 } })
+      stub_duplicate(subscription_b, 'subscription-active', invoice:)
+      stub_cancel(subscription_b, invoice:)
+      stub_invoice_list(subscription_b, [invoice])
+      # Each charge took $50 — this invoice's $15 and $35 of somebody else's
+      # business — so nothing but the debt itself limits what could go out.
+      intents.each { |intent| stub_refund(intent, amount: 1500, charge_amount: 5000) }
+
+      duplicate = fixture_json('event-customer.subscription.created-active')
+      duplicate['data']['object']['customer'] = customer_a
+
+      alerts = []
+      allow(OperatorAlert).to receive(:deliver) { |args| alerts << args }
+      allow(ErrorReport).to receive(:warning)
+
+      post_stripe_event(nil, body: duplicate.to_json)
+      drain_stripe_jobs
+
+      expect(a_request(:post, 'https://api.stripe.com/v1/refunds')).to have_been_made.twice
+
+      intents.each do |intent|
+        expect(a_request(:post, 'https://api.stripe.com/v1/refunds')
+                 .with(body: hash_including('payment_intent' => intent, 'amount' => '1500')))
+          .to have_been_made
+      end
+
+      # The whole invoice against a single payment is the bug.
+      expect(a_request(:post, 'https://api.stripe.com/v1/refunds')
+               .with(body: hash_including('amount' => '3000'))).not_to have_been_made
+      expect(alerts.sole[:body]).to include('charge of $30.00 was refunded')
+      expect(row.reload.stripe_subscription_id).to eq(subscription_a)
+      expect(StripeEventInbox.order(:id).last).to have_attributes(status: 'processed')
+
+      expect_paid_access
+    end
+
+    # And when several payments settled an invoice but one of them does not
+    # say what it took, there is no honest split to make. Splitting evenly,
+    # or handing each the invoice total, both move real money on a guess —
+    # so nothing is sent and a person is told, exactly as for an invoice that
+    # names no payment at all.
+    it 'refuses to refund an invoice whose payments do not say what each of them paid' do
+      cancelled_row
+      stub_subscription(subscription_a, 'subscription-trialing')
+      post_stripe_event('event-customer.subscription.created-trialing')
+      drain_stripe_jobs
+
+      intents = ["pi_silent_one_#{subscription_b}", "pi_silent_two_#{subscription_b}"]
+      invoice = paid_invoice(subscription_b, amount: 3000,
+                                             payments: [{ intent: intents.first, amount: 1500 },
+                                                        { intent: intents.last, amount: nil }])
+      stub_duplicate(subscription_b, 'subscription-active', invoice:)
+      cancel_call = stub_cancel(subscription_b, invoice:)
+      stub_invoice_list(subscription_b, [invoice])
+      intents.each { |intent| stub_refund(intent, amount: 3000, charge_amount: 5000) }
+
+      duplicate = fixture_json('event-customer.subscription.created-active')
+      duplicate['data']['object']['customer'] = customer_a
+
+      alerts = []
+      allow(OperatorAlert).to receive(:deliver) { |args| alerts << args }
+      allow(ErrorReport).to receive(:warning)
+
+      post_stripe_event(nil, body: duplicate.to_json)
+
+      inbox = StripeEventInbox.order(:id).last
+
+      expect { ProcessStripeEventJob.new.perform(inbox.id) }
+        .to raise_error(StripeBilling::Linker::RefundUnavailable,
+                        /collected 3000 through 2 payments and at least one of them states no amount/)
+      # The double billing still stops; only the money waits for a person.
+      expect(cancel_call).to have_been_requested
+      expect(a_request(:post, 'https://api.stripe.com/v1/refunds')).not_to have_been_made
+      expect(alerts.sole[:body]).to include('REFUND FAILED — refund manually')
+      expect(inbox.reload.status).to eq('failed')
+    end
+
+    # M3's harder half. The $30 this duplicate collected sits on a $60 charge
+    # shared with other business, and an operator has already put $10 of it
+    # back. What is still OWED is $20 — but the cap used to be read off the
+    # charge alone ($60 taken, $10 returned, $50 available), so the app
+    # offered the full $30 and $40 went back against a $30 debt. The
+    # shortfall check waved it through because it only ever looked for too
+    # little.
+    it 'sends only what is still owed on a shared charge an operator has already partly refunded' do
+      row = cancelled_row
+      stub_subscription(subscription_a, 'subscription-trialing')
+      post_stripe_event('event-customer.subscription.created-trialing')
+      drain_stripe_jobs
+
+      shared = "pi_part_refunded_#{subscription_b}"
+      invoice = paid_invoice(subscription_b, amount: 3000, payment_intent: shared)
+      stub_duplicate(subscription_b, 'subscription-active', invoice:)
+      stub_cancel(subscription_b, invoice:)
+      stub_invoice_list(subscription_b, [invoice])
+      stub_refund(shared, amount: 2000, charge_amount: 6000, refunded: 1000)
+
+      duplicate = fixture_json('event-customer.subscription.created-active')
+      duplicate['data']['object']['customer'] = customer_a
+
+      alerts = []
+      allow(OperatorAlert).to receive(:deliver) { |args| alerts << args }
+      allow(ErrorReport).to receive(:warning)
+
+      post_stripe_event(nil, body: duplicate.to_json)
+      drain_stripe_jobs
+
+      expect(a_request(:post, 'https://api.stripe.com/v1/refunds')).to have_been_made.once
+      expect(a_request(:post, 'https://api.stripe.com/v1/refunds')
+               .with(body: hash_including('payment_intent' => shared, 'amount' => '2000'))).to have_been_made
+      # $10 already back plus $20 now is the $30 the duplicate collected —
+      # never the $30 the charge could still have given.
+      expect(a_request(:post, 'https://api.stripe.com/v1/refunds')
+               .with(body: hash_including('amount' => '3000'))).not_to have_been_made
+      expect(alerts.sole[:body]).to include('charge of $20.00 was refunded')
       expect(row.reload.stripe_subscription_id).to eq(subscription_a)
       expect(StripeEventInbox.order(:id).last).to have_attributes(status: 'processed')
 
@@ -1655,6 +1819,88 @@ RSpec.describe 'Stripe billing', type: :request do # rubocop:disable RSpec/Multi
       expect(row.reload.stripe_subscription_id).to eq(subscription_a)
 
       expect_paid_access
+    end
+
+    # X1's dead end, and the reason a customer sat on the free plan while
+    # their card was charged every month. The refund the row owes on its own
+    # cancelled duplicate needs a PERSON — four separate payments, past what
+    # the app returns unattended — and that refusal used to raise BEFORE the
+    # adoption behind it. Every webhook and every nightly sweep took the same
+    # path and refused the same way, so the live subscription the customer is
+    # actually paying for was never applied. A refund a person owes is not a
+    # reason to withhold what that person's customer bought: the operator is
+    # paged exactly as loudly as before, the debt is stamped onto the dead
+    # subscription at Stripe where an audit will find it (the row is about to
+    # stop pointing at it, so the nightly backstop never will), and the
+    # adoption goes through.
+    it 'adopts the live subscription even when the refund it owes needs a person, and marks that debt' do
+      row = create(:account_subscription, account:, access_state: 'active', status: 'active',
+                                          stripe_status: 'active', stripe_customer_id: customer_a,
+                                          stripe_subscription_id: subscription_b, quantity: 3)
+      marked = marked_by_us
+      cycles = (1..(StripeBilling::Linker::DUPLICATE_REFUND_MAX_PAYMENTS + 1)).to_a
+      invoices = cycles.map do |cycle|
+        paid_invoice(subscription_b, amount: 3000, id: "in_owed_#{cycle}",
+                                     payment_intent: "pi_owed_#{cycle}", created: 1_000 + cycle)
+      end
+
+      stub_subscription(subscription_b, 'subscription-canceled', marked.merge('id' => subscription_b))
+      stub_subscription(subscription_a, 'subscription-active')
+      stub_invoice_list(subscription_b, invoices)
+      cycles.each { |cycle| stub_payment_intent("pi_owed_#{cycle}", amount: 3000) }
+      mark_call = stub_manual_refund_owed(subscription_b)
+
+      alerts = []
+      allow(OperatorAlert).to receive(:deliver) { |args| alerts << args }
+      allow(ErrorReport).to receive(:warning)
+
+      outcome = StripeBilling::Linker.link_and_apply!(row, subscription_a)
+
+      expect(outcome.verdict).to eq(:adopted)
+      # No refund stub is registered at all: any attempt would be a failed
+      # connection, not a quiet pass.
+      expect(a_request(:post, 'https://api.stripe.com/v1/refunds')).not_to have_been_made
+      expect(alerts.sole[:body]).to include('REFUND FAILED — refund manually')
+      expect(alerts.sole[:body]).to include('needs manual review: 4 payments')
+      expect(mark_call).to have_been_requested.once
+      expect(row.reload.stripe_subscription_id).to eq(subscription_a)
+
+      # The whole point: the customer is paying, so the customer has the plan.
+      expect_paid_access
+    end
+
+    # The same door, the other failure, and why the two are told apart. A
+    # Stripe error is TRANSIENT — the network, an outage — and nothing about
+    # it says a person must act. So it still raises: the job retries, and
+    # because the row still names the dead subscription the nightly
+    # settle_owed_refund! backstop can find exactly the same debt again.
+    # Nothing is stamped as owed to a person either, because nobody has
+    # decided that yet.
+    it 'still refuses to move the row on when the refund it owes failed for a transient Stripe reason' do
+      row = create(:account_subscription, account:, access_state: 'active', status: 'active',
+                                          stripe_status: 'active', stripe_customer_id: customer_a,
+                                          stripe_subscription_id: subscription_b, quantity: 3)
+      marked = marked_by_us
+      invoice = paid_invoice(subscription_b, amount: 3000)
+
+      stub_subscription(subscription_b, 'subscription-canceled', marked.merge('id' => subscription_b))
+      stub_subscription(subscription_a, 'subscription-active')
+      stub_invoice_list(subscription_b, [invoice])
+      stub_payment_intent("pi_#{subscription_b}", amount: 3000)
+      stub_request(:post, 'https://api.stripe.com/v1/refunds')
+        .to_return(status: 500, body: { error: { message: 'Stripe is having a bad day' } }.to_json,
+                   headers: { 'Content-Type' => 'application/json' })
+
+      alerts = []
+      allow(OperatorAlert).to receive(:deliver) { |args| alerts << args }
+      allow(ErrorReport).to receive(:warning)
+
+      expect { StripeBilling::Linker.link_and_apply!(row, subscription_a) }.to raise_error(Stripe::StripeError)
+      expect(alerts.sole[:body]).to include('REFUND FAILED — refund manually')
+      # Nothing was written onto the dead subscription, and the row still
+      # names it — which is what the sweep needs to try again.
+      expect(a_request(:post, subscription_url(subscription_b))).not_to have_been_made
+      expect(row.reload.stripe_subscription_id).to eq(subscription_b)
     end
 
     # The other side of the same door: a subscription that is simply over —
