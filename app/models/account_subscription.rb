@@ -9,6 +9,7 @@
 #  cancel_at_period_end   :boolean          default(FALSE), not null
 #  current_period_end     :datetime
 #  current_period_start   :datetime
+#  ended_at               :datetime
 #  last_stripe_event_at   :datetime
 #  past_due_since         :datetime
 #  quantity               :integer          default(1), not null

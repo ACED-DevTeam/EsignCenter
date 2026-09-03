@@ -21,6 +21,7 @@
 #  updated_at          :datetime         not null
 #  account_id          :bigint           not null
 #  created_by_user_id  :bigint
+#  lineage_root_id     :bigint
 #  resubmitted_from_id :bigint
 #  template_id         :bigint
 #
@@ -30,6 +31,7 @@
 #  index_submissions_on_account_id_and_template_id_and_id           (account_id,template_id,id) WHERE (archived_at IS NULL)
 #  index_submissions_on_account_id_and_template_id_and_id_archived  (account_id,template_id,id) WHERE (archived_at IS NOT NULL)
 #  index_submissions_on_created_by_user_id                          (created_by_user_id)
+#  index_submissions_on_lineage_root_id                             (lineage_root_id) WHERE (lineage_root_id IS NOT NULL)
 #  index_submissions_on_resubmitted_from_id                         (resubmitted_from_id) WHERE (resubmitted_from_id IS NOT NULL)
 #  index_submissions_on_slug                                        (slug) UNIQUE
 #  index_submissions_on_template_id                                 (template_id)

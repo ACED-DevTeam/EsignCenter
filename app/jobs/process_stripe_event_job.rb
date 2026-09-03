@@ -7,6 +7,10 @@
 # out of order (a cancellation can land before the update that preceded it),
 # and re-fetching makes order stop mattering — the object is the truth. That
 # also makes every run idempotent, so a failed row can simply be run again.
+#
+# The fetch, the decision and the write all happen inside StripeBilling::Linker
+# — one row lock taken before Stripe is asked anything — so this job only
+# resolves WHICH account an event is about and records the verdict.
 class ProcessStripeEventJob
   include Sidekiq::Job
 
@@ -30,10 +34,6 @@ class ProcessStripeEventJob
 
   CHECKOUT_EVENT = 'checkout.session.completed'
 
-  # Events that clear the dunning clock, and the one that starts it.
-  PAID_INVOICE_EVENTS = %w[invoice.paid invoice.payment_succeeded].freeze
-  FAILED_INVOICE_EVENT = 'invoice.payment_failed'
-
   # The subscription events that can announce a subscription that is (or is
   # about to be) live. Everything else — deleted, paused — is news about one
   # winding down and needs no defending against.
@@ -43,7 +43,8 @@ class ProcessStripeEventJob
 
   UNKNOWN_CUSTOMER = 'unknown customer'
   DUPLICATE_SUBSCRIPTION = 'duplicate subscription cancelled'
-  FOREIGN_SUBSCRIPTION = 'event for a subscription this account does not hold'
+  FOREIGN_SUBSCRIPTION = 'foreign subscription'
+  NON_CUSTOMER_ACCOUNT = 'non-customer account'
 
   sidekiq_retries_exhausted do |msg, error|
     inbox = StripeEventInbox.find_by(id: msg['args'].first)
@@ -99,21 +100,15 @@ class ProcessStripeEventJob
     subscription_row = checkout_subscription_row(session)
 
     return unknown!(inbox) if subscription_row.nil?
+    return ignore!(inbox, NON_CUSTOMER_ACCOUNT) unless customer_row?(subscription_row)
 
     inbox.update!(account_id: subscription_row.account_id)
 
     new_subscription_id = session['subscription']
 
     return ignore!(inbox, 'checkout session carries no subscription') if new_subscription_id.blank?
-    return cancel_duplicate!(inbox, subscription_row, new_subscription_id) if duplicate?(subscription_row,
-                                                                                         new_subscription_id)
 
-    subscription_row.update!(stripe_subscription_id: new_subscription_id) if
-      subscription_row.stripe_subscription_id.blank?
-
-    refresh_and_apply!(inbox, subscription_row, new_subscription_id)
-
-    processed!(inbox)
+    record(inbox, link!(inbox, subscription_row, new_subscription_id))
   end
 
   def handle_subscription(inbox)
@@ -121,6 +116,7 @@ class ProcessStripeEventJob
     subscription_row = row_for(subscription_id: object['id'], customer_id: object['customer'])
 
     return unknown!(inbox) if subscription_row.nil?
+    return ignore!(inbox, NON_CUSTOMER_ACCOUNT) unless customer_row?(subscription_row)
 
     inbox.update!(account_id: subscription_row.account_id)
 
@@ -128,21 +124,13 @@ class ProcessStripeEventJob
 
     return ignore!(inbox, 'event carries no subscription') if subscription_id.blank?
 
-    if duplicate?(subscription_row, subscription_id)
-      # A SECOND live subscription on a customer that already has one is a
-      # double charge however we hear about it — a repeated Checkout, a
-      # subscription created by hand in the dashboard. Whoever tells us, the
-      # new one goes away and the account keeps the one it already had. News
-      # that the stranger ENDED needs no action at all: acting on it would
-      # only ask Stripe to cancel something already gone.
-      return ignore!(inbox, FOREIGN_SUBSCRIPTION) unless inbox.event_type.in?(LIVE_SUBSCRIPTION_EVENTS)
-
-      return cancel_duplicate!(inbox, subscription_row, subscription_id)
-    end
-
-    refresh_and_apply!(inbox, subscription_row, subscription_id)
-
-    processed!(inbox)
+    # A SECOND live subscription on a customer that already has one is a
+    # double charge however we hear about it — a repeated Checkout, a
+    # subscription created by hand in the dashboard. The Linker decides that
+    # under the row lock; news that a stranger subscription ENDED needs no
+    # action at all, so those events never ask for a cancellation.
+    record(inbox, link!(inbox, subscription_row, subscription_id,
+                        cancel_duplicates: inbox.event_type.in?(LIVE_SUBSCRIPTION_EVENTS)))
   end
 
   def handle_invoice(inbox)
@@ -151,6 +139,7 @@ class ProcessStripeEventJob
     subscription_row = row_for(subscription_id:, customer_id: object['customer'])
 
     return unknown!(inbox) if subscription_row.nil?
+    return ignore!(inbox, NON_CUSTOMER_ACCOUNT) unless customer_row?(subscription_row)
 
     inbox.update!(account_id: subscription_row.account_id)
 
@@ -158,10 +147,10 @@ class ProcessStripeEventJob
 
     return ignore!(inbox, 'invoice carries no subscription') if subscription_id.blank?
 
-    refresh_and_apply!(inbox, subscription_row, subscription_id)
-    record_dunning_clock(inbox, subscription_row)
-
-    processed!(inbox)
+    # An invoice for a subscription this account does not hold is somebody
+    # else's business: it never applies, never moves the dunning clock and
+    # never cancels anything. The subscription events own duplicates.
+    record(inbox, link!(inbox, subscription_row, subscription_id, cancel_duplicates: false))
   end
 
   # In this API version an invoice names its subscription under
@@ -171,31 +160,25 @@ class ProcessStripeEventJob
     invoice.dig('parent', 'subscription_details', 'subscription').presence || invoice['subscription'].presence
   end
 
-  # The failed payment starts the clock Session 7's dunning reads; any
-  # successful payment stops it.
-  def record_dunning_clock(inbox, subscription_row)
-    if inbox.event_type == FAILED_INVOICE_EVENT
-      return unless subscription_row.access_state == 'past_due' && subscription_row.past_due_since.nil?
-
-      subscription_row.update!(past_due_since: Time.current)
-    elsif inbox.event_type.in?(PAID_INVOICE_EVENTS) && subscription_row.past_due_since.present?
-      subscription_row.update!(past_due_since: nil)
-    end
+  # The one door to Stripe: the Linker takes the row lock, re-fetches, decides
+  # and writes.
+  def link!(inbox, subscription_row, subscription_id, cancel_duplicates: true)
+    StripeBilling::Linker.link_and_apply!(subscription_row, subscription_id,
+                                          event_id: inbox.stripe_event_id,
+                                          event_at: inbox.stripe_created_at,
+                                          cancel_duplicates:)
   end
 
-  # The whole point of the inbox: never trust the delivered payload, ask
-  # Stripe what is true now. An event older than one already applied still
-  # re-fetches and applies — the answer is simply the same, and the stamp of
-  # the newest event seen never moves backwards.
-  def refresh_and_apply!(inbox, subscription_row, subscription_id)
-    stripe_subscription = StripeBilling.subscription_for(subscription_id)
-
-    subscription_row.with_lock do
-      StripeBilling::SubscriptionSync.apply!(subscription_row, stripe_subscription)
-
-      newest = [subscription_row.last_stripe_event_at, inbox.stripe_created_at].compact.max
-
-      subscription_row.update!(last_stripe_event_at: newest) if newest
+  # What the Linker decided, written onto the inbox row. A subscription that
+  # is not ours — a stranger's, or one the account does not hold — is a
+  # fact about somebody else, and is ignored the same way.
+  def record(inbox, outcome)
+    case outcome.verdict
+    when :duplicate_cancelled
+      inbox.update!(status: StripeEventInbox::PROCESSED, processed_at: Time.current,
+                    last_error: DUPLICATE_SUBSCRIPTION)
+    when :duplicate_ignored, :foreign_ignored then ignore!(inbox, FOREIGN_SUBSCRIPTION)
+    else processed!(inbox)
     end
   end
 
@@ -204,7 +187,9 @@ class ProcessStripeEventJob
     billing_account = account && Plans.billing_account(account)
 
     if billing_account&.customer?
-      AccountSubscription.find_or_create_by!(account_id: billing_account.id) do |row|
+      # INSERT first, SELECT on conflict: the Checkout return and this job
+      # can create the row at the same moment, and account_id is unique.
+      AccountSubscription.create_or_find_by!(account_id: billing_account.id) do |row|
         row.access_state = 'cancelled'
         row.status = 'none'
         row.quantity = 1
@@ -220,38 +205,11 @@ class ProcessStripeEventJob
       nil
   end
 
-  # "The account already bought this once": a live paid subscription under a
-  # different id than the one this Checkout produced.
-  def duplicate?(subscription_row, new_subscription_id)
-    existing = subscription_row.stripe_subscription_id
-
-    existing.present? && existing != new_subscription_id &&
-      Plans::PAID_ACCESS_STATES.include?(subscription_row.access_state)
-  end
-
-  def cancel_duplicate!(inbox, subscription_row, new_subscription_id)
-    begin
-      StripeBilling.client.v1.subscriptions.cancel(new_subscription_id)
-    rescue Stripe::InvalidRequestError => e
-      # Already cancelled, or never existed: a repeated delivery of the same
-      # event must land in the same place rather than fail forever.
-      Rails.logger.info("Duplicate subscription #{new_subscription_id} was already gone (#{e.message})")
-    end
-
-    message = "Cancelled duplicate Stripe subscription #{new_subscription_id} for account " \
-              "#{subscription_row.account_id}; it already has #{subscription_row.stripe_subscription_id}"
-
-    ErrorReport.warning(message, account_id: subscription_row.account_id,
-                                 stripe_event_id: inbox.stripe_event_id)
-
-    OperatorAlert.deliver(
-      subject: "Duplicate Stripe subscription cancelled for account #{subscription_row.account_id}",
-      body: "#{message}.\n\nNothing was charged twice, but check the customer in Stripe " \
-            'to be sure only one subscription is live.'
-    )
-
-    inbox.update!(status: StripeEventInbox::PROCESSED, processed_at: Time.current,
-                  last_error: DUPLICATE_SUBSCRIPTION)
+  # Internal and operator accounts never bill (Plans::INTERNAL). A row that
+  # somehow carries a Stripe id on such an account is a mistake, not an
+  # instruction: nothing is applied and nothing is cancelled for it.
+  def customer_row?(subscription_row)
+    Plans.billing_account(subscription_row.account).customer?
   end
 
   # An event for a customer or subscription no account owns is a fact about

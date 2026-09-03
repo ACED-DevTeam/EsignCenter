@@ -4,8 +4,10 @@
   <div class="alert items-start bg-base-100 border border-base-300 mb-4" data-billing-ended-banner>
     <%= svg_icon('info_circle', class: 'stroke-current shrink-0 h-6 w-6 mt-0.5') %>
     <p dir="auto" class="text-sm">
-      <% ended_on = @subscription&.current_period_end || @subscription&.updated_at %>
-      <%= ended_on ? t('billing_ended_on', date: l(ended_on.to_date, format: :long)) : t('billing_ended') %>
+      <%# When Stripe says it ENDED — not the end of the period it was paid up
+          to, which for an immediate cancellation is weeks in the future. %>
+      <% ended_on = @subscription&.ended_at || @subscription&.current_period_end || @subscription&.updated_at %>
+      <%= ended_on ? t('billing_ended_on', date: billing_date(ended_on)) : t('billing_ended') %>
     </p>
   </div>
 <% end %>
@@ -23,6 +25,9 @@
         </div>
       </div>
       <p class="text-sm text-base-content/70" dir="auto"><%= t('billing_free_plan_summary') %></p>
+      <p class="text-xs font-semibold uppercase tracking-wide text-base-content/60" dir="auto" data-billing-free-limits-label>
+        <%= t('billing_free_plan_limits') %>
+      </p>
       <ul class="text-sm space-y-1.5" dir="auto">
         <li class="flex items-start gap-2">
           <%= svg_icon('check', class: 'w-4 h-4 mt-0.5 shrink-0 text-base-content/60') %>
@@ -41,6 +46,9 @@
           <span><%= t('billing_free_limit_storage', size: number_to_human_size(@free_limits.storage_bytes)) %></span>
         </li>
       </ul>
+      <% if @limits_overridden %>
+        <p class="text-xs text-base-content/70" dir="auto" data-billing-custom-limits><%= t('billing_custom_limits_note') %></p>
+      <% end %>
       <p class="text-xs text-base-content/60 mt-1" dir="auto"><%= t('billing_free_current_plan') %></p>
     </div>
   </div>

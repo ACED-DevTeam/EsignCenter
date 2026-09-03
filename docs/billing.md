@@ -88,6 +88,85 @@ re-reading the subscription makes order stop mattering. The event is only a
 trigger; the object is the truth. That also makes every run repeatable: the
 same event processed twice writes the same row.
 
+That re-read, the decision about which subscription the account actually
+holds, the write and the dunning clock all happen **inside one lock on the
+account's row, taken before Stripe is asked anything** — `StripeBilling::
+Linker`, the single path the webhook job, the nightly sweep and the Checkout
+return all use. Locking after the fetch instead would let two workers each
+hold a snapshot and race for the write, and the older snapshot could land
+last — handing paid access back to an account that had just cancelled.
+
+**The trade-off, stated plainly.** Same-account billing work is serialised on
+the subscription row — a job or a web request holds its database connection
+for its whole duration anyway, so the lock changes nothing about connection
+pressure; it only makes two workers on one account take turns. What the lock
+must never do is wait forever, so every Stripe call is on a short leash (5 s
+to connect, 15 s to read, one retry) and the lock itself gives up after 10 s.
+A Stripe outage therefore makes those jobs **fail fast and retry**; it does
+not pile them up. A web action that hits the 10 s wait answers with *"try
+again in a minute"* rather than an error page.
+
+Inside that lock the rule is short:
+
+- the row holds this same subscription → apply it;
+- the row holds nothing → fetch the newcomer; if it is **ours** (below) adopt
+  it, otherwise leave it alone;
+- the row holds a **different** subscription → ask Stripe about the row's
+  **own** subscription — never the cached columns, which can be stale in
+  either direction. Still live → the newcomer is a duplicate: it is cancelled
+  at Stripe, **whatever it already charged is refunded**, and the operator is
+  told; the account keeps the subscription it had. (An invoice never cancels
+  anything — it is simply ignored, because the subscription events own that
+  decision.) Over → the newcomer is adopted if it is ours.
+
+**What counts as ours.** A Stripe customer can carry subscriptions this app
+never sold — another product on a shared Stripe account, something made by
+hand in the dashboard. A subscription is ours only if it carries an item on
+**our price** (`STRIPE_PRICE_ID`) or our own Checkout tagged it with the
+account's id. Anything else is never adopted (no paid access for a purchase
+that was not ours) and never cancelled (it is somebody's real purchase); it is
+logged as *"foreign subscription … left alone"* and named in the nightly
+summary. When a customer somehow holds several live subscriptions of ours and
+the row names none of them (a Checkout the app never heard back from), the
+survivor is decided the same way every time: one on our price beats one that
+is merely tagged, and among those the **earliest created** wins; the rest are
+duplicates.
+
+**Refunding a duplicate — only what we cancelled.** Cancelling a duplicate is
+only half the job: an account whose trial is spent pays its first invoice
+during Checkout, before we ever hear about it. So after the cancellation the
+duplicate's latest invoice is read; if it collected money, a refund is created
+against its payment (reason *duplicate*), the refund id goes into the operator
+alert, and the customer's page says *"…the duplicate was cancelled and its
+charge of $X refunded."* Every cancellation the app makes is stamped with its
+own marker (`cancellation_details.comment = esigncenter:duplicate`), and a
+refund is issued only for a subscription the app cancelled — in this attempt,
+or in an earlier one whose refund step failed (the marker proves it). A
+candidate that is **already over** when looked at and carries no marker — a
+stale webhook about an old, legitimately ended subscription, a bookmarked
+return URL — is ignored: nothing is cancelled, nothing is refunded, nothing is
+reported as cancelled.
+
+**Two live subscriptions of ours, both real.** If the row holds one and news
+of another live one arrives, the survivor policy above decides which the
+account keeps (our price first, then the earliest created) — not the order
+the webhooks happened to arrive in. The loser, whichever it is, goes through
+the same cancel-and-refund path. A trial duplicate has a $0 invoice and nothing to refund, and the
+page says *"…you will not be charged for it."* If the refund itself fails the
+job fails and retries, and the alert says **REFUND FAILED — refund manually**
+so a person looks. Refunds carry Stripe idempotency keys, so a retry can
+never refund the same invoice twice. At most three Stripe calls decide the
+duplicate path (the row's own subscription, the duplicate, the cancellation)
+plus the refund when there is money to return.
+
+Whether the account is **past due** is decided the same way: from the state
+Stripe just reported, not from the kind of event that arrived. A replayed
+`invoice.paid` from before a failure cannot stop a clock that is still
+running, and the nightly sweep repairs the clock too.
+
+An event that resolves to an internal or operator account — which never bill —
+is ignored outright: nothing is applied and nothing is cancelled for it.
+
 Events for a customer no account owns (a shared test key, a deleted account)
 are recorded, reported once, and never retried. An event type we have no
 handler for is stored and marked ignored — nothing is ever silently dropped.
@@ -107,7 +186,23 @@ Webhooks get lost — an endpoint rotated, a deploy that dropped a delivery, a
 bug that marked a row failed. So at **06:00 UTC every day** a job re-reads
 every subscription the app thinks it has, straight from Stripe:
 
-- a row that disagrees with Stripe is rewritten to match (and counted);
+- a row that disagrees with Stripe is rewritten to match (counted only once
+  the repair has actually gone through);
+- a customer Stripe says has **two** live subscriptions of ours keeps the one
+  the row names; the others go through the same duplicate path as a webhook
+  (cancelled, refunded, reported) — and only what was actually cancelled is
+  reported as cancelled. The sweep is never allowed to re-point a row on the
+  strength of a list, and it skips the duplicate check entirely for a row
+  whose repair failed: a stale row is no basis for cancelling anything;
+- **every page** of the customer's subscriptions is read (Stripe pages them;
+  ten dead subscriptions cannot hide a live one on the next page). The read
+  stops at a thousand; if Stripe still says there is more, the list is
+  treated as unreadable — the sweep counts that account as an error and the
+  Checkout door refuses to sell (*"try again in a minute"*, with a report)
+  rather than conclude "nothing live" from half a list;
+- a live subscription that is **not ours** is left alone and named in the
+  summary; a live one of ours that no row links to is named too (somebody may
+  be paying for nothing — adopting it is a decision for a person);
 - inbox rows still unprocessed 15 minutes after they were claimed, and failed
   rows with retries left, are queued again;
 - a Stripe error on one account never stops the sweep;
@@ -115,7 +210,9 @@ every subscription the app thinks it has, straight from Stripe:
   email with the counts. Never one per account.
 
 Rows the operator granted by hand (`rake plans:grant`) are marked `manual` and
-are never touched by this job.
+are never touched by this job. Nor are rows on internal or operator accounts,
+which never bill: nothing is repaired or cancelled for them, whatever ids
+they carry.
 
 ## 5. What has to be configured in Stripe
 
@@ -163,6 +260,29 @@ Two more facts pinned in code, not in the environment:
 - **Nothing is read at boot.** Every Stripe setting is read fresh at the
   moment it is used, so the test suite can hand each test its own fake
   credentials and a rotated key takes effect on the next request.
+- **The secret key's mode must match the environment**: production refuses to
+  boot on anything but `sk_live_`, everywhere else refuses anything but
+  `sk_test_`. A key that is neither (a truncated paste, a placeholder) is
+  refused too — "not obviously a test key" is not good enough to charge
+  people with.
+
+#### A note on the test fixtures and the API version
+
+The 13 captured events in `spec/fixtures/stripe/` were recorded at
+`2026-07-29.dahlia`, the Stripe account's default at the time, while the app
+pins `2026-08-26.dahlia`. Stripe stamps an event with the version it was
+created at and re-reading it later does not re-render it, so the only way to
+move the captures is to trigger 13 new events — new customers, new
+subscriptions, new ids through every example. Instead, the two objects the app
+actually reads were fetched at BOTH versions and compared: the subscription
+(including `items.data[].current_period_start/end` and the expanded price) is
+**byte-identical**, and the invoice differs only in its signed hosted-invoice
+URLs, which change on every request anyway. `parent.subscription_details.
+subscription` — the shape the invoice handler depends on — is the same in
+both. Every retrieve stub in the specs also asserts the exact subscription id
+**and** the `expand[]=items.data.price` the app sends, so a missing expansion
+cannot pass unnoticed. Recapture when the launch-gate endpoint is created on
+the live account.
 
 ### 5.3 Checking it
 
@@ -178,8 +298,9 @@ the **live** Stripe account:
 - the portal cannot edit seats, and can cancel, update the card and show
   invoices;
 - an endpoint is registered pointing at `/stripe/webhooks` and listens to
-  every event we handle (a *warning*, not a failure — the dev stack has no
-  registered endpoint, it forwards instead).
+  every event we handle. **No endpoint at all is a warning**, not a failure —
+  the dev stack has none and forwards instead. An endpoint that exists but is
+  **missing events we handle is a FAIL**: those events would be lost.
 
 ## 6. Running it on the dev stack
 
@@ -235,6 +356,16 @@ writes (`Billing account is #12 (parent of #34)`). Internal and operator
 accounts are refused — they are the platform and never bill. A hand-granted
 row is marked `manual` and the nightly Stripe sweep leaves it alone.
 
+**An account with a live Stripe subscription is refused by both tasks.** A
+local revoke would not stop the card being charged and the next webhook would
+undo it; a local grant would take a paying account out of the nightly sweep.
+Cancel it at Stripe instead — the Customer Portal or the dashboard — and the
+webhook downgrades the account. "Live" means exactly one thing here: the raw
+Stripe status last seen. A `manual` row is always the operator's to revoke or
+re-grant, whatever stale ids it still carries, and granting over a **dead**
+Stripe subscription clears its subscription id and status (the customer id
+and the one-trial stamp stay — they are the account's history).
+
 ---
 
 ## 9. What the customer sees (`/settings/billing`)
@@ -256,19 +387,36 @@ What each state shows:
 | canceling | The date the subscription ends and that it can be resumed in the portal | **Manage billing** |
 | past_due | A warning banner: the last payment failed, update the card | **Manage billing** |
 | suspended | An error banner: paid features are off until the payment is settled | **Manage billing** |
-| ended (cancelled with a past subscription) | When it ended, that documents stay readable and exportable, and that the free trial is spent | **Upgrade to Paid** |
+| incomplete (paid for, payment not finished) | That the payment has not gone through yet — never a buy button the server would refuse | **Manage billing** |
+| ended, trial already used | When it ended (Stripe's own end date, not the end of the period it was paid up to), that documents stay readable and exportable, and that the free trial is spent | **Upgrade to Paid** |
+| ended, trial never used | The same, but the trial is still on offer | **Start 14-day free trial** |
 | manual (granted by rake) | "Managed by the operator" — nothing to pay, nothing to change | none |
 
 Two doors lead to Stripe, both server-side:
 
 - **Start free trial / Upgrade** posts to `/settings/billing/checkout`. The app
-  finds or creates the Stripe customer, then creates a Checkout Session whose
-  price, quantity (= the people in the account) and trial are decided entirely
-  by the server — no request parameter is read for any of them — and answers
-  with a 303 to Stripe's page. The trial is offered only while the account has
-  never had one (`trial_used_at`). An account that already has a live Stripe
-  subscription is turned back with *"You already have an active subscription"*
-  and no call is made.
+  finds or creates the Stripe customer — one per account, ever: Stripe is
+  first searched for a customer tagged with the account (a checkout that
+  failed after Stripe answered left one behind), and only then is one created,
+  with a body that is the same whoever clicks (the account's name and its
+  first admin's email) under a key that is the account itself; a refusal from
+  Stripe for that key means the customer exists and it is adopted, never
+  duplicated —
+  asks Stripe whether that customer already has a live subscription of ours
+  it never heard about (every page of them; the survivor is linked, any
+  other is cancelled and refunded), and only then creates a Checkout Session
+  whose price, quantity (= the people in the account) and trial are decided
+  entirely by the server — no request parameter is read for any of them —
+  and answers with a 303 to Stripe's page. The whole decision is one step
+  under the account's row lock, so two clicks, or a click and a webhook,
+  cannot sell the same account two subscriptions. The trial is offered only
+  while the account has never had one (`trial_used_at`). An account that
+  already has a live Stripe subscription is turned back with *"You already
+  have an active subscription"* and no session is made.
+On a subscribed account the page shows **Seats billed** — the quantity Stripe
+charges for, frozen at Checkout — and, when it differs, how many people are in
+the account today. Dates are shown in the account's own timezone and language.
+
 - **Manage billing** posts to `/settings/billing/portal` and opens the Customer
   Portal configuration from `STRIPE_PORTAL_CONFIGURATION_ID`, where the card,
   the invoices and cancellation live. Seats are not editable there: the app
@@ -276,9 +424,25 @@ Two doors lead to Stripe, both server-side:
 
 Coming back from Checkout, `/settings/billing/return` reads the session once
 and applies the subscription immediately, so the page tells the truth without
-waiting for the webhook — a session belonging to another account is ignored,
-and the webhook says the same thing again, idempotently. An abandoned Checkout
-comes back with *"Checkout cancelled — nothing was charged."*
+waiting for the webhook. The session has to *be* this account's completed
+subscription purchase on **exactly** the customer the account's row already
+holds (Checkout made that row and that customer before the session existed,
+so "no row yet" or "another customer" is never ours to act on), and a
+subscription our Checkout tagged with an account id has to be tagged with
+*this* account's. Anything else is turned back with *"We couldn't match this
+checkout to your account"* and reported, and no row is created or changed.
+The subscription it names then goes through the same locked path
+(`StripeBilling::Linker`) as every webhook: if the account already holds a
+different live subscription, the new one is the duplicate and is cancelled —
+and refunded if it had charged — rather than written over the one that is
+charging the card (*"You already had an active subscription; the duplicate was
+cancelled…"*, with the refunded amount when there was one). An abandoned
+Checkout comes back with *"Checkout cancelled — nothing was charged."*
+
+Reading someone else's billing page is allowed; acting on it is not. A child
+account's admin sees the parent's state and gets a 404 from Checkout, the
+Customer Portal and the return action, and an operator-granted plan refuses
+all three with *"Managed by the operator."*
 
 If Stripe cannot be reached, every one of these answers with one plain sentence
 and a Sentry report — never an error page.

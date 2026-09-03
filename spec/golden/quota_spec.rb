@@ -330,6 +330,68 @@ RSpec.describe 'Quotas', type: :request do # rubocop:disable RSpec/MultipleDescr
       expect(CompletedSubmitter.find_by!(submitter: copy).is_first).to be(true)
     end
 
+    # Two corrections of the SAME document are siblings: neither is the
+    # other's ancestor, so walking upwards could not see the other and both
+    # counted. The family is what is counted, and every copy carries its id.
+    it 'counts one for two sibling copies of the same document', sidekiq: :inline do
+      template = text_template_for(free_account)
+      original = own_submitter(free_account, template:)
+      act_as(free_account)
+
+      first_copy = resubmit_as_owner!(original)
+      second_copy = resubmit_as_owner!(original)
+
+      expect(first_copy.submission.lineage_root_id).to eq(original.submission_id)
+      expect(second_copy.submission.lineage_root_id).to eq(original.submission_id)
+
+      complete!(first_copy)
+      complete!(second_copy)
+
+      expect(Quotas.completions_this_month(free_account)).to eq(1)
+      expect(CompletedSubmitter.find_by!(submitter: second_copy).is_first).to be(false)
+      # Three documents went out, so three sends were spent.
+      expect(Quotas.sends_this_month(free_account)).to eq(3)
+    end
+
+    it 'counts one when the copy is signed first and the original afterwards', sidekiq: :inline do
+      template = text_template_for(free_account)
+      original = own_submitter(free_account, template:)
+      act_as(free_account)
+
+      copy = resubmit_as_owner!(original)
+
+      complete!(copy)
+
+      expect(Quotas.completions_this_month(free_account)).to eq(1)
+
+      complete!(original)
+
+      expect(Quotas.completions_this_month(free_account)).to eq(1)
+      expect(CompletedSubmitter.find_by!(submitter: original).is_first).to be(false)
+    end
+
+    # The family id is a number, not a reference: deleting the original for
+    # good must not quietly re-open the family for a second completion.
+    it 'still counts one after the original document is permanently deleted', sidekiq: :inline do
+      template = text_template_for(free_account)
+      original = own_submitter(free_account, template:)
+      complete!(original)
+      act_as(free_account)
+
+      copy = resubmit_as_owner!(original)
+      root_id = original.submission_id
+
+      original.submission.destroy!
+
+      expect(Submission.where(id: root_id)).not_to exist
+      expect(copy.submission.reload.lineage_root_id).to eq(root_id)
+
+      complete!(copy)
+
+      expect(Quotas.completions_this_month(free_account)).to eq(1)
+      expect(CompletedSubmitter.find_by!(submitter: copy).is_first).to be(false)
+    end
+
     it 'still counts two unrelated documents as two', sidekiq: :inline do
       template = text_template_for(free_account)
 
@@ -350,8 +412,8 @@ RSpec.describe 'Quotas', type: :request do # rubocop:disable RSpec/MultipleDescr
 
       expect(second.submission.resubmitted_from_id).to eq(first.submission_id)
       expect(third.submission.resubmitted_from_id).to eq(second.submission_id)
-      expect(Submissions::Lineage.ids(third.submission))
-        .to eq([third.submission_id, second.submission_id, first.submission_id])
+      expect(Submissions::Lineage.family_ids(third.submission))
+        .to contain_exactly(first.submission_id, second.submission_id, third.submission_id)
       expect(Submissions::Lineage.root_id(third.submission)).to eq(first.submission_id)
 
       complete!(third)
@@ -426,6 +488,68 @@ RSpec.describe 'Quotas', type: :request do # rubocop:disable RSpec/MultipleDescr
 
       expect(Quotas).to have_received(:after_first_completion).once
       expect(Quotas.completions_this_month(free_account)).to eq(5)
+    end
+
+    # G15: the family lock is always its own savepoint. A unique-index
+    # collision inside it (the window a sibling wins in) rolls back only the
+    # savepoint, so the caller's retry runs in a healthy transaction — even
+    # when the caller is itself inside one.
+    it 'retries a collision cleanly inside an outer transaction', sidekiq: :inline do
+      template = text_template_for(free_account)
+      original = own_submitter(free_account, template:)
+      complete!(original)
+
+      second = original.submission.submitters.create!(uuid: SecureRandom.uuid, account_id: free_account.id,
+                                                      email: unique_email, completed_at: Time.current)
+
+      # The check says "nobody yet" exactly once, then tells the truth: that
+      # is what a sibling winning the race between check and insert looks like.
+      answers = [false]
+      allow(Submissions::Lineage).to receive(:first_completion_exists?).and_wrap_original do |original_method, *args|
+        answers.empty? ? original_method.call(*args) : answers.shift
+      end
+
+      row = ApplicationRecord.transaction { ProcessSubmitterCompletionJob.new.create_completed_submitter!(second) }
+
+      expect(row).to be_persisted
+      expect(row.is_first).to be(false)
+      expect(Quotas.completions_this_month(free_account)).to eq(1)
+    end
+
+    # G9: the migration that gave existing copies their family id has to
+    # walk each chain to its true origin, whatever order the ids are in —
+    # imported or restored data can hold a copy with a LOWER id than the
+    # document it was made from.
+    it 'backfills the family root by walking the chain, whatever order the ids come in' do
+      require Rails.root.join('db/migrate/20260903020100_add_lineage_root_to_submissions.rb')
+
+      template = text_template_for(free_account)
+      youngest, middle, oldest = Array.new(3) { send_one(free_account, template:) }
+
+      expect([youngest.id, middle.id, oldest.id]).to eq([youngest.id, middle.id, oldest.id].sort)
+
+      # The chain runs AGAINST the ids: each copy was made from a document with a higher id.
+      youngest.update_columns(resubmitted_from_id: middle.id, lineage_root_id: nil)
+      middle.update_columns(resubmitted_from_id: oldest.id, lineage_root_id: nil)
+
+      ActiveRecord::Migration.suppress_messages { AddLineageRootToSubmissions.new.backfill_lineage_roots }
+
+      expect(youngest.reload.lineage_root_id).to eq(oldest.id)
+      expect(middle.reload.lineage_root_id).to eq(oldest.id)
+      expect(oldest.reload.lineage_root_id).to be_nil
+      expect(Submissions::Lineage.family_ids(youngest)).to contain_exactly(youngest.id, middle.id, oldest.id)
+    end
+
+    # H4: a pointer at a document that no longer exists stops the walk at
+    # the last document that does — never a phantom id as the family root.
+    it 'roots a chain at the last document that exists when a parent is missing' do
+      require Rails.root.join('db/migrate/20260903020100_add_lineage_root_to_submissions.rb')
+
+      migration = AddLineageRootToSubmissions.new
+
+      expect(migration.root_of(10, { 10 => 99 }, {}, Set[10])).to eq(10)
+      expect(migration.root_of(11, { 11 => 10, 10 => 99 }, {}, Set[10, 11])).to eq(10)
+      expect(migration.root_of(11, { 11 => 10 }, {}, Set[10, 11])).to eq(10)
     end
   end
 
@@ -1167,6 +1291,62 @@ end
 # then be committed for real and leak into every later example.
 RSpec.describe 'Quota creation lock', type: :request do
   self.use_transactional_tests = false
+
+  # Two sibling copies of one document finishing at the same moment: without
+  # the family lock both read "nobody has finished this family yet" and both
+  # count, because the partial unique index is per submission and these are
+  # two different submissions. Runs outside the wrapping transaction so the
+  # advisory lock is taken between two real connections.
+  it 'counts one completion when two copies of the same document finish at once' do
+    account = create(:account)
+    user = create(:user, account:)
+    template = create(:template, account:, author: user, only_field_types: %w[text])
+    origin = Submissions.create_from_emails(template:, user:, emails: 'origin@example.com',
+                                            source: :invite).sole
+
+    copies = Array.new(2) do |i|
+      submission = account.submissions.create!(created_by_user: user, submitters_order: :preserved,
+                                               **Submissions::Lineage.attributes_for_copy(origin),
+                                               **origin.slice(:template_fields, :account_id, :name, :template_id,
+                                                              :template_schema, :template_submitters, :preferences))
+
+      submission.submitters.create!(uuid: origin.submitters.first.uuid, account_id: account.id,
+                                    email: "copy-#{i}@example.com", completed_at: Time.current)
+    end
+
+    # A wider window than the real one, so the race is decided by the lock
+    # rather than by how fast Postgres commits.
+    allow(Submissions::Lineage).to receive(:first_completion_exists?).and_wrap_original do |original, *args|
+      original.call(*args).tap { sleep 0.3 }
+    end
+
+    barrier = Queue.new
+    workers = copies.map do |submitter|
+      Thread.new do
+        ActiveRecord::Base.connection_pool.with_connection do
+          barrier.pop
+
+          ProcessSubmitterCompletionJob.new.create_completed_submitter!(Submitter.find(submitter.id))
+        end
+      end
+    end
+
+    2.times { barrier << true }
+
+    # `value` re-raises whatever a worker raised: a crashed worker plus one
+    # clean insert would otherwise satisfy "exactly one" for the wrong reason.
+    rows = workers.map(&:value)
+
+    expect(rows).to all(be_persisted)
+    expect(rows.map(&:is_first)).to contain_exactly(true, false)
+
+    family = Submissions::Lineage.family_ids(copies.first.submission)
+
+    expect(CompletedSubmitter.where(submission_id: family, is_first: true).count).to eq(1)
+    expect(Quotas.completions_this_month(account)).to eq(1)
+  ensure
+    account&.destroy!
+  end
 
   it 'lets exactly one of two concurrent creators through at 14 sends' do
     account = create(:account)
