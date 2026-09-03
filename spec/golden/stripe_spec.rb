@@ -733,6 +733,83 @@ RSpec.describe 'Stripe billing', type: :request do # rubocop:disable RSpec/Multi
       expect(StripeEventInbox.sole).to have_attributes(status: 'processed', account_id: account.id)
       expect(Plans.key_for(account)).to eq(Plans::PAID)
     end
+
+    # An account that was standalone when it started Checkout writes its OWN
+    # id into client_reference_id. If it has been linked under a parent by
+    # the time the webhook is processed, that reference no longer names an
+    # account that pays for itself — and resolving it through
+    # Plans.billing_account handed the PARENT's row a subscription living on
+    # the CHILD's Stripe customer. The Linker would then run the duplicate
+    # machinery between the parent's real subscription and the child's and
+    # cancel and refund the wrong one. The browser door refuses a child's
+    # purchase outright (require_own_billing!); this is the same refusal on
+    # the webhook path, and the child's own row gets the non-customer verdict
+    # with its unmanaged Stripe ids reported.
+    it 'never lands a linked child\'s Checkout on the parent\'s row' do
+      parent = create(:account)
+      child = Account.create!(name: 'Team', locale: 'en-US', timezone: 'UTC',
+                              linked_account_account: AccountLinkedAccount.new(account_type: :linked,
+                                                                               account: parent))
+      parent_row = create(:account_subscription, account: parent, access_state: 'active', status: 'active',
+                                                 stripe_status: 'active', stripe_customer_id: customer_a,
+                                                 stripe_subscription_id: subscription_a, quantity: 3)
+      # The child bought for itself before it was linked, so it holds its own
+      # Stripe customer — and nothing in the app reads this row any more.
+      child_row = cancelled_row(for_account: child, customer: customer_c)
+
+      # Everything the wrong path would need, registered so that taking it
+      # leaves a mark: a cancel of either subscription is a failed example.
+      stub_subscription(subscription_a, 'subscription-active')
+      stub_duplicate(subscription_a, 'subscription-active')
+      stub_subscription(subscription_c, 'subscription-trialing-checkout')
+      stub_duplicate(subscription_c, 'subscription-trialing-checkout')
+      stub_cancel(subscription_a)
+      stub_cancel(subscription_c)
+      allow(ErrorReport).to receive(:warning)
+
+      post_stripe_event(nil, body: checkout_body(child.id))
+      drain_stripe_jobs
+
+      expect(parent_row.reload).to have_attributes(access_state: 'active', stripe_customer_id: customer_a,
+                                                   stripe_subscription_id: subscription_a)
+      expect(child_row.reload.stripe_subscription_id).to be_nil
+      expect(a_request(:delete, %r{api\.stripe\.com/v1/subscriptions/})).not_to have_been_made
+      expect(a_request(:post, 'https://api.stripe.com/v1/refunds')).not_to have_been_made
+      expect(StripeEventInbox.sole)
+        .to have_attributes(status: 'ignored', last_error: ProcessStripeEventJob::NON_CUSTOMER_ACCOUNT)
+      expect(ErrorReport).to have_received(:warning)
+        .with(/unmanaged Stripe subscription/, hash_including(account_id: child.id))
+    end
+
+    # The Checkout RETURN door only applies a session that names EXACTLY the
+    # customer the row already holds (known_customer?), because Checkout
+    # created that row and that customer before the session ever existed.
+    # The webhook path has to ask the same question or it becomes the way
+    # around it: a subscription somebody else's Stripe customer is paying for
+    # would be linked onto this row, and they would go on paying for it.
+    it 'links nothing when the session names a customer the row does not hold' do
+      row = cancelled_row(customer: customer_a)
+
+      stub_subscription(subscription_c, 'subscription-trialing-checkout')
+      stub_duplicate(subscription_c, 'subscription-trialing-checkout')
+      allow(ErrorReport).to receive(:warning)
+
+      expect(fixture_json(checkout_event)['data']['object']['customer']).to eq(customer_c)
+
+      post_stripe_event(nil, body: checkout_body(account.id))
+      drain_stripe_jobs
+
+      expect(row.reload).to have_attributes(access_state: 'cancelled', stripe_customer_id: customer_a,
+                                            stripe_subscription_id: nil)
+      expect(a_request(:get, /api\.stripe\.com/)).not_to have_been_made
+      expect(StripeEventInbox.sole)
+        .to have_attributes(status: 'ignored', last_error: ProcessStripeEventJob::CHECKOUT_OTHER_CUSTOMER,
+                            account_id: account.id)
+      expect(ErrorReport).to have_received(:warning)
+        .with(/could not be matched to account #{account.id}/, hash_including(account_id: account.id))
+
+      expect_free_plan
+    end
   end
 
   describe 'a second subscription for a customer that already has one' do
@@ -979,6 +1056,135 @@ RSpec.describe 'Stripe billing', type: :request do # rubocop:disable RSpec/Multi
       expect(alerts.sole[:body]).to include('manual refund review')
       expect(row.reload.stripe_subscription_id).to eq(subscription_b)
       expect(StripeEventInbox.sole).to have_attributes(status: 'processed')
+
+      expect_paid_access
+    end
+
+    # The marker write carries a STABLE idempotency key and a body that
+    # timestamps itself, so a retry of a half-finished attempt (the marker
+    # landed, the cancel behind it did not) sends the same key with a
+    # different clock — and Stripe refuses that outright. Every retry inside
+    # Stripe's 24-hour window then failed identically, so the duplicate was
+    # never cancelled and went on charging until the retries ran out.
+    #
+    # The retry has to CONVERGE instead: the refusal means the marker is
+    # already written, so it is read back off the subscription and IT governs
+    # the rest of the pass. That matters for the money, which is why the two
+    # attempts are made to disagree here — the first cannot read the
+    # survivor's creation time and writes the MANUAL marker; the second can,
+    # and would choose the automatic (refunding) one. The stored marker wins,
+    # the duplicate is cancelled, and the $30 it collected is still a
+    # person's decision.
+    it 'converges on the marker it already wrote when a retry is refused as a repeat' do
+      row = create(:account_subscription, account:, access_state: 'past_due', status: 'past_due',
+                                          stripe_status: 'past_due', stripe_customer_id: customer_a,
+                                          stripe_subscription_id: subscription_a, quantity: 3)
+      collected = paid_invoice(subscription_a, amount: 3000, id: 'in_only')
+      manual = StripeBilling::DUPLICATE_CANCEL_MANUAL_MARKER
+      json = { 'Content-Type' => 'application/json' }
+      attempt = 1
+
+      # The row's own subscription: in dunning, so the healthy newcomer wins
+      # the survivor policy on both attempts however old either one is.
+      sick = { 'id' => subscription_a, 'status' => 'past_due', 'created' => 2_000 }
+
+      stub_subscription(subscription_a, 'subscription-active', sick)
+      stub_invoice_list(subscription_a, [collected])
+      stub_refund("pi_#{subscription_a}", amount: 3000)
+
+      # The duplicate, re-read on every attempt — and on the retry it comes
+      # back carrying the marker the first attempt managed to write.
+      stub_request(:get, subscription_url(subscription_a))
+        .with(query: hash_including('expand' => StripeBilling::Linker::DUPLICATE_EXPAND))
+        .to_return do
+          body = fixture_json('subscription-active').merge(sick).merge('latest_invoice' => collected)
+          body = body.merge(marked_by_us(manual, fixture: 'subscription-active')) if attempt > 1
+
+          { status: 200, body: body.to_json, headers: json }
+        end
+
+      # The survivor. Its creation time is missing on the first attempt
+      # (nothing is proven, so the manual marker stands) and readable on the
+      # retry (which would earn the automatic one).
+      stub_request(:get, subscription_url(subscription_b))
+        .with(query: hash_including('expand' => StripeBilling::Linker::DUPLICATE_EXPAND))
+        .to_return do
+          body = fixture_json('subscription-active')
+                 .merge('id' => subscription_b, 'status' => 'active',
+                        'created' => (attempt == 1 ? nil : 1_000),
+                        'latest_invoice' => unpaid_invoice(subscription_b))
+
+          { status: 200, body: body.to_json, headers: json }
+        end
+
+      # The marker write: it lands the first time and is refused as a repeat
+      # of the same key with different parameters the second.
+      mark_call = stub_request(:post, subscription_url(subscription_a))
+                  .with(headers: { 'Idempotency-Key' => "mark-duplicate-#{subscription_a}" })
+                  .to_return do
+                    if attempt == 1
+                      { status: 200, body: { id: subscription_a, object: 'subscription' }.to_json, headers: json }
+                    else
+                      { status: 400,
+                        body: { error: { type: 'idempotency_error', code: 'idempotency_key_in_use',
+                                         message: 'Keys for idempotent requests can only be used with the ' \
+                                                  'same parameters they were first used with.' } }.to_json,
+                        headers: json }
+                    end
+                  end
+
+      # The cancel, stubbed ONLY for the manual marker: a pass that cancelled
+      # under the automatic one would find no stub at all.
+      cancel_call = stub_request(:delete, subscription_url(subscription_a))
+                    .with(query: hash_including('expand' => StripeBilling::Linker::DUPLICATE_EXPAND,
+                                                'cancellation_details' => { 'comment' => manual }))
+                    .to_return do
+                      if attempt == 1
+                        { status: 400,
+                          body: { error: { type: 'invalid_request_error', code: 'parameter_invalid',
+                                           message: 'Stripe is having a bad day' } }.to_json,
+                          headers: json }
+                      else
+                        { status: 200,
+                          body: fixture_json('subscription-canceled')
+                                .merge('id' => subscription_a, 'latest_invoice' => collected)
+                                .merge(marked_by_us(manual, fixture: 'subscription-canceled')).to_json,
+                          headers: json }
+                      end
+                    end
+
+      arrival = fixture_json('event-customer.subscription.updated-active')
+      arrival['data']['object']['id'] = subscription_b
+      arrival['data']['object']['customer'] = customer_a
+
+      alerts = []
+      allow(OperatorAlert).to receive(:deliver) { |args| alerts << args }
+      allow(ErrorReport).to receive(:warning)
+
+      post_stripe_event(nil, body: arrival.to_json)
+
+      inbox = StripeEventInbox.sole
+
+      expect { ProcessStripeEventJob.new.perform(inbox.id) }.to raise_error(Stripe::InvalidRequestError)
+      expect(inbox.reload.status).to eq('failed')
+      expect(row.reload.stripe_subscription_id).to eq(subscription_a)
+
+      # An hour later Sidekiq tries again, and the marker body it would send
+      # now carries a different timestamp.
+      attempt = 2
+
+      travel(1.hour) { ProcessStripeEventJob.new.perform(inbox.id) }
+
+      expect(cancel_call).to have_been_requested.twice
+      expect(mark_call).to have_been_requested.twice
+      # Never re-issued under a made-up key: the marker already written is
+      # the one that governs, and it was read back rather than overwritten.
+      expect(a_request(:post, subscription_url(subscription_a))).to have_been_made.twice
+      expect(a_request(:post, 'https://api.stripe.com/v1/refunds')).not_to have_been_made
+      expect(alerts.sole[:body]).to include('manual refund review')
+      expect(row.reload.stripe_subscription_id).to eq(subscription_b)
+      expect(inbox.reload).to have_attributes(status: 'processed',
+                                              last_error: ProcessStripeEventJob::DUPLICATE_SUBSCRIPTION)
 
       expect_paid_access
     end
@@ -2902,6 +3108,97 @@ RSpec.describe 'Stripe billing', type: :request do # rubocop:disable RSpec/Multi
 
       expect { run_rake_task('plans:grant', internal.id.to_s) }
         .to raise_error(SystemExit).and output(/always on the internal plan/).to_stderr
+    end
+
+    # --- a row the CHILD owns ------------------------------------------------
+    #
+    # A customer account that bought for itself and was linked under a parent
+    # afterwards keeps a row of its own — and nothing in the app reads it any
+    # more: the plan, the billing page and the operator all look at the
+    # PARENT's row. Asking only "is my BILLING account a customer?" answered
+    # yes for such a row, because the parent is one, so the webhook processor
+    # and the nightly sweep went on applying, cancelling and refunding
+    # against a row the rest of the app ignores. Every door below refuses it
+    # — and because it carries Stripe ids, every refusal is reported: there
+    # is a subscription at Stripe that nothing here is managing.
+
+    it 'applies no subscription event to a row the child owns' do
+      row = create(:account_subscription, account: child, access_state: 'cancelled', status: 'none',
+                                          stripe_customer_id: customer_a)
+
+      stub_subscription(subscription_a, 'subscription-trialing')
+      allow(ErrorReport).to receive(:warning)
+
+      post_stripe_event('event-customer.subscription.created-trialing')
+      drain_stripe_jobs
+
+      expect(row.reload).to have_attributes(access_state: 'cancelled', stripe_subscription_id: nil)
+      expect(a_request(:get, /api\.stripe\.com/)).not_to have_been_made
+      expect(StripeEventInbox.sole)
+        .to have_attributes(status: 'ignored', last_error: ProcessStripeEventJob::NON_CUSTOMER_ACCOUNT)
+      expect(ErrorReport).to have_received(:warning)
+        .with(/unmanaged Stripe subscription/, hash_including(account_id: child.id))
+    end
+
+    it 'applies no invoice event to a row the child owns, and starts no dunning clock on it' do
+      row = create(:account_subscription, account: child, access_state: 'active', status: 'active',
+                                          stripe_status: 'active', stripe_customer_id: customer_b,
+                                          stripe_subscription_id: subscription_b, quantity: 2)
+
+      stub_subscription(subscription_b, 'subscription-past_due')
+      allow(ErrorReport).to receive(:warning)
+
+      post_stripe_event('event-invoice.payment_failed')
+      drain_stripe_jobs
+
+      expect(row.reload).to have_attributes(access_state: 'active', stripe_status: 'active', past_due_since: nil)
+      expect(a_request(:get, /api\.stripe\.com/)).not_to have_been_made
+      expect(StripeEventInbox.sole)
+        .to have_attributes(status: 'ignored', last_error: ProcessStripeEventJob::NON_CUSTOMER_ACCOUNT)
+      expect(ErrorReport).to have_received(:warning)
+        .with(/unmanaged Stripe subscription #{subscription_b}/, hash_including(account_id: child.id))
+    end
+
+    it 'never repairs or cancels for a row the child owns in the nightly sweep' do
+      row = create(:account_subscription, account: child, access_state: 'active', status: 'active',
+                                          stripe_status: 'active', stripe_customer_id: customer_a,
+                                          stripe_subscription_id: subscription_a, quantity: 3)
+
+      stub_subscription(subscription_a, 'subscription-canceled')
+      stub_subscription_list(customer_a, { subscription_a => 'active', subscription_b => 'active' })
+      stub_duplicate(subscription_b, 'subscription-active')
+      stub_cancel(subscription_b)
+      allow(ErrorReport).to receive(:warning)
+
+      report = StripeReconciliationJob.new.perform
+
+      expect(row.reload.access_state).to eq('active')
+      expect(a_request(:get, /api\.stripe\.com/)).not_to have_been_made
+      expect(a_request(:delete, %r{api\.stripe\.com/v1/subscriptions/})).not_to have_been_made
+      expect(report.repaired).to be_empty
+      expect(report.duplicates).to be_empty
+      expect(ErrorReport).to have_received(:warning)
+        .with(/unmanaged Stripe subscription #{subscription_a}/, hash_including(account_id: child.id))
+    end
+
+    # The one predicate both callers ask, over every shape of row at once:
+    # the ordinary customer paying for itself is managed, and a linked child,
+    # an internal account and an operator account are not. Only a refused row
+    # with money behind it is reported.
+    it 'manages a row its own customer pays for, and refuses every other kind' do
+      allow(ErrorReport).to receive(:warning)
+
+      own = create(:account_subscription, account:, stripe_customer_id: customer_a)
+      child_owned = create(:account_subscription, account: child, stripe_customer_id: customer_b)
+      internal = create(:account_subscription, account: create(:account, :internal))
+      operator = create(:account_subscription, account: create(:account, :operator))
+
+      expect(own.billing_customer?).to be(true)
+      expect(child_owned.billing_customer?).to be(false)
+      expect(internal.billing_customer?).to be(false)
+      expect(operator.billing_customer?).to be(false)
+      expect(ErrorReport).to have_received(:warning)
+        .with(/unmanaged Stripe subscription/, hash_including(account_id: child.id)).once
     end
   end
 

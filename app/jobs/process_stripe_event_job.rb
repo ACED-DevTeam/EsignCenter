@@ -45,6 +45,7 @@ class ProcessStripeEventJob
   DUPLICATE_SUBSCRIPTION = 'duplicate subscription cancelled'
   FOREIGN_SUBSCRIPTION = 'foreign subscription'
   NON_CUSTOMER_ACCOUNT = 'non-customer account'
+  CHECKOUT_OTHER_CUSTOMER = 'checkout session on another customer'
 
   sidekiq_retries_exhausted do |msg, error|
     inbox = StripeEventInbox.find_by(id: msg['args'].first)
@@ -100,6 +101,7 @@ class ProcessStripeEventJob
     subscription_row = claim_row!(inbox, checkout_subscription_row(session))
 
     return if subscription_row.nil?
+    return if refuse_other_customer!(inbox, subscription_row, session)
 
     new_subscription_id = session['subscription']
 
@@ -174,14 +176,30 @@ class ProcessStripeEventJob
     end
   end
 
+  # The reference our own Checkout stamps the session with is the account
+  # that CLICKED — and it names that account's own row only while that
+  # account still pays for itself. An account that was standalone when it
+  # started Checkout, and had been linked under a parent by the time the
+  # webhook arrived, would otherwise resolve to the PARENT and hand the
+  # parent's row a subscription living on the CHILD's Stripe customer: the
+  # Linker would adopt it, or run the duplicate machinery between the
+  # parent's real subscription and the child's and cancel and refund the
+  # wrong one. A linked child's Checkout is not the parent's purchase (the
+  # browser door refuses it outright, `require_own_billing!`), and internal
+  # and operator accounts never buy anything at all.
+  #
+  # So a reference that does not name its own billing customer falls through
+  # to the subscription/customer lookup, which finds the CHILD's own row —
+  # and claim_row! then gives that row the non-customer verdict, reported
+  # because it carries Stripe ids. A subscription bought under one account's
+  # Stripe customer is never written onto another account's row.
   def checkout_subscription_row(session)
     account = Account.find_by(id: session['client_reference_id'])
-    billing_account = account && Plans.billing_account(account)
 
-    if billing_account&.customer?
+    if own_billing_customer?(account)
       # INSERT first, SELECT on conflict: the Checkout return and this job
       # can create the row at the same moment, and account_id is unique.
-      AccountSubscription.create_or_find_by!(account_id: billing_account.id) do |row|
+      AccountSubscription.create_or_find_by!(account_id: account.id) do |row|
         row.access_state = 'cancelled'
         row.status = 'none'
         row.quantity = 1
@@ -191,6 +209,50 @@ class ProcessStripeEventJob
     end
   end
 
+  # The same question AccountSubscription#billing_customer? asks, asked of an
+  # account that may not have a row yet.
+  def own_billing_customer?(account)
+    return false if account.nil?
+
+    Plans.billing_account(account) == account && account.customer?
+  end
+
+  # The Checkout RETURN door only acts on a session that names EXACTLY the
+  # Stripe customer the row already holds (BillingSettingsController's
+  # `known_customer?`), because Checkout created that row and that customer
+  # before the session ever existed — "another customer" is not ours to act
+  # on. Webhook processing has to mirror that rule or it becomes the way
+  # around it: a session on somebody else's customer would link a
+  # subscription that customer is paying for onto this row. A row that holds
+  # no customer yet is the first purchase and is left alone, exactly as the
+  # create-or-find path above intends.
+  #
+  # Reported in the return door's own words (`unmatched_checkout`) so one
+  # sentence covers both doors, and the event is ignored rather than retried:
+  # a session on another customer will never become ours.
+  def refuse_other_customer!(inbox, subscription_row, session)
+    held = subscription_row.stripe_customer_id
+    named = session_customer_id(session)
+
+    return false if held.blank? || named.blank? || held == named
+
+    ErrorReport.warning("checkout session #{session['id']} could not be matched to account " \
+                        "#{subscription_row.account_id}",
+                        account_id: subscription_row.account_id, stripe_event_id: inbox.stripe_event_id)
+
+    ignore!(inbox, CHECKOUT_OTHER_CUSTOMER)
+
+    true
+  end
+
+  # A session names its customer as a bare id; an expanded one arrives as an
+  # object. Both are read, the same way the return door reads them.
+  def session_customer_id(session)
+    customer = session['customer']
+
+    (customer.is_a?(Hash) ? customer['id'] : customer).to_s
+  end
+
   def row_for(subscription_id:, customer_id:)
     (subscription_id.present? && AccountSubscription.find_by(stripe_subscription_id: subscription_id)) ||
       (customer_id.present? && AccountSubscription.find_by(stripe_customer_id: customer_id)) ||
@@ -198,11 +260,13 @@ class ProcessStripeEventJob
   end
 
   # The same two questions every door asks before it touches Stripe: does this
-  # event belong to a row at all, and is that row one an account actually pays
-  # through (internal and operator accounts never bill — a Stripe id on one is
-  # a mistake, not an instruction: nothing is applied and nothing is cancelled
-  # for it). A row that passes both is stamped onto the inbox and handed back;
-  # otherwise the event has already been given its verdict and nil says so.
+  # event belong to a row at all, and is that row one the account it belongs
+  # to actually pays through (internal and operator accounts never bill, and a
+  # linked child is paid for by its parent — a Stripe id on such a row is a
+  # mistake, not an instruction: nothing is applied and nothing is cancelled
+  # for it, and the predicate reports the ids so a person can go and look). A
+  # row that passes both is stamped onto the inbox and handed back; otherwise
+  # the event has already been given its verdict and nil says so.
   def claim_row!(inbox, subscription_row)
     if subscription_row.nil?
       unknown!(inbox)
