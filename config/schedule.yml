@@ -6,3 +6,12 @@ scheduler_heartbeat:
   class: 'SchedulerHeartbeatJob'
   queue: recurrent
   description: 'Writes the scheduler heartbeat that /up reports as scheduler_last_tick_at'
+
+# Stripe is the source of truth for who is paying; webhooks are how we hear
+# about it and webhooks get lost. Once a night we ask Stripe about every
+# subscription we think we have and repair whatever drifted.
+stripe_reconciliation:
+  cron: '0 6 * * *'
+  class: 'StripeReconciliationJob'
+  queue: billing
+  description: 'Re-reads every Stripe subscription, repairs drift and re-enqueues stuck webhook events'

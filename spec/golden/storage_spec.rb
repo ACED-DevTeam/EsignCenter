@@ -270,6 +270,94 @@ RSpec.describe 'Storage quota', type: :request do
     tiny&.close!
   end
 
+  # Every blob the record itself owns, previews included — the same shape
+  # Quotas::Storage counts, narrowed to one record.
+  def files_of(record)
+    direct = ActiveStorage::Attachment.where(record_type: record.class.name, record_id: record.id)
+    previews = ActiveStorage::Attachment.where(record_type: 'ActiveStorage::Attachment', record_id: direct.select(:id))
+
+    ActiveStorage::Blob.where(id: direct.select(:blob_id)).sum(:byte_size) +
+      ActiveStorage::Blob.where(id: previews.select(:blob_id)).sum(:byte_size)
+  end
+
+  describe 'freeing space' do
+    it 'keeps a deleted document\'s bytes while it is only archived and frees them when it is removed for good',
+       sidekiq: :inline do
+      act_as(free_account)
+      template = text_template_for(free_account)
+      submitter = send_one(free_account, template:).submitters.first
+      complete!(submitter)
+      submission = submitter.submission
+
+      expect(submitter.reload.documents).to be_attached
+      expect(used(free_account))
+        .to eq(files_of(template) + files_of(submission) + files_of(submitter))
+
+      signed = used(free_account)
+
+      # The dashboard "delete" archives: the files still exist, so they are
+      # still counted. Nothing about the total is allowed to move.
+      delete "/submissions/#{submission.id}"
+
+      expect(response).to have_http_status(:redirect)
+      expect(submission.reload.archived_at).to be_present
+      expect(used(free_account)).to eq(signed)
+
+      # "Delete permanently" on the archived list really removes it: the
+      # signed PDF, the audit trail and their previews stop counting.
+      delete "/submissions/#{submission.id}", params: { permanently: true }
+
+      expect(response).to have_http_status(:redirect)
+      expect(Submission.where(id: submission.id)).not_to exist
+      expect(Submitter.where(id: submitter.id)).not_to exist
+      expect(used(free_account)).to be < signed
+      expect(used(free_account)).to eq(files_of(template))
+    end
+
+    it 'frees a template\'s documents and its documents-to-sign when the template is removed for good',
+       sidekiq: :inline do
+      act_as(free_account)
+      template = text_template_for(free_account)
+      complete!(send_one(free_account, template:).submitters.first)
+
+      full = used(free_account)
+
+      expect(full).to be_positive
+
+      delete "/templates/#{template.id}"
+
+      expect(response).to have_http_status(:redirect)
+      expect(template.reload.archived_at).to be_present
+      expect(used(free_account)).to eq(full)
+
+      delete "/templates/#{template.id}", params: { permanently: true }
+
+      expect(response).to have_http_status(:redirect)
+      expect(Template.where(id: template.id)).not_to exist
+      expect(used(free_account)).to eq(0)
+    end
+
+    it 'lets a full account upload again once it has deleted a document for good', sidekiq: :inline do
+      act_as(free_account)
+      template = text_template_for(free_account)
+      spare = text_template_for(free_account)
+      cap!(free_account, room: 0)
+
+      refusing { post "/templates/#{template.id}/documents", params: { files: [pdf_upload] } }
+
+      expect(response).to have_http_status(:unprocessable_content)
+
+      delete "/templates/#{spare.id}", params: { permanently: true }
+
+      expect(response).to have_http_status(:redirect)
+
+      expect { post "/templates/#{template.id}/documents", params: { files: [pdf_upload] } }
+        .to change { template.documents_attachments.count }.by(1)
+
+      expect(response).to have_http_status(:ok)
+    end
+  end
+
   it 'never caps an internal account' do
     act_as(internal_account)
     template = text_template_for(internal_account)

@@ -197,6 +197,10 @@ Rails.application.routes.draw do
                                   defaults: { status: :integration }
     resource :personalization, only: %i[show create], controller: 'personalization_settings'
     resource :usage, only: %i[show], controller: 'usage_settings'
+    resource :billing, only: %i[show], controller: 'billing_settings'
+    post '/billing/checkout', to: 'billing_settings#checkout', as: :billing_checkout
+    post '/billing/portal', to: 'billing_settings#portal', as: :billing_portal
+    get '/billing/return', to: 'billing_settings#return', as: :billing_return
     resource :personalization_logo, only: %i[create destroy], controller: 'personalization_logo'
     resources :webhooks, only: %i[index show new create update destroy], controller: 'webhook_settings' do
       post :resend
@@ -214,6 +218,11 @@ Rails.application.routes.draw do
       end
     end
   end
+
+  # Stripe's own door. Deliberately outside the BILLING_ENABLED gate: the
+  # switch decides whether customers can reach the billing pages, not whether
+  # Stripe may tell us a subscription changed (see StripeWebhooksController).
+  post '/stripe/webhooks', to: 'stripe_webhooks#create', as: :stripe_webhooks
 
   match '/mcp', to: 'mcp#call', via: %i[get post]
 

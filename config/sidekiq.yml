@@ -5,6 +5,7 @@ queues:
   - [documents, 1]
   - [mailers, 1]
   - [recurrent, 1]
+  - [billing, 1]
 
 production:
   :concurrency: 15

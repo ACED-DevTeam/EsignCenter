@@ -1,0 +1,87 @@
+<%# Free (or a subscription that has ended): the two plans side by side, with
+    the free limits read from the quota engine, never typed in here. %>
+<% if @view_state == 'ended' %>
+  <div class="alert items-start bg-base-100 border border-base-300 mb-4" data-billing-ended-banner>
+    <%= svg_icon('info_circle', class: 'stroke-current shrink-0 h-6 w-6 mt-0.5') %>
+    <p dir="auto" class="text-sm">
+      <% ended_on = @subscription&.current_period_end || @subscription&.updated_at %>
+      <%= ended_on ? t('billing_ended_on', date: l(ended_on.to_date, format: :long)) : t('billing_ended') %>
+    </p>
+  </div>
+<% end %>
+
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
+  <div class="card bg-base-200 border border-base-300" data-billing-card="free">
+    <div class="card-body p-5 gap-3">
+      <div class="flex items-center gap-3">
+        <div class="flex-none w-10 h-10 rounded-xl bg-base-100 flex items-center justify-center">
+          <%= svg_icon('files', class: 'w-5 h-5') %>
+        </div>
+        <div>
+          <p class="font-semibold leading-tight" dir="auto"><%= t('usage_plan_free') %></p>
+          <p class="text-xs text-base-content/70" dir="auto"><%= t('billing_free_plan_price') %></p>
+        </div>
+      </div>
+      <p class="text-sm text-base-content/70" dir="auto"><%= t('billing_free_plan_summary') %></p>
+      <ul class="text-sm space-y-1.5" dir="auto">
+        <li class="flex items-start gap-2">
+          <%= svg_icon('check', class: 'w-4 h-4 mt-0.5 shrink-0 text-base-content/60') %>
+          <span><%= t('billing_free_limit_completions', count: @free_limits.completions_per_month) %></span>
+        </li>
+        <li class="flex items-start gap-2">
+          <%= svg_icon('check', class: 'w-4 h-4 mt-0.5 shrink-0 text-base-content/60') %>
+          <span><%= t('billing_free_limit_sends', count: @free_limits.sends_per_month) %></span>
+        </li>
+        <li class="flex items-start gap-2">
+          <%= svg_icon('check', class: 'w-4 h-4 mt-0.5 shrink-0 text-base-content/60') %>
+          <span><%= t('billing_free_limit_seats', count: @free_limits.seats) %></span>
+        </li>
+        <li class="flex items-start gap-2">
+          <%= svg_icon('check', class: 'w-4 h-4 mt-0.5 shrink-0 text-base-content/60') %>
+          <span><%= t('billing_free_limit_storage', size: number_to_human_size(@free_limits.storage_bytes)) %></span>
+        </li>
+      </ul>
+      <p class="text-xs text-base-content/60 mt-1" dir="auto"><%= t('billing_free_current_plan') %></p>
+    </div>
+  </div>
+
+  <div class="card bg-base-100 border-2 border-neutral shadow-sm" data-billing-card="paid">
+    <div class="card-body p-5 gap-3">
+      <div class="flex items-center gap-3">
+        <div class="flex-none w-10 h-10 rounded-xl bg-neutral text-white flex items-center justify-center">
+          <%= svg_icon('sparkles', class: 'w-5 h-5') %>
+        </div>
+        <div>
+          <p class="font-semibold leading-tight" dir="auto"><%= t('usage_plan_paid') %></p>
+          <p class="text-xs text-base-content/70" dir="auto"><%= t('billing_paid_plan_price') %></p>
+        </div>
+      </div>
+      <ul class="text-sm space-y-1.5" dir="auto">
+        <% @paid_benefit_keys.each do |key| %>
+          <li class="flex items-start gap-2">
+            <%= svg_icon('circle_check', class: 'w-4 h-4 mt-0.5 shrink-0') %>
+            <span><%= t(key) %></span>
+          </li>
+        <% end %>
+      </ul>
+      <p class="text-sm text-base-content/70" dir="auto" data-billing-seats-note>
+        <%= t('billing_seats_billed', count: @seats_billed) %>
+      </p>
+      <% unless @trial_available %>
+        <p class="text-sm text-base-content/70" dir="auto" data-billing-trial-used><%= t('billing_trial_used') %></p>
+      <% end %>
+      <% if @actionable %>
+        <div class="card-actions mt-1">
+          <%# Checkout answers with a redirect to stripe.com, so Turbo must stay out of the way. %>
+          <%= button_to t(@trial_available ? 'start_free_trial' : 'upgrade_to_paid'), settings_billing_checkout_path,
+                        class: 'btn btn-neutral text-white w-full',
+                        form: { class: 'w-full', data: { turbo: false } },
+                        data: { turbo: false, billing_checkout_button: true } %>
+        </div>
+        <% if @trial_available %>
+          <p class="text-xs text-base-content/60" dir="auto"><%= t('billing_trial_charge_note') %></p>
+        <% end %>
+      <% end %>
+    </div>
+  </div>
+</div>

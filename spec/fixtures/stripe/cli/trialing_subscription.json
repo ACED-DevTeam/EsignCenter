@@ -1,0 +1,53 @@
+{
+  "_meta": { "template_version": 0 },
+  "fixtures": [
+    {
+      "name": "customer",
+      "path": "/v1/customers",
+      "method": "post",
+      "params": {
+        "email": "fixture@example.com",
+        "name": "EsignCenter Fixture Co",
+        "description": "spec/fixtures/stripe capture - safe to delete",
+        "metadata": { "account_id": "424242" }
+      }
+    },
+    {
+      "name": "payment_method",
+      "path": "/v1/payment_methods",
+      "method": "post",
+      "params": {
+        "type": "card",
+        "card": { "token": "tok_visa" }
+      }
+    },
+    {
+      "name": "payment_method_attach",
+      "path": "/v1/payment_methods/${payment_method:id}/attach",
+      "method": "post",
+      "params": { "customer": "${customer:id}" }
+    },
+    {
+      "name": "customer_default_payment_method",
+      "path": "/v1/customers/${customer:id}",
+      "method": "post",
+      "params": {
+        "invoice_settings": { "default_payment_method": "${payment_method:id}" }
+      }
+    },
+    {
+      "name": "subscription",
+      "path": "/v1/subscriptions",
+      "method": "post",
+      "params": {
+        "customer": "${customer:id}",
+        "items": [{ "price": "${.env:STRIPE_PRICE_ID|price_1UAt8N4rEeOqtLcX1amJxYdZ}", "quantity": "3" }],
+        "trial_period_days": "14",
+        "trial_settings": { "end_behavior": { "missing_payment_method": "cancel" } },
+        "payment_behavior": "default_incomplete",
+        "metadata": { "account_id": "424242" },
+        "expand": ["items.data.price"]
+      }
+    }
+  ]
+}

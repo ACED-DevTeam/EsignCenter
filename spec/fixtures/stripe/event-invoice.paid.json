@@ -1,0 +1,169 @@
+{
+  "api_version": "2026-07-29.dahlia",
+  "created": 1788411078,
+  "data": {
+    "object": {
+      "account_country": "US",
+      "account_name": "EsignCenter sandbox",
+      "account_tax_ids": null,
+      "amount_due": 3000,
+      "amount_overpaid": 0,
+      "amount_paid": 3000,
+      "amount_remaining": 0,
+      "amount_shipping": 0,
+      "application": null,
+      "attempt_count": 1,
+      "attempted": true,
+      "auto_advance": false,
+      "automatic_tax": {
+        "disabled_reason": null,
+        "enabled": false,
+        "liability": null,
+        "provider": null,
+        "status": null
+      },
+      "automatically_finalizes_at": null,
+      "billing_reason": "subscription_update",
+      "collection_method": "charge_automatically",
+      "created": 1788411076,
+      "currency": "usd",
+      "custom_fields": null,
+      "customer": "cus_VBqHCUoJle1zGV",
+      "customer_account": null,
+      "customer_address": null,
+      "customer_email": "fixture@example.com",
+      "customer_name": "EsignCenter Fixture Co",
+      "customer_phone": null,
+      "customer_shipping": null,
+      "customer_tax_exempt": "none",
+      "customer_tax_ids": [],
+      "default_payment_method": null,
+      "default_source": null,
+      "default_tax_rates": [],
+      "description": null,
+      "discounts": [],
+      "due_date": null,
+      "effective_at": 1788411076,
+      "ending_balance": 0,
+      "footer": null,
+      "from_invoice": null,
+      "hosted_invoice_url": "https://invoice.stripe.com/i/acct_1U6zqV4rEeOqtLcX/test_YWNjdF8xVTZ6cVY0ckVlT3F0TGNYLF9WQnFJZVJqUnZEdmVKZlgxN2dDUnJuMVQ4Z05kVERtLDE3ODk1MTg3OA0200RZppoMCF?s=ap",
+      "id": "in_1UBScK4rEeOqtLcXAnS2L6Pe",
+      "invoice_pdf": "https://pay.stripe.com/invoice/acct_1U6zqV4rEeOqtLcX/test_YWNjdF8xVTZ6cVY0ckVlT3F0TGNYLF9WQnFJZVJqUnZEdmVKZlgxN2dDUnJuMVQ4Z05kVERtLDE3ODk1MTg3OA0200RZppoMCF/pdf?s=ap",
+      "issuer": {
+        "type": "self"
+      },
+      "last_finalization_error": null,
+      "latest_revision": null,
+      "lines": {
+        "data": [
+          {
+            "amount": 3000,
+            "currency": "usd",
+            "description": "3 \u00d7 EsignCenter (at $10.00 / month)",
+            "discount_amounts": [],
+            "discountable": true,
+            "discounts": [],
+            "id": "il_1UBScK4rEeOqtLcXcuw9Txqb",
+            "invoice": "in_1UBScK4rEeOqtLcXAnS2L6Pe",
+            "livemode": false,
+            "metadata": {
+              "account_id": "424242"
+            },
+            "object": "line_item",
+            "parent": {
+              "invoice_item_details": null,
+              "subscription_item_details": {
+                "invoice_item": null,
+                "proration": false,
+                "proration_details": {
+                  "credited_items": null
+                },
+                "subscription": "sub_1UBSbL4rEeOqtLcXAD6ynIIK",
+                "subscription_item": "si_VBqHaGFRPKUSpk"
+              },
+              "type": "subscription_item_details"
+            },
+            "period": {
+              "end": 1791003076,
+              "start": 1788411076
+            },
+            "pretax_credit_amounts": [],
+            "pricing": {
+              "price_details": {
+                "price": "price_1UAt8N4rEeOqtLcX1amJxYdZ",
+                "product": "prod_VBFd5yb6kKFsDB"
+              },
+              "type": "price_details",
+              "unit_amount_decimal": "1000"
+            },
+            "quantity": 3,
+            "quantity_decimal": "3",
+            "subtotal": 3000,
+            "taxes": []
+          }
+        ],
+        "has_more": false,
+        "object": "list",
+        "total_count": 1,
+        "url": "/v1/invoices/in_1UBScK4rEeOqtLcXAnS2L6Pe/lines"
+      },
+      "livemode": false,
+      "metadata": {},
+      "next_payment_attempt": null,
+      "number": "6S9FJVH0-0002",
+      "object": "invoice",
+      "on_behalf_of": null,
+      "parent": {
+        "quote_details": null,
+        "subscription_details": {
+          "metadata": {
+            "account_id": "424242"
+          },
+          "subscription": "sub_1UBSbL4rEeOqtLcXAD6ynIIK"
+        },
+        "type": "subscription_details"
+      },
+      "payment_settings": {
+        "default_mandate": null,
+        "payment_method_options": null,
+        "payment_method_types": null
+      },
+      "period_end": 1788411076,
+      "period_start": 1788411076,
+      "post_payment_credit_notes_amount": 0,
+      "pre_payment_credit_notes_amount": 0,
+      "receipt_number": null,
+      "rendering": null,
+      "shipping_cost": null,
+      "shipping_details": null,
+      "starting_balance": 0,
+      "statement_descriptor": null,
+      "status": "paid",
+      "status_transitions": {
+        "finalized_at": 1788411076,
+        "marked_uncollectible_at": null,
+        "paid_at": 1788411076,
+        "voided_at": null
+      },
+      "subtotal": 3000,
+      "subtotal_excluding_tax": 3000,
+      "test_clock": null,
+      "total": 3000,
+      "total_discount_amounts": [],
+      "total_excluding_tax": 3000,
+      "total_pretax_credit_amounts": [],
+      "total_taxes": [],
+      "webhooks_delivered_at": null
+    }
+  },
+  "id": "evt_1UBScM4rEeOqtLcXCQcXoDte",
+  "livemode": false,
+  "object": "event",
+  "pending_webhooks": 0,
+  "request": {
+    "id": "req_O68uI5obdF22Fm",
+    "idempotency_key": "40175489-2615-410c-8571-4763f9ddf696"
+  },
+  "type": "invoice.paid"
+}

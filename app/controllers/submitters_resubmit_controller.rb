@@ -8,8 +8,11 @@ class SubmittersResubmitController < ApplicationController
 
     Templates.assert_documents_ready!(@submitter.template)
 
+    # D73 lineage: the copy points at the document it corrects, so metering
+    # counts the family's first completion once (Submissions::Lineage).
     submission = @submitter.account.submissions.new(created_by_user: current_user,
                                                     submitters_order: :preserved,
+                                                    resubmitted_from_id: @submitter.submission_id,
                                                     **@submitter.submission.slice(:template_fields,
                                                                                   :account_id,
                                                                                   :name,
@@ -60,7 +63,13 @@ class SubmittersResubmitController < ApplicationController
   def assign_submitter_values(new_submitter, submitter)
     attachments_index = submitter.attachments.index_by(&:uuid)
 
-    submitter.submission.template_fields.each do |field|
+    # A document nobody has opened yet has no fields of its own yet (they are
+    # copied from the template on the first save), so fall back to the
+    # template's: an owner resubmitting an unsigned document has no signer
+    # values to carry over, but must not meet a 500 either.
+    fields = submitter.submission.template_fields || submitter.submission.template&.fields || []
+
+    fields.each do |field|
       next if field['submitter_uuid'] != submitter.uuid
       next if field['default_value'] == '{{date}}'
       next if field['type'] == 'stamp'

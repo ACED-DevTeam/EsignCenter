@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_02_120400) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_03_010000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gin"
   enable_extension "pg_catalog.plpgsql"
@@ -101,14 +101,19 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_02_120400) do
     t.datetime "created_at", null: false
     t.datetime "current_period_end"
     t.datetime "current_period_start"
+    t.datetime "last_stripe_event_at"
+    t.datetime "past_due_since"
     t.integer "quantity", default: 1, null: false
     t.string "status"
     t.string "stripe_customer_id"
     t.string "stripe_item_id"
     t.string "stripe_price_id"
     t.string "stripe_product_id"
+    t.string "stripe_status"
     t.string "stripe_subscription_id"
+    t.datetime "synced_at"
     t.datetime "trial_end"
+    t.datetime "trial_used_at"
     t.datetime "updated_at", null: false
     t.index ["account_id"], name: "index_account_subscriptions_on_account_id", unique: true
     t.index ["stripe_customer_id"], name: "index_account_subscriptions_on_stripe_customer_id", unique: true, where: "(stripe_customer_id IS NOT NULL)"
@@ -406,6 +411,25 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_02_120400) do
     t.index ["record_id", "record_type"], name: "index_search_entries_on_record_id_and_record_type", unique: true
   end
 
+  create_table "stripe_event_inboxes", force: :cascade do |t|
+    t.bigint "account_id"
+    t.string "api_version"
+    t.integer "attempts", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.string "event_type", null: false
+    t.text "last_error"
+    t.text "payload", null: false
+    t.datetime "processed_at"
+    t.string "status", default: "pending", null: false
+    t.datetime "stripe_created_at"
+    t.string "stripe_event_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["account_id"], name: "index_stripe_event_inboxes_on_account_id"
+    t.index ["event_type", "stripe_created_at"], name: "index_stripe_event_inboxes_on_event_type_and_stripe_created_at"
+    t.index ["status"], name: "index_stripe_event_inboxes_on_status"
+    t.index ["stripe_event_id"], name: "index_stripe_event_inboxes_on_stripe_event_id", unique: true
+  end
+
   create_table "submission_events", force: :cascade do |t|
     t.bigint "account_id"
     t.datetime "created_at", null: false
@@ -430,6 +454,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_02_120400) do
     t.datetime "expire_at"
     t.text "name"
     t.text "preferences", null: false
+    t.bigint "resubmitted_from_id"
     t.string "slug", null: false
     t.string "source", null: false
     t.string "submitters_order", null: false
@@ -444,6 +469,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_02_120400) do
     t.index ["account_id", "template_id", "id"], name: "index_submissions_on_account_id_and_template_id_and_id", where: "(archived_at IS NULL)"
     t.index ["account_id", "template_id", "id"], name: "index_submissions_on_account_id_and_template_id_and_id_archived", where: "(archived_at IS NOT NULL)"
     t.index ["created_by_user_id"], name: "index_submissions_on_created_by_user_id"
+    t.index ["resubmitted_from_id"], name: "index_submissions_on_resubmitted_from_id", where: "(resubmitted_from_id IS NOT NULL)"
     t.index ["slug"], name: "index_submissions_on_slug", unique: true
     t.index ["template_id"], name: "index_submissions_on_template_id"
   end
@@ -685,6 +711,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_02_120400) do
   add_foreign_key "submission_events", "accounts"
   add_foreign_key "submission_events", "submissions"
   add_foreign_key "submission_events", "submitters"
+  add_foreign_key "submissions", "submissions", column: "resubmitted_from_id", on_delete: :nullify
   add_foreign_key "submissions", "templates"
   add_foreign_key "submissions", "users", column: "created_by_user_id"
   add_foreign_key "submitter_versions", "submitters"

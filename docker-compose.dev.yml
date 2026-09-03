@@ -60,6 +60,7 @@ services:
       # it, and Cloudflare's official always-pass Turnstile TEST keys override
       # the real esigncenter.com keys from the env file (those refuse localhost).
       REGISTRATION_ENABLED: "true"
+      BILLING_ENABLED: "true"
       TURNSTILE_SITE_KEY: 1x00000000000000000000AA
       TURNSTILE_SECRET_KEY: 1x0000000000000000000000000000000AA
     # On boot: put the ML model + signature font in place (the live mount hides

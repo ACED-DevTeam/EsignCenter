@@ -21,6 +21,7 @@
 #  updated_at          :datetime         not null
 #  account_id          :bigint           not null
 #  created_by_user_id  :bigint
+#  resubmitted_from_id :bigint
 #  template_id         :bigint
 #
 # Indexes
@@ -29,18 +30,23 @@
 #  index_submissions_on_account_id_and_template_id_and_id           (account_id,template_id,id) WHERE (archived_at IS NULL)
 #  index_submissions_on_account_id_and_template_id_and_id_archived  (account_id,template_id,id) WHERE (archived_at IS NOT NULL)
 #  index_submissions_on_created_by_user_id                          (created_by_user_id)
+#  index_submissions_on_resubmitted_from_id                         (resubmitted_from_id) WHERE (resubmitted_from_id IS NOT NULL)
 #  index_submissions_on_slug                                        (slug) UNIQUE
 #  index_submissions_on_template_id                                 (template_id)
 #
 # Foreign Keys
 #
 #  fk_rails_...  (created_by_user_id => users.id)
+#  fk_rails_...  (resubmitted_from_id => submissions.id) ON DELETE => nullify
 #  fk_rails_...  (template_id => templates.id)
 #
 class Submission < ApplicationRecord
   belongs_to :template, optional: true
   belongs_to :account
   belongs_to :created_by_user, class_name: 'User', optional: true
+  # D73 lineage: the document this one is a corrected resend of, or nil.
+  # Walked by Submissions::Lineage; nullified if the origin is deleted.
+  belongs_to :resubmitted_from, class_name: 'Submission', optional: true
 
   has_one :search_entry, as: :record, inverse_of: :record, dependent: :destroy if SearchEntry.table_exists?
 

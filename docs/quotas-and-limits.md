@@ -42,6 +42,29 @@ signer add nothing. A document that is declined or expires with no signatures
 counts nothing. (In the data: the `completed_submitters` row with `is_first`,
 counted by `completed_at` in the UTC month.)
 
+### Correcting a signed document and sending it again (D73)
+
+Sometimes a document is signed and only then does someone spot a mistake. The
+fix is to correct it and send the same document out again — the "Resubmit"
+button on the dashboard, and the one a signer sees on their completed page.
+That corrected copy is a **new document to sign**, so it costs a send; but it
+is the *same* document, so when it is signed it does **not** cost a second
+completion. Re-sending a document that was already signed never counts again,
+however many rounds of corrections it takes.
+
+The chain runs both ways round: if the original was never signed and only the
+corrected copy is, that still counts exactly one completion — the family is
+counted once, the first time anyone finishes any copy of it.
+
+What still counts every time is the **send**. Each copy is a new document
+going out, so each one uses one of the month's sends (15 on the free plan),
+and that is the limit that bounds this: nobody can loop corrected copies past
+the completion cap without running out of sends first.
+
+(In the data: `submissions.resubmitted_from_id` points a copy at the document
+it was corrected from, and `Submissions::Lineage` walks that chain when a
+completion is recorded.)
+
 ### What "a document sent" means (D58)
 
 Every submission created, on any path — the recipients form, the API, MCP, a
@@ -222,8 +245,13 @@ cap, the account's admins get one email per month ("Your EsignCenter storage
 is almost full") saying what counts and how to free space. Like the other
 quota mail, the once-per-month guard is a durable counter, not a memory.
 
-**Freeing space.** Delete templates and documents you no longer need; the
-total goes down as soon as the files are gone.
+**Freeing space.** Delete templates and documents you no longer need. There
+are two steps, and only the second one frees space: the ordinary "delete"
+moves the item to the archive, where its files still exist and still count;
+"delete permanently" on the archived list really removes it, and the total
+goes down at once — the uploaded documents, the signed PDFs, the audit trail
+and every preview image that hung off them. Deleting a template permanently
+takes its documents to sign with it.
 
 ## 6. The usage page
 
