@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 class StartFormEmail2faSendController < ApplicationController
+  include SenderViewing
+
   around_action :with_browser_locale
 
   skip_before_action :authenticate_user!
@@ -8,6 +10,26 @@ class StartFormEmail2faSendController < ApplicationController
 
   def create
     @template = Template.find_by!(slug: params[:slug])
+
+    # Revoking a link has to actually revoke it. An owner who switches sharing
+    # off, or archives the template, believes the URL is dead — but this
+    # endpoint answers any slug, so without this it would still put a code in
+    # an arbitrary inbox on that account's behalf. The start form gives both
+    # of those a single answer, the form page itself (`completed`'s
+    # `!shared_link? || archived_at?` redirect, and `authorize_start!`'s on the
+    # PUT), so this door gives the same one instead of an email.
+    #
+    # It runs first, before everything below, on purpose:
+    #   - before assert_documents_ready!, because the start form explains a
+    #     still-converting document only to a visitor allowed to open the
+    #     template at all (refuse_unready_documents! returns unless the link is
+    #     shared);
+    #   - before the shared_link_2fa branch, because a closed link is closed
+    #     whatever its preferences ask for;
+    #   - before the pause check, because `show` skips that check on an
+    #     archived template — an archived slug must not be answered here with a
+    #     paused message it would never get there.
+    return redirect_to start_form_path(@template.slug) if link_revoked?
 
     Templates.assert_documents_ready!(@template)
 
@@ -20,8 +42,7 @@ class StartFormEmail2faSendController < ApplicationController
 
     # No verification code for a form that cannot be started right now.
     if (reason = Quotas.share_link_paused?(@template.account))
-      return render json: { error: Quotas.pause_message(@template.account, reason) },
-                    status: :unprocessable_content
+      return render json: { error: pause_error_message(reason) }, status: :unprocessable_content
     end
 
     @submitter = @template.submissions.new(account_id: @template.account_id)
@@ -41,6 +62,25 @@ class StartFormEmail2faSendController < ApplicationController
   end
 
   private
+
+  # Revoked exactly as the start form counts it: sharing switched off, or the
+  # template archived (StartFormController#completed's own
+  # `!shared_link? || archived_at?`).
+  def link_revoked?
+    !@template.shared_link? || @template.archived_at?
+  end
+
+  # The same rule the paused page applies (StartFormController#render_paused):
+  # the detail — which limit was hit, the number it is, the date it resets, or
+  # that deliveries are under review — is the account's own business, so only
+  # its signed-in user is told. Anyone else holding the slug gets exactly the
+  # generic line the paused page already shows them, so the endpoint's refusal
+  # says no more than the page does and needs no new wording in 14 locales.
+  def pause_error_message(reason)
+    return Quotas.pause_message(@template.account, reason) if sender_viewing?
+
+    I18n.t('form_not_accepting_responses')
+  end
 
   def submitter_params
     params.require(:submitter).permit(:name, :email, :phone)

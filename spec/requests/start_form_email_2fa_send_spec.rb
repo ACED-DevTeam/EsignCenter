@@ -108,4 +108,83 @@ RSpec.describe 'Share-link email-2FA verification code', type: :request do
     expect(response).to redirect_to("/d/#{template.slug}")
     expect(Submitter.count).to eq(0)
   end
+
+  # Switching sharing off, or archiving the template, is how an owner revokes a
+  # link — and the URL outlives that decision in inboxes and browser history.
+  # The start form gives a revoked slug the form page's own answer (private or
+  # not-found when it is no longer shared, the form itself once archived) and
+  # never work done on the account's behalf; this door has to agree, or
+  # revocation would leave the platform still mailing strangers on request.
+  describe 'a revoked link' do
+    it 'sends no code once sharing is switched off, and answers as the start form does', sidekiq: :inline do
+      template.update!(shared_link: false)
+
+      expect { send_code('signer@example.com') }.not_to change(ActionMailer::Base.deliveries, :count)
+
+      expect(recipients).to be_empty
+      expect(Submitter.count).to eq(0)
+      expect(response).to redirect_to("/d/#{template.slug}")
+
+      # And that is the start form's answer for a template nobody shared and
+      # this visitor cannot read: not found, never a hint that it exists.
+      expect { follow_redirect! }.to raise_error(ActionController::RoutingError)
+    end
+
+    it 'sends no code once the template is archived, and answers as the start form does', sidekiq: :inline do
+      template.update!(archived_at: Time.current)
+
+      expect { send_code('signer@example.com') }.not_to change(ActionMailer::Base.deliveries, :count)
+
+      expect(recipients).to be_empty
+      expect(Submitter.count).to eq(0)
+      expect(response).to redirect_to("/d/#{template.slug}")
+
+      follow_redirect!
+
+      expect(response).to have_http_status(:ok)
+    end
+
+    # The control for the two above: an honest link is untouched by the check.
+    it 'still emails the code for a shared, unarchived link that asks for one', sidekiq: :inline do
+      expect { send_code('signer@example.com') }.to change(ActionMailer::Base.deliveries, :count).by(1)
+
+      expect(recipients).to eq(['signer@example.com'])
+      expect(response.location).to include("/d/#{template.slug}")
+      expect(flash[:alert]).to be_nil
+    end
+  end
+
+  # A paused account's business — which limit closed the link, the number it
+  # is, the date it resets — belongs to the account, not to whoever holds the
+  # slug. The paused page has always drawn that line (StartFormController's
+  # render_paused fills in the detail only for the sender); this endpoint
+  # refuses in the same two voices.
+  describe "while the account's link is paused" do
+    let(:detailed) { Quotas.pause_message(account, :completions) }
+
+    # The operator's own tool, set to zero: the link is closed on the first
+    # completion asked of it, with a real reason and a real reset date.
+    before { AccountLimitOverride.create!(account:, completions_per_month: 0) }
+
+    it 'refuses an anonymous poster in the generic wording, naming no limit', sidekiq: :inline do
+      expect { send_code('signer@example.com') }.not_to change(ActionMailer::Base.deliveries, :count)
+
+      expect(recipients).to be_empty
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body).to eq('error' => I18n.t('form_not_accepting_responses'))
+
+      expect(response.body).not_to include(detailed)
+      expect(response.body).not_to include(Quotas.resets_at.strftime('%Y-%m-%d'))
+      expect(response.body).not_to include('completion')
+    end
+
+    it "still tells the account's own signed-in user what closed the link", sidekiq: :inline do
+      sign_in(user)
+
+      expect { send_code('signer@example.com') }.not_to change(ActionMailer::Base.deliveries, :count)
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body).to eq('error' => detailed)
+    end
+  end
 end
