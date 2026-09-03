@@ -35,8 +35,38 @@ module StripeBilling
     ENV.fetch('STRIPE_PORTAL_CONFIGURATION_ID', nil)
   end
 
+  # Every Stripe call is on a short leash. A Postgres row lock is held across
+  # these calls (StripeBilling::Linker), so a Stripe outage has to surface as
+  # a fast failure that retries — never as workers piling up behind a lock.
+  # The gem's own defaults (30 s to connect, 80 s to read, 2 retries) would
+  # let one call sit for minutes.
+  OPEN_TIMEOUT = 5
+  READ_TIMEOUT = 15
+  MAX_NETWORK_RETRIES = 1
+
   def client
+    configure_transport!
+
     Stripe::StripeClient.new(api_key, stripe_version: API_VERSION)
+  end
+
+  # In this gem the timeouts and the retry count live only on the global
+  # configuration, which every StripeClient copies at construction; they are
+  # not client options. Set once — each assignment drops the gem's connection
+  # pool, so re-setting an equal value on every call would be needless churn.
+  def configure_transport!
+    Stripe.open_timeout = OPEN_TIMEOUT unless Stripe.open_timeout == OPEN_TIMEOUT
+    Stripe.read_timeout = READ_TIMEOUT unless Stripe.read_timeout == READ_TIMEOUT
+    Stripe.max_network_retries = MAX_NETWORK_RETRIES unless Stripe.max_network_retries == MAX_NETWORK_RETRIES
+  end
+
+  # The transport settings a built client will actually use, read back off
+  # the client itself (the gem keeps them on its private requestor).
+  def transport_of(stripe_client)
+    config = stripe_client.instance_variable_get(:@requestor).config
+
+    { open_timeout: config.open_timeout, read_timeout: config.read_timeout,
+      max_network_retries: config.max_network_retries }
   end
 
   # The env keys Stripe needs and the prefix each real value carries. The
@@ -58,6 +88,17 @@ module StripeBilling
 
   TRIAL_PERIOD_DAYS = 14
 
+  # Written into `cancellation_details.comment` of every subscription THIS
+  # app cancels as a duplicate. Only we write it, so a dead subscription
+  # carrying it is one we cancelled (and may still owe a refund on); a dead
+  # one without it is somebody else's history and is never refunded.
+  DUPLICATE_CANCEL_MARKER = 'esigncenter:duplicate'
+
+  # Raised when a customer's subscription list could not be read to the end
+  # (the page cap was hit with Stripe still saying `has_more`): nothing that
+  # depends on "does this customer already have one?" may proceed on it.
+  class ListIncomplete < StandardError; end
+
   # Verifies the Stripe-Signature header against the raw body and returns the
   # parsed Stripe::Event. Raises Stripe::SignatureVerificationError when the
   # signature, the scheme or the 300-second timestamp tolerance fails — the
@@ -66,11 +107,15 @@ module StripeBilling
     Stripe::Webhook.construct_event(raw_body, signature_header.to_s, webhook_secret.to_s)
   end
 
+  SUBSCRIPTION_EXPAND = ['items.data.price'].freeze
+
   # The CURRENT state of a subscription, straight from Stripe. Every event
   # handler calls this instead of trusting the delivered payload: deliveries
-  # arrive out of order and a stale payload would otherwise win.
-  def subscription_for(subscription_id)
-    client.v1.subscriptions.retrieve(subscription_id, { expand: ['items.data.price'] })
+  # arrive out of order and a stale payload would otherwise win. The price is
+  # always expanded (the mapping reads it); a caller that needs more (the
+  # duplicate path wants the latest invoice) says so.
+  def subscription_for(subscription_id, expand: SUBSCRIPTION_EXPAND)
+    client.v1.subscriptions.retrieve(subscription_id, { expand: })
   end
 
   # Which of the five keys are set and shaped right, without ever reading a
@@ -83,12 +128,27 @@ module StripeBilling
     end
   end
 
-  # 'live', 'test' or nil — read from the secret key's own prefix, so a test
-  # key in a production deployment is a fact the guard can refuse on.
+  # 'live', 'test' or nil — read from each key's own prefix, so a test key
+  # in a production deployment (or a live secret paired with a test
+  # publishable key) is a fact the guard can refuse on. The two keys are
+  # judged independently: the browser and the server must be on the same
+  # Stripe account.
   def key_mode
-    case api_key.to_s
-    when /\Ask_live_/ then 'live'
-    when /\Ask_test_/ then 'test'
+    secret_key_mode
+  end
+
+  def secret_key_mode
+    mode_of(api_key, 'sk')
+  end
+
+  def publishable_key_mode
+    mode_of(publishable_key, 'pk')
+  end
+
+  def mode_of(value, prefix)
+    case value.to_s
+    when /\A#{prefix}_live_/ then 'live'
+    when /\A#{prefix}_test_/ then 'test'
     end
   end
 

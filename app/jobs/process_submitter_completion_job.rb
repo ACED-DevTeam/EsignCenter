@@ -67,18 +67,24 @@ class ProcessSubmitterCompletionJob
         complete_verification_event.data['method']
       end
 
-    completed_submitter.assign_attributes(
-      submission_id: submitter.submission_id,
-      account_id: submission.account_id,
-      is_first: !Submissions::Lineage.first_completion_exists?(submission),
-      template_id: submission.template_id,
-      source: submission.source,
-      sms_count: sms_events.sum { |e| e.data['segments'] || 1 },
-      verification_method:,
-      completed_at: submitter.completed_at
-    )
+    # The family's first completion is decided and written in ONE step: two
+    # sibling copies of the same document completing at the same moment would
+    # otherwise both read "nobody has finished this family yet" and both count
+    # (D73, Submissions::Lineage).
+    Submissions::Lineage.with_family_lock(submission) do
+      completed_submitter.assign_attributes(
+        submission_id: submitter.submission_id,
+        account_id: submission.account_id,
+        is_first: !Submissions::Lineage.first_completion_exists?(submission),
+        template_id: submission.template_id,
+        source: submission.source,
+        sms_count: sms_events.sum { |e| e.data['segments'] || 1 },
+        verification_method:,
+        completed_at: submitter.completed_at
+      )
 
-    completed_submitter.save!
+      completed_submitter.save!
+    end
 
     completed_submitter
   rescue ActiveRecord::RecordNotUnique

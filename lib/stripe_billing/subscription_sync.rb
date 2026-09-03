@@ -32,11 +32,12 @@ module StripeBilling
     CANCELING_FROM = %w[trialing active].freeze
 
     # The columns reconciliation compares to decide a row has drifted from
-    # Stripe. `synced_at` and `trial_used_at` are stamps, not facts about the
-    # subscription, so they never count as drift.
+    # Stripe. Everything apply! would write except `synced_at`, which moves on
+    # every run and would report drift on every single row.
     DRIFT_ATTRIBUTES = %i[access_state status stripe_status quantity stripe_item_id stripe_price_id
-                          stripe_product_id stripe_subscription_id current_period_start current_period_end
-                          trial_end cancel_at_period_end].freeze
+                          stripe_product_id stripe_subscription_id stripe_customer_id current_period_start
+                          current_period_end ended_at trial_end trial_used_at past_due_since
+                          cancel_at_period_end].freeze
 
     module_function
 
@@ -53,10 +54,23 @@ module StripeBilling
     end
 
     def apply!(account_subscription, stripe_subscription)
+      report_missing_price(account_subscription, stripe_subscription) if price_item(stripe_subscription).nil?
+
       account_subscription.assign_attributes(attributes_for(account_subscription, stripe_subscription))
       account_subscription.save!
 
       account_subscription
+    end
+
+    # A subscription with no item on OUR price is either a subscription that
+    # belongs to something else or a price migration nobody told the app
+    # about. The row keeps the seats and the price ids it already had — a
+    # foreign item's quantity is not a seat count — and a human is told.
+    def report_missing_price(account_subscription, stripe_subscription)
+      ErrorReport.warning('stripe subscription has no item on our price',
+                          account_id: account_subscription.account_id,
+                          stripe_subscription_id: field(stripe_subscription, :id),
+                          price_id: StripeBilling.price_id)
     end
 
     # Everything apply! would write, without writing it — reconciliation asks
@@ -66,40 +80,64 @@ module StripeBilling
       period_start, period_end = period_for(stripe_subscription, item)
       trial_end = timestamp(field(stripe_subscription, :trial_end))
       status = field(stripe_subscription, :status).to_s
+      access_state = access_state_for(stripe_subscription)
 
       {
-        access_state: access_state_for(stripe_subscription),
+        access_state:,
         status:,
         stripe_status: status,
-        quantity: quantity_for(stripe_subscription),
-        stripe_subscription_id: field(stripe_subscription, :id).presence ||
-          account_subscription.stripe_subscription_id,
+        quantity: quantity_for(stripe_subscription, fallback: account_subscription.quantity),
+        # Which subscription an account holds is the Linker's decision alone,
+        # and it only ever changes one after confirming the old one is over:
+        # applying a Stripe object must never repoint a live row.
+        stripe_subscription_id: account_subscription.stripe_subscription_id.presence ||
+          field(stripe_subscription, :id),
         stripe_customer_id: account_subscription.stripe_customer_id.presence ||
           customer_id(stripe_subscription),
-        stripe_item_id: item && field(item, :id),
-        stripe_price_id: item && field(price_of(item), :id),
-        stripe_product_id: item && product_id(price_of(item)),
+        # No item on our price: keep what the row already knows rather than
+        # writing a stranger's ids over it (see report_missing_price).
+        stripe_item_id: item ? field(item, :id) : account_subscription.stripe_item_id,
+        stripe_price_id: item ? price_id_of(item) : account_subscription.stripe_price_id,
+        stripe_product_id: item ? product_id(price_of(item)) : account_subscription.stripe_product_id,
         current_period_start: period_start,
         current_period_end: period_end,
+        # When the subscription actually ended — not the same as the end of
+        # the period it was paid up to.
+        ended_at: ended_at_for(stripe_subscription),
         trial_end:,
         # One trial per account, ever: the stamp is set the first time a
         # subscription with a trial is seen and never cleared afterwards.
         trial_used_at: account_subscription.trial_used_at || (trial_end && Time.current),
+        past_due_since: past_due_since_for(account_subscription, access_state),
         cancel_at_period_end: truthy?(field(stripe_subscription, :cancel_at_period_end)),
         synced_at: Time.current
       }
     end
 
-    # Seats. The items on our own price are what the account is billed for; a
-    # subscription carrying only foreign items (an old price, a fixture) still
-    # yields an honest seat count rather than zero, and the row can never drop
-    # below one seat.
-    def quantity_for(stripe_subscription)
-      all_items = items(stripe_subscription)
-      ours = all_items.select { |item| field(price_of(item), :id).to_s == StripeBilling.price_id.to_s }
-      counted = ours.presence || all_items
+    # The dunning clock, derived from the state that was just applied rather
+    # than from the kind of event that triggered the refresh: a stale
+    # `invoice.paid` delivered after a newer failure must not stop a clock
+    # that is still running, and a recovered account must not keep one.
+    def past_due_since_for(account_subscription, access_state)
+      return nil unless access_state == 'past_due'
 
-      [counted.sum { |item| field(item, :quantity).to_i }, 1].max
+      account_subscription.past_due_since || Time.current
+    end
+
+    def ended_at_for(stripe_subscription)
+      timestamp(field(stripe_subscription, :ended_at)) || timestamp(field(stripe_subscription, :canceled_at))
+    end
+
+    # Seats: the quantity on the items that sit on OUR price, and nothing
+    # else. A subscription carrying only foreign items says nothing about how
+    # many seats this account bought, so the caller's own count is kept
+    # instead of a stranger's. Never below one seat.
+    def quantity_for(stripe_subscription, fallback: 1)
+      ours = items(stripe_subscription).select { |item| price_id_of(item) == StripeBilling.price_id.to_s }
+
+      return [fallback.to_i, 1].max if ours.empty?
+
+      [ours.sum { |item| field(item, :quantity).to_i }, 1].max
     end
 
     # In this API version the billing period lives on the subscription ITEM;
@@ -114,10 +152,22 @@ module StripeBilling
       [start_at, end_at]
     end
 
+    # The item on our price, or nil. Never a foreign item: substituting one
+    # would write somebody else's price and product onto the row.
     def price_item(stripe_subscription)
-      all_items = items(stripe_subscription)
+      our_price = StripeBilling.price_id.to_s
 
-      all_items.find { |item| field(price_of(item), :id).to_s == StripeBilling.price_id.to_s } || all_items.first
+      return nil if our_price.blank?
+
+      items(stripe_subscription).find { |item| price_id_of(item) == our_price }
+    end
+
+    # `price` is the expanded object when we asked for it and a bare id string
+    # when we did not; both name the same price.
+    def price_id_of(item)
+      price = price_of(item)
+
+      (price.is_a?(String) ? price : field(price, :id)).to_s
     end
 
     def items(stripe_subscription)

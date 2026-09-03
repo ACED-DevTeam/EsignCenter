@@ -117,12 +117,16 @@ class ApplicationController < ActionController::Base
   end
 
   # Whether this signed-in person can actually buy: the billing switch is on,
-  # the account they are billed through is a customer (internal and operator
-  # accounts never pay), and they administer it.
+  # they administer the account, and the account they are billed through is a
+  # customer AND is their own — a child account's admin cannot act on the
+  # parent's billing page, so the call-to-action sends them to usage instead.
   def billing_available?
     return false unless Docuseal.billing_enabled? && current_account
+    return false unless can?(:manage, current_account)
 
-    can?(:manage, current_account) && Plans.billing_account(current_account).customer?
+    billing = Plans.billing_account(current_account)
+
+    billing.customer? && billing == current_account
   end
 
   # Where an upgrade call-to-action goes. The billing page when there is one

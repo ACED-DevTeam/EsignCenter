@@ -8,18 +8,7 @@ class SubmittersResubmitController < ApplicationController
 
     Templates.assert_documents_ready!(@submitter.template)
 
-    # D73 lineage: the copy points at the document it corrects, so metering
-    # counts the family's first completion once (Submissions::Lineage).
-    submission = @submitter.account.submissions.new(created_by_user: current_user,
-                                                    submitters_order: :preserved,
-                                                    resubmitted_from_id: @submitter.submission_id,
-                                                    **@submitter.submission.slice(:template_fields,
-                                                                                  :account_id,
-                                                                                  :name,
-                                                                                  :template_id,
-                                                                                  :template_schema,
-                                                                                  :template_submitters,
-                                                                                  :preferences))
+    submission = build_copy
 
     @submitter.submission.submitters.each do |submitter|
       new_submitter = submission.submitters.new(submitter.slice(:uuid, :email, :phone, :name,
@@ -46,6 +35,20 @@ class SubmittersResubmitController < ApplicationController
   end
 
   private
+
+  # D73 lineage: the copy joins the family of the document it corrects — the
+  # root so every sibling copy can see the others, the origin pointer for the
+  # audit trail — so metering counts the family's first completion once
+  # (Submissions::Lineage).
+  def build_copy
+    origin = @submitter.submission
+
+    @submitter.account.submissions.new(created_by_user: current_user,
+                                       submitters_order: :preserved,
+                                       **Submissions::Lineage.attributes_for_copy(origin),
+                                       **origin.slice(:template_fields, :account_id, :name, :template_id,
+                                                      :template_schema, :template_submitters, :preferences))
+  end
 
   # A resubmit is a new document to sign: checked and saved under the
   # account's creation lock like every other creation path, with a paid

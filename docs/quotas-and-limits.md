@@ -45,25 +45,44 @@ counted by `completed_at` in the UTC month.)
 ### Correcting a signed document and sending it again (D73)
 
 Sometimes a document is signed and only then does someone spot a mistake. The
-fix is to correct it and send the same document out again — the "Resubmit"
-button on the dashboard, and the one a signer sees on their completed page.
+fix is to correct it and send the same document out again. Two doors do that,
+and they are the two that carry the correction forward:
+
+- **Resubmit on the dashboard** — the owner corrects a document they sent;
+- **Resubmit on a signer's completed page**, reached from the link that was
+  sent to that signer.
+
 That corrected copy is a **new document to sign**, so it costs a send; but it
 is the *same* document, so when it is signed it does **not** cost a second
-completion. Re-sending a document that was already signed never counts again,
-however many rounds of corrections it takes.
+completion, however many rounds of corrections it takes.
 
-The chain runs both ways round: if the original was never signed and only the
-corrected copy is, that still counts exactly one completion — the family is
-counted once, the first time anyone finishes any copy of it.
+It is the whole **family** that is counted once, not just a chain of
+ancestors: two corrections of the same document are counted once between
+them, and if the original was never signed and only a corrected copy is, that
+still counts exactly one completion — the first time anyone finishes any copy
+of it.
+
+Two edges worth knowing:
+
+- The **Resubmit button on a shared link's completed page** starts a *fresh*
+  document rather than a correction. A shared link cannot safely work out
+  which of its signers the page belongs to, so that copy has no family and
+  counts as a new document when it is signed.
+- Permanently deleting the original does **not** re-open the family: the
+  family is remembered as a number that survives the document it names, so a
+  corrected copy signed afterwards still counts nothing extra.
 
 What still counts every time is the **send**. Each copy is a new document
 going out, so each one uses one of the month's sends (15 on the free plan),
 and that is the limit that bounds this: nobody can loop corrected copies past
 the completion cap without running out of sends first.
 
-(In the data: `submissions.resubmitted_from_id` points a copy at the document
-it was corrected from, and `Submissions::Lineage` walks that chain when a
-completion is recorded.)
+(In the data: `submissions.lineage_root_id` names the document the family
+started from — set on every copy, with no foreign key so it outlives a
+deletion — and `submissions.resubmitted_from_id` points at the copy this one
+was corrected from. `Submissions::Lineage` reads the family when a completion
+is recorded, under a per-family lock so two copies finishing at the same
+moment still count once.)
 
 ### What "a document sent" means (D58)
 

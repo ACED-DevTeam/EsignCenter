@@ -33,18 +33,28 @@ module StripeBilling
         end
       end
 
-      mode_problem = key_mode_problem
-
-      mode_problem ? problems << mode_problem : problems
+      problems + key_mode_problems
     end
 
-    def key_mode_problem
-      mode = StripeBilling.key_mode
+    # The mode has to be POSITIVELY right, not merely "not obviously wrong":
+    # a key that is neither sk_live_ nor sk_test_ (a truncated paste, a
+    # placeholder) has no mode at all, and production booting on one would
+    # take real customers to a checkout that never charges. Both keys are
+    # held to the same mode, so the server and the browser can never be
+    # pointed at two different Stripe accounts.
+    KEYS_WITH_MODE = {
+      'STRIPE_SECRET_KEY' => %w[sk secret_key_mode],
+      'STRIPE_PUBLISHABLE_KEY' => %w[pk publishable_key_mode]
+    }.freeze
 
-      if Rails.env.production?
-        'STRIPE_SECRET_KEY is a test key but this is production' if mode == 'test'
-      elsif mode == 'live'
-        'STRIPE_SECRET_KEY is a LIVE key outside production'
+    def key_mode_problems
+      wanted = Rails.env.production? ? 'live' : 'test'
+
+      KEYS_WITH_MODE.filter_map do |name, (prefix, reader)|
+        next if StripeBilling.public_send(reader) == wanted
+
+        "#{name} must be a #{wanted} key (#{prefix}_#{wanted}_…) " \
+          "#{Rails.env.production? ? 'in production' : 'outside production'}"
       end
     end
   end

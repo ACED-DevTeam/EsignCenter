@@ -14,18 +14,18 @@ class StripeReconciliationJob < ApplicationJob
   # Rows the operator granted by hand are not Stripe's to correct.
   MANUAL_STATUS = 'manual'
 
-  Report = Struct.new(:repaired, :errors, :requeued) do
+  Report = Struct.new(:repaired, :errors, :requeued, :duplicates, :foreign, :unlinked) do
     def anything?
-      repaired.any? || errors.any? || requeued.positive?
+      repaired.any? || errors.any? || duplicates.any? || foreign.any? || unlinked.any? || requeued.positive?
     end
   end
 
   def perform
     return if StripeBilling.api_key.blank?
 
-    report = Report.new(repaired: [], errors: [], requeued: 0)
+    report = Report.new(repaired: [], errors: [], requeued: 0, duplicates: [], foreign: [], unlinked: [])
 
-    reconcile_subscriptions(report)
+    sweep(report)
     report.requeued = requeue_stuck_events
 
     alert(report) if report.anything?
@@ -35,33 +35,116 @@ class StripeReconciliationJob < ApplicationJob
 
   private
 
-  def reconcile_subscriptions(report)
-    scope = AccountSubscription.where.not(stripe_subscription_id: nil)
-                               .where.not(status: MANUAL_STATUS)
+  # `status` is nullable, and NULL is not 'manual': `where.not` would quietly
+  # drop every legacy row and never reconcile it again.
+  def eligible_rows
+    AccountSubscription.where('status IS DISTINCT FROM ?', MANUAL_STATUS).where.not(stripe_subscription_id: nil)
+  end
 
-    scope.find_each do |subscription_row|
+  # One pass per row: first the row is repaired from Stripe, then — only if
+  # that went through — the customer's other subscriptions are looked at. A
+  # row whose repair failed is stale by definition, and nothing about
+  # duplicates may be decided on a stale row.
+  def sweep(report)
+    each_row(eligible_rows, report) do |subscription_row|
       repair(subscription_row, report)
+      cancel_extra_subscriptions(subscription_row, report) if subscription_row.stripe_customer_id.present?
+    end
+  end
+
+  # One account's Stripe error must never stop the sweep: the whole point of
+  # this job is the accounts it has not looked at yet. Internal and operator
+  # accounts never bill (Plans::INTERNAL): a row that somehow carries Stripe
+  # ids on one is a mistake, not an instruction — never repaired, never
+  # cancelled for.
+  def each_row(scope, report)
+    scope.find_each do |subscription_row|
+      next unless customer_row?(subscription_row)
+
+      yield subscription_row
     rescue StandardError => e
-      # One account's Stripe error must never stop the sweep: the whole point
-      # of this job is the accounts it has not looked at yet.
       report.errors << "account #{subscription_row.account_id}: #{e.class}"
 
       ErrorReport.error(e, account_id: subscription_row.account_id)
     end
   end
 
+  def customer_row?(subscription_row)
+    Plans.billing_account(subscription_row.account).customer?
+  end
+
+  # The fetch, the comparison and the write all happen under the row lock the
+  # Linker owns, and the repair is only reported once apply! has actually
+  # succeeded — a summary that counts a failed write as a recovery is worse
+  # than no summary.
   def repair(subscription_row, report)
-    stripe_subscription = StripeBilling.subscription_for(subscription_row.stripe_subscription_id)
-    wanted = StripeBilling::SubscriptionSync.attributes_for(subscription_row, stripe_subscription)
+    repaired = StripeBilling::Linker.with_account_lock(subscription_row) do
+      stripe_subscription = StripeBilling.subscription_for(subscription_row.stripe_subscription_id)
+      wanted = StripeBilling::SubscriptionSync.attributes_for(subscription_row, stripe_subscription)
 
-    return if drifted_attributes(subscription_row, wanted).empty?
+      next nil if drifted_attributes(subscription_row, wanted).empty?
 
-    report.repaired << { account_id: subscription_row.account_id,
-                         was: subscription_row.access_state,
-                         now: wanted[:access_state] }
+      was = subscription_row.access_state
 
-    subscription_row.with_lock do
       StripeBilling::SubscriptionSync.apply!(subscription_row, stripe_subscription)
+
+      { account_id: subscription_row.account_id, was:, now: subscription_row.access_state }
+    end
+
+    report.repaired << repaired if repaired
+  end
+
+  # A customer with two live subscriptions of ours is being charged twice.
+  # The row's own subscription is the one the account keeps; every other
+  # live one of OURS goes through the Linker's duplicate path (cancelled at
+  # Stripe, refunded, operator told) — and only what the Linker actually
+  # cancelled is reported as cancelled. The Linker is told it may not adopt:
+  # the row was repaired from Stripe a moment ago, and a list is no reason
+  # to repoint it. A live subscription that is not ours is left alone and
+  # named in the summary.
+  def cancel_extra_subscriptions(subscription_row, report)
+    live = StripeBilling::Linker.live_subscriptions(subscription_row.stripe_customer_id, subscription_row.account_id)
+    own_id = subscription_row.stripe_subscription_id
+    ours = live.ours.map { |subscription| StripeBilling::SubscriptionSync.field(subscription, :id) }
+
+    note_foreign(subscription_row, live.foreign, report)
+
+    unless ours.include?(own_id)
+      note_unlinked(subscription_row, ours, report)
+
+      return
+    end
+
+    (ours - [own_id]).each do |duplicate_id|
+      outcome = StripeBilling::Linker.link_and_apply!(subscription_row, duplicate_id,
+                                                      notify: false, allow_adopt: false)
+
+      next unless outcome.verdict == :duplicate_cancelled
+
+      report.duplicates << { account_id: subscription_row.account_id, cancelled: duplicate_id,
+                             refunded: outcome.refund&.formatted_amount }
+    end
+  end
+
+  def note_foreign(subscription_row, foreign, report)
+    foreign.each do |subscription|
+      id = StripeBilling::SubscriptionSync.field(subscription, :id)
+
+      ErrorReport.warning("foreign subscription #{id} on customer #{subscription_row.stripe_customer_id} left alone",
+                          account_id: subscription_row.account_id)
+
+      report.foreign << { account_id: subscription_row.account_id, customer: subscription_row.stripe_customer_id,
+                          subscription: id }
+    end
+  end
+
+  # The row's own subscription is over but the customer still has a live one
+  # of ours the app never linked: somebody is paying for nothing. Adopting
+  # it is a decision for a person, so it is only named.
+  def note_unlinked(subscription_row, ours, report)
+    ours.each do |id|
+      report.unlinked << { account_id: subscription_row.account_id, customer: subscription_row.stripe_customer_id,
+                           subscription: id }
     end
   end
 
@@ -95,17 +178,39 @@ class StripeReconciliationJob < ApplicationJob
 
   def alert(report)
     summary = "Stripe reconciliation: #{report.repaired.size} subscription(s) repaired, " \
+              "#{report.duplicates.size} duplicate subscription(s) cancelled, " \
+              "#{report.foreign.size} foreign subscription(s) left alone, " \
+              "#{report.unlinked.size} live subscription(s) not linked to any row, " \
               "#{report.requeued} stuck event(s) re-enqueued, #{report.errors.size} account(s) errored"
 
-    ErrorReport.warning(summary, repaired: report.repaired, errors: report.errors)
+    ErrorReport.warning(summary, repaired: report.repaired, duplicates: report.duplicates, foreign: report.foreign,
+                                 unlinked: report.unlinked, errors: report.errors)
 
     OperatorAlert.deliver(
       subject: 'Stripe reconciliation found work to do',
-      body: "#{summary}.\n\nRepaired:\n#{format_repairs(report)}\n\nErrors:\n#{report.errors.join("\n")}\n"
+      body: "#{summary}.\n\nRepaired:\n#{format_repairs(report)}\n\n" \
+            "Duplicates cancelled:\n#{format_duplicates(report)}\n\n" \
+            "Foreign subscriptions left alone (not ours — check the customer in Stripe):\n" \
+            "#{format_customer_subscriptions(report.foreign)}\n\n" \
+            "Live subscriptions of ours not linked to any account row (somebody may be paying for nothing):\n" \
+            "#{format_customer_subscriptions(report.unlinked)}\n\n" \
+            "Errors:\n#{report.errors.join("\n")}\n"
     )
   end
 
   def format_repairs(report)
     report.repaired.map { |r| "  account #{r[:account_id]}: #{r[:was]} -> #{r[:now]}" }.join("\n")
+  end
+
+  def format_duplicates(report)
+    report.duplicates.map do |d|
+      line = "  account #{d[:account_id]}: cancelled #{d[:cancelled]}"
+
+      d[:refunded] ? "#{line}, refunded #{d[:refunded]}" : line
+    end.join("\n")
+  end
+
+  def format_customer_subscriptions(entries)
+    entries.map { |e| "  account #{e[:account_id]}: #{e[:subscription]} on customer #{e[:customer]}" }.join("\n")
   end
 end

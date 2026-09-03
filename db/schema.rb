@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_03_010000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_03_020100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gin"
   enable_extension "pg_catalog.plpgsql"
@@ -101,6 +101,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_03_010000) do
     t.datetime "created_at", null: false
     t.datetime "current_period_end"
     t.datetime "current_period_start"
+    t.datetime "ended_at"
     t.datetime "last_stripe_event_at"
     t.datetime "past_due_since"
     t.integer "quantity", default: 1, null: false
@@ -452,6 +453,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_03_010000) do
     t.datetime "created_at", null: false
     t.bigint "created_by_user_id"
     t.datetime "expire_at"
+    t.bigint "lineage_root_id"
     t.text "name"
     t.text "preferences", null: false
     t.bigint "resubmitted_from_id"
@@ -469,6 +471,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_03_010000) do
     t.index ["account_id", "template_id", "id"], name: "index_submissions_on_account_id_and_template_id_and_id", where: "(archived_at IS NULL)"
     t.index ["account_id", "template_id", "id"], name: "index_submissions_on_account_id_and_template_id_and_id_archived", where: "(archived_at IS NOT NULL)"
     t.index ["created_by_user_id"], name: "index_submissions_on_created_by_user_id"
+    t.index ["lineage_root_id"], name: "index_submissions_on_lineage_root_id", where: "(lineage_root_id IS NOT NULL)"
     t.index ["resubmitted_from_id"], name: "index_submissions_on_resubmitted_from_id", where: "(resubmitted_from_id IS NOT NULL)"
     t.index ["slug"], name: "index_submissions_on_slug", unique: true
     t.index ["template_id"], name: "index_submissions_on_template_id"

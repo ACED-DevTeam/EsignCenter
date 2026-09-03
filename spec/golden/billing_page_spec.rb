@@ -12,7 +12,7 @@
 # Stripe itself is stubbed with WebMock — no HTTP leaves the suite — and the
 # subscription that comes back from the Checkout return is a real CLI capture
 # (spec/fixtures/stripe/subscription-trialing.json).
-RSpec.describe 'Billing page', type: :request do
+RSpec.describe 'Billing page', type: :request do # rubocop:disable RSpec/MultipleDescribes
   let(:price_id) { 'price_1UAt8N4rEeOqtLcX1amJxYdZ' }
   let(:portal_configuration_id) { 'bpc_test' }
   let(:checkout_url) { 'https://checkout.stripe.com/c/pay/cs_test_fixture' }
@@ -29,6 +29,9 @@ RSpec.describe 'Billing page', type: :request do
     ENV['STRIPE_PRICE_ID'] = price_id
     ENV['STRIPE_PORTAL_CONFIGURATION_ID'] = portal_configuration_id
     ENV['BILLING_ENABLED'] = 'true'
+
+    stub_subscription_list
+    stub_customer_search([])
   end
 
   def admin_for(record)
@@ -60,9 +63,85 @@ RSpec.describe 'Billing page', type: :request do
       .to_return(**stripe_json(id:, object: 'customer'))
   end
 
+  # Stripe is asked for a customer already tagged with this account before
+  # one is created; unless an example is about that, there is none. The
+  # query is asserted, so searching for the wrong account could not pass.
+  def stub_customer_search(*found, record: account)
+    stub_request(:get, %r{\Ahttps://api\.stripe\.com/v1/customers/search})
+      .with(query: hash_including('query' => "metadata['account_id']:'#{record.id}'"))
+      .to_return(*found.map do |ids|
+        stripe_json(object: 'search_result', data: ids.map { |id| { id:, object: 'customer' } })
+      end)
+  end
+
   def stub_checkout_create
     stub_request(:post, 'https://api.stripe.com/v1/checkout/sessions')
       .to_return(**stripe_json(id: 'cs_test_fixture', object: 'checkout.session', url: checkout_url))
+  end
+
+  # A subscription as Stripe's LIST returns it: ours when it carries an item
+  # on our price, a stranger's when it sits on some other price.
+  def listed_subscription(id, status, price: price_id, created: 1_788_411_000)
+    { id:, object: 'subscription', status:, created:, metadata: {},
+      items: { object: 'list', data: [{ id: "si_#{id}", object: 'subscription_item', price:, quantity: 1 }] } }
+  end
+
+  # The app asks Stripe what the customer already has before selling
+  # anything; unless an example is about that, the answer is "nothing". An
+  # example that IS about it names the customer, so listing somebody else's
+  # subscriptions could not pass. `entries` are ids → statuses (on our
+  # price) or ready-made list rows.
+  def stub_subscription_list(customer = nil, entries = {}, has_more: false, starting_after: nil)
+    data = entries.map { |id, status| status.is_a?(Hash) ? status : listed_subscription(id, status) }
+    stub = stub_request(:get, %r{\Ahttps://api\.stripe\.com/v1/subscriptions\?})
+
+    if customer
+      query = { 'customer' => customer, 'status' => 'all', 'limit' => '100' }
+      query['starting_after'] = starting_after if starting_after
+      stub = stub.with(query: hash_including(query))
+    end
+
+    stub.to_return(**stripe_json(object: 'list', data:, has_more:))
+  end
+
+  # On the exact subscription id, and on the expansion the app asks for.
+  def stub_subscription_retrieve(id, subscription, expand: StripeBilling::SUBSCRIPTION_EXPAND)
+    stub_request(:get, %r{\Ahttps://api\.stripe\.com/v1/subscriptions/#{id}})
+      .with(query: hash_including('expand' => expand))
+      .to_return(**stripe_json(subscription))
+  end
+
+  # A duplicate is fetched, and cancelled, with its latest invoice and that
+  # invoice's payments: the app has to know what it already charged.
+  def stub_duplicate(id, subscription, invoice: unpaid_invoice(id))
+    stub_subscription_retrieve(id, subscription.merge('id' => id, 'latest_invoice' => invoice),
+                               expand: StripeBilling::Linker::DUPLICATE_EXPAND)
+  end
+
+  def stub_cancel(id, subscription, invoice: unpaid_invoice(id))
+    stub_request(:delete, %r{\Ahttps://api\.stripe\.com/v1/subscriptions/#{id}})
+      .with(query: hash_including('expand' => StripeBilling::Linker::DUPLICATE_EXPAND,
+                                  'cancellation_details' => { 'comment' => StripeBilling::DUPLICATE_CANCEL_MARKER }))
+      .to_return(**stripe_json(subscription.merge('id' => id, 'status' => 'canceled', 'latest_invoice' => invoice)))
+  end
+
+  def unpaid_invoice(subscription_id)
+    { id: "in_trial_#{subscription_id}", object: 'invoice', amount_paid: 0, currency: 'usd',
+      payments: { object: 'list', data: [] } }
+  end
+
+  def paid_invoice(subscription_id, amount:)
+    { id: "in_paid_#{subscription_id}", object: 'invoice', amount_paid: amount, currency: 'usd',
+      payments: { object: 'list',
+                  data: [{ object: 'invoice_payment', status: 'paid',
+                           payment: { type: 'payment_intent', payment_intent: "pi_#{subscription_id}" } }] } }
+  end
+
+  # The row Checkout leaves behind before the customer ever reaches Stripe's
+  # page: linked to the customer, not yet paid for anything.
+  def checkout_row!(customer:, record: account)
+    create(:account_subscription, account: record, access_state: 'cancelled', status: 'none',
+                                  stripe_customer_id: customer)
   end
 
   def stub_portal_create
@@ -70,15 +149,22 @@ RSpec.describe 'Billing page', type: :request do
       .to_return(**stripe_json(id: 'bps_test_fixture', object: 'billing_portal.session', url: portal_url))
   end
 
+  # The real capture, tagged the way this account's own Checkout would tag
+  # it (the capture was made for a placeholder account id).
   def trialing_subscription
     JSON.parse(Rails.root.join('spec/fixtures/stripe/subscription-trialing.json').read)
+        .merge('metadata' => { 'account_id' => account.id.to_s })
   end
 
-  def stub_checkout_retrieve(session_id, reference:, subscription: trialing_subscription)
+  # On the exact session id, and on the expansion the app asks for: the
+  # subscription comes back inline or not at all.
+  def stub_checkout_retrieve(session_id, reference:, subscription: trialing_subscription,
+                             status: 'complete', mode: 'subscription', customer: nil)
     stub_request(:get, %r{\Ahttps://api\.stripe\.com/v1/checkout/sessions/#{session_id}})
-      .to_return(**stripe_json(id: session_id, object: 'checkout.session', mode: 'subscription',
-                               client_reference_id: reference, customer: subscription['customer'],
-                               subscription:))
+      .with(query: hash_including('expand' => ['subscription']))
+      .to_return(**stripe_json(id: session_id, object: 'checkout.session', mode:, status:,
+                               client_reference_id: reference,
+                               customer: customer || subscription['customer'], subscription:))
   end
 
   # The form body Stripe actually received, as a nested hash.
@@ -208,6 +294,211 @@ RSpec.describe 'Billing page', type: :request do
       expect(session.dig('line_items', '0', 'price')).to eq(price_id)
       expect(session.dig('line_items', '0', 'quantity')).to eq('1')
       expect(session.dig('subscription_data', 'trial_period_days')).to eq('14')
+    end
+
+    # Our own row is not the only witness to a purchase: a Checkout completed
+    # in a tab we never heard back from left a live subscription at Stripe,
+    # and selling a second one would charge the customer twice.
+    it 'refuses to sell a second subscription to a customer Stripe says already has one' do
+      checkout_row!(customer: 'cus_known')
+      stub_subscription_list('cus_known', { 'sub_already' => 'active' })
+      stub_subscription_retrieve('sub_already', trialing_subscription.merge('id' => 'sub_already'))
+
+      post '/settings/billing/checkout'
+
+      expect(response).to redirect_to('/settings/billing')
+      expect(flash[:alert]).to eq(I18n.t('billing_already_subscribed'))
+      expect(WebMock).not_to have_requested(:post, 'https://api.stripe.com/v1/checkout/sessions')
+
+      subscription = account.reload.account_subscription
+
+      # And the one Stripe knows about is now the one the app knows about.
+      expect(subscription.stripe_subscription_id).to eq('sub_already')
+      expect(subscription.access_state).to eq('trialing')
+    end
+
+    # G14: Stripe pages a customer's subscriptions, newest first. A page of
+    # dead ones is not "nothing live" — the live one may be on the next page.
+    it 'reads every page of the customer\'s subscriptions before selling another' do
+      checkout_row!(customer: 'cus_known')
+      dead = Array.new(10) { |i| ["sub_dead_#{i + 1}", 'canceled'] }.to_h
+      stub_subscription_list('cus_known', dead, has_more: true)
+      stub_subscription_list('cus_known', { 'sub_live' => 'active' }, starting_after: 'sub_dead_10')
+      stub_subscription_retrieve('sub_live', trialing_subscription.merge('id' => 'sub_live'))
+
+      post '/settings/billing/checkout'
+
+      expect(flash[:alert]).to eq(I18n.t('billing_already_subscribed'))
+      expect(WebMock).not_to have_requested(:post, 'https://api.stripe.com/v1/checkout/sessions')
+      expect(account.reload.account_subscription.stripe_subscription_id).to eq('sub_live')
+    end
+
+    # G2: when the row names none of them, the survivor is decided the same
+    # way every time — the EARLIEST on our price — and the rest are
+    # duplicates, however Stripe orders the list.
+    it 'keeps the earliest of two live subscriptions and cancels the later one' do
+      checkout_row!(customer: 'cus_known')
+      stub_subscription_list('cus_known',
+                             { 'sub_late' => listed_subscription('sub_late', 'active', created: 2_000),
+                               'sub_early' => listed_subscription('sub_early', 'active', created: 1_000) })
+      stub_subscription_retrieve('sub_early', trialing_subscription.merge('id' => 'sub_early'))
+      stub_duplicate('sub_late', trialing_subscription)
+      cancel_call = stub_cancel('sub_late', trialing_subscription)
+
+      allow(OperatorAlert).to receive(:deliver).and_return(true)
+      allow(ErrorReport).to receive(:warning)
+
+      post '/settings/billing/checkout'
+
+      expect(flash[:alert]).to eq(I18n.t('billing_already_subscribed'))
+      expect(cancel_call).to have_been_requested
+      expect(account.reload.account_subscription.stripe_subscription_id).to eq('sub_early')
+    end
+
+    # G3: a live subscription for some other product on the same Stripe
+    # customer is not ours: it is neither adopted (no paid access for a
+    # purchase that was not ours) nor cancelled (it is somebody's purchase).
+    it 'neither adopts nor cancels a subscription for another product, and sells ours' do
+      checkout_row!(customer: 'cus_known')
+      stub_subscription_list('cus_known',
+                             { 'sub_other' => listed_subscription('sub_other', 'active', price: 'price_other') })
+      stub_checkout_create
+
+      allow(ErrorReport).to receive(:warning)
+
+      post '/settings/billing/checkout'
+
+      expect(response).to redirect_to(checkout_url)
+      expect(WebMock).not_to have_requested(:delete, %r{api\.stripe\.com/v1/subscriptions/})
+      expect(account.reload.account_subscription.stripe_subscription_id).to be_nil
+      expect(ErrorReport).to have_received(:warning)
+        .with('foreign subscription sub_other on customer cus_known left alone', hash_including(:account_id))
+    end
+
+    # H8: a customer tagged with this account may already exist at Stripe (a
+    # checkout that failed after Stripe answered). It is found and adopted,
+    # never made twice.
+    it 'adopts the Stripe customer already tagged with the account instead of creating another' do
+      stub_customer_search(['cus_found'])
+      stub_customer_create
+      stub_checkout_create
+
+      post '/settings/billing/checkout'
+
+      expect(response).to redirect_to(checkout_url)
+      expect(WebMock).not_to have_requested(:post, 'https://api.stripe.com/v1/customers')
+      expect(account.reload.account_subscription.stripe_customer_id).to eq('cus_found')
+      expect(posted('https://api.stripe.com/v1/checkout/sessions')['customer']).to eq('cus_found')
+    end
+
+    it 'adopts the existing customer when Stripe refuses the account key, never inventing a new key' do
+      stub_customer_search([], ['cus_found'])
+      stub_request(:post, 'https://api.stripe.com/v1/customers')
+        .to_return(status: 400,
+                   body: { error: { type: 'idempotency_error',
+                                    message: 'Keys for idempotent requests can only be used once' } }.to_json,
+                   headers: { 'Content-Type' => 'application/json' })
+      stub_checkout_create
+
+      post '/settings/billing/checkout'
+
+      expect(response).to redirect_to(checkout_url)
+      expect(WebMock).to have_requested(:post, 'https://api.stripe.com/v1/customers')
+        .with(headers: { 'Idempotency-Key' => "customer-account-#{account.id}" }).once
+      expect(account.reload.account_subscription.stripe_customer_id).to eq('cus_found')
+    end
+
+    it 'creates the customer with the account\'s first admin, whoever is clicking' do
+      first_admin = admin_for(account)
+      second_admin = create(:user, account:)
+      act_as(second_admin)
+      stub_customer_create
+      stub_checkout_create
+
+      post '/settings/billing/checkout'
+
+      expect(posted('https://api.stripe.com/v1/customers')['email']).to eq(first_admin.email)
+      expect(second_admin.email).not_to eq(first_admin.email)
+    end
+
+    # H3: a list that cannot be read to the end is no basis for "nothing
+    # live": the sale is refused and a person is told.
+    it 'refuses to sell when the customer\'s subscription list cannot be read to the end' do
+      checkout_row!(customer: 'cus_known')
+      stub_subscription_list('cus_known', { 'sub_dead' => 'canceled' }, has_more: true)
+      stub_checkout_create
+      allow(ErrorReport).to receive(:error)
+
+      post '/settings/billing/checkout'
+
+      expect(response).to redirect_to('/settings/billing')
+      expect(flash[:alert]).to eq(I18n.t('billing_provider_unreachable'))
+      expect(WebMock).not_to have_requested(:post, 'https://api.stripe.com/v1/checkout/sessions')
+      expect(ErrorReport).to have_received(:error)
+        .with(an_instance_of(StripeBilling::ListIncomplete), hash_including(account_id: account.id))
+    end
+
+    # G4: the seats are part of the key, so a retry after a seat change is a
+    # different request and gets a fresh session rather than a stale one.
+    it 'gets a fresh Checkout session when the seats change within the same minute' do
+      stub_customer_create
+      stub_checkout_create
+
+      post '/settings/billing/checkout'
+      create(:user, account:)
+      post '/settings/billing/checkout'
+
+      keys = []
+      expect(WebMock).to have_requested(:post, 'https://api.stripe.com/v1/checkout/sessions')
+        .with { |request| keys << request.headers['Idempotency-Key'] }.twice
+      expect(keys.uniq.size).to eq(2)
+      expect(keys).to all(match(/\Acheckout-#{account.id}-[12]-true-\d{12}\z/))
+      # And the customer, keyed on the account alone, was made exactly once.
+      expect(WebMock).to have_requested(:post, 'https://api.stripe.com/v1/customers')
+        .with(headers: { 'Idempotency-Key' => "customer-account-#{account.id}" }).once
+    end
+
+    # G1: another worker holding this account's row past the lock timeout
+    # is a sentence, never a 500.
+    it 'turns a lock wait timeout into a sentence' do
+      allow(StripeBilling::Linker).to receive(:with_account_lock).and_raise(ActiveRecord::LockWaitTimeout)
+      allow(ErrorReport).to receive(:warning)
+
+      post '/settings/billing/checkout'
+
+      expect(response).to redirect_to('/settings/billing')
+      expect(flash[:alert]).to eq(I18n.t('billing_provider_unreachable'))
+    end
+
+    # The key covers the whole body it belongs to: reusing it after a seat
+    # changed is what Stripe calls an idempotency error, and telling the
+    # customer the provider is unreachable would be a lie.
+    it 'keys the Checkout on the seats and the trial, and retries once when Stripe rejects a reused key' do
+      create(:user, account:) # two seats
+      stub_customer_create
+
+      stub_request(:post, 'https://api.stripe.com/v1/checkout/sessions')
+        .to_return({ status: 400,
+                     body: { error: { type: 'idempotency_error',
+                                      message: 'Keys for idempotent requests can only be used once' } }.to_json,
+                     headers: { 'Content-Type' => 'application/json' } },
+                   stripe_json(id: 'cs_test_fixture', object: 'checkout.session', url: checkout_url))
+
+      post '/settings/billing/checkout'
+
+      expect(response).to redirect_to(checkout_url)
+      expect(WebMock).to have_requested(:post, 'https://api.stripe.com/v1/checkout/sessions')
+        .with(headers: { 'Idempotency-Key' => /\Acheckout-#{account.id}-2-true-\d{12}\z/ }).once
+      expect(WebMock).to have_requested(:post, 'https://api.stripe.com/v1/checkout/sessions').twice
+    end
+
+    it 'labels the free card as the plan\'s limits, and says so when the account has its own' do
+      expect(page.at('[data-billing-free-limits-label]').text.strip).to eq(I18n.t('billing_free_plan_limits'))
+      expect(page.at('[data-billing-custom-limits]')).to be_nil
+
+      AccountLimitOverride.create!(account:, completions_per_month: 50)
+
+      expect(page.at('[data-billing-custom-limits]').text.strip).to eq(I18n.t('billing_custom_limits_note'))
     end
 
     it 'turns a Stripe outage into a sentence, never a 500' do
@@ -361,6 +652,71 @@ RSpec.describe 'Billing page', type: :request do
       )
     end
 
+    # Seats are frozen at Checkout: what Stripe bills and who is in the
+    # account can differ, and the page has to quote the invoice.
+    it 'quotes the seats Stripe bills, and names the people in the account separately' do
+      create(:account_subscription, account:, access_state: 'active', status: 'active', quantity: 5,
+                                    stripe_status: 'active', stripe_customer_id: 'cus_x',
+                                    stripe_subscription_id: 'sub_x', current_period_end: 20.days.from_now)
+      create(:user, account:) # two people, five seats billed
+
+      doc = page
+
+      expect(doc.at('[data-billing-seats]').text.strip).to eq('5')
+      expect(doc.at('[data-billing-amount]').text.strip).to eq(
+        I18n.t('billing_amount_per_month', total: 50, price: 10)
+      )
+      expect(doc.at('[data-billing-seats-in-use]').text.strip).to eq(
+        I18n.t('billing_people_in_account', count: 2)
+      )
+    end
+
+    # An immediately cancelled subscription keeps a billing period that runs
+    # weeks into the future; the banner used to read that as the end date.
+    it 'says when the subscription ended, not when its period would have run out' do
+      create(:account_subscription, account:, access_state: 'cancelled', status: 'canceled',
+                                    stripe_status: 'canceled', stripe_customer_id: 'cus_x',
+                                    stripe_subscription_id: 'sub_x', trial_used_at: 2.months.ago,
+                                    ended_at: 40.days.ago, current_period_end: 10.days.from_now)
+
+      expect(page.at('[data-billing-ended-banner]').text).to include(
+        I18n.t('billing_ended_on', date: I18n.l(40.days.ago.to_date, format: :long))
+      )
+    end
+
+    # `incomplete` is not paid access, but the subscription is alive at Stripe
+    # and Checkout is refused for it: offering the buy button was a dead end.
+    it 'offers the portal rather than a purchase the server would refuse while a payment is incomplete' do
+      create(:account_subscription, account:, access_state: 'cancelled', status: 'incomplete',
+                                    stripe_status: 'incomplete', quantity: 1, stripe_customer_id: 'cus_x',
+                                    stripe_subscription_id: 'sub_x')
+
+      doc = page
+
+      expect(doc.at('[data-billing-state]')['data-billing-state']).to eq('incomplete')
+      expect(doc.at('[data-billing-headline]').text.strip).to eq(I18n.t('billing_incomplete_headline'))
+      expect(doc.at('[data-billing-portal-button]')).to be_present
+      expect(doc.at('[data-billing-checkout-button]')).to be_nil
+
+      post '/settings/billing/checkout'
+
+      expect(flash[:alert]).to eq(I18n.t('billing_already_subscribed'))
+      expect(WebMock).not_to have_requested(:post, 'https://api.stripe.com/v1/checkout/sessions')
+    end
+
+    # Every other settings page renders dates in the account's timezone; a
+    # trial ending at 02:00 UTC is still today for a customer in New York.
+    it 'shows dates in the account\'s own timezone' do
+      account.update!(timezone: 'America/New_York')
+      create(:account_subscription, account:, access_state: 'trialing', status: 'trialing',
+                                    stripe_status: 'trialing', quantity: 1, stripe_customer_id: 'cus_x',
+                                    stripe_subscription_id: 'sub_x', trial_end: Time.utc(2026, 10, 1, 2, 0))
+
+      expect(page.at('[data-billing-headline]').text.strip).to eq(
+        I18n.t('billing_trial_ends_on', date: I18n.l(Date.new(2026, 9, 30), format: :long))
+      )
+    end
+
     it 'offers nothing to buy or manage on a plan the operator granted by hand' do
       create(:account_subscription, account:, access_state: 'active', status: 'manual')
 
@@ -370,13 +726,31 @@ RSpec.describe 'Billing page', type: :request do
       expect(doc.at('[data-billing-card="manual"]').text).to include(I18n.t('billing_managed_by_operator'))
       expect(doc.at('[data-billing-checkout-button]')).to be_nil
       expect(doc.at('[data-billing-portal-button]')).to be_nil
+
+      # Not just the buttons: the actions themselves refuse.
+      post '/settings/billing/checkout'
+
+      expect(response).to redirect_to('/settings/billing')
+      expect(flash[:alert]).to eq(I18n.t('billing_managed_by_operator'))
+      expect(WebMock).not_to have_requested(:post, 'https://api.stripe.com/v1/checkout/sessions')
+
+      post '/settings/billing/portal'
+
+      expect(flash[:alert]).to eq(I18n.t('billing_managed_by_operator'))
+      expect(WebMock).not_to have_requested(:post, 'https://api.stripe.com/v1/billing_portal/sessions')
     end
   end
 
   describe 'coming back from Checkout' do
-    before { act_as(admin_for(account)) }
+    before do
+      act_as(admin_for(account))
+      # The session is only a trigger: the subscription is re-fetched through
+      # the same locked path every webhook uses.
+      stub_subscription_retrieve(trialing_subscription['id'], trialing_subscription)
+    end
 
     it 'links the subscription so the page tells the truth before the webhook lands' do
+      checkout_row!(customer: trialing_subscription['customer'])
       stub_checkout_retrieve('cs_test_ok', reference: account.id.to_s)
 
       get '/settings/billing/return', params: { session_id: 'cs_test_ok' }
@@ -396,12 +770,176 @@ RSpec.describe 'Billing page', type: :request do
 
     it 'ignores a Checkout session that belongs to somebody else' do
       other = create(:account)
+      checkout_row!(customer: trialing_subscription['customer'])
       stub_checkout_retrieve('cs_test_other', reference: other.id.to_s)
 
       get '/settings/billing/return', params: { session_id: 'cs_test_other' }
 
-      expect(account.reload.account_subscription).to be_nil
+      expect(flash[:alert]).to eq(I18n.t('billing_checkout_unmatched'))
+      expect(account.reload.account_subscription.stripe_subscription_id).to be_nil
       expect(Plans.key_for(account)).to eq(Plans::FREE)
+    end
+
+    # G6: Checkout made the row and the customer before the session existed.
+    # A session for an account with no row — or with no customer on it — is
+    # not a purchase this app made, and is never the reason to create one.
+    it 'refuses a session when the account has no Checkout row, and creates none' do
+      stub_checkout_retrieve('cs_test_orphan', reference: account.id.to_s)
+
+      allow(ErrorReport).to receive(:warning)
+
+      get '/settings/billing/return', params: { session_id: 'cs_test_orphan' }
+
+      expect(response).to redirect_to('/settings/billing')
+      expect(flash[:alert]).to eq(I18n.t('billing_checkout_unmatched'))
+      expect(flash[:notice]).to be_nil
+      expect(account.reload.account_subscription).to be_nil
+      expect(ErrorReport).to have_received(:warning)
+        .with(/could not be matched/, hash_including(account_id: account.id))
+      expect(WebMock).not_to have_requested(:get, %r{api\.stripe\.com/v1/subscriptions/})
+    end
+
+    it 'refuses a session whose customer is blank, touching no row' do
+      row = checkout_row!(customer: 'cus_ours')
+      stub_checkout_retrieve('cs_test_blank', reference: account.id.to_s, customer: '')
+
+      get '/settings/billing/return', params: { session_id: 'cs_test_blank' }
+
+      expect(flash[:alert]).to eq(I18n.t('billing_checkout_unmatched'))
+      expect(row.reload.stripe_subscription_id).to be_nil
+      expect(row.stripe_customer_id).to eq('cus_ours')
+      expect(row.access_state).to eq('cancelled')
+    end
+
+    it 'refuses a session whose subscription our Checkout tagged for another account' do
+      row = checkout_row!(customer: trialing_subscription['customer'])
+      other = create(:account)
+      stub_checkout_retrieve('cs_test_tagged', reference: account.id.to_s,
+                                               subscription: trialing_subscription.merge(
+                                                 'metadata' => { 'account_id' => other.id.to_s }
+                                               ))
+
+      get '/settings/billing/return', params: { session_id: 'cs_test_tagged' }
+
+      expect(flash[:alert]).to eq(I18n.t('billing_checkout_unmatched'))
+      expect(row.reload.stripe_subscription_id).to be_nil
+    end
+
+    # A `session_id` in the query string proves nothing on its own: it is a
+    # bookmarkable URL, and the session behind it may be somebody else's, half
+    # finished, or a payment that was never a subscription.
+    it 'ignores a session that was never completed' do
+      row = checkout_row!(customer: trialing_subscription['customer'])
+      stub_checkout_retrieve('cs_test_open', reference: account.id.to_s, status: 'open')
+
+      get '/settings/billing/return', params: { session_id: 'cs_test_open' }
+
+      expect(flash[:notice]).to be_nil
+      expect(flash[:alert]).to eq(I18n.t('billing_checkout_unmatched'))
+      expect(row.reload.stripe_subscription_id).to be_nil
+    end
+
+    it 'ignores a session for a customer this account does not own' do
+      checkout_row!(customer: 'cus_ours')
+      stub_checkout_retrieve('cs_test_stranger', reference: account.id.to_s, customer: 'cus_somebody_else')
+
+      get '/settings/billing/return', params: { session_id: 'cs_test_stranger' }
+
+      expect(flash[:notice]).to be_nil
+      expect(account.reload.account_subscription.stripe_subscription_id).to be_nil
+    end
+
+    # The money case: the browser lands here before Sidekiq drains, so this is
+    # where a second completed Checkout used to overwrite the subscription
+    # that is charging the card — and, by rewriting the id, disarm the
+    # webhook's duplicate guard so the first one billed forever.
+    it 'cancels the duplicate rather than repointing a row that already pays' do
+      subscription = trialing_subscription
+      row = create(:account_subscription, account:, access_state: 'trialing', status: 'trialing',
+                                          stripe_status: 'trialing', quantity: 3,
+                                          stripe_customer_id: subscription['customer'],
+                                          stripe_subscription_id: 'sub_first_one', trial_used_at: 1.day.ago)
+
+      # The one the row holds came first, so it is the survivor (H6).
+      stub_subscription_retrieve('sub_first_one', subscription.merge('id' => 'sub_first_one',
+                                                                     'created' => subscription['created'] - 100))
+      stub_checkout_retrieve('cs_test_second', reference: account.id.to_s)
+      stub_duplicate(subscription['id'], subscription)
+
+      cancel_call = stub_cancel(subscription['id'], subscription)
+
+      allow(OperatorAlert).to receive(:deliver).and_return(true)
+      allow(ErrorReport).to receive(:warning)
+
+      get '/settings/billing/return', params: { session_id: 'cs_test_second' }
+
+      expect(cancel_call).to have_been_requested
+      expect(WebMock).not_to have_requested(:post, 'https://api.stripe.com/v1/refunds')
+      expect(flash[:notice]).to eq(I18n.t('billing_duplicate_cancelled'))
+      expect(row.reload.stripe_subscription_id).to eq('sub_first_one')
+      expect(row.access_state).to eq('trialing')
+    end
+
+    # G5: with the trial spent, Checkout charged the duplicate's first
+    # invoice before the browser came back. The customer is told the money
+    # went back, and how much.
+    it 'refunds a duplicate that already charged the card, and says how much' do
+      subscription = trialing_subscription.merge('status' => 'active', 'trial_end' => nil)
+      row = create(:account_subscription, account:, access_state: 'active', status: 'active',
+                                          stripe_status: 'active', quantity: 3,
+                                          stripe_customer_id: subscription['customer'],
+                                          stripe_subscription_id: 'sub_first_one', trial_used_at: 1.month.ago)
+
+      stub_subscription_retrieve('sub_first_one', subscription.merge('id' => 'sub_first_one',
+                                                                     'created' => subscription['created'] - 100))
+      stub_checkout_retrieve('cs_test_paid_twice', reference: account.id.to_s, subscription:)
+      invoice = paid_invoice(subscription['id'], amount: 3000)
+      stub_duplicate(subscription['id'], subscription, invoice:)
+      stub_cancel(subscription['id'], subscription, invoice:)
+      refund_call = stub_request(:post, 'https://api.stripe.com/v1/refunds')
+                    .with(body: hash_including('payment_intent' => "pi_#{subscription['id']}",
+                                               'reason' => 'duplicate'))
+                    .to_return(**stripe_json(id: 're_dup', object: 'refund', amount: 3000, currency: 'usd'))
+
+      allow(OperatorAlert).to receive(:deliver).and_return(true)
+      allow(ErrorReport).to receive(:warning)
+
+      get '/settings/billing/return', params: { session_id: 'cs_test_paid_twice' }
+
+      expect(refund_call).to have_been_requested
+      expect(flash[:notice]).to eq(I18n.t('billing_duplicate_refunded', amount: '$30.00'))
+      expect(flash[:notice]).to include('$30.00')
+      expect(row.reload.stripe_subscription_id).to eq('sub_first_one')
+    end
+
+    # A subscription that is not paid access yet says so on the card; a green
+    # "your subscription is active" over it would be a lie.
+    it 'says nothing when the subscription came back incomplete' do
+      incomplete = trialing_subscription.merge('status' => 'incomplete', 'trial_end' => nil)
+      checkout_row!(customer: incomplete['customer'])
+      stub_subscription_retrieve(incomplete['id'], incomplete)
+      stub_checkout_retrieve('cs_test_incomplete', reference: account.id.to_s, subscription: incomplete)
+
+      get '/settings/billing/return', params: { session_id: 'cs_test_incomplete' }
+
+      expect(flash[:notice]).to be_nil
+      expect(account.reload.account_subscription.stripe_status).to eq('incomplete')
+    end
+
+    # The return never creates a row: Checkout did that before the session
+    # existed. Two tabs coming back at once therefore have nothing to race
+    # for, and a session naming no customer is simply not ours (G6/G16b).
+    it 'creates no row for a session that names no customer, whatever else it says' do
+      subscription = trialing_subscription.merge('customer' => nil)
+      stub_subscription_retrieve(subscription['id'], subscription)
+      stub_checkout_retrieve('cs_test_nobody', reference: account.id.to_s, subscription:, customer: '')
+
+      get '/settings/billing/return', params: { session_id: 'cs_test_nobody' }
+
+      expect(response).to redirect_to('/settings/billing')
+      expect(flash[:alert]).to eq(I18n.t('billing_checkout_unmatched'))
+      expect(account.reload.account_subscription).to be_nil
+      expect(WebMock).not_to have_requested(:get, %r{api\.stripe\.com/v1/subscriptions/})
     end
 
     it 'says nothing was charged when Checkout was abandoned' do
@@ -432,6 +970,35 @@ RSpec.describe 'Billing page', type: :request do
       expect(doc.at('[data-billing-state]')['data-billing-state']).to eq('trialing')
       expect(doc.at('[data-billing-checkout-button]')).to be_nil
       expect(doc.at('[data-billing-portal-button]')).to be_nil
+    end
+
+    # The buttons were the only thing stopping a child's admin from buying on
+    # the parent — or opening the parent's Customer Portal, where the card,
+    # the invoices and the cancel button live. A direct POST is not a button.
+    it 'cannot buy on the parent, open the parent\'s portal or apply a session to it' do
+      stripe_trialing!(account, seats: 2)
+      act_as(admin_for(child))
+
+      post '/settings/billing/checkout'
+      expect(response).to have_http_status(:not_found)
+
+      post '/settings/billing/portal'
+      expect(response).to have_http_status(:not_found)
+
+      get '/settings/billing/return', params: { session_id: 'cs_test_child' }
+      expect(response).to have_http_status(:not_found)
+
+      expect(WebMock).not_to have_requested(:post, 'https://api.stripe.com/v1/checkout/sessions')
+      expect(WebMock).not_to have_requested(:post, 'https://api.stripe.com/v1/billing_portal/sessions')
+      expect(WebMock).not_to have_requested(:get, %r{api\.stripe\.com/v1/checkout/sessions/})
+    end
+
+    # And the upgrade call-to-action does not send them to a page they can
+    # only read.
+    it 'sends a child admin\'s upgrade call-to-action to usage, not to billing' do
+      act_as(admin_for(child))
+
+      expect(page('/settings/usage').at('[data-upgrade-cta]')['href']).to eq(Quotas::USAGE_PATH)
     end
   end
 
@@ -469,5 +1036,95 @@ RSpec.describe 'Billing page', type: :request do
       expect(page("/templates/#{template.id}/preferences").at('[data-upgrade-cta]')['href'])
         .to eq(Quotas::USAGE_PATH)
     end
+  end
+end
+
+# G4: two first-ever Checkout clicks at the same moment — two real inserts
+# racing for the unique account row, then the whole customer/list/session
+# decision serialised on that row. What this proves: the clicks are
+# serialised (one row, ONE customer created), and both Checkout requests
+# carry the SAME idempotency key — which is what lets Stripe hand back one
+# session; the session itself is stubbed here, so "one session" is Stripe's
+# promise, not this example's. Runs without the wrapping test transaction
+# so the row lock is taken between two real connections.
+RSpec.describe 'Two Checkout clicks on one account', type: :request do
+  self.use_transactional_tests = false
+
+  let(:checkout_url) { 'https://checkout.stripe.com/c/pay/cs_test_fixture' }
+
+  stash_env(*StripeBilling::CONFIG_KEYS.keys, 'BILLING_ENABLED')
+
+  before do
+    ENV['STRIPE_SECRET_KEY'] = 'sk_test_fake'
+    ENV['STRIPE_PUBLISHABLE_KEY'] = 'pk_test_fake'
+    ENV['STRIPE_WEBHOOK_SECRET'] = 'whsec_testsecret'
+    ENV['STRIPE_PRICE_ID'] = 'price_1UAt8N4rEeOqtLcX1amJxYdZ'
+    ENV['STRIPE_PORTAL_CONFIGURATION_ID'] = 'bpc_test'
+    ENV['BILLING_ENABLED'] = 'true'
+  end
+
+  def stripe_json(body)
+    { status: 200, body: body.to_json, headers: { 'Content-Type' => 'application/json' } }
+  end
+
+  it 'serialises two simultaneous first clicks: one row, one customer, identical Checkout keys' do
+    account = create(:account)
+    admin = create(:user, account:)
+
+    stub_request(:get, %r{\Ahttps://api\.stripe\.com/v1/subscriptions\?})
+      .to_return(**stripe_json(object: 'list', data: [], has_more: false))
+    stub_request(:get, %r{\Ahttps://api\.stripe\.com/v1/customers/search})
+      .to_return(**stripe_json(object: 'search_result', data: []))
+    # The first click is slow at Stripe, so the second is certainly waiting on the row by then.
+    stub_request(:post, 'https://api.stripe.com/v1/customers')
+      .to_return do
+        sleep(0.5)
+
+        stripe_json(id: 'cus_once', object: 'customer')
+      end
+    stub_request(:post, 'https://api.stripe.com/v1/checkout/sessions')
+      .to_return(**stripe_json(id: 'cs_test_fixture', object: 'checkout.session', url: checkout_url))
+
+    # Two signed-in browser sessions of the same admin, each with its own
+    # cookie jar; the sign-in itself happens one at a time.
+    sessions = Array.new(2) do
+      session = open_session
+      sign_in(admin)
+      session.get('/')
+      session
+    end
+
+    barrier = Queue.new
+    clicks = sessions.map do |session|
+      Thread.new do
+        ActiveRecord::Base.connection_pool.with_connection do
+          barrier.pop
+
+          session.post('/settings/billing/checkout')
+
+          [session.response.status, session.response.location]
+        end
+      end
+    end
+
+    2.times { barrier << true }
+
+    # `value` re-raises: a click that 500ed cannot hide behind the other.
+    expect(clicks.map(&:value)).to all(eq([303, checkout_url]))
+
+    expect(AccountSubscription.where(account_id: account.id).count).to eq(1)
+    expect(AccountSubscription.find_by(account_id: account.id).stripe_customer_id).to eq('cus_once')
+    expect(WebMock).to have_requested(:post, 'https://api.stripe.com/v1/customers').once
+
+    keys = []
+    expect(WebMock).to have_requested(:post, 'https://api.stripe.com/v1/checkout/sessions')
+      .with { |request| keys << request.headers['Idempotency-Key'] }.twice
+    expect(keys.uniq.size).to eq(1)
+  ensure
+    # Both clicks must be over before the account goes, whichever one failed —
+    # and the account is re-read first: it cached "no subscription row" before
+    # the clicks made one, and a stale cache would leave that row behind.
+    clicks&.each { |click| click.join(20) }
+    account&.reload&.destroy!
   end
 end

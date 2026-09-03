@@ -21,10 +21,6 @@ class BillingSettingsController < ApplicationController
   # id is the authority on what is charged; this is only what we print.
   PRICE_PER_SEAT_USD = 10
 
-  # Stripe statuses under which the subscription is well and truly over, and a
-  # new Checkout is the right thing to offer.
-  DEAD_STRIPE_STATUSES = %w[canceled incomplete_expired].freeze
-
   # The paid benefits the free-plan visitor is being sold, in the order they
   # are read. Each is a row of the entitlement matrix (lib/entitlements.rb).
   PAID_BENEFIT_KEYS = %w[
@@ -39,6 +35,9 @@ class BillingSettingsController < ApplicationController
   before_action :require_billing_enabled!
   before_action :load_billing_account
   before_action :load_subscription
+  before_action :require_own_billing!, only: %i[checkout portal return]
+
+  helper_method :billing_date
 
   rescue_from Stripe::StripeError do |e|
     ErrorReport.error(e, account_id: @billing&.id)
@@ -46,17 +45,53 @@ class BillingSettingsController < ApplicationController
     redirect_to settings_billing_path, alert: I18n.t('billing_provider_unreachable')
   end
 
-  def show
-    @free_limits = Quotas.default_limits_for(@billing) if Plans.key_for(@billing) == Plans::FREE
-    @paid_benefit_keys = PAID_BENEFIT_KEYS
-    @price_per_seat = PRICE_PER_SEAT_USD
-    @monthly_total = PRICE_PER_SEAT_USD * @seats_in_use
+  # The customer's subscription list could not be read to the end, so "no
+  # live subscription" cannot be concluded and nothing is sold on it.
+  rescue_from StripeBilling::ListIncomplete do |e|
+    ErrorReport.error(e, account_id: @billing&.id)
+
+    redirect_to settings_billing_path, alert: I18n.t('billing_provider_unreachable')
   end
 
-  def checkout
-    return redirect_to(settings_billing_path, alert: I18n.t('billing_already_subscribed')) if live_subscription?
+  # Another worker held this account's row for longer than the Linker's lock
+  # timeout (a webhook mid-flight, a second tab): a minute later it is free.
+  rescue_from ActiveRecord::LockWaitTimeout do |e|
+    ErrorReport.warning("billing lock wait timed out: #{e.message}", account_id: @billing&.id)
 
-    session = StripeBilling.client.v1.checkout.sessions.create(checkout_params, idempotency_key:)
+    redirect_to settings_billing_path, alert: I18n.t('billing_provider_unreachable')
+  end
+
+  def show
+    @free_limits = Quotas.default_limits_for(@billing) if Plans.key_for(@billing) == Plans::FREE
+    @limits_overridden = AccountLimitOverride.exists?(account_id: @billing.id)
+    @paid_benefit_keys = PAID_BENEFIT_KEYS
+    @price_per_seat = PRICE_PER_SEAT_USD
+  end
+
+  # The whole decision — is there already a subscription, which Stripe
+  # customer is this, does Stripe know of a live subscription we do not, and
+  # only then a Checkout Session — is ONE step under the account's row lock.
+  # Split up, two clicks (or a click and a webhook) could each pass the
+  # checks and sell the same account two subscriptions.
+  def checkout
+    return refuse_checkout if live_subscription?
+
+    ensure_subscription_row!
+
+    session = StripeBilling::Linker.with_account_lock(@subscription) do
+      # The lock re-reads the row: whatever a concurrent worker wrote wins.
+      next nil if live_subscription?
+
+      customer_id = find_or_create_customer
+
+      # Our own row is not the only witness: a Checkout completed in a tab we
+      # never heard back from left a subscription at Stripe all the same.
+      next nil if StripeBilling::Linker.link_live_subscriptions!(@subscription, customer_id)
+
+      create_checkout_session(customer_id)
+    end
+
+    return refuse_checkout if session.nil?
 
     redirect_to session.url, allow_other_host: true, status: :see_other
   end
@@ -78,14 +113,27 @@ class BillingSettingsController < ApplicationController
   # Checkout's success_url and cancel_url both land here. `return` is a Ruby
   # keyword, which Rails dispatches by name all the same.
   def return
-    notice =
+    flash_for =
       if params[:cancelled].present?
-        'billing_checkout_cancelled'
+        { notice: I18n.t('billing_checkout_cancelled') }
       elsif params[:session_id].present?
         apply_checkout_session(params[:session_id])
+      else
+        {}
       end
 
-    redirect_to settings_billing_path, notice: (I18n.t(notice) if notice)
+    redirect_to settings_billing_path, flash: flash_for
+  end
+
+  # Every date on this page, in the account's own timezone and language, like
+  # every other settings page: a trial that ends at 02:00 UTC is still
+  # tomorrow for a customer in New York.
+  def billing_date(time)
+    return if time.blank?
+
+    zone = current_account.timezone.presence || 'UTC'
+
+    l(time.in_time_zone(zone).to_date, format: :long, locale: current_account.locale)
   end
 
   private
@@ -96,6 +144,19 @@ class BillingSettingsController < ApplicationController
     return head :not_found unless @billing.customer?
 
     authorize!(:manage, current_account)
+  end
+
+  # Reading somebody else's billing page is allowed (a child is told who
+  # pays); acting on it is not. Without this the buttons were the only thing
+  # stopping a child's admin from buying on the parent, opening the parent's
+  # Customer Portal — card, invoices, cancellation — or applying a Checkout
+  # session to the parent's row.
+  def require_own_billing!
+    return head :not_found unless @billing == current_account
+
+    return unless @manual
+
+    redirect_to settings_billing_path, alert: I18n.t('billing_managed_by_operator')
   end
 
   def load_subscription
@@ -114,6 +175,11 @@ class BillingSettingsController < ApplicationController
     @parent_name = @read_only ? @billing.name : nil
     @actionable = !@read_only && !@manual
     @view_state = view_state
+    # What Stripe actually bills: the quantity frozen at Checkout, which is
+    # not the same as the number of people in the account today. The page
+    # quotes the invoice, and says the difference out loud.
+    @billed_seats = @subscription&.quantity
+    @monthly_total = PRICE_PER_SEAT_USD * (@billed_seats || @seats_billed)
   end
 
   # What the page renders, which is the access state plus the three cases the
@@ -123,23 +189,45 @@ class BillingSettingsController < ApplicationController
   def view_state
     return 'manual' if @manual
     return @state unless @state == 'cancelled'
+    # `incomplete` is not paid access, but the subscription is alive at Stripe
+    # and the server refuses a second Checkout for it. The page has to ask the
+    # same question the controller does, or it offers a button that can only
+    # be turned away.
+    return 'incomplete' if live_subscription?
 
     @subscription.stripe_subscription_id.present? ? 'ended' : 'free'
   end
 
   # Paid right now, or holding a Stripe subscription that is still alive at
   # Stripe — either way a second Checkout would create a second subscription.
+  # Read off the row in hand (freshly reloaded when asked under the lock);
+  # the Linker then asks Stripe itself before anything is sold.
   def live_subscription?
-    return true if Plans.paid_subscription?(@billing)
-    return false if @subscription&.stripe_subscription_id.blank?
+    return false if @subscription.nil?
 
-    DEAD_STRIPE_STATUSES.exclude?(@subscription.status)
+    Plans::PAID_ACCESS_STATES.include?(@subscription.access_state) ||
+      StripeBilling::Linker.holds_live_subscription?(@subscription)
   end
 
-  def checkout_params
+  def refuse_checkout
+    redirect_to settings_billing_path, alert: I18n.t('billing_already_subscribed')
+  end
+
+  def create_checkout_session(customer_id)
+    StripeBilling.client.v1.checkout.sessions.create(checkout_params(customer_id), idempotency_key:)
+  rescue Stripe::IdempotencyError
+    # The same key with a different body: seats changed between two clicks.
+    # One retry with a fresh key, rather than telling the customer Stripe is
+    # down when it is answering perfectly well.
+    StripeBilling.client.v1.checkout.sessions.create(
+      checkout_params(customer_id), idempotency_key: "#{idempotency_key}-#{SecureRandom.hex(4)}"
+    )
+  end
+
+  def checkout_params(customer_id)
     params = {
       mode: 'subscription',
-      customer: find_or_create_customer,
+      customer: customer_id,
       client_reference_id: @billing.id.to_s,
       line_items: [{ price: StripeBilling.price_id, quantity: @seats_billed }],
       subscription_data: { metadata: { account_id: @billing.id } },
@@ -161,49 +249,137 @@ class BillingSettingsController < ApplicationController
   end
 
   # A double-clicked button inside the same minute must not create two Stripe
-  # customers or two Checkout sessions.
+  # customers or two Checkout sessions. The seats and the trial are part of
+  # the key: reusing it for a DIFFERENT body is what Stripe calls an
+  # idempotency error, and that is not an outage.
   def idempotency_key
-    "checkout-#{@billing.id}-#{Time.current.utc.strftime('%Y%m%d%H%M')}"
+    "checkout-#{@billing.id}-#{@seats_billed}-#{@trial_available}-#{Time.current.utc.strftime('%Y%m%d%H%M')}"
   end
 
-  def find_or_create_customer
-    # 'cancelled' is the only ACCESS_STATES value that means "no paid access";
-    # the row exists purely to hold the Stripe customer id until Checkout comes
-    # back, so it starts there with status 'none'.
-    @subscription ||= @billing.create_account_subscription!(access_state: 'cancelled', status: 'none', quantity: 1)
+  # 'cancelled' is the only ACCESS_STATES value that means "no paid access";
+  # the row exists purely to hold the Stripe customer id until Checkout comes
+  # back, so it starts there with status 'none'. INSERT first and SELECT on
+  # conflict (create_or_find_by!): two clicks race for it, account_id is
+  # unique, and a SELECT-then-INSERT loses that race with a 500.
+  def ensure_subscription_row!
+    return @subscription if @subscription
 
+    @subscription = AccountSubscription.create_or_find_by!(account: @billing) do |row|
+      row.access_state = 'cancelled'
+      row.status = 'none'
+      row.quantity = 1
+    end
+  end
+
+  # One Stripe customer per account, ever. Stripe is asked first whether a
+  # customer tagged with this account already exists (a checkout that
+  # rolled back after Stripe answered left one behind); only then is one
+  # created, with a body that does not depend on who clicked and an
+  # idempotency key that is the account itself. An idempotency refusal
+  # ("same key, different body") means the customer exists: it is searched
+  # for and adopted, never re-created under a made-up key.
+  def find_or_create_customer
     return @subscription.stripe_customer_id if @subscription.stripe_customer_id.present?
 
-    customer = StripeBilling.client.v1.customers.create(
-      { email: current_user.email, name: @billing.name, metadata: { account_id: @billing.id } },
-      idempotency_key: "customer-#{idempotency_key}"
-    )
+    customer = find_customer || create_customer
 
     @subscription.update!(stripe_customer_id: customer.id)
 
     customer.id
   end
 
+  def find_customer
+    StripeBilling.client.v1.customers.search(
+      { query: "metadata['account_id']:'#{@billing.id}'", limit: 1 }
+    ).data.first
+  end
+
+  def create_customer
+    StripeBilling.client.v1.customers.create(
+      { email: billing_contact_email, name: @billing.name, metadata: { account_id: @billing.id } },
+      idempotency_key: "customer-account-#{@billing.id}"
+    )
+  rescue Stripe::IdempotencyError
+    find_customer || raise
+  end
+
+  # The account's first active admin, not whoever is clicking: the customer
+  # create body has to be the same on every attempt.
+  def billing_contact_email
+    @billing.users.active.admins.order(:id).first&.email || current_user.email
+  end
+
   # The Checkout session the browser just came back from, applied at once so
-  # the page tells the truth before the webhook lands. It is only ever trusted
-  # for THIS account: a session id belonging to somebody else is ignored, and
-  # the webhook remains the authority either way. Returns the locale key of
-  # what to say about it, or nil when there was nothing to apply.
+  # the page tells the truth before the webhook lands.
+  #
+  # The session id in the query string proves nothing on its own — it is a
+  # bookmarkable URL — so the session has to BE this account's completed
+  # subscription purchase on the customer this account's row already holds
+  # (Checkout created that row and that customer before the session ever
+  # existed, so "no row" or "another customer" is not ours to act on). The
+  # subscription it carries then goes through the Linker like every other
+  # one: if the row already holds a different live subscription, this one is
+  # the duplicate and is cancelled rather than written over the one that is
+  # charging the card. Returns what to flash.
   def apply_checkout_session(session_id)
     session = StripeBilling.client.v1.checkout.sessions.retrieve(session_id, { expand: ['subscription'] })
+    subscription_id = session.subscription.try(:id) || session.subscription.presence
 
-    return unless session.client_reference_id.to_s == @billing.id.to_s
+    return unmatched_checkout(session_id) unless ours?(session) && subscription_id.present?
 
-    subscription = session.subscription
+    flash_for_outcome(StripeBilling::Linker.link_and_apply!(@subscription, subscription_id))
+  end
 
-    return if subscription.blank? || subscription.try(:id).blank?
+  # A Checkout session this app can act on: a completed subscription purchase,
+  # for this billing account, on exactly the customer this row holds, whose
+  # subscription — if our Checkout tagged it at all — is tagged for us.
+  def ours?(session)
+    session.mode.to_s == 'subscription' &&
+      session.status.to_s == 'complete' &&
+      session.client_reference_id.to_s == @billing.id.to_s &&
+      known_customer?(session.customer) &&
+      tagged_for_us?(session.subscription)
+  end
 
-    @subscription ||= @billing.create_account_subscription!(access_state: 'cancelled', status: 'none', quantity: 1)
-    @subscription.update!(stripe_subscription_id: @subscription.stripe_subscription_id.presence || subscription.id,
-                          stripe_customer_id: @subscription.stripe_customer_id.presence || session.customer.to_s)
+  def known_customer?(customer)
+    customer_id = customer.is_a?(String) ? customer : customer.try(:id)
 
-    StripeBilling::SubscriptionSync.apply!(@subscription, subscription)
+    @subscription.present? && @subscription.stripe_customer_id.present? &&
+      @subscription.stripe_customer_id == customer_id.to_s
+  end
 
-    @subscription.access_state == 'trialing' ? 'billing_trial_started' : 'billing_subscription_active'
+  def tagged_for_us?(subscription)
+    tag = StripeBilling::SubscriptionPolicy.tagged_account_id(subscription)
+
+    tag.blank? || tag == @billing.id.to_s
+  end
+
+  def unmatched_checkout(session_id)
+    ErrorReport.warning("checkout session #{session_id} could not be matched to account #{@billing.id}",
+                        account_id: @billing.id)
+
+    { alert: I18n.t('billing_checkout_unmatched') }
+  end
+
+  def flash_for_outcome(outcome)
+    return { alert: I18n.t('billing_checkout_unmatched') } if outcome.verdict == :foreign_ignored
+    return { notice: duplicate_notice(outcome.refund) } if outcome.verdict == :duplicate_cancelled
+
+    state = @subscription.reload.access_state
+
+    return { notice: I18n.t('billing_trial_started') } if state == 'trialing'
+    # An incomplete or already-cancelled subscription is not "active": the
+    # state card says what happened, and a green sentence would contradict it.
+    return {} unless Plans::PAID_ACCESS_STATES.include?(state)
+
+    { notice: I18n.t('billing_subscription_active') }
+  end
+
+  # The truth about the money: a duplicate that had already charged the card
+  # was refunded, and the customer is told how much.
+  def duplicate_notice(refund)
+    return I18n.t('billing_duplicate_cancelled') if refund.nil?
+
+    I18n.t('billing_duplicate_refunded', amount: refund.formatted_amount)
   end
 end

@@ -12,8 +12,8 @@
 
       <div class="flex flex-wrap items-center gap-2 mb-5">
         <span class="badge badge-neutral badge-lg" data-billing-state-badge><%= t("billing_state_#{@view_state}") %></span>
-        <% if @view_state.in?(%w[trialing active canceling past_due suspended]) %>
-          <span class="badge badge-outline badge-lg"><%= t('seats_label', count: @seats_in_use) %></span>
+        <% if @view_state.in?(%w[trialing active canceling past_due suspended incomplete]) %>
+          <span class="badge badge-outline badge-lg"><%= t('seats_label', count: @billed_seats || @seats_in_use) %></span>
         <% end %>
       </div>
 
