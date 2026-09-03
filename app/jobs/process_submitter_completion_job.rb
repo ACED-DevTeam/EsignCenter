@@ -10,8 +10,17 @@ class ProcessSubmitterCompletionJob
 
     # Metering (D41): a document counts the first time ANY signer completes
     # it; later signers, corrections and resubmits never add. Internal and
-    # operator accounts are not metered.
-    Quotas.after_first_completion(submitter.account) if completed_submitter.is_first && submitter.account.customer?
+    # operator accounts are not metered. Counting and its warning mail must
+    # never be able to stop the completion pipeline below (the signed PDF is
+    # generated further down), so a failure here is reported and swallowed —
+    # the same contract as Quotas.record_paid_signals.
+    if completed_submitter.is_first && submitter.account.customer?
+      begin
+        Quotas.after_first_completion(submitter.account)
+      rescue StandardError => e
+        ErrorReport.error(e, account_id: submitter.account_id)
+      end
+    end
 
     is_all_completed = !submitter.submission.submitters.exists?(completed_at: nil)
 

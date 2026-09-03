@@ -51,3 +51,6 @@ dump.rdb
 
 # Local secrets for the standalone build (never committed)
 /.env.standalone.local
+
+# Playwright CLI scratch snapshots from staging walks
+.playwright-cli/

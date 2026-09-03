@@ -89,12 +89,22 @@ RSpec.describe 'Quotas', type: :request do # rubocop:disable RSpec/MultipleDescr
   # The refusal under test runs with Sidekiq in fake mode so a job enqueued
   # by mistake shows up in Sidekiq::Worker.jobs instead of running silently.
   def with_fake_sidekiq
+    previous = if Sidekiq::Testing.inline?
+                 :inline
+               elsif Sidekiq::Testing.disabled?
+                 :disable
+               else
+                 :fake
+               end
+
     Sidekiq.testing!(:fake)
     Sidekiq::Worker.clear_all
 
     yield
   ensure
-    Sidekiq.testing!(:inline)
+    # Put back the mode this example was actually running in. Restoring a
+    # hard-coded :inline would leak inline jobs into every later example.
+    Sidekiq.testing!(previous)
   end
 
   # Templates are part of the state: a refused send must leave the template
@@ -219,6 +229,27 @@ RSpec.describe 'Quotas', type: :request do # rubocop:disable RSpec/MultipleDescr
 
       expect(Quotas.completions_this_month(free_account)).to eq(5)
       expect(deliveries.count(&warning)).to eq(1)
+    end
+
+    it 'still delivers the signed document when the metering hook itself blows up', sidekiq: :inline do
+      template = text_template_for(free_account)
+
+      3.times { complete_one!(free_account, template:) }
+
+      allow(ErrorReport).to receive(:error)
+      allow(QuotaMailer).to receive(:completions_warning).and_raise(StandardError, 'boom')
+
+      # The fourth completion is the one that mails the free warning, so this
+      # is the completion the broken hook runs on. Metering is bookkeeping:
+      # it must never cost the signer the document they just signed.
+      submitter = send_one(free_account, template:).submitters.first
+
+      complete!(submitter)
+
+      expect(submitter.reload.completed_at).to be_present
+      expect(submitter.documents).to be_present
+      expect(ErrorReport).to have_received(:error)
+        .with(an_instance_of(StandardError), account_id: free_account.id)
     end
   end
 
@@ -359,6 +390,14 @@ RSpec.describe 'Quotas', type: :request do # rubocop:disable RSpec/MultipleDescr
 
       stored_before = [Template.count, ActiveStorage::Blob.count]
 
+      # Row counts alone cannot prove this: they roll back with the request's
+      # transaction even when the bytes have already been handed to the
+      # storage service, which does not roll back. Drop the preflight in
+      # SigningSessions::Create and the refusal still happens (the locked
+      # re-check) — but the PDF is written first, and this spy is the only
+      # thing that sees it.
+      allow(ActiveStorage::Blob.service).to receive(:upload).and_call_original
+
       refusing do
         post '/api/signing_sessions', headers: token_headers(paid_account).merge(json_headers),
                                       params: params.to_json
@@ -367,6 +406,7 @@ RSpec.describe 'Quotas', type: :request do # rubocop:disable RSpec/MultipleDescr
       expect(response).to have_http_status(:unprocessable_content)
       expect(response.parsed_body).to eq('error' => paused_alert)
       expect([Template.count, ActiveStorage::Blob.count]).to eq(stored_before)
+      expect(ActiveStorage::Blob.service).not_to have_received(:upload)
     end
 
     it 'path 7: selfsign via the start form is refused with the sender alert and the usage link',

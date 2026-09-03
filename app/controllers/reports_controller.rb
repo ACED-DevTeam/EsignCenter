@@ -4,7 +4,7 @@
 # or an impersonation tells the operator, anonymously, from the signing
 # page. A report is an AbuseFlag (kind document_report, one row per report)
 # on the account that sent the document, plus an operator alert. No login,
-# no CAPTCHA — the per-IP and per-document rate limits are the brake.
+# no CAPTCHA — the per-IP and per-signer-link rate limits are the brake.
 class ReportsController < ApplicationController
   layout 'form'
 
