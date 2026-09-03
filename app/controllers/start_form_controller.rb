@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 class StartFormController < ApplicationController
+  include SenderViewing
+
   layout 'form'
 
   skip_before_action :authenticate_user!
@@ -140,10 +142,6 @@ class StartFormController < ApplicationController
     end
 
     render :paused, status:
-  end
-
-  def sender_viewing?
-    current_user.present? && current_user.account_id == @template.account_id
   end
 
   def enqueue_new_submitter_jobs(submitter)

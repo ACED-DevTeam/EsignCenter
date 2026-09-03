@@ -328,9 +328,29 @@ RSpec.describe 'Quotas', type: :request do # rubocop:disable RSpec/MultipleDescr
       expect(response.parsed_body).to eq('error' => completions_alert)
     end
 
-    it 'path 4: the email-verification code send is 422 and sends no code', sidekiq: :inline do
+    it 'path 4: the email-verification code send is 422, sends no code, and names no limit to the signer',
+       sidekiq: :inline do
       template.update!(shared_link: true, preferences: template.preferences.merge('shared_link_2fa' => true))
       anonymous!
+
+      refusing do
+        post '/start_form_email_2fa_send', params: { slug: template.slug, submitter: { email: unique_email } }
+      end
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(deliveries.count { |m| m.subject.to_s.include?('verification') }).to eq(0)
+
+      # The refusal an anonymous holder of the slug gets is the same generic
+      # line the paused page shows them: which limit closed this link, the
+      # number it is and the date it resets are the account's own business.
+      expect(response.parsed_body).to eq('error' => signer_page)
+      expect(response.body).not_to include(completions_alert)
+      expect(response.body).not_to include(reset_date)
+      expect(response.body).not_to include('completion')
+
+      # The other half of the same rule: the account's own signed-in user is
+      # told exactly what happened, because only they can act on it.
+      act_as(free_account)
 
       refusing do
         post '/start_form_email_2fa_send', params: { slug: template.slug, submitter: { email: unique_email } }
