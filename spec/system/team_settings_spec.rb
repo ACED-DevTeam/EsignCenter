@@ -35,77 +35,77 @@ RSpec.describe 'Team Settings' do
       end
     end
 
-    it 'creates a new user' do
+    # Session 7 Phase B: on a customer account the modal writes an INVITATION
+    # that holds the seat, and the person chooses their own name and password
+    # when they accept it (docs/billing.md §11). Internal and operator
+    # accounts still create the user outright.
+    it 'invites a new person and holds a seat for them' do
       click_link 'New User'
 
       within '#modal' do
-        fill_in 'First name', with: 'Joseph'
-        fill_in 'Last name', with: 'Smith'
         fill_in 'Email', with: 'joseph.smith@example.com'
-        fill_in 'Password', with: 'password'
 
-        expect do
-          click_button 'Submit'
-        end.to change(User, :count).by(1)
-
-        user = User.last
-
-        expect(user.first_name).to eq('Joseph')
-        expect(user.last_name).to eq('Smith')
-        expect(user.email).to eq('joseph.smith@example.com')
-        expect(user.account).to eq(account)
+        click_button 'Send invitation'
       end
+
+      expect(page).to have_content('User has been invited')
+
+      invite = AccountInvite.last
+
+      expect(invite.email).to eq('joseph.smith@example.com')
+      expect(invite.account).to eq(account)
+      expect(invite).to be_pending
+      expect(User.find_by(email: 'joseph.smith@example.com')).to be_nil
     end
 
-    it "doesn't create a new user if a user already exists" do
+    it "doesn't invite somebody who is already in the account" do
       click_link 'New User'
 
       within '#modal' do
-        fill_in 'First name', with: 'Michael'
-        fill_in 'Last name', with: 'Jordan'
         fill_in 'Email', with: users.first.email
-        fill_in 'Password', with: 'password'
 
         expect do
-          click_button 'Submit'
-        end.not_to change(User, :count)
+          click_button 'Send invitation'
+        end.not_to change(AccountInvite, :count)
       end
 
       expect(page).to have_content('Email already exists')
     end
 
-    it "doesn't create a new user if a user belongs to another account" do
+    # D50: this used to be "Email has already been taken", which left the
+    # invitee with nothing to click. It is now an invitation that offers to
+    # move them and their documents into this team
+    # (spec/golden/seats_spec.rb).
+    it 'offers to move somebody who already has an account of their own' do
       user = create(:user, account: second_account)
       visit settings_users_path
 
       click_link 'New User'
 
       within '#modal' do
-        fill_in 'First name', with: 'Michael'
-        fill_in 'Last name', with: 'Jordan'
         fill_in 'Email', with: user.email
-        fill_in 'Password', with: 'password'
 
-        expect do
-          click_button 'Submit'
-        end.not_to change(User, :count)
-
-        expect(page).to have_content('Email has already been taken')
+        click_button 'Send invitation'
       end
+
+      expect(page).to have_content('User has been invited')
+      expect(page).to have_no_content('already been taken')
+
+      invite = AccountInvite.find_by!(email: user.email)
+
+      expect(invite.collision_user).to eq(user)
+      expect(user.reload.account).to eq(second_account)
     end
 
-    it 'does not allow to create a new user with an invalid email' do
+    it 'does not allow an invitation to an invalid email' do
       click_link 'New User'
 
       within '#modal' do
-        fill_in 'First name', with: 'Joseph'
-        fill_in 'Last name', with: 'Smith'
         fill_in 'Email', with: 'joseph.smith@gmail'
-        fill_in 'Password', with: 'password'
 
         expect do
-          click_button 'Submit'
-        end.not_to change(User, :count)
+          click_button 'Send invitation'
+        end.not_to change(AccountInvite, :count)
 
         expect(page).to have_content('Email is invalid')
       end

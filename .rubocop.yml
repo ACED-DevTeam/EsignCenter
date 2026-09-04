@@ -116,6 +116,13 @@ Rails/StrongParametersExpect:
 Rails/RedirectBackOrTo:
   Enabled: false
 
+# AccountInvite.find_by_token is a real class method (it hashes the raw token
+# and looks the digest up), not ActiveRecord's dynamic finder for a `token`
+# column — there is no such column.
+Rails/DynamicFindBy:
+  AllowedMethods:
+    - find_by_token
+
 Rails/UnknownEnv:
   Environments:
     - development

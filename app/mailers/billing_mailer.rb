@@ -33,6 +33,19 @@ class BillingMailer < ApplicationMailer
     mail(to: @recipients, subject: 'Your EsignCenter payment went through')
   end
 
+  # The plan no longer has room for everyone (D43). Nobody was deleted: one
+  # admin keeps full access, the rest became read-only, and this mail says who
+  # and where to change it.
+  def seats_reduced(account, kept:, seats:)
+    return if prepare(account).blank?
+
+    @kept_name = kept&.full_name.presence || kept&.email
+    @seats = seats
+    @users_url = "#{root_url.delete_suffix('/')}/settings/users"
+
+    mail(to: @recipients, subject: 'Your EsignCenter plan now has fewer seats')
+  end
+
   private
 
   # The first email is news; the last one is a deadline. Saying the same

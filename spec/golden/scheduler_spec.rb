@@ -17,7 +17,7 @@ RSpec.describe 'Scheduler', type: :lib do
   end
 
   it 'declares the heartbeat every minute on the recurrent queue' do
-    expect(schedule.keys).to contain_exactly('scheduler_heartbeat', 'stripe_reconciliation', 'billing_dunning')
+    expect(schedule.keys).to contain_exactly('scheduler_heartbeat', 'stripe_reconciliation', 'billing_lifecycle')
     expect(schedule['scheduler_heartbeat']).to include(
       'cron' => '* * * * *', 'class' => 'SchedulerHeartbeatJob', 'queue' => 'recurrent'
     )
@@ -49,25 +49,37 @@ RSpec.describe 'Scheduler', type: :lib do
     expect(job.queue_name_with_prefix).to eq('billing')
   end
 
-  # The dunning clock (D43/D57): reminder emails through the 14-day grace
-  # period and the suspension at the end of it. HOURLY on purpose — day 14
+  # The billing clock (D43/D57): reminder emails through the 14-day grace
+  # period, the suspension at the end of it, and — since Session 7 Phase B,
+  # which renamed the job from BillingDunningJob to match what it now does —
+  # the seats of invitations nobody accepted. HOURLY on purpose: day 14
   # decides whether an account can still send, and a daily job would let a
   # suspended account keep sending (or keep a paid-up one suspended) for up
   # to a day (lib/billing_lifecycle.rb).
-  it 'declares the dunning clock hourly on the billing queue' do
-    expect(schedule['billing_dunning']).to include(
-      'cron' => '15 * * * *', 'class' => 'BillingDunningJob', 'queue' => 'billing'
+  it 'declares the billing clock hourly on the billing queue and runs both sweeps' do
+    expect(schedule['billing_lifecycle']).to include(
+      'cron' => '15 * * * *', 'class' => 'BillingLifecycleJob', 'queue' => 'billing'
     )
 
     Sidekiq::Cron::ScheduleLoader.new.load_schedule
 
-    job = Sidekiq::Cron::Job.find('billing_dunning')
+    job = Sidekiq::Cron::Job.find('billing_lifecycle')
 
     expect(job).to be_present
     expect(job.source).to eq('schedule')
-    expect(job.klass).to eq('BillingDunningJob')
+    expect(job.klass).to eq('BillingLifecycleJob')
     expect(job.cron).to eq('15 * * * *')
     expect(job.queue_name_with_prefix).to eq('billing')
+
+    # One tick, both sweeps: a rename that quietly dropped one of them would
+    # leave either the dunning clock or the seats frozen.
+    allow(BillingLifecycle).to receive(:run_dunning!)
+    allow(BillingLifecycle).to receive(:expire_invites!)
+
+    BillingLifecycleJob.new.perform
+
+    expect(BillingLifecycle).to have_received(:run_dunning!).once
+    expect(BillingLifecycle).to have_received(:expire_invites!).once
   end
 
   # sidekiq-cron's own startup hook loads its default schedule file; the app

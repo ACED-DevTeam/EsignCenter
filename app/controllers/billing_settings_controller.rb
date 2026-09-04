@@ -157,7 +157,12 @@ class BillingSettingsController < ApplicationController
 
   def load_subscription
     @subscription = @billing.account_subscription
+    # Occupancy: the people who hold a seat plus the invitations holding one
+    # for somebody who has not arrived yet (Session 7 Phase B). The pending
+    # half is called out separately, because it is the half a customer can
+    # cancel to get a seat back.
     @seats_in_use = Accounts.users_count(@billing)
+    @pending_invites_count = AccountInvite.pending.where(account_id: Accounts.seat_account_ids(@billing)).count
     @seats_billed = [@seats_in_use, 1].max
     @state = @subscription&.access_state || 'free'
     # One trial per account, ever: the moment Stripe hands us a subscription

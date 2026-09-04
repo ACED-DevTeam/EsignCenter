@@ -13,32 +13,10 @@
 #   A  sub_1UBSbL…AD6ynIIK / cus_VBqHCUoJle1zGV — trialing → active → canceling → canceled
 #   B  sub_1UBSds…s81X4tCG / cus_VBqKHh0NHYmvT1 — active → past_due → active (real test clock)
 
-# The two fixture actors, the credentials every example runs against and the
-# reader for the captures — shared by both top-level groups below, so a
-# fixture id or a key can never drift between them.
-RSpec.shared_context 'with a Stripe test account' do
-  let(:subscription_a) { 'sub_1UBSbL4rEeOqtLcXAD6ynIIK' }
-  let(:customer_a) { 'cus_VBqHCUoJle1zGV' }
-  let(:subscription_b) { 'sub_1UBSds4rEeOqtLcXs81X4tCG' }
-  let(:customer_b) { 'cus_VBqKHh0NHYmvT1' }
-  let(:webhook_secret) { 'whsec_testsecret' }
-  let(:fixture_price) { 'price_1UAt8N4rEeOqtLcX1amJxYdZ' }
-
-  stash_env(*StripeBilling::CONFIG_KEYS.keys, 'BILLING_ENABLED')
-
-  before do
-    ENV['STRIPE_SECRET_KEY'] = 'sk_test_fake'
-    ENV['STRIPE_PUBLISHABLE_KEY'] = 'pk_test_fake'
-    ENV['STRIPE_WEBHOOK_SECRET'] = webhook_secret
-    ENV['STRIPE_PRICE_ID'] = fixture_price
-    ENV['STRIPE_PORTAL_CONFIGURATION_ID'] = 'bpc_test'
-    ENV['BILLING_ENABLED'] = 'true'
-  end
-
-  def fixture_body(name)
-    Rails.root.join("spec/fixtures/stripe/#{name}.json").read
-  end
-end
+# The fixture actors, the credentials every example runs against and the
+# Stripe stubs both this file and spec/golden/seats_spec.rb drive live in
+# spec/support/stripe_test_account.rb — a shared context, loaded for every
+# spec file, so a fixture id or a key can never drift between the two.
 
 RSpec.describe 'Stripe billing', type: :request do # rubocop:disable RSpec/MultipleDescribes
   include_context 'with a Stripe test account'

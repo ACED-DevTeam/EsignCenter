@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_03_030000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_04_000300) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gin"
   enable_extension "pg_catalog.plpgsql"
@@ -70,6 +70,27 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_03_030000) do
     t.index ["account_id"], name: "index_account_counters_on_account_id"
   end
 
+  create_table "account_invites", force: :cascade do |t|
+    t.datetime "accepted_at"
+    t.bigint "account_id", null: false
+    t.bigint "collision_user_id"
+    t.datetime "created_at", null: false
+    t.string "email", null: false
+    t.datetime "expires_at", null: false
+    t.bigint "invited_by_id"
+    t.datetime "released_at"
+    t.datetime "revoked_at"
+    t.string "role", null: false
+    t.string "token_digest", null: false
+    t.datetime "updated_at", null: false
+    t.index ["account_id"], name: "index_account_invites_on_account_id"
+    t.index ["collision_user_id"], name: "index_account_invites_on_collision_user_id"
+    t.index ["email"], name: "index_account_invites_on_email"
+    t.index ["expires_at"], name: "index_account_invites_on_expires_at"
+    t.index ["invited_by_id"], name: "index_account_invites_on_invited_by_id"
+    t.index ["token_digest"], name: "index_account_invites_on_token_digest", unique: true
+  end
+
   create_table "account_limit_overrides", force: :cascade do |t|
     t.bigint "account_id", null: false
     t.integer "completions_per_month"
@@ -92,6 +113,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_03_030000) do
     t.index ["account_id", "linked_account_id"], name: "idx_on_account_id_linked_account_id_48ab9f79d2", unique: true
     t.index ["account_id"], name: "index_account_linked_accounts_on_account_id"
     t.index ["linked_account_id"], name: "index_account_linked_accounts_on_linked_account_id"
+  end
+
+  create_table "account_moves", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.bigint "from_account_id", null: false
+    t.bigint "to_account_id", null: false
+    t.bigint "user_id", null: false
+    t.index ["from_account_id"], name: "index_account_moves_on_from_account_id"
+    t.index ["to_account_id"], name: "index_account_moves_on_to_account_id"
+    t.index ["user_id"], name: "index_account_moves_on_user_id"
   end
 
   create_table "account_subscriptions", force: :cascade do |t|
@@ -622,6 +653,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_03_030000) do
     t.boolean "otp_required_for_login", default: false, null: false
     t.string "otp_secret"
     t.boolean "platform_operator", default: false, null: false
+    t.datetime "read_only_at"
     t.datetime "remember_created_at"
     t.datetime "reset_password_sent_at"
     t.string "reset_password_token"
@@ -633,6 +665,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_03_030000) do
     t.string "uuid", null: false
     t.index ["account_id"], name: "index_users_on_account_id"
     t.index ["email"], name: "index_users_on_email", unique: true
+    t.index ["read_only_at"], name: "index_users_on_read_only_at", where: "(read_only_at IS NOT NULL)"
     t.index ["reset_password_token"], name: "index_users_on_reset_password_token", unique: true
     t.index ["unlock_token"], name: "index_users_on_unlock_token", unique: true
     t.index ["uuid"], name: "index_users_on_uuid", unique: true
@@ -693,9 +726,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_03_030000) do
   add_foreign_key "account_accesses", "accounts"
   add_foreign_key "account_configs", "accounts"
   add_foreign_key "account_counters", "accounts"
+  add_foreign_key "account_invites", "accounts"
+  add_foreign_key "account_invites", "users", column: "collision_user_id", on_delete: :nullify
+  add_foreign_key "account_invites", "users", column: "invited_by_id", on_delete: :nullify
   add_foreign_key "account_limit_overrides", "accounts"
   add_foreign_key "account_linked_accounts", "accounts"
   add_foreign_key "account_linked_accounts", "accounts", column: "linked_account_id"
+  add_foreign_key "account_moves", "accounts", column: "from_account_id"
+  add_foreign_key "account_moves", "accounts", column: "to_account_id"
+  add_foreign_key "account_moves", "users"
   add_foreign_key "account_subscriptions", "accounts"
   add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"

@@ -16,11 +16,12 @@ stripe_reconciliation:
   queue: billing
   description: 'Re-reads every Stripe subscription, repairs drift and re-enqueues stuck webhook events'
 
-# The dunning clock: reminder emails through the 14-day grace period and the
-# suspension at the end of it (lib/billing_lifecycle.rb). Hourly, so the
-# deadline lands within the hour rather than up to a day late.
-billing_dunning:
+# The billing clock: reminder emails through the 14-day grace period, the
+# suspension at the end of it, and the seats of invitations nobody accepted
+# (lib/billing_lifecycle.rb). Hourly, so the deadline lands within the hour
+# rather than up to a day late.
+billing_lifecycle:
   cron: '15 * * * *'
-  class: 'BillingDunningJob'
+  class: 'BillingLifecycleJob'
   queue: billing
-  description: 'Sends past-due reminder emails and suspends accounts whose 14-day grace period has run out'
+  description: 'Sends past-due reminders, suspends accounts whose 14-day grace period ran out, and releases the seats of expired invitations'

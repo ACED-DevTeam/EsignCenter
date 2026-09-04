@@ -45,11 +45,17 @@
     </dl>
 
     <%# Seats are frozen at Checkout, so the people in the account can differ
-        from the seats Stripe bills; the page says both rather than quoting a
-        number the invoice will not match. %>
-    <% if @billed_seats && @seats_in_use != @billed_seats %>
+        from the seats Stripe bills; the card says both rather than quoting a
+        number the invoice will not match — and names the invitations that are
+        holding a seat for somebody who has not arrived yet. %>
+    <% if @billed_seats %>
       <p class="text-sm text-base-content/70" dir="auto" data-billing-seats-in-use>
-        <%= t('billing_people_in_account', count: @seats_in_use) %>
+        <% if @pending_invites_count.to_i.positive? %>
+          <%= t('billing_seats_summary_pending', seats: @billed_seats, in_use: @seats_in_use, pending: @pending_invites_count) %>
+        <% else %>
+          <%= t('billing_seats_summary', seats: @billed_seats, in_use: @seats_in_use) %>
+        <% end %>
+        <%= link_to t('billing_manage_users_link'), settings_users_path, class: 'link' %>
       </p>
     <% end %>
 

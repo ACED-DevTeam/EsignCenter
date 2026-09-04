@@ -590,8 +590,9 @@ emails, on **day 0, day 3, day 7 and day 13**. Every one of them says the date
 the account will be suspended and links straight to `/settings/billing`.
 
 Day 0 goes out the moment the webhook lands, so the customer hears within
-seconds. The other three come from an **hourly** job (`billing_dunning` in
-`config/schedule.yml`). Hourly rather than daily because day 14 is a deadline
+seconds. The other three come from an **hourly** job (`billing_lifecycle` in
+`config/schedule.yml`, which also releases the seats of invitations nobody
+accepted — §11). Hourly rather than daily because day 14 is a deadline
 that decides whether an account can still send: on a daily job an account
 would keep sending for up to a day past it, and someone who paid at 09:00
 would still be suspended the next morning.
@@ -635,3 +636,71 @@ it can.
 
 Internal and operator accounts are the platform itself and are never suspended
 by any of this.
+
+## 11. Seats: adding people, and what each one costs
+
+A person is a seat, and a seat is $10 a month. The free plan has exactly one.
+
+### Inviting somebody
+
+An admin invites by email address from **Settings → Users**. On a customer
+account this writes an **invitation**, not a user: the invitation holds the
+seat, lasts 7 days, and the person themselves chooses their name and password
+when they accept it. Nothing half-made is left behind if they never do.
+
+What happens next depends on whether there is a seat free:
+
+- **A seat is free** (the subscription already bills for more people than are
+  in the account) — the invitation is written immediately and the email goes
+  out. Stripe is not called at all; the seat was already paid for.
+- **Every seat is taken** — the admin is shown, before anything happens, what
+  Stripe will charge **today** for the rest of the current billing period, and
+  what the subscription will cost from the next renewal. Only when they
+  confirm is the subscription updated, and only once Stripe has actually made
+  the change is the invitation written and sent. A seat is never promised
+  before it has been paid for.
+- If the card needs an extra step (3-D Secure), Stripe parks the change rather
+  than making it. Nothing is charged, no seat is added and no invitation is
+  written; the admin is sent to **Manage billing** to finish it and can then
+  invite again.
+- An account whose plan the EsignCenter team granted by hand, and a child
+  account whose parent pays, cannot buy seats: they get the ordinary "all
+  seats are in use" refusal instead.
+
+Pending invitations are listed on Settings → Users with the date they expire,
+and can be **resent** (a fresh link, a fresh week) or **cancelled**.
+
+### Seats going back down
+
+A seat comes back when an invitation lapses or is cancelled, when a member is
+removed, and when a member is made read-only. The subscription's seat count is
+then lowered to the number actually occupied — never below that, and never
+below one — with **no mid-cycle refund** (D43): the next invoice is simply
+smaller. The hourly billing job (`BillingLifecycleJob`) is what notices
+invitations that have lapsed.
+
+### Being invited when you already have an account
+
+If the invited address already belongs to somebody's own EsignCenter account,
+that is not an error. The invitation says so, and accepting **moves** them:
+their templates, folders and documents all come into the team, and their old
+account is archived (nothing is deleted, and documents it already signed stay
+verifiable on `/verify` exactly as they are).
+
+That move is refused, with an explanation rather than an error, when the
+account being left has other people in it, still has a paid subscription
+("cancel your subscription first"), or is an internal/operator/testing
+account. Accepting requires being signed in as that person.
+
+### Dropping back to the free plan with more people than seats
+
+Nobody is deleted. The admin who signed in most recently keeps full access and
+everyone else becomes **read-only**: they can still sign in, read, download and
+export everything, and they cannot create or change anything. An email tells
+the admins what happened, and Settings → Users has **Give full access** and
+**Make read-only** on each person so the admin decides who holds the seats.
+Paying again does not undo it automatically — the admin chooses.
+
+An account can never lose its last administrator: removing, demoting,
+archiving or making read-only the only person who can administer it is
+refused.

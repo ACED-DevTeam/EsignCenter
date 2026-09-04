@@ -1,0 +1,71 @@
+<% content_for(:html_title, "#{t('invite_page_title', team: @account.name)} | EsignCenter") %>
+<main class="max-w-xl mx-auto px-4 mt-10 md:mt-16 mb-8">
+  <div class="space-y-8">
+    <div class="text-center space-y-3">
+      <div class="mx-auto w-16 h-16 rounded-full bg-base-200 flex items-center justify-center">
+        <%= svg_icon('users', class: 'w-9 h-9') %>
+      </div>
+      <h1 dir="auto" class="text-3xl md:text-4xl font-bold">
+        <%= t('invite_page_title', team: @account.name) %>
+      </h1>
+      <p dir="auto" class="text-base-content/80 leading-relaxed">
+        <%= t('invite_page_intro', inviter: @invite.invited_by&.full_name.presence || @account.name, team: @account.name) %>
+      </p>
+    </div>
+
+    <% if @error %>
+      <div class="alert items-start bg-base-100 border border-red-400 text-red-400" role="alert">
+        <%= svg_icon('info_circle', class: 'stroke-current shrink-0 h-6 w-6') %>
+        <p dir="auto" class="text-sm"><%= @error %></p>
+      </div>
+    <% end %>
+
+    <% if @invite.collision? %>
+      <%# The move, in plain words, before the button that does it (D50). %>
+      <div class="rounded-2xl border border-base-300 bg-base-200/50 p-5 space-y-3">
+        <p dir="auto" class="font-medium"><%= t('invite_move_heading', team: @account.name) %></p>
+        <ul class="list-disc ps-5 space-y-1 text-sm text-base-content/80">
+          <li dir="auto"><%= t('invite_move_point_documents', old_team: @collision_user.account.name, team: @account.name) %></li>
+          <li dir="auto"><%= t('invite_move_point_closed', old_team: @collision_user.account.name) %></li>
+          <li dir="auto"><%= t('invite_move_point_verify') %></li>
+        </ul>
+      </div>
+      <% if current_user && current_user.id == @collision_user.id %>
+        <%= form_with url: invite_path(token: params[:token]), method: :post, local: true, class: 'space-y-2' do |f| %>
+          <%= f.button button_title(title: t('invite_move_button', team: @account.name)), class: 'base-button w-full' %>
+        <% end %>
+      <% else %>
+        <div class="space-y-3 text-center">
+          <p dir="auto" class="text-sm text-base-content/70"><%= t('invite_sign_in_required', email: @collision_user.email) %></p>
+          <%= link_to t('sign_in'), new_user_session_path, class: 'base-button w-full' %>
+        </div>
+      <% end %>
+    <% else %>
+      <%= form_with url: invite_path(token: params[:token]), method: :post, local: true, class: 'space-y-5' do |f| %>
+        <div class="flex gap-4">
+          <div class="form-control w-full">
+            <%= f.label :first_name, t('first_name'), class: 'label font-medium' %>
+            <%= f.text_field :first_name, value: params[:first_name], required: true, class: 'base-input w-full', dir: 'auto' %>
+          </div>
+          <div class="form-control w-full">
+            <%= f.label :last_name, t('last_name'), class: 'label font-medium' %>
+            <%= f.text_field :last_name, value: params[:last_name], required: true, class: 'base-input w-full', dir: 'auto' %>
+          </div>
+        </div>
+        <div class="form-control">
+          <%= f.label :email, t('email'), class: 'label font-medium' %>
+          <%= f.text_field :email, value: @invite.email, disabled: true, class: 'base-input w-full' %>
+        </div>
+        <div class="form-control">
+          <%= f.label :password, t('password'), class: 'label font-medium' %>
+          <%= f.password_field :password, required: true, minlength: 6, autocomplete: 'new-password', class: 'base-input w-full' %>
+        </div>
+        <%= f.button button_title(title: t('invite_accept_button', team: @account.name)), class: 'base-button w-full' %>
+      <% end %>
+    <% end %>
+
+    <p class="text-center text-sm text-base-content/60" dir="auto">
+      <%= t('invite_expires_on', date: l(@invite.expires_at.to_date, format: :long)) %>
+    </p>
+  </div>
+</main>

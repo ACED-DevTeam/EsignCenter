@@ -726,11 +726,16 @@ RSpec.describe 'Billing page', type: :request do # rubocop:disable RSpec/Multipl
 
     # Seats are frozen at Checkout: what Stripe bills and who is in the
     # account can differ, and the page has to quote the invoice.
-    it 'quotes the seats Stripe bills, and names the people in the account separately' do
+    #
+    # Session 7 Phase B replaced the bare "N people in your account" line with
+    # the seats card the seat flow needs: seats billed, seats occupied, the
+    # invitations holding one, and the way to Settings → Users.
+    it 'quotes the seats Stripe bills, and names who is using them' do
       create(:account_subscription, account:, access_state: 'active', status: 'active', quantity: 5,
                                     stripe_status: 'active', stripe_customer_id: 'cus_x',
                                     stripe_subscription_id: 'sub_x', current_period_end: 20.days.from_now)
       create(:user, account:) # two people, five seats billed
+      create(:account_invite, account:) # and one seat held for somebody on the way
 
       doc = page
 
@@ -738,9 +743,10 @@ RSpec.describe 'Billing page', type: :request do # rubocop:disable RSpec/Multipl
       expect(doc.at('[data-billing-amount]').text.strip).to eq(
         I18n.t('billing_amount_per_month', total: 50, price: 10)
       )
-      expect(doc.at('[data-billing-seats-in-use]').text.strip).to eq(
-        I18n.t('billing_people_in_account', count: 2)
+      expect(doc.at('[data-billing-seats-in-use]').text).to include(
+        I18n.t('billing_seats_summary_pending', seats: 5, in_use: 3, pending: 1)
       )
+      expect(doc.at('[data-billing-seats-in-use]').at('a')['href']).to eq('/settings/users')
     end
 
     # An immediately cancelled subscription keeps a billing period that runs

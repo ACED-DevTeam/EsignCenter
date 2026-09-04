@@ -12,11 +12,21 @@ class Ability
     return if user.blank?
 
     role_abilities(user)
-    read_only_abilities(user) if AccountStates.read_only?(user.account)
+    apply_read_only_layer(user) if read_only?(user)
     plan_abilities(user)
   end
 
   private
+
+  # Two different things put a person in read-only, and they take away exactly
+  # the same doors (Session 7):
+  #   * the ACCOUNT is suspended — a customer whose card kept failing;
+  #   * the PERSON lost their seat — a member left behind by a downgrade from
+  #     the paid plan to the free one (D43), whose admin has not (yet) chosen
+  #     to give the seat back.
+  def read_only?(user)
+    user.read_only? || AccountStates.read_only?(user.account)
+  end
 
   # A suspended account is frozen for writes and nothing else (Session 7): a
   # customer whose card kept failing keeps every door that lets them read,
@@ -30,7 +40,7 @@ class Ability
   # of the one page that can fix this) and the personal UserConfig rows.
   # `:read` is never touched anywhere, and the download/export controllers
   # authorize a read.
-  def read_only_abilities(user)
+  def apply_read_only_layer(user)
     cannot %i[create update destroy], [Template, TemplateFolder, TemplateSharing, Submission, Submitter,
                                        User, EncryptedConfig, AccountConfig, WebhookUrl, AccessToken, McpToken]
 
