@@ -17,7 +17,7 @@ RSpec.describe 'Scheduler', type: :lib do
   end
 
   it 'declares the heartbeat every minute on the recurrent queue' do
-    expect(schedule.keys).to contain_exactly('scheduler_heartbeat', 'stripe_reconciliation')
+    expect(schedule.keys).to contain_exactly('scheduler_heartbeat', 'stripe_reconciliation', 'billing_dunning')
     expect(schedule['scheduler_heartbeat']).to include(
       'cron' => '* * * * *', 'class' => 'SchedulerHeartbeatJob', 'queue' => 'recurrent'
     )
@@ -46,6 +46,27 @@ RSpec.describe 'Scheduler', type: :lib do
     expect(job).to be_present
     expect(job.source).to eq('schedule')
     expect(job.klass).to eq('StripeReconciliationJob')
+    expect(job.queue_name_with_prefix).to eq('billing')
+  end
+
+  # The dunning clock (D43/D57): reminder emails through the 14-day grace
+  # period and the suspension at the end of it. HOURLY on purpose — day 14
+  # decides whether an account can still send, and a daily job would let a
+  # suspended account keep sending (or keep a paid-up one suspended) for up
+  # to a day (lib/billing_lifecycle.rb).
+  it 'declares the dunning clock hourly on the billing queue' do
+    expect(schedule['billing_dunning']).to include(
+      'cron' => '15 * * * *', 'class' => 'BillingDunningJob', 'queue' => 'billing'
+    )
+
+    Sidekiq::Cron::ScheduleLoader.new.load_schedule
+
+    job = Sidekiq::Cron::Job.find('billing_dunning')
+
+    expect(job).to be_present
+    expect(job.source).to eq('schedule')
+    expect(job.klass).to eq('BillingDunningJob')
+    expect(job.cron).to eq('15 * * * *')
     expect(job.queue_name_with_prefix).to eq('billing')
   end
 

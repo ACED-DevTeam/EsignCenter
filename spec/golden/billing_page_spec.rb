@@ -674,6 +674,25 @@ RSpec.describe 'Billing page', type: :request do # rubocop:disable RSpec/Multipl
       expect(doc.at('[data-billing-portal-button]')).to be_present
     end
 
+    # Review-6 S3: the state stays `past_due` (the payment problem is the more
+    # urgent fact and drives the banner), but a subscription set to cancel
+    # still ENDS on that date, and the card has to say so. Driven off
+    # `cancel_at_period_end`, never off the access state.
+    it 'still says when a past-due subscription set to cancel will end' do
+      create(:account_subscription, account:, access_state: 'past_due', status: 'past_due',
+                                    cancel_at_period_end: true, stripe_customer_id: 'cus_x',
+                                    stripe_subscription_id: 'sub_x', past_due_since: 2.days.ago,
+                                    current_period_end: 6.days.from_now)
+
+      doc = page
+
+      expect(doc.at('[data-billing-state]')['data-billing-state']).to eq('past_due')
+      expect(doc.at('[data-billing-banner="past_due"]')).to be_present
+      expect(doc.at('[data-billing-headline]').text.strip).to eq(
+        I18n.t('billing_cancels_on', date: I18n.l(6.days.from_now.to_date, format: :long))
+      )
+    end
+
     it 'says when a cancelling subscription ends and that it can be resumed' do
       create(:account_subscription, account:, access_state: 'canceling', status: 'active',
                                     cancel_at_period_end: true, stripe_customer_id: 'cus_x',

@@ -11,6 +11,8 @@
 #  name                 :string           not null
 #  sending_pause_reason :string
 #  sending_paused_at    :datetime
+#  suspended_at         :datetime
+#  suspension_reason    :string
 #  timezone             :string           not null
 #  uuid                 :string           not null
 #  created_at           :datetime         not null
@@ -19,6 +21,7 @@
 # Indexes
 #
 #  index_accounts_on_account_kind  (account_kind)
+#  index_accounts_on_suspended_at  (suspended_at) WHERE (suspended_at IS NOT NULL)
 #  index_accounts_on_uuid          (uuid) UNIQUE
 #
 class Account < ApplicationRecord

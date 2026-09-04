@@ -553,6 +553,29 @@ RSpec.describe 'Quotas', type: :request do # rubocop:disable RSpec/MultipleDescr
     end
   end
 
+  # The other half of D74. A correction is exempt from the completions cap
+  # only because it CANNOT add a completion: a copy of a family that has
+  # never been completed can, so it is an ordinary new document and the cap
+  # refuses it like any other. (The document has to exist before the cap is
+  # reached, which is why this is its own group.)
+  describe 'D74: a correction of a family that never completed' do
+    it 'is still refused by the completions cap', sidekiq: :inline do
+      template = text_template_for(free_account)
+      never_signed = send_one(free_account, template:).submitters.first
+                                                      .tap { |s| s.update!(email: admin_for(free_account).email) }
+
+      cap_completions!(free_account, template:)
+      act_as(free_account)
+
+      expect(Quotas.completions_this_month(free_account)).to eq(5)
+
+      refusing { put "/submitters_resubmit/#{never_signed.id}" }
+
+      expect(response).to redirect_to("/s/#{never_signed.slug}")
+      expect(flash[:alert]).to eq(completions_alert)
+    end
+  end
+
   describe 'the seven creation paths on a free account at 5 completions' do
     let(:template) { text_template_for(free_account) }
     let(:capped) { cap_completions!(free_account, template:) }
@@ -660,15 +683,34 @@ RSpec.describe 'Quotas', type: :request do # rubocop:disable RSpec/MultipleDescr
       expect(response.parsed_body).to eq('error' => completions_alert)
     end
 
-    it 'path 5: the dashboard resubmit redirects with the alert and creates nothing', sidekiq: :inline do
+    # Changed by D74 (Session 7): correcting a document whose family has
+    # ALREADY been counted cannot add a completion, so the completions cap is
+    # not what should stand in its way — a mistake is usually spotted exactly
+    # when the month has run out. The send is still spent, and a correction
+    # of a family that never completed is still refused (the second example).
+    it 'path 5a: the dashboard resubmit of a signed document is allowed at the cap and still costs a send',
+       sidekiq: :inline do
       # The dashboard offers "resubmit" only for the signed-in user's own row.
       original = capped.last.tap { |s| s.update!(email: admin_for(free_account).email) }
       act_as(free_account)
 
-      refusing { put "/submitters_resubmit/#{original.id}" }
+      expect(Quotas.completions_this_month(free_account)).to eq(5)
+      sends_before = Quotas.sends_this_month(free_account)
 
-      expect(response).to redirect_to("/s/#{original.slug}")
-      expect(flash[:alert]).to eq(completions_alert)
+      put "/submitters_resubmit/#{original.id}"
+
+      copy = Submitter.order(:id).last
+
+      expect(response).to redirect_to("/s/#{copy.slug}")
+      expect(flash[:alert]).to be_blank
+      expect(copy.submission.lineage_root_id).to eq(original.submission_id)
+      expect(Quotas.sends_this_month(free_account)).to eq(sends_before + 1)
+
+      # And it really cannot add a completion: signing the copy leaves the
+      # month's count exactly where it was.
+      complete!(copy)
+
+      expect(Quotas.completions_this_month(free_account)).to eq(5)
     end
 
     it 'path 6: API, MCP and signing-session doors share the guard — a paused paid account gets 422, nothing created',

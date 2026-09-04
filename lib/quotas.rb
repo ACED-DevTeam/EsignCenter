@@ -24,7 +24,7 @@ module Quotas
   LimitSet = Struct.new(:completions_per_month, :sends_per_month, :in_flight, :seats, :storage_bytes)
 
   class LimitReached < StandardError
-    REASONS = %i[completions sends in_flight sending_paused].freeze
+    REASONS = %i[completions sends in_flight sending_paused suspended].freeze
 
     attr_reader :reason, :limit, :resets_at
 
@@ -152,7 +152,12 @@ module Quotas
   # The one check every creation path makes, inside with_creation_lock.
   # `count` is how many submissions the caller is about to create: a batch is
   # refused whole when it would cross a cap.
-  def assert_can_create_submissions!(account, count: 1)
+  #
+  # `correction_of` is the ORIGIN document when this creation is a correction
+  # being re-sent (D74). A correction of a family that has already been
+  # counted cannot add a completion, so the monthly completions cap is not
+  # what should stand in its way — every other rule still does.
+  def assert_can_create_submissions!(account, count: 1, correction_of: nil)
     billing = Plans.billing_account(account)
     plan = Plans.key_for(billing)
 
@@ -160,11 +165,19 @@ module Quotas
 
     raise LimitReached, :sending_paused if SendingPause.paused?(billing)
 
+    # A suspended account creates nothing, on any plan and through any door.
+    # The Ability layer already closes the HTML controllers and the token
+    # guard closes the API; this is the chokepoint everything else shares —
+    # share links, the start form, MCP, bulk sends — so a path added later
+    # cannot forget it. Never INTERNAL: the early return above is above this.
+    raise LimitReached, :suspended if AccountStates.read_only?(account)
+
     return true unless plan == Plans::FREE
 
     limits = limits_for(billing)
 
-    if limits.completions_per_month && completions_this_month(billing) >= limits.completions_per_month
+    if !counted_family?(correction_of) && limits.completions_per_month &&
+       completions_this_month(billing) >= limits.completions_per_month
       raise LimitReached.new(:completions, limit: limits.completions_per_month, resets_at: resets_at)
     end
 
@@ -177,6 +190,14 @@ module Quotas
     end
 
     true
+  end
+
+  # D74: is this creation a correction of a document whose family has already
+  # been counted? Only then is the completions cap skipped — a correction of
+  # a family that never completed is an ordinary new document to sign, and a
+  # free account at its cap is refused it like any other.
+  def counted_family?(correction_of)
+    correction_of.present? && Submissions::Lineage.first_completion_exists?(correction_of)
   end
 
   # The reason a share link is closed right now, or nil. Computed on every
@@ -315,10 +336,12 @@ module Quotas
 
   def message_for(reason, limit: nil, resets_at: nil, locale: nil)
     I18n.with_locale(locale || I18n.locale) do
-      if reason == :sending_paused
-        I18n.t('sending_paused_alert')
-      else
-        I18n.t("quota_reached_#{reason}", limit:, date: resets_at&.utc&.strftime('%Y-%m-%d'))
+      case reason
+      when :sending_paused then I18n.t('sending_paused_alert')
+      # Not a quota at all: the account is suspended, and the only thing that
+      # reopens it is settling the payment.
+      when :suspended then I18n.t('account_suspended_alert')
+      else I18n.t("quota_reached_#{reason}", limit:, date: resets_at&.utc&.strftime('%Y-%m-%d'))
       end
     end
   end

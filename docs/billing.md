@@ -578,3 +578,60 @@ and a Sentry report — never an error page.
 Every upgrade call-to-action in the product (`[data-upgrade-cta]`) points at
 this page when the person looking at it could buy, and at `/settings/usage`
 otherwise, so the link is never dead and never lands anyone on a refusal.
+
+## 10. When the card keeps failing: grace, reminders, suspension
+
+A failed renewal does not take the product away on day one. Stripe reports the
+subscription as `past_due` and keeps retrying the card; the app starts a clock
+on the first failure (`account_subscriptions.past_due_since`) and gives the
+customer **14 days of grace**. Through those 14 days everything works exactly
+as before — the paid features included — and the account's admins get four
+emails, on **day 0, day 3, day 7 and day 13**. Every one of them says the date
+the account will be suspended and links straight to `/settings/billing`.
+
+Day 0 goes out the moment the webhook lands, so the customer hears within
+seconds. The other three come from an **hourly** job (`billing_dunning` in
+`config/schedule.yml`). Hourly rather than daily because day 14 is a deadline
+that decides whether an account can still send: on a daily job an account
+would keep sending for up to a day past it, and someone who paid at 09:00
+would still be suspended the next morning.
+
+**On day 14 the account is suspended.** So is an account whose subscription
+Stripe has given up on entirely (`unpaid`) or paused — there is no grace left
+to give at that point, so it happens at once.
+
+### What a suspended account can and cannot do
+
+Suspended means **frozen for writes, and nothing else**:
+
+- Everyone can still **sign in**. Nothing is deleted, ever.
+- Every document, template and export stays **readable, downloadable and
+  exportable**.
+- A signer who already has one of the account's documents open **finishes
+  signing it**, and that completion is still recorded. Work in flight is never
+  destroyed by a billing problem.
+- **Nothing new can be created or changed**: documents, templates, folders,
+  people, API keys, webhooks, settings.
+- **API keys, MCP tokens, embedded builder tokens and signing-session tokens
+  are refused** at the door. A machine door has no page to explain itself on,
+  so it simply says the account is not active.
+- The **billing page and each person's own profile stay open**, because those
+  are the pages that can fix it.
+
+A red banner sits above every page of a suspended account with a link to
+`/settings/billing`, and a share link of a suspended account shows the ordinary
+"not accepting responses" page to visitors.
+
+A **child account** that is billed through a parent is frozen when the parent
+is suspended: the parent is the one who pays.
+
+### Getting out of it
+
+**Paying lifts the suspension automatically**, within seconds of the webhook —
+no support ticket, no manual step — and one "your payment went through" email
+goes out. A suspension the operator applied by hand is a different reason
+(`accounts.suspension_reason`) and a payment never lifts it; only whoever set
+it can.
+
+Internal and operator accounts are the platform itself and are never suspended
+by any of this.

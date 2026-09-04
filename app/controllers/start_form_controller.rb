@@ -62,15 +62,7 @@ class StartFormController < ApplicationController
       end
 
       if (is_new_record = @submitter.new_record?)
-        # A closed link takes no new submission: refused here, before the
-        # email-2FA branch below could send a code for a form that cannot be
-        # started. The locked re-check in save_submitter still decides the
-        # race; a pending submitter found above is not a creation.
-        Quotas.assert_can_create_submissions!(@template.account)
-
-        assign_submission_attributes(@submitter, @template)
-
-        Submissions::AssignDefinedSubmitters.call(@submitter.submission)
+        prepare_new_submission!
       else
         @submitter.assign_attributes(ip: request.remote_ip, ua: request.user_agent)
       end
@@ -112,6 +104,20 @@ class StartFormController < ApplicationController
 
   private
 
+  # A closed link takes no new submission: refused here, before the email-2FA
+  # branch could send a code for a form that cannot be started. The locked
+  # re-check in save_submitter still decides the race; a pending submitter
+  # found by find_or_initialize_submitter already exists and is not a
+  # creation. D74: a Resubmit carries the document it corrects, so a family
+  # that has already counted is not refused by the completions cap.
+  def prepare_new_submission!
+    Quotas.assert_can_create_submissions!(@template.account, correction_of: @resubmit_submitter&.submission)
+
+    assign_submission_attributes(@submitter, @template)
+
+    Submissions::AssignDefinedSubmitters.call(@submitter.submission)
+  end
+
   # A NEW submitter on a share link is a new Submission, so it is checked and
   # saved under the account's creation lock (and a paid account's velocity
   # signals recorded there); a pending submitter found by
@@ -120,7 +126,7 @@ class StartFormController < ApplicationController
     return submitter.save unless is_new_record
 
     Quotas.with_creation_lock(@template.account) do
-      Quotas.assert_can_create_submissions!(@template.account)
+      Quotas.assert_can_create_submissions!(@template.account, correction_of: @resubmit_submitter&.submission)
 
       saved = submitter.save
 

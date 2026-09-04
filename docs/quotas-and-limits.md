@@ -77,6 +77,17 @@ going out, so each one uses one of the month's sends (15 on the free plan),
 and that is the limit that bounds this: nobody can loop corrected copies past
 the completion cap without running out of sends first.
 
+Because a correction cannot add a completion, the completion cap does not
+stand in its way either (D74): **correcting a signed document never uses a
+completion and is allowed even when you've reached the monthly limit; it
+still counts as a send.** So a free account that has used all five
+completions can still fix and re-send a document somebody already signed —
+which is exactly when a mistake is usually spotted — while the sends cap, the
+open-documents cap, a sending pause and a billing suspension all still apply.
+A correction of a document whose family has never been completed is not this
+case: nothing has been counted for it yet, so it is an ordinary new document
+and the completion cap refuses it like any other.
+
 (In the data: `submissions.lineage_root_id` names the document the family
 started from — set on every copy, with no foreign key so it outlives a
 deletion — and `submissions.resubmitted_from_id` points at the copy this one
@@ -145,7 +156,7 @@ These are speed limits rather than monthly caps, kept in Redis:
 
 | Throttle | Value |
 |---|---|
-| Public verify page | 10 per minute and 100 per hour per IP |
+| Public verify page | 10 per minute and 100 per hour per visitor IP |
 | Word document conversion | 30 per hour per account |
 | API template / signing-session creation | 300 per minute |
 | Resend an invitation / reminder / signer copy | one per 10 h / 10 h / 4 h |

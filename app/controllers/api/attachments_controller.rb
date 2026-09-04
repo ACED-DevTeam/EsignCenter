@@ -53,7 +53,8 @@ module Api
         !submitter.completed_at? &&
         !submitter.submission.archived_at? &&
         !submitter.submission.expired? &&
-        !submitter.submission.template&.archived_at?
+        !submitter.submission.template&.archived_at? &&
+        !submitter.account.archived_at?
     end
 
     def build_new_cookie_signatures_json(submitter, attachment)

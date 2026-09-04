@@ -1,0 +1,8 @@
+<p>Hello,</p>
+<p>Your EsignCenter account has been suspended because the subscription payment could not be taken, and the <%= @grace_days %>-day grace period has now passed.</p>
+<p><strong>What still works:</strong> everyone can sign in, and every document stays readable, downloadable and exportable. Signers who already have one of your documents open can still finish signing it, and those completions are still recorded.</p>
+<p><strong>What has stopped:</strong> creating or changing anything — new documents, templates, people, API keys and webhooks — and the API, MCP and embedded signing doors.</p>
+<p>Paying lifts the suspension automatically, within seconds. Nothing has been deleted.</p>
+<p><%= link_to 'Update your payment method', @billing_url %></p>
+<p>Questions? Write to <%= mail_to @support_email %>.</p>
+<p>Thanks,<br>EsignCenter</p>

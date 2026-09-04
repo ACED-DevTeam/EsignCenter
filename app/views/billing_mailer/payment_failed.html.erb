@@ -1,0 +1,16 @@
+<p>Hello,</p>
+<% if @day.zero? %>
+  <p>We could not take the payment for your EsignCenter subscription. Cards get declined for all sorts of ordinary reasons — an expiry date that has passed, a new card, a bank asking for confirmation.</p>
+<% else %>
+  <p>The payment for your EsignCenter subscription is still outstanding. We have been retrying it for <%= @day %> days.</p>
+<% end %>
+<p>Nothing has changed on your account yet: you can send, sign and download exactly as before, and we will keep retrying the card.</p>
+<% if @suspends_on %>
+  <p><strong>What happens if it is not settled:</strong> on <%= @suspends_on.utc.strftime('%-d %B %Y') %> the account is suspended. A suspended account can still be signed into, and every document stays readable, downloadable and exportable — signers already part-way through a document still finish it — but nothing new can be created or changed until the payment goes through.</p>
+<% else %>
+  <p><strong>What happens if it is not settled:</strong> after <%= @grace_days %> days the account is suspended — still readable, downloadable and exportable, but nothing new can be created until the payment goes through.</p>
+<% end %>
+<p>Updating the card takes a minute, and paying lifts everything by itself.</p>
+<p><%= link_to 'Update your payment method', @billing_url %></p>
+<p>Questions? Write to <%= mail_to @support_email %>.</p>
+<p>Thanks,<br>EsignCenter</p>

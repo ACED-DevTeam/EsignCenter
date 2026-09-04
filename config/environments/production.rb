@@ -2,10 +2,18 @@
 
 require 'active_support/core_ext/integer/time'
 require 'active_support/core_ext/string'
+require 'ipaddr'
+
+require_relative '../../lib/trusted_proxies'
 
 Rails.backtrace_cleaner.remove_silencers!
 
 Rails.application.configure do
+  # Render's private hop is trusted by Rails already. Cloudflare's public
+  # edges are not, so keep Rails' defaults and add the exact published ranges.
+  trusted_proxies = TrustedProxies.all
+  config.action_dispatch.trusted_proxies = trusted_proxies
+
   # Settings specified here will take precedence over those in config/application.rb.
 
   # Code is not reloaded between requests.
@@ -154,6 +162,7 @@ Rails.application.configure do
     {
       host: controller.request.host,
       fwd: controller.request.remote_ip,
+      xff: controller.request.get_header('HTTP_X_FORWARDED_FOR'),
       params: {
         id: params[:id],
         template_id: params[:template_id],

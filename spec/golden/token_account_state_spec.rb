@@ -19,6 +19,14 @@ RSpec.describe 'Token account state', type: :request do
     account.update!(archived_at: Time.current)
   end
 
+  # Session 7 D43/D57: a suspended account's tokens are refused exactly the
+  # way an archived one's are. A token is a machine door with no page to
+  # explain itself on, so it is closed outright — the human doors of a
+  # suspended account stay open and read-only instead.
+  def suspend!(account)
+    AccountStates.suspend!(account, reason: 'billing')
+  end
+
   def create_submission
     post '/api/submissions', headers: api_headers, params: {
       template_id: template.id,
@@ -49,8 +57,57 @@ RSpec.describe 'Token account state', type: :request do
       expect(described_class.tokens_allowed?(nil)).to be(false)
     end
 
-    it 'names archived_at as the only refusal state until Session 7 adds suspension' do
-      expect(described_class::TOKEN_REFUSAL_STATES).to eq(%i[archived_at])
+    it 'allows tokens for an active account and refuses them once suspended' do
+      expect(described_class.tokens_allowed?(account)).to be(true)
+
+      suspend!(account)
+
+      expect(described_class.tokens_allowed?(account.reload)).to be(false)
+    end
+
+    # Changed by the Session 7 D-plan: suspension is the second refusal state,
+    # so a billing suspension closes every token door the same way archiving
+    # does.
+    it 'names archiving and suspension as the refusal states' do
+      expect(described_class::TOKEN_REFUSAL_STATES).to eq(%i[archived_at suspended_at])
+    end
+
+    # The boot-time column assertion the Session 2 handoff asked for: every
+    # state in the list has to BE a column, or the guard would meet a
+    # NoMethodError deep inside a token door instead.
+    it 'names only real accounts columns, and says so plainly when one is missing' do
+      expect(Account.column_names).to include(*described_class::TOKEN_REFUSAL_STATES.map(&:to_s))
+
+      stub_const("#{described_class}::TOKEN_REFUSAL_STATES", %i[archived_at deleted_at])
+
+      expect { described_class.active?(account) }
+        .to raise_error(AccountStates::MissingStateColumn, /deleted_at/)
+    end
+
+    # Internal and operator accounts are the platform itself: no billing rule
+    # touches them, so nothing can suspend them.
+    it 'refuses to suspend an internal or an operator account' do
+      internal = create(:account, :internal)
+      operator = create(:account, :operator)
+
+      expect(described_class.suspend!(internal, reason: 'billing')).to be(false)
+      expect(described_class.suspend!(operator, reason: 'billing')).to be(false)
+      expect(internal.reload.suspended_at).to be_nil
+      expect(operator.reload.suspended_at).to be_nil
+    end
+
+    # Suspending is idempotent, and only the caller that owns the reason may
+    # lift it: a payment going through must never undo an operator's decision.
+    it 'suspends once, and lifts only the reason it is asked for' do
+      customer = create(:account)
+
+      expect(described_class.suspend!(customer, reason: 'operator')).to be(true)
+      expect(described_class.suspend!(customer, reason: 'operator')).to be(false)
+      expect(described_class.lift_suspension!(customer, reason: 'billing')).to be(false)
+      expect(customer.reload.suspended_at).to be_present
+      expect(described_class.lift_suspension!(customer, reason: 'operator')).to be(true)
+      expect(customer.reload.suspended_at).to be_nil
+      expect(customer.suspension_reason).to be_nil
     end
   end
 
@@ -61,6 +118,19 @@ RSpec.describe 'Token account state', type: :request do
       expect(response).to have_http_status(:ok)
 
       archive!(account)
+
+      get '/api/templates', headers: api_headers
+
+      expect(response).to have_http_status(:unauthorized)
+      expect(response.parsed_body).to eq(refusal)
+    end
+
+    it 'serves the token before the suspension and refuses the same token after' do
+      get '/api/templates', headers: api_headers
+
+      expect(response).to have_http_status(:ok)
+
+      suspend!(account)
 
       get '/api/templates', headers: api_headers
 
@@ -89,7 +159,63 @@ RSpec.describe 'Token account state', type: :request do
     end
   end
 
+  # Creating and changing a template through the API and through MCP: the
+  # HTML doors are closed by the Ability layer, and these are closed earlier
+  # still, by the token guard.
+  describe 'the API and MCP template doors when suspended' do
+    def create_template
+      post '/api/templates', headers: api_headers,
+                             params: { name: 'From the API', documents: [] }.to_json
+    end
+
+    it 'refuses creating and updating a template, and the MCP tool list' do
+      create(:account_config, account:, key: AccountConfig::ENABLE_MCP_KEY, value: true)
+
+      suspend!(account)
+
+      expect { create_template }.not_to change(Template, :count)
+      expect(response).to have_http_status(:unauthorized)
+      expect(response.parsed_body).to eq(refusal)
+
+      put "/api/templates/#{template.id}", headers: api_headers, params: { name: 'Renamed' }.to_json
+
+      expect(response).to have_http_status(:unauthorized)
+      expect(template.reload.name).not_to eq('Renamed')
+
+      expect { post "/api/templates/#{template.id}/clone", headers: api_headers, params: {}.to_json }
+        .not_to change(Template, :count)
+      expect(response).to have_http_status(:unauthorized)
+
+      mcp_tools_list
+
+      expect(response).to have_http_status(:unauthorized)
+      expect(response.parsed_body).to eq(refusal)
+    end
+  end
+
+  describe 'POST /api/submissions when suspended' do
+    it 'creates before the suspension and refuses without creating after it' do
+      expect { create_submission }.to change(Submission, :count).by(1)
+
+      suspend!(account)
+
+      expect { create_submission }.not_to change(Submission, :count)
+      expect(response).to have_http_status(:unauthorized)
+      expect(response.parsed_body).to eq(refusal)
+    end
+  end
+
   describe 'POST /api/signing_sessions' do
+    it 'creates before the suspension and refuses without creating after it' do
+      expect { create_signing_session }.to change(Submission, :count).by(1)
+
+      suspend!(account)
+
+      expect { create_signing_session }.not_to change(Submission, :count)
+      expect(response).to have_http_status(:unauthorized)
+      expect(response.parsed_body).to eq(refusal)
+    end
+
     it 'creates before the archive and refuses without creating after it' do
       expect { create_signing_session }.to change(Submission, :count).by(1)
       expect(response).to have_http_status(:ok)
@@ -105,6 +231,19 @@ RSpec.describe 'Token account state', type: :request do
   describe 'POST /mcp' do
     before do
       create(:account_config, account:, key: AccountConfig::ENABLE_MCP_KEY, value: true)
+    end
+
+    it 'answers the MCP token before the suspension and refuses it after' do
+      mcp_tools_list
+
+      expect(response).to have_http_status(:ok)
+
+      suspend!(account)
+
+      mcp_tools_list
+
+      expect(response).to have_http_status(:unauthorized)
+      expect(response.parsed_body).to eq(refusal)
     end
 
     it 'answers the MCP token before the archive and refuses it after' do
@@ -217,6 +356,24 @@ RSpec.describe 'Token account state', type: :request do
 
       expect(template.reload.name).to eq('Before archive')
     end
+
+    it 'is a 404 for the builder token once the account is suspended' do
+      post '/api/template_builder_sessions', headers: api_headers, params: {
+        template_id: template.id,
+        embed_origin: 'https://crm.example.com'
+      }.to_json
+
+      token = URI.parse(response.parsed_body['builder_src']).path.split('/').last
+
+      get "/embed/template_builder/#{token}"
+
+      expect(response).to have_http_status(:ok)
+
+      suspend!(account)
+
+      expect { get "/embed/template_builder/#{token}" }.to raise_error(ActionController::RoutingError)
+      expect { update_builder_template(token, 'After suspension') }.to raise_error(ActionController::RoutingError)
+    end
   end
 
   describe 'testing-child tokens' do
@@ -242,6 +399,35 @@ RSpec.describe 'Token account state', type: :request do
       archive!(account)
 
       expect(testing_child.reload.archived_at).to be_nil
+
+      get '/api/templates', headers: child_headers
+
+      expect(response).to have_http_status(:unauthorized)
+      expect(response.parsed_body).to eq(refusal)
+    end
+
+    # Same tenant, same answer for a suspension. The parent here is internal
+    # because that is the only kind of account that HAS testing children, and
+    # no code path ever suspends an internal account (AccountStates.suspend!
+    # refuses it, proven above) — so the column is written directly: what is
+    # under test is that the guard walks the testing chain, not the policy
+    # about who may be suspended.
+    it 'refuses the test-mode API key once the parent account is suspended' do
+      sign_in(author)
+      post testing_account_path, headers: { 'HTTP_REFERER' => root_url }
+
+      sign_out(:user)
+
+      testing_child = account.testing_accounts.reload.sole
+      child_headers = { 'x-auth-token': testing_child.users.sole.access_token.token }
+
+      get '/api/templates', headers: child_headers
+
+      expect(response).to have_http_status(:ok)
+
+      account.update_columns(suspended_at: Time.current, suspension_reason: 'operator')
+
+      expect(testing_child.reload.suspended_at).to be_nil
 
       get '/api/templates', headers: child_headers
 
