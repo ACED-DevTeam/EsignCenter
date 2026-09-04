@@ -11,8 +11,15 @@
 #   * an address that already has an EsignCenter account (D50) — accepting is
 #     a MOVE, not a sign-up: they and everything in their own account go into
 #     the team. That needs proof it is really them, so the page requires them
-#     to be signed in as that user, restates in plain words what is about to
-#     happen, and only then offers the one button that does it.
+#     to be signed in AS THE INVITED ADDRESS, restates in plain words what is
+#     about to happen, and only then offers the one button that does it.
+#
+# Which of the two it is, is asked FRESH on every request, from the invited
+# address (AccountInvites.verdict_for) — never from the collision_user_id the
+# row was written with. The world moves inside the week a link is good for:
+# the invitee can sign themselves up in the meantime (review B1), and the
+# person the column names can change their own email (review B2). The stored
+# column survives only as a hint for the invitation email's copy.
 #
 # No login is required to reach the page: a fresh invitee has no account yet.
 # An invitation that is expired, cancelled or already used says so on a page
@@ -29,31 +36,61 @@ class InvitesController < ApplicationController
 
   def show
     return render :unavailable, status: :gone unless @invite
-    return unavailable(I18n.t('invite_account_frozen')) if frozen_team?
-    return redirect_to_sign_in if @invite.collision? && current_user.nil?
+
+    return render_dead_end if dead_end?
+    return redirect_to_sign_in if @move_offer && current_user.nil?
 
     # Signed in, but as somebody else: the page still explains the offer, and
     # says whose it is.
-    if @invite.collision? && !signed_in_as_invitee?
-      @error = I18n.t('invite_sign_in_as_other_user', email: @collision_user.email)
-    end
+    @error = I18n.t('invite_sign_in_as_other_user', email: @invite.email) if @move_offer && !@signed_in_as_invitee
 
     render :show
   end
 
   def create
     return render :unavailable, status: :gone unless @invite
-    return unavailable(I18n.t('invite_account_frozen')) if frozen_team?
 
-    @invite.collision? ? accept_move : accept_new_user
+    return render_dead_end if dead_end?
+
+    @move_offer ? accept_move : accept_new_user
   rescue AccountInvites::NoLongerOpen => e
     # Something changed between the page and the button: cancelled, lapsed,
     # or the seat is gone. The reason is the sentence, and 410 is the honest
     # status for a link that no longer leads anywhere.
     unavailable(e.message)
+  rescue AccountInvites::WrongInvitee => e
+    # The address changed hands under the invitation, between this page being
+    # drawn and the button being pressed. A sentence, on the page they are
+    # already looking at — never the unique index's "already been taken".
+    @error = e.message
+
+    render :show, status: :unprocessable_content
   end
 
   private
+
+  # The three ways a live invitation still leads nowhere. Asked identically on
+  # the page and on the button, so neither can offer what the other refuses.
+  def dead_end?
+    frozen_team? || @verdict == :closed_login || @verdict == :member
+  end
+
+  def render_dead_end
+    return unavailable(I18n.t('invite_account_frozen')) if frozen_team?
+    return unavailable(I18n.t('invite_address_closed_login')) if @verdict == :closed_login
+
+    release_to_member
+  end
+
+  # They are already in the team — they accepted another copy of this
+  # invitation, or an admin created them by hand. There is nothing to accept,
+  # and the seat this invitation is still holding goes back the ordinary way
+  # (cancelled here, one fewer at renewal — D43, no mid-cycle refund).
+  def release_to_member
+    AccountInvites.revoke!(@invite)
+
+    unavailable(I18n.t('invite_already_member', team: @account.name))
+  end
 
   # A team that cannot write cannot take on people either: an account frozen
   # for a failed payment (or archived) would otherwise gain a member — or a
@@ -76,7 +113,16 @@ class InvitesController < ApplicationController
 
     @invite = invite if invite&.pending?
     @account = @invite&.account
-    @collision_user = @invite&.collision_user
+
+    return if @invite.nil?
+
+    # Asked from the address, on every request. `@holder` is whoever owns the
+    # invited address right now — the person the page is talking about, and
+    # the only person who may press the button.
+    @verdict = AccountInvites.verdict_for(@invite)
+    @holder = AccountInvites.holder_for(@invite)
+    @move_offer = @verdict == :move
+    @signed_in_as_invitee = signed_in_as_invitee?
   end
 
   # The fresh path: this person has no login yet, so they make one.
@@ -98,7 +144,7 @@ class InvitesController < ApplicationController
   # sure it is them, and the account they are leaving has to be one that can
   # honestly be closed (Accounts::MoveUser refuses the rest, with a sentence).
   def accept_move
-    return require_matching_sign_in unless signed_in_as_invitee?
+    return require_matching_sign_in unless @signed_in_as_invitee
 
     AccountInvites.accept_move!(@invite, user: current_user)
 
@@ -109,8 +155,15 @@ class InvitesController < ApplicationController
     render :show, status: :unprocessable_content
   end
 
+  # The invited ADDRESS, not a stored user id. An id says who held the
+  # address when the invitation was written; a week later it can be somebody
+  # at a different address entirely, and honouring it moved that person — and
+  # every document in their account — into a team that never invited them
+  # (review B2). AccountInvites.accept_move! asks the same question again
+  # inside the row lock.
   def signed_in_as_invitee?
-    current_user.present? && current_user.id == @collision_user&.id
+    current_user.present? &&
+      AccountInvites.normalize_email(current_user.email) == AccountInvites.normalize_email(@invite.email)
   end
 
   # Anonymous: send them to sign in and come straight back here. Signed in as
@@ -118,7 +171,7 @@ class InvitesController < ApplicationController
   def require_matching_sign_in
     return redirect_to_sign_in if current_user.nil?
 
-    @error = I18n.t('invite_sign_in_as_other_user', email: @collision_user.email)
+    @error = I18n.t('invite_sign_in_as_other_user', email: @invite.email)
 
     render :show, status: :unprocessable_content
   end
@@ -126,6 +179,6 @@ class InvitesController < ApplicationController
   def redirect_to_sign_in
     store_location_for(:user, invite_path(token: params[:token]))
 
-    redirect_to new_user_session_path, alert: I18n.t('invite_sign_in_required', email: @collision_user.email)
+    redirect_to new_user_session_path, alert: I18n.t('invite_sign_in_required', email: @invite.email)
   end
 end

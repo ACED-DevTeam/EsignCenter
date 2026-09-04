@@ -152,6 +152,13 @@ module Accounts
 
       assert_children_purgeable!(testing_children, account)
 
+      family = [account, *testing_children]
+
+      # Read BEFORE anything is destroyed, because it is what proves the walk
+      # was complete (review 7, P1): afterwards there are no templates,
+      # submitters or users left to ask which files hung off them.
+      census = attachment_census(family)
+
       testing_children.each { |child| purge_contents!(child) }
       purge_contents!(account)
 
@@ -163,11 +170,9 @@ module Accounts
       # would then say the account was emptied when it was not. Stragglers are
       # taken; if anything is still standing after that, the purge fails
       # rather than lying.
-      family = [account, *testing_children]
-
       family.each { |record| purge_contents!(record) }
 
-      assert_emptied!(account, family)
+      assert_emptied!(account, family, census)
 
       testing_children.each { |child| entomb!(child) }
 
@@ -245,8 +250,8 @@ module Accounts
     # The tombstone is only stamped when this is empty: "purged" has to mean
     # what it says, and the one thing worse than a purge that fails is a purge
     # that reports success over rows it left behind (R2d).
-    def assert_emptied!(account, family)
-      left = remaining_rows(family).reject { |_, count| count.zero? }
+    def assert_emptied!(account, family, census = attachment_census(family))
+      left = remaining_rows(family, census).reject { |_, count| count.zero? }
 
       return true if left.empty?
 
@@ -261,22 +266,22 @@ module Accounts
     # Table name => rows still belonging to this family. Keyed on INVENTORY,
     # so a table added to that constant is counted here too or the fetch
     # raises naming it.
-    def remaining_rows(family)
+    def remaining_rows(family, census = attachment_census(family))
       ids = family.map(&:id)
-      counters = row_counters(ids)
+      counters = row_counters(ids, census)
 
       INVENTORY.index_with { |table| counters.fetch(table).call }
     end
 
     # rubocop:disable Metrics/AbcSize, Metrics/MethodLength
-    def row_counters(ids)
+    def row_counters(ids, census = attachment_census(Account.where(id: ids).to_a))
       template_ids = Template.where(account_id: ids).select(:id)
       submitter_ids = Submitter.where(account_id: ids).select(:id)
       user_ids = User.where(account_id: ids).select(:id)
       document_ids = DynamicDocument.where(template_id: template_ids).select(:id)
       event_ids = WebhookEvent.where(account_id: ids).select(:id)
 
-      { 'active_storage_attachments' => -> { family_attachment_count(ids) },
+      { 'active_storage_attachments' => -> { census_attachment_count(census) },
         'completed_documents' => -> { CompletedDocument.where(submitter_id: submitter_ids).count },
         'document_generation_events' => -> { DocumentGenerationEvent.where(submitter_id: submitter_ids).count },
         'submitter_versions' => -> { SubmitterVersion.where(submitter_id: submitter_ids).count },
@@ -322,8 +327,43 @@ module Accounts
     end
     # rubocop:enable Metrics/AbcSize, Metrics/MethodLength
 
-    def family_attachment_count(ids)
-      Account.where(id: ids).sum { |record| attachments_for(record).count }
+    # The completeness check must NOT ask the same question the walk asked
+    # (review 7, P1). It used to: `assert_emptied!` counted attachments
+    # through `attachments_for`, the walk's own query, so the check shared
+    # every blind spot the walk had and could never catch one. It missed every
+    # preview image in the account for exactly that reason — the walk did not
+    # know about them, so neither did the count, and the tombstone was stamped
+    # over customer page images still sitting in the bucket.
+    #
+    # So the census is taken from the RECORDS, once, before anything is
+    # destroyed: the ids of every template, submission, submitter, generated
+    # document, person and the account itself, plus the full set of attachment
+    # ids the resolver reached (which is what a preview attachment's record_id
+    # points at). Counting against those ids afterwards is independent of how
+    # the walk chose to find things, so a hole in the resolver ends the purge
+    # in a refusal instead of a lie.
+    def attachment_census(family)
+      ids = family.map(&:id)
+      template_ids = Template.where(account_id: ids).ids
+      dynamic_document_ids = DynamicDocument.where(template_id: template_ids).ids
+
+      { owners: { 'Template' => template_ids,
+                  'Submission' => Submission.where(account_id: ids).ids,
+                  'Submitter' => Submitter.where(account_id: ids).ids,
+                  'DynamicDocument' => dynamic_document_ids,
+                  'DynamicDocumentVersion' =>
+                    DynamicDocumentVersion.where(dynamic_document_id: dynamic_document_ids).ids,
+                  'User' => User.where(account_id: ids).ids,
+                  'Account' => ids },
+        attachment_ids: family.flat_map { |record| family_attachment_ids(record) }.uniq }
+    end
+
+    # Rows still hanging off anything the census named — including a preview
+    # attached to an attachment we captured.
+    def census_attachment_count(census)
+      scope = census[:owners].map { |record_type, record_ids| owned(record_type, record_ids) }.reduce(:or)
+
+      scope.or(owned('ActiveStorage::Attachment', census[:attachment_ids])).count
     end
 
     # Rows that would be left pointing at a purged account if the walk above
@@ -367,8 +407,20 @@ module Accounts
     # missing file and there is no way back. So the shared ones lose only THIS
     # account's attachment row, and a person is told, because a shared blob is
     # also the one case where "the customer's data is gone" is not quite true.
+    #
+    # THE WORK IS GROUPED BY BLOB, and that is review 7's P2. Cloning a
+    # template INTO YOUR OWN ACCOUNT is an ordinary feature and it reuses the
+    # blob too, so two of this account's OWN attachments routinely sit on one
+    # file. Nobody outside the family points at it, so it is not "shared" — but
+    # attachment-at-a-time the first one deleted its object and its blob row
+    # while the second attachment still pointed at that row, and the foreign
+    # key threw. The rows rolled back; the FILE did not, so the surviving
+    # template rendered a missing document, and every retry hit the same
+    # violation for ever. One pass per blob, taking every row that names it
+    # together, is an order that cannot fail that way.
     def purge_attachments!(account)
-      attachment_ids = attachments_for(account).ids
+      layers = family_attachment_layers(account)
+      attachment_ids = layers.flatten
 
       return if attachment_ids.empty?
 
@@ -376,24 +428,67 @@ module Accounts
 
       report_shared_blobs(account, shared_blob_ids)
 
-      ActiveStorage::Attachment.where(id: attachment_ids).find_each(batch_size: 200) do |attachment|
-        if shared_blob_ids.include?(attachment.blob_id)
-          # Row only, and with `delete` rather than `destroy`: the destroy
-          # callback would enqueue a purge of the very blob we are protecting.
-          ActiveStorage::Attachment.where(id: attachment.id).delete_all
-        else
-          purge_attachment!(account, attachment)
-        end
-      end
+      # Row only, and with `delete_all` rather than `destroy`: the destroy
+      # callback would enqueue a purge of the very blob we are protecting.
+      ActiveStorage::Attachment.where(id: attachment_ids, blob_id: shared_blob_ids).delete_all
+
+      unshared_blob_ids(layers, shared_blob_ids).each { |blob_id| purge_blob!(account, blob_id) }
 
       nil
+    end
+
+    # Every attachment this account owns, in layers: the ones hanging off its
+    # own records first, then the ones hanging off THOSE, and so on.
+    #
+    # The second layer is real and it is not rare (review 7, P1):
+    # config/initializers/active_storage.rb declares `has_many_attached
+    # :preview_images` ON ActiveStorage::Attachment, so every page image of
+    # every uploaded document is an attachment whose `record_type` is
+    # 'ActiveStorage::Attachment'. The resolver below never named that type, so
+    # the previews — rows, blob rows and the PNG files themselves — survived
+    # the purge of every account that ever uploaded a document.
+    #
+    # DEEPEST FIRST, and that matters for the retry rather than for any foreign
+    # key: a preview can only be found by walking down from its parent
+    # attachment, so taking the parent first and then failing would leave the
+    # previews unreachable — nothing left in the database could ever name them
+    # again.
+    def family_attachment_layers(account)
+      layer = attachments_for(account).ids
+      layers = []
+      seen = []
+
+      while layer.present?
+        layers << layer
+        seen.concat(layer)
+
+        layer = ActiveStorage::Attachment.where(record_type: 'ActiveStorage::Attachment', record_id: layer)
+                                         .where.not(id: seen).ids
+      end
+
+      layers
+    end
+
+    def family_attachment_ids(account)
+      family_attachment_layers(account).flatten
+    end
+
+    # The blobs this account is taking with it, deepest layer first so a
+    # preview's file goes before its parent document's.
+    def unshared_blob_ids(layers, shared_blob_ids)
+      layers.reverse.flat_map do |ids|
+        ActiveStorage::Attachment.where(id: ids)
+                                 .where.not(blob_id: shared_blob_ids)
+                                 .distinct.pluck(:blob_id)
+      end.compact.uniq
     end
 
     # Every attachment this account owns: its templates' documents, its
     # submissions' audit trails and merged/preview/combined PDFs, its
     # submitters' documents, attachments and previews, the generated documents
     # hanging off its templates, the account logo, and each person's saved
-    # signature and initials.
+    # signature and initials. The page images hanging off those attachments are
+    # picked up by family_attachment_layers, which walks down from here.
     def attachments_for(account)
       template_ids = Template.where(account_id: account.id).ids
       dynamic_document_ids = DynamicDocument.where(template_id: template_ids).ids
@@ -423,8 +518,8 @@ module Accounts
                                .distinct.pluck(:blob_id)
     end
 
-    # One attachment and its file, in the order that cannot lose the file
-    # (review batch 2, K4 and P7).
+    # One blob, its file and EVERY row that names it, in the order that cannot
+    # lose the file (review batch 2, K4 and P7; review 7, P2).
     #
     # ActiveStorage's own `Blob#purge` destroys the DATABASE ROWS FIRST and
     # only then deletes the object from storage. That is backwards for us: if
@@ -435,31 +530,36 @@ module Accounts
     # failure and stamped `purged_at`.)
     #
     # So: delete the object, delete its variants and previews, VERIFY it is
-    # gone, and only then delete the two rows. Any failure leaves BOTH rows in
+    # gone, and only then delete the rows. Any failure leaves them ALL in
     # place and raises StorageFailure — the claim stays set, `purged_at` is
     # never stamped, the job retries, and the retry still knows which file it
     # was.
-    def purge_attachment!(account, attachment)
-      blob = attachment.blob
+    def purge_blob!(account, blob_id)
+      blob = ActiveStorage::Blob.find_by(id: blob_id)
 
       if blob.nil?
-        ActiveStorage::Attachment.where(id: attachment.id).delete_all
+        ActiveStorage::Attachment.where(blob_id:).delete_all
 
         return
       end
 
       delete_stored_object!(account, blob)
 
-      # One transaction for the three locator rows (review batch 2, R4). The
+      # One transaction for all the locator rows (review batch 2, R4). The
       # variant records are the derivatives' own index — leaving them behind
       # would point at files that no longer exist — and deleting the blob row
-      # while its attachment survived, or the other way round, would leave a
-      # half-row nobody can interpret. Either all three go or none of them do,
+      # while an attachment survived, or the other way round, would leave a
+      # half-row nobody can interpret. Either they all go or none of them do,
       # and if none do the retry still finds the file by them.
+      #
+      # ALL of the blob's attachments, not just the ones the walk listed:
+      # nobody outside the family holds this blob (that is what makes it
+      # unshared), and leaving even one row behind would put the blob delete
+      # straight into a foreign-key violation (P2).
       ApplicationRecord.transaction do
-        ActiveStorage::VariantRecord.where(blob_id: blob.id).delete_all
-        ActiveStorage::Attachment.where(id: attachment.id).delete_all
-        ActiveStorage::Blob.where(id: blob.id).delete_all
+        ActiveStorage::VariantRecord.where(blob_id:).delete_all
+        ActiveStorage::Attachment.where(blob_id:).delete_all
+        ActiveStorage::Blob.where(id: blob_id).delete_all
       end
 
       nil

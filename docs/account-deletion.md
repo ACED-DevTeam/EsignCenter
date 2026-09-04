@@ -75,7 +75,7 @@ explicit list, in this order, children before parents.
 
 | Table | Action | Why |
 | --- | --- | --- |
-| ActiveStorage attachments + blobs | purged (files deleted) | Templates' documents; a submission's audit trail, combined, merged and preview PDFs; a submitter's documents, attachments and previews; generated documents; the account logo; each person's saved signature and initials. Done **first** and through ActiveStorage, because the rows below are deleted with `delete_all` — anything still holding a blob at that point would leave the *file* in the bucket forever. **A file another account is also attached to is kept** (cloning a template reuses the blob rather than re-uploading it): only this account's attachment row goes, and the operator is told, because that is the one case where "everything was destroyed" is not quite true. **A file that will not delete stops the purge**: the account is *not* stamped as purged, the job retries, and the operator hears — a tombstone over a bucket that still holds their documents would be a lie. The order is deliberate: the stored object and its variants/previews go **first**, we verify the object is gone, and only then the attachment and blob rows. (ActiveStorage's own `Blob#purge` destroys the rows first, so a storage failure would orphan the file with no locator left to find it by.) |
+| ActiveStorage attachments + blobs | purged (files deleted) | Templates' documents; a submission's audit trail, combined, merged and preview PDFs; a submitter's documents, attachments and previews; generated documents; the account logo; each person's saved signature and initials — **and the page images that hang off all of those**. Every uploaded document is rendered into per-page PNGs, and those images are attached to the *attachment*, not to the template, so the walk goes down a level (and keeps going down until it finds nothing new) and takes the deepest ones first. Done **first** and through ActiveStorage, because the rows below are deleted with `delete_all` — anything still holding a blob at that point would leave the *file* in the bucket forever. **The work is grouped by file, not by attachment row**: cloning a template reuses the blob rather than re-uploading it, so two of this account's own attachments routinely name one file, and every row naming a file is deleted with it in one go. **A file another account is also attached to is kept**: only this account's attachment rows go, and the operator is told, because that is the one case where "everything was destroyed" is not quite true. **A file that will not delete stops the purge**: the account is *not* stamped as purged, the job retries, and the operator hears — a tombstone over a bucket that still holds their documents would be a lie. The order is deliberate: the stored object and its variants/previews go **first**, we verify the object is gone, and only then the attachment and blob rows. (ActiveStorage's own `Blob#purge` destroys the rows first, so a storage failure would orphan the file with no locator left to find it by.) |
 | `completed_documents` | delete | Per-submitter document fingerprints. |
 | `document_generation_events` | delete | Per-submitter generation log. |
 | `submitter_versions` | delete | Delegation history. |
@@ -156,12 +156,13 @@ so from the moment of the claim the account is committed to deletion —
 * the purge **re-asserts its own refusals on entry**, so a Stripe webhook that
   puts the account back on a paid plan between the claim and the purge is still
   caught;
-* **and the claim is released again** for the two endings that are not
+* **and the claim is released again** for every ending that is not
   "destroyed": a refusal (the account is not being deleted after all, so it
-  must not go on looking as though it is), and a storage failure whose retries
-  have run out — which also pages the operator, because *half-purged and frozen
-  for ever, silently* is not an outcome anybody chose. A claim left set would
-  lock every user out of an account nobody is deleting.
+  must not go on looking as though it is); a storage failure whose retries have
+  run out; and **any other failure** whose retries have run out — a database
+  error, a deadlock, a bug. The last two also page the operator, because
+  *half-purged and frozen for ever, silently* is not an outcome anybody chose.
+  A claim left set would lock every user out of an account nobody is deleting.
 
 **A Stripe subscription can never hand paid access back to a claimed account.**
 `SubscriptionSync.apply!` still writes Stripe's facts — the ids, the status,
@@ -192,6 +193,24 @@ that have **no foreign key** to `accounts` — `completed_submitters`,
 `webhook_events`, `search_entries`, `submitters`. Nothing in the database would
 have complained if the walk had missed one of those, so the spec and the rake
 task ask instead. All four must be zero.
+
+**The file count is deliberately asked a different way from the walk.** Before
+anything is destroyed the purge writes down the ids of every template,
+submission, submitter, generated document, person and the account itself, plus
+every attachment it could reach from them. Afterwards it counts what still
+hangs off those ids. That matters because the check used to reuse the walk's
+own query, so it could only ever agree with it: when the walk did not know
+about page images, neither did the count, and an account was entombed with the
+customer's page images still in the bucket. Asking from the other end means a
+hole *below* the starting list — a nested attachment the walk failed to reach —
+ends the purge in a refusal instead of a false tombstone. It is not a second
+opinion on the starting list itself: the count begins from the same seven owner
+types as the walk, so a brand-new kind of attachment owner would have to be
+added to both (there is none today — every `has_*_attached` in the app is one
+of the seven). Two tables without foreign keys, `webhook_attempts` and
+`completed_documents`, are still counted through their parents, which the walk
+has already deleted by then; a row written there mid-purge is not caught yet
+(recorded for Session 10).
 
 ## Operator commands
 

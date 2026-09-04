@@ -810,8 +810,13 @@ RSpec.describe 'Seats and invitations', type: :request do
 
       invite_row = AccountInvite.sole
 
-      expect(invite_row).to be_collision
+      # `collision?` was renamed `collision_hinted?` in review-7's B1/B2 fix:
+      # the column is a hint for the invitation email's copy and authorizes
+      # nothing. What the link DOES is asked from the address on every
+      # request (AccountInvites.verdict_for), and is asserted as such below.
+      expect(invite_row).to be_collision_hinted
       expect(invite_row.collision_user).to eq(other_user)
+      expect(AccountInvites.verdict_for(invite_row)).to eq(:move)
     end
 
     it 'says in the email what accepting will do', sidekiq: :inline do
@@ -984,6 +989,238 @@ RSpec.describe 'Seats and invitations', type: :request do
 
       expect(response).to have_http_status(:unprocessable_content)
       expect(response.body).to include(other_user.email)
+    end
+  end
+
+  # Review 7 (B1/B2/B3, D3): who an invitation is FOR is asked from the invited
+  # ADDRESS on every request, never from the collision_user_id the row was
+  # written with. Every ordering below is one the old code could not survive,
+  # because it decided "is this a collision?" once — when the invitation was
+  # written — and never asked again.
+  describe 'who the invitation is for, asked again at accept time' do
+    let(:invited_email) { unique_email }
+
+    before do
+      stripe_paid!(account, seats: 3)
+      platform_certificate!
+    end
+
+    # D50, in one line: whatever else happens, the invitee never meets the
+    # unique email index's own words.
+    def no_validation_error!
+      expect(response.body).not_to include('already been taken')
+      expect(response.body).not_to include(I18n.t('already_exists'))
+    end
+
+    # B1, and the commonest ordering there is: the admin invites somebody who
+    # has no account yet, and they sign themselves up before they get round to
+    # the link. This used to render the sign-up form and answer the button
+    # with "Email has already been taken" — a dead end, with the seat still
+    # held for the rest of the week.
+    it 'offers the move when the invitee signed themselves up after the invitation was sent',
+       sidekiq: :inline do
+      invite(invited_email, role: User::EDITOR_ROLE)
+      token = token_from_mail
+      invite_row = AccountInvite.sole
+
+      # Nothing was a collision when this was written.
+      expect(invite_row.collision_user_id).to be_nil
+      expect(invite_row).not_to be_collision_hinted
+
+      # They gave up waiting and made an account of their own.
+      own_account = create(:account)
+      late = create(:user, account: own_account, email: invited_email)
+      template = create(:template, account: own_account, author: late, only_field_types: %w[text])
+      occupancy = Accounts.seat_occupancy(account)
+
+      expect(AccountInvites.verdict_for(invite_row)).to eq(:move)
+
+      anonymous!
+      get "/invites/#{token}"
+
+      expect(response).to redirect_to(new_user_session_path)
+      expect(flash[:alert]).to include(invited_email)
+
+      act_as(late)
+      get "/invites/#{token}"
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include(ERB::Util.html_escape(I18n.t('invite_move_heading', team: account.name)))
+      no_validation_error!
+
+      expect { post "/invites/#{token}" }.to change(AccountMove, :count).by(1)
+
+      expect(response).to redirect_to(root_path)
+      expect(late.reload.account).to eq(account)
+      expect(late.role).to eq(User::EDITOR_ROLE)
+      expect(template.reload.account).to eq(account)
+      expect(own_account.reload.archived_at).to be_present
+      expect(invite_row.reload.accepted_at).to be_present
+      # The invitation's seat became their seat: occupancy has not moved.
+      expect(Accounts.seat_occupancy(account)).to eq(occupancy)
+    end
+
+    # The money version of the same ordering. The seat was BOUGHT for that
+    # address, so the person who arrives at it must consume THAT seat — not
+    # leave it paid for and unusable while a second one is bought for them.
+    it 'consumes the very seat that was bought for the address', sidekiq: :inline do
+      row = account.account_subscription
+      row.update!(quantity: 1)
+      stub_invoice_preview(amount_cents: 634)
+      invite(invited_email)
+
+      stub_subscription_update(subscription_a, quantity: 2)
+      stub_subscription_reread(subscription_a, quantity: 2)
+
+      expect { post '/account_invites', params: { offer: offer_token } }.to change(AccountInvite, :count).by(1)
+
+      expect(row.reload.quantity).to eq(2)
+
+      token = token_from_mail
+      own_account = create(:account)
+      late = create(:user, account: own_account, email: invited_email)
+
+      act_as(late)
+
+      expect { post "/invites/#{token}" }.to change(AccountMove, :count).by(1)
+
+      expect(late.reload.account).to eq(account)
+      # Two seats billed, two seats occupied: nothing was handed back and
+      # nothing was bought a second time.
+      expect(row.reload.quantity).to eq(2)
+      expect(Accounts.seat_occupancy(account)).to eq(2)
+    end
+
+    # B2: the person the invitation named changes their own address afterwards,
+    # and somebody else takes the invited one. Keyed on the stored user id,
+    # the button moved a DIFFERENT address — and every document in its
+    # account — into a team that had never invited it.
+    it 'refuses the person whose address is no longer the invited one' do
+      own_account = create(:account)
+      mover = create(:user, account: own_account, email: invited_email)
+      invite_row = create(:account_invite, account:, email: invited_email, role: User::EDITOR_ROLE,
+                                           collision_user: mover)
+      token = invite_row.raw_token
+
+      mover.update!(email: unique_email)
+      holder_account = create(:account)
+      holder = create(:user, account: holder_account, email: invited_email)
+
+      act_as(mover)
+      get "/invites/#{token}"
+
+      expect(response).to have_http_status(:ok)
+      # The invitation names the ADDRESS, and the address is what the page
+      # asks them to sign in as.
+      expect(response.body).to include(
+        ERB::Util.html_escape(I18n.t('invite_sign_in_as_other_user', email: invited_email))
+      )
+      expect(response.body).not_to include(ERB::Util.html_escape(I18n.t('invite_move_button', team: account.name)))
+      no_validation_error!
+
+      expect { post "/invites/#{token}" }.not_to change(AccountMove, :count)
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.body).to include(
+        ERB::Util.html_escape(I18n.t('invite_sign_in_as_other_user', email: invited_email))
+      )
+      expect(mover.reload.account).to eq(own_account)
+      expect(holder.reload.account).to eq(holder_account)
+      expect(invite_row.reload).to be_pending
+
+      # And the lock says the same thing, on an object that never went near
+      # the controller: the equality is re-asserted where the move happens.
+      expect { AccountInvites.accept_move!(invite_row, user: mover) }
+        .to raise_error(AccountInvites::WrongInvitee, /#{Regexp.escape(invited_email)}/)
+    end
+
+    # B3: an archived login in another account holds the address. Nobody can
+    # ever sign in as it, so the invitation is a seat held — and, on a paid
+    # account with no free seat, a seat BOUGHT — for a link that can never be
+    # used. No Stripe call is made at all: the refusal comes before the price.
+    it 'refuses an address that belongs to a closed login, before anything is priced or charged' do
+      account.account_subscription.update!(quantity: 1)
+      ghost = create(:user, account: create(:account), email: invited_email, archived_at: Time.current)
+
+      expect { invite(ghost.email) }.not_to change(AccountInvite, :count)
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.body).to include(I18n.t('invite_address_closed_admin'))
+      expect(WebMock).not_to have_requested(:any, %r{\Ahttps://api\.stripe\.com})
+      no_validation_error!
+    end
+
+    it 'says so on a link written for a closed login before that rule existed' do
+      ghost = create(:user, account: create(:account), email: invited_email, archived_at: Time.current)
+      invite_row = create(:account_invite, account:, email: invited_email, collision_user: ghost)
+      token = invite_row.raw_token
+
+      anonymous!
+      get "/invites/#{token}"
+
+      expect(response).to have_http_status(:gone)
+      expect(response.body).to include(I18n.t('invite_address_closed_login'))
+      no_validation_error!
+
+      expect do
+        post "/invites/#{token}", params: { first_name: 'Sam', last_name: 'Rivers', password: 'password-123' }
+      end.not_to change(User, :count)
+
+      expect(response).to have_http_status(:gone)
+      expect(response.body).to include(I18n.t('invite_address_closed_login'))
+      no_validation_error!
+    end
+
+    # The address is already in the team — they accepted another copy of the
+    # link, or an admin created them by hand. There is nothing to accept, and
+    # the seat the invitation is still holding goes back.
+    it 'hands the seat back when the invited address is already a member' do
+      row = account.account_subscription
+      create(:user, account:, email: invited_email)
+      invite_row = create(:account_invite, account:, email: invited_email)
+      stub_subscription_update(subscription_a, quantity: 2)
+      stub_subscription_reread(subscription_a, quantity: 2)
+
+      anonymous!
+      get "/invites/#{invite_row.raw_token}"
+
+      expect(response).to have_http_status(:gone)
+      expect(response.body).to include(ERB::Util.html_escape(I18n.t('invite_already_member', team: account.name)))
+      expect(invite_row.reload.revoked_at).to be_present
+      expect(invite_row.released_at).to be_present
+      expect(row.reload.quantity).to eq(2)
+      no_validation_error!
+    end
+
+    # D3: D50 says the move is "stated in the flow". It is stated in two
+    # places — the invitation email and the join screen — and until now
+    # neither was pinned by any example, so either could have been deleted in
+    # silence.
+    it 'states on the screen and in the mail that the documents move', sidekiq: :inline do
+      own_account = create(:account)
+      joiner = create(:user, account: own_account, email: invited_email)
+
+      invite(invited_email)
+      token = token_from_mail
+      mail_body = body_of(deliveries.last)
+
+      expect(mail_body).to include('templates, documents and folders')
+      expect(mail_body).to include(ERB::Util.html_escape(own_account.name))
+      expect(mail_body).to include(ERB::Util.html_escape(account.name))
+      expect(mail_body).to include(invited_email)
+
+      act_as(joiner)
+      get "/invites/#{token}"
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include(
+        ERB::Util.html_escape(I18n.t('invite_move_point_documents', old_team: own_account.name, team: account.name))
+      )
+      expect(response.body).to include(
+        ERB::Util.html_escape(I18n.t('invite_move_point_closed', old_team: own_account.name))
+      )
+      expect(response.body).to include(ERB::Util.html_escape(I18n.t('invite_move_button', team: account.name)))
+      no_validation_error!
     end
   end
 
