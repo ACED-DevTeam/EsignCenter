@@ -1,0 +1,26 @@
+<%# The price BEFORE the charge. Everything that decides what is bought — the
+    address, the role, the seat count and the amount Stripe quoted — travels
+    in one signed token, so nothing on this screen can be edited into
+    something else. %>
+<%= render 'shared/turbo_modal', title: t('add_a_seat') do %>
+  <div class="space-y-4">
+    <p dir="auto"><%= t('seat_add_intro', email: @seat_offer[:email]) %></p>
+    <div class="rounded-2xl border border-base-300 bg-base-200/50 p-4 space-y-1 tabular-nums">
+      <div class="flex justify-between gap-4">
+        <span class="text-base-content/70"><%= t('seat_add_due_today') %></span>
+        <span class="font-semibold" data-seat-amount><%= BillingLifecycle.format_amount(@seat_offer[:amount_cents], @seat_offer[:currency]) %></span>
+      </div>
+      <div class="flex justify-between gap-4">
+        <span class="text-base-content/70"><%= t('seat_add_seats_after') %></span>
+        <span class="font-semibold" data-seat-quantity><%= @seat_offer[:quantity_after] %></span>
+      </div>
+    </div>
+    <p class="text-sm text-base-content/70" dir="auto">
+      <%= t('seat_add_recurring_note', price: BillingSettingsController::PRICE_PER_SEAT_USD) %>
+    </p>
+    <%= form_with url: account_invites_path, method: :post, data: { turbo_frame: :_top }, class: 'space-y-2' do |f| %>
+      <%= f.hidden_field :offer, value: @seat_token %>
+      <%= f.button button_title(title: t('confirm_and_invite')), class: 'base-button w-full' %>
+    <% end %>
+  </div>
+<% end %>

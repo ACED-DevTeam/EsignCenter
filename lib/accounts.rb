@@ -37,15 +37,51 @@ module Accounts
     new_account
   end
 
-  def users_count(account)
-    rel = User.where(account_id: account.id).or(
-      User.where(account_id: account.account_linked_accounts
-                                           .where.not(account_type: :testing)
-                                           .select(:linked_account_id))
-    )
+  # SEAT OCCUPANCY: how many of this account's seats are taken right now.
+  #
+  # Three kinds of row take a seat and one kind does not:
+  #   * an active person in the account (and in its non-testing linked
+  #     children — a testing child is the same tenant and is never billed);
+  #   * a pending invitation, because on a paid account the seat was BOUGHT
+  #     before the invitation went out and must stay held until the person
+  #     arrives or the invitation lapses;
+  #   * never an integration (API-only) user, and never a READ-ONLY member —
+  #     a member who lost their seat in a downgrade is still in the account,
+  #     which is exactly why "one seat, four people" is a state we can sit in.
+  def seat_occupancy(account)
+    ids = seat_account_ids(account)
 
-    rel.where.not(account: account.linked_accounts.where.not(archived_at: nil))
-       .where.not(role: :integration).active.count
+    User.where(account_id: ids).where.not(role: :integration).active.full_access.count +
+      AccountInvite.pending.where(account_id: ids).count
+  end
+
+  # The old name, kept because half the app (and the quota engine) asks the
+  # question this way. One answer, one implementation.
+  def users_count(account)
+    seat_occupancy(account)
+  end
+
+  # The accounts whose people share this account's seats: itself plus every
+  # non-testing linked child that has not been archived.
+  def seat_account_ids(account)
+    linked_ids = account.account_linked_accounts.where.not(account_type: :testing).pluck(:linked_account_id)
+    archived_ids = account.linked_accounts.where.not(archived_at: nil).ids
+
+    ([account.id] + linked_ids - archived_ids).uniq
+  end
+
+  # Is this the last person who can administer the account? Nobody may remove,
+  # archive, demote, make read-only or move away the last ACTIVE, full-access
+  # admin: an account with no administrator can never invite anyone, change a
+  # role or fix its own billing again.
+  #
+  # Asked about the user's OWN account, not the billing account: every account
+  # needs an administrator of its own.
+  def last_admin?(user)
+    return false if user.nil? || !user.admin? || user.archived_at? || user.read_only?
+
+    !User.where(account_id: user.account_id).where.not(id: user.id)
+         .admins.active.full_access.exists?
   end
 
   def find_or_create_testing_user(account)

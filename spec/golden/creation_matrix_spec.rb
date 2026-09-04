@@ -167,9 +167,15 @@ RSpec.describe 'Account and user creation matrix', type: :request do
     expect(response.body).to include('testing_toggle')
   end
 
-  it 'does not permit platform-operator privilege through invitations' do
+  # Session 7 Phase B: on a customer account an invitation writes an
+  # AccountInvite that holds the seat, and the person themselves creates their
+  # login when they accept it (spec/golden/seats_spec.rb). The invariant is
+  # unchanged and is now asserted on BOTH halves — nothing an admin sends and
+  # nothing the invitee sends may make a platform operator.
+  it 'does not permit platform-operator privilege through invitations', sidekiq: :inline do
     # A second seat, so the invitation itself is allowed (free accounts have
     # one seat, spec/golden/quota_spec.rb); the invariant here is the role.
+    ActionMailer::Base.deliveries.clear
     account = create(:account, :paid, seats: 2)
     admin = create(:user, account:)
     sign_in(admin)
@@ -183,10 +189,27 @@ RSpec.describe 'Account and user creation matrix', type: :request do
       }
     }
 
+    expect(response).to have_http_status(:redirect)
+
+    invite = AccountInvite.find_by!(email: 'golden-invited-injection@example.com')
+
+    expect(invite.role).to eq(User::ADMIN_ROLE)
+
+    # The accept link exists only in the email: the row stores a digest.
+    mail = ActionMailer::Base.deliveries.last
+    token = (mail.html_part || mail.text_part || mail.body).decoded[%r{/invites/([A-Za-z0-9_-]+)}, 1]
+
+    sign_out(:user)
+
+    post "/invites/#{token}", params: { first_name: 'Invited', last_name: 'User',
+                                        password: 'golden-password-1', platform_operator: true,
+                                        role: 'superadmin' }
+
     invited_user = User.find_by!(email: 'golden-invited-injection@example.com')
 
-    expect(response).to have_http_status(:redirect)
     expect(invited_user.platform_operator).to be(false)
+    expect(invited_user.role).to eq(User::ADMIN_ROLE)
+    expect(invited_user.account).to eq(account)
   end
 
   it 'does not permit account kind changes through account settings' do

@@ -18,6 +18,12 @@ module BillingLifecycle
   # 14 days from the first failed renewal to suspension.
   PAST_DUE_GRACE_DAYS = 14
 
+  # How long an invitation is worth something. A seat is HELD for the whole
+  # week (and, on a paid account, paid for), so this is money as much as it is
+  # a security window: long enough for somebody who is away for a few days,
+  # short enough that a mistyped address does not bill an empty seat forever.
+  INVITE_TOKEN_DAYS = 7
+
   # Days into the grace period that get a reminder email. Day 0 goes out from
   # the webhook itself so the customer hears within seconds; the rest come
   # from the hourly sweep. Day 13 is the last warning, the day before the
@@ -55,7 +61,7 @@ module BillingLifecycle
     DUNNING_DAYS.select { |day| row.past_due_since + day.days <= now }
   end
 
-  # The hourly sweep (BillingDunningJob). Hourly rather than daily so "day
+  # The hourly sweep (BillingLifecycleJob). Hourly rather than daily so "day
   # 14" lands within the hour rather than up to a day late.
   def run_dunning!(now: Time.current)
     AccountSubscription.where(access_state: 'past_due').find_each do |row|
@@ -94,6 +100,10 @@ module BillingLifecycle
     return unless manageable?(row)
 
     account = row.account
+
+    # Whatever else this save meant, the plan it leaves behind may not have
+    # room for everyone (D43).
+    enforce_free_seat_limit!(row, account)
 
     case row.access_state
     when 'suspended'
@@ -180,5 +190,188 @@ module BillingLifecycle
 
   def dunning_key(row, suffix)
     "dunning:#{row.past_due_since.to_i}:#{suffix}"
+  end
+
+  # --- seats -----------------------------------------------------------------
+  #
+  # A seat is bought before the invitation goes out and handed back when the
+  # invitation lapses or the person leaves. Handing it back is deliberately
+  # asymmetric with buying it: an addition is prorated and invoiced at once
+  # (the customer asked for it and sees the charge first), a reduction is
+  # `proration_behavior: 'none'` — no mid-cycle credit, the NEXT invoice
+  # simply bills fewer seats (D43: no prorated refunds).
+
+  # What Stripe would charge, today, for one more seat: the prorated remainder
+  # of the current billing period. Read as a PREVIEW invoice, so nothing is
+  # created and nothing is charged — the customer sees the number before they
+  # agree to it.
+  def preview_seat_addition(row, quantity_after: row.quantity + 1)
+    preview = StripeBilling.client.v1.invoices.create_preview(
+      { customer: row.stripe_customer_id,
+        subscription: row.stripe_subscription_id,
+        subscription_details: {
+          items: [{ id: row.stripe_item_id, quantity: quantity_after }],
+          proration_behavior: 'always_invoice'
+        } }
+    )
+
+    { quantity_after:,
+      amount_cents: StripeBilling::SubscriptionSync.field(preview, :amount_due).to_i,
+      currency: StripeBilling::SubscriptionSync.field(preview, :currency).to_s.presence || 'usd',
+      subscription_id: row.stripe_subscription_id,
+      item_id: row.stripe_item_id }
+  end
+
+  # Money as a person reads it, the same way a refund notice writes it
+  # (StripeBilling::Linker::Refund#formatted_amount).
+  def format_amount(cents, currency)
+    dollars = format('%.2f', cents.to_i / 100.0)
+
+    currency.to_s.casecmp('usd').zero? ? "$#{dollars}" : "#{dollars} #{currency.to_s.upcase}"
+  end
+
+  # Buy the seat. `always_invoice` charges the prorated remainder now — the
+  # amount the customer was just shown — and `pending_if_incomplete` is the
+  # safety catch: if the card needs a second step (3-D Secure), Stripe parks
+  # the change as a `pending_update` instead of quietly leaving the
+  # subscription in a half-changed state, and the caller reserves nothing.
+  #
+  # The idempotency key names the row, the quantity being bought and who it is
+  # for, so a double-clicked confirm button buys ONE seat.
+  def add_seat!(row, quantity_after:, idempotency_key:)
+    StripeBilling.client.v1.subscriptions.update(
+      row.stripe_subscription_id,
+      { items: [{ id: row.stripe_item_id, quantity: quantity_after }],
+        proration_behavior: 'always_invoice',
+        payment_behavior: 'pending_if_incomplete' },
+      { idempotency_key: }
+    )
+  end
+
+  # Did Stripe park the change instead of making it? Then the seat is not
+  # bought, however healthy the answer looked.
+  def pending_update?(stripe_subscription)
+    StripeBilling::SubscriptionSync.field(stripe_subscription, :pending_update).present?
+  end
+
+  # Can this row be charged for another seat at all? A rake-granted row, a
+  # child account billed by its parent and a subscription Stripe no longer
+  # considers live have no item to change.
+  def seats_purchasable?(row)
+    return false if row.nil? || !manageable?(row)
+    return false if row.stripe_subscription_id.blank? || row.stripe_item_id.blank?
+
+    StripeBilling::Linker.holds_live_subscription?(row)
+  end
+
+  # Bring the subscription's quantity down to what is actually occupied.
+  # Never up — adding a seat is a decision with a charge attached and belongs
+  # to the invite flow — and never below occupancy or below 1.
+  def release_seats!(row)
+    return false unless manageable?(row)
+    return false if row.stripe_subscription_id.blank? || row.stripe_item_id.blank?
+    return false unless StripeBilling::Linker.holds_live_subscription?(row)
+
+    StripeBilling::Linker.with_account_lock(row) do
+      # Inside the lock the row is re-read: a webhook that changed the
+      # quantity a moment ago wins, and the target is computed from what is
+      # true now rather than from what the sweep saw.
+      target = [Accounts.seat_occupancy(row.account), 1].max
+
+      next false if target >= row.quantity
+
+      StripeBilling.client.v1.subscriptions.update(
+        row.stripe_subscription_id,
+        { items: [{ id: row.stripe_item_id, quantity: target }], proration_behavior: 'none' }
+      )
+
+      StripeBilling::Linker.apply_current!(row, row.stripe_subscription_id, event_at: Time.current)
+
+      true
+    end
+  rescue Stripe::StripeError, StripeBilling::ListIncomplete, ActiveRecord::LockWaitTimeout => e
+    # The seat stays paid for one more cycle, which is a billing annoyance
+    # rather than a broken account: the next sweep tries again.
+    ErrorReport.error(e, account_id: row.account_id)
+
+    false
+  end
+
+  # The other half of the hourly tick: invitations that nobody accepted.
+  #
+  # Expiry itself is a timestamp and needs no writing — `pending` already
+  # ignores an invite whose `expires_at` has passed, so the seat stops being
+  # occupied the moment the clock passes it. What DOES need writing is
+  # `released_at`: without it this sweep would ask Stripe to set the same
+  # quantity every hour for the rest of the subscription's life.
+  def expire_invites!(now: Time.current)
+    AccountInvite.expired.where(released_at: nil).where(expires_at: ..now)
+                 .distinct.pluck(:account_id).each do |account_id|
+      release_expired_invites_for!(account_id, now:)
+    rescue StandardError => e
+      ErrorReport.error(e, account_id:)
+    end
+
+    nil
+  end
+
+  def release_expired_invites_for!(account_id, now: Time.current)
+    account = Account.find_by(id: account_id)
+
+    return if account.nil?
+
+    AccountInvite.expired.where(account_id:, released_at: nil).where(expires_at: ..now)
+                 .update_all(released_at: now)
+
+    row = Plans.billing_account(account).account_subscription
+
+    release_seats!(row) if row
+  end
+
+  # The plan no longer has room for everyone (D43). Nobody is deleted and
+  # nothing is purged: one admin keeps full access and every other member is
+  # marked read-only — they still sign in, read, download and export — and the
+  # admin then chooses who gets the remaining seats back.
+  #
+  # Deliberately not run while the account is SUSPENDED for billing: that
+  # state already freezes every write for everybody and is lifted the moment
+  # the card goes through, whereas read-only marking is never undone
+  # automatically. A subscription that really ends arrives here as 'cancelled'
+  # and is handled then.
+  def enforce_free_seat_limit!(row, account)
+    return if row.access_state == 'suspended'
+    return if Plans::PAID_ACCESS_STATES.include?(row.access_state)
+
+    seats = Plans.seats_for(account) || 1
+
+    return if Accounts.seat_occupancy(account) <= seats
+
+    kept = admin_to_keep(account)
+    demoted = demote_members!(account, kept)
+
+    return if demoted.zero?
+
+    BillingMailer.seats_reduced(account, kept:, seats:).deliver_later!
+  end
+
+  # Who keeps working: the admin who was here most recently. Somebody has to
+  # be able to administer the account tomorrow, and "whoever signed in last"
+  # is the closest thing to "whoever is running this account" that we can read
+  # without asking. A tie (nobody has ever signed in) goes to the oldest
+  # account — the person who most likely created it.
+  def admin_to_keep(account)
+    candidates = User.where(account_id: Accounts.seat_account_ids(account))
+                     .where.not(role: :integration).active.full_access
+
+    candidates.admins.min_by { |user| [-user.current_sign_in_at.to_i, user.id] } ||
+      candidates.min_by(&:id)
+  end
+
+  def demote_members!(account, kept)
+    scope = User.where(account_id: Accounts.seat_account_ids(account))
+                .where.not(role: :integration).active.full_access
+    scope = scope.where.not(id: kept.id) if kept
+
+    scope.update_all(read_only_at: Time.current)
   end
 end

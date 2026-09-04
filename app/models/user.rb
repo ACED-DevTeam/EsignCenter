@@ -23,6 +23,7 @@
 #  otp_required_for_login :boolean          default(FALSE), not null
 #  otp_secret             :string
 #  platform_operator      :boolean          default(FALSE), not null
+#  read_only_at           :datetime
 #  remember_created_at    :datetime
 #  reset_password_sent_at :datetime
 #  reset_password_token   :string
@@ -39,6 +40,7 @@
 #
 #  index_users_on_account_id            (account_id)
 #  index_users_on_email                 (email) UNIQUE
+#  index_users_on_read_only_at          (read_only_at) WHERE (read_only_at IS NOT NULL)
 #  index_users_on_reset_password_token  (reset_password_token) UNIQUE
 #  index_users_on_unlock_token          (unlock_token) UNIQUE
 #  index_users_on_uuid                  (uuid) UNIQUE
@@ -81,6 +83,11 @@ class User < ApplicationRecord
   scope :active, -> { where(archived_at: nil) }
   scope :archived, -> { where.not(archived_at: nil) }
   scope :admins, -> { where(role: ADMIN_ROLE) }
+  # People who still hold a seat. A read-only member is still a member — they
+  # sign in, read, download and export — they simply do not occupy a seat and
+  # cannot create or change anything (Session 7 Phase B, D43).
+  scope :full_access, -> { where(read_only_at: nil) }
+  scope :read_only, -> { where.not(read_only_at: nil) }
 
   validates :email, format: { with: /\A[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\z/ }
   # Self-serve sign-up only (save with `context: :registration`): a throwaway
@@ -112,6 +119,12 @@ class User < ApplicationRecord
 
   def admin?
     role == ADMIN_ROLE
+  end
+
+  # No seat, so no writing: the Ability layer a suspended account uses is
+  # applied to this person alone (lib/ability.rb).
+  def read_only?
+    read_only_at.present?
   end
 
   def editor?

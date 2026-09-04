@@ -40,6 +40,8 @@ class Account < ApplicationRecord
   has_one :account_subscription, dependent: :destroy
   has_one :limit_override, class_name: 'AccountLimitOverride', dependent: :destroy
   has_many :abuse_flags, dependent: :destroy
+  # Seats held for people who have not arrived yet (Session 7 Phase B).
+  has_many :account_invites, dependent: :destroy
   has_many :encrypted_configs, dependent: :destroy
   has_many :account_configs, dependent: :destroy
   has_many :email_messages, dependent: :destroy

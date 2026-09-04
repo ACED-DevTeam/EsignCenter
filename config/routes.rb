@@ -79,7 +79,22 @@ Rails.application.routes.draw do
   resources :setup, only: %i[index create]
   resources :users, only: %i[new create edit update destroy] do
     resource :send_reset_password, only: %i[update], controller: 'users_send_reset_password'
+    # Who keeps a seat when the plan has fewer than the account has people
+    # (Session 7 Phase B): create = make read-only, destroy = give full access.
+    resource :read_only, only: %i[create destroy], controller: 'users_read_only'
   end
+
+  # Seats bought and seats handed back. `create` is the CONFIRM half of adding
+  # a seat on a paid account — the preview screen showed the prorated charge,
+  # this is the click that agrees to it.
+  resources :account_invites, only: %i[create destroy] do
+    post :resend, on: :member
+  end
+
+  # The invitation link itself: no login (a fresh invitee has no account yet),
+  # and the token is in the path because that is what an email can carry.
+  get '/invites/:token' => 'invites#show', as: :invite
+  post '/invites/:token' => 'invites#create'
   resource :user_signature, only: %i[edit update destroy]
   resource :user_initials, only: %i[edit update destroy]
   resources :submissions_archived, only: %i[index], path: 'submissions/archived'

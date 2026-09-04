@@ -1057,29 +1057,42 @@ RSpec.describe 'Quotas', type: :request do # rubocop:disable RSpec/MultipleDescr
   end
 
   describe 'seats' do
+    # Session 7 Phase B changed WHAT filling a seat on a customer account
+    # creates: an invitation that holds the seat until the person accepts it
+    # (spec/golden/seats_spec.rb), rather than a user row made on their
+    # behalf. What is asserted here is unchanged — how many seats there are,
+    # who may take one, and that internal accounts have none. The refusal on
+    # a full PAID account still stands here because this subscription was
+    # granted by hand and has no Stripe item to buy another seat on; a real
+    # Stripe subscription offers the prorated charge instead.
     it 'refuses a free invite, fills a 2-seat paid account, counts a reactivation, and never limits internal' do
       act_as(free_account)
 
-      expect { invite(unique_email) }.not_to change(User, :count)
+      expect { invite(unique_email) }.not_to change(AccountInvite, :count)
 
       expect(response).to redirect_to('/settings/users')
       expect(flash[:alert]).to eq(I18n.t('seat_limit_free'))
 
       two_seats = create(:account, :paid, seats: 2)
       act_as(two_seats)
-      second_email = unique_email
 
-      expect { invite(second_email) }.to change(User, :count).by(1)
-      expect { invite(unique_email) }.not_to change(User, :count)
+      expect { invite(unique_email) }.to change(AccountInvite, :count).by(1)
+      expect { invite(unique_email) }.not_to change(AccountInvite, :count)
+
+      expect(flash[:alert]).to eq(I18n.t('seat_limit_paid', count: 2))
+
+      # A pending invitation occupies its seat exactly like a person does, so
+      # a colleague coming back out of the archive is refused too...
+      archived = create(:user, account: two_seats, archived_at: 1.day.ago)
+
+      expect { invite(archived.email) }.not_to(change { archived.reload.archived_at })
 
       expect(flash[:alert]).to eq(I18n.t('seat_limit_paid', count: 2))
 
-      User.find_by!(email: second_email).update!(archived_at: Time.current)
+      # ...and letting the invitation go hands the seat straight back to them.
+      AccountInvite.where(account: two_seats).sole.update!(revoked_at: Time.current)
 
-      expect { invite(unique_email) }.to change(User, :count).by(1)
-      expect { invite(second_email) }.not_to(change { User.find_by!(email: second_email).archived_at })
-
-      expect(flash[:alert]).to eq(I18n.t('seat_limit_paid', count: 2))
+      expect { invite(archived.email) }.to(change { archived.reload.archived_at }.to(nil))
 
       act_as(internal_account)
 
@@ -1462,9 +1475,11 @@ RSpec.describe 'Quota creation lock', type: :request do
 
     outcomes = results.map(&:value)
 
+    # Phase B: what an invitation creates on a customer account is the row
+    # that HOLDS the seat, not the user. The race is the same one.
     expect(outcomes.sort_by(&:to_s)).to eq([I18n.t('seat_limit_paid', count: 2), :invited])
-    expect(User.where(account_id: account.id).count).to eq(2)
-    expect(User.where(email: %w[seat-race-0@example.com seat-race-1@example.com]).count).to eq(1)
+    expect(User.where(account_id: account.id).count).to eq(1)
+    expect(AccountInvite.where(email: %w[seat-race-0@example.com seat-race-1@example.com]).count).to eq(1)
   ensure
     account&.destroy!
   end

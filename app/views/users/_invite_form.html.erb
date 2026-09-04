@@ -1,0 +1,15 @@
+<%= form_for user, html: { class: 'space-y-4' }, data: { turbo_frame: :_top } do |f| %>
+  <div class="space-y-3">
+    <div class="form-control">
+      <%= f.label :email, t('email'), class: 'label' %>
+      <%= f.email_field :email, required: true, autofocus: true, class: 'base-input', dir: 'auto' %>
+    </div>
+    <%= render 'role_select', f: %>
+    <p class="text-sm text-base-content/70" dir="auto">
+      <%= t('invite_form_hint', count: BillingLifecycle::INVITE_TOKEN_DAYS) %>
+    </p>
+  </div>
+  <div class="form-control pt-2">
+    <%= f.button button_title(title: t('send_invitation')), class: 'base-button' %>
+  </div>
+<% end %>

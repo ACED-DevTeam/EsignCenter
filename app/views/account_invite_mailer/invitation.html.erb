@@ -1,0 +1,15 @@
+<p>Hello,</p>
+<p><%= @inviter_name %> invited you to join <strong><%= @account.name %></strong> on EsignCenter, where teams send documents for signature and keep the signed originals verifiable.</p>
+<% if @collision_user %>
+  <%# The plain truth, in the email rather than in a dialog after the click:
+      accepting is a MOVE, and everything they own comes with them (D50). %>
+  <p>You already have an EsignCenter account (<strong><%= @collision_user.account.name %></strong>). Accepting this invitation moves you and everything in that account — templates, documents and folders — into <strong><%= @account.name %></strong>. Your own account is then closed, and signed documents it has already produced stay verifiable exactly as they are.</p>
+  <p>You will be asked to sign in as <%= @collision_user.email %> first, and shown this again before anything moves.</p>
+  <p><%= link_to "Review the invitation to #{@account.name}", @accept_url %></p>
+<% else %>
+  <p>Accept the invitation and choose a password, and you are in:</p>
+  <p><%= link_to "Join #{@account.name}", @accept_url %></p>
+<% end %>
+<p>This invitation is good for <%= @expires_in_days %> days. If you were not expecting it, ignore this email — nothing happens until you accept.</p>
+<p>Questions? Write to <%= mail_to @support_email %>.</p>
+<p>Thanks,<br>EsignCenter</p>

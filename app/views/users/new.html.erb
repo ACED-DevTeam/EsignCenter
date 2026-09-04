@@ -1,3 +1,10 @@
 <%= render 'shared/turbo_modal', title: t('new_user') do %>
-  <%= render 'form', user: @user %>
+  <%# A customer account invites: the seat is held and the person themselves
+      creates their login when they accept. Internal and operator accounts
+      still create the user outright, so they keep the full form. %>
+  <% if seats_are_invited? %>
+    <%= render 'invite_form', user: @user %>
+  <% else %>
+    <%= render 'form', user: @user %>
+  <% end %>
 <% end %>

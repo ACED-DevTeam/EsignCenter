@@ -119,6 +119,16 @@ works again on the 1st. A link closed because ten documents are still waiting
 for signatures reopens as soon as one of them completes, is declined, expires
 or is deleted; a sending pause is lifted only by the operator.
 
+### What "a seat" means
+
+A seat is occupied by an active person in the account **and** by a pending
+invitation, because on a paid account the seat was bought before the
+invitation went out and has to be held until the person arrives or the
+invitation lapses (7 days). A seat is **not** occupied by an API-only
+(integration) user, nor by a **read-only** member — somebody left without a
+seat when a paid account dropped back to the free plan (D43). See
+`docs/billing.md` §11 for the whole seat story.
+
 ### Children roll up to their parent
 
 An account that is another account's testing child or linked "team" account
