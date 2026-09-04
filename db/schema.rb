@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_04_041500) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_04_050000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gin"
   enable_extension "pg_catalog.plpgsql"
@@ -166,6 +166,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_04_041500) do
     t.bigint "deletion_requested_by_id"
     t.datetime "dormant_warning_for"
     t.datetime "dormant_warning_sent_at"
+    t.datetime "last_active_at"
     t.string "locale", null: false
     t.string "name", null: false
     t.datetime "purge_scheduled_for"

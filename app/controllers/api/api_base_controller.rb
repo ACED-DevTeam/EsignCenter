@@ -5,6 +5,7 @@ module Api
     include ActiveStorage::SetCurrent
     include Pagy::Method
     include TokenAccountGuard
+    include AccountActivityStamp
 
     DEFAULT_LIMIT = 10
     MAX_LIMIT = 100
@@ -104,8 +105,19 @@ module Api
       result
     end
 
+    # The API half of the dormancy stamp (AccountActivityStamp).
+    #
+    # An account driven entirely through the REST API is an account in daily
+    # use, and it moves a Devise sign-in timestamp exactly never — so without
+    # this it would look untouched for a year and be purged. Stamped from
+    # `authenticate_user!` for the same reason as in ApplicationController:
+    # the controllers here that legitimately serve the SIGNER (the blob
+    # proxy, the open/click trackers) skip this callback, so their traffic
+    # can never be mistaken for the account's own.
     def authenticate_user!
-      render json: { error: 'Not authenticated' }, status: :unauthorized unless current_user
+      return render json: { error: 'Not authenticated' }, status: :unauthorized unless current_user
+
+      record_account_activity!
     end
 
     # The REST API is a paid-only surface for the TOKEN: a request that

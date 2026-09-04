@@ -542,16 +542,111 @@ module BillingLifecycle
 
     seats = Plans.seats_for(account) || 1
 
+    # The cheap way out, taken before any lock: the overwhelming majority of
+    # the events that reach here are about accounts that fit their plan
+    # perfectly well, and none of them should pay for a row lock. It is only
+    # a fast path — the same question is asked again under the lock, where
+    # the answer is the one that counts.
     return if Accounts.seat_occupancy(account) <= seats
 
-    kept = admins_to_keep(account)
-    demoted = demote_members!(account, kept)
-    revoked = revoke_pending_invites!(account)
+    outcome = park_everyone_but_one_admin!(account, seats)
+
+    return if outcome.nil?
+
+    kept, demoted, revoked = outcome
 
     return if demoted.zero? && revoked.zero?
 
+    # Outside the lock on purpose: the mail is the only step here that talks
+    # to anything but our own database.
     BillingMailer.seats_reduced(account, kept: kept.find { |user| user.account_id == account.id } || kept.first,
                                          seats:, revoked:).deliver_later!
+  end
+
+  # The whole downgrade decision, taken and written under the ACCOUNT's row
+  # lock (review 8, F2). Answers [kept, demoted_count, revoked_count], or nil
+  # when the account turned out to fit its plan after all.
+  #
+  # WHY THE LOCK. Choosing who keeps a seat is a READ, and on its own it
+  # promises nothing. With administrators A and B this used to happen:
+  #
+  #   1. the downgrade reads the account, decides to keep A, and satisfies
+  #      itself that B is not the last administrator — because A is still
+  #      one;
+  #   2. B, on the users page, parks A read-only through the manual door.
+  #      That door IS locked (Accounts.with_last_admin_guard) and its check
+  #      passes honestly: at that moment B is a full-access administrator, so
+  #      A is not the last one;
+  #   3. the downgrade, still holding its decision from step 1, parks B.
+  #
+  # Nobody is left who can invite anyone, change a role, or fix the account's
+  # billing — and no unique index or validation stands in the way, because
+  # the two writes are to different user rows. The manual doors were brought
+  # under the account row lock precisely so they could not do this to each
+  # other; the automatic one has to stand in the same queue, or the guard
+  # only ever protected half the doors.
+  #
+  # LOCK ORDER — one order, obeyed by every path that touches seats:
+  #
+  #     account_subscriptions row  →  accounts rows, ascending id
+  #                                →  Quotas advisory lock
+  #
+  #   * the billing doors (webhooks, the Checkout return, the nightly
+  #     reconciliation, the seat purchase) enter through
+  #     StripeBilling::Linker.with_account_lock, which holds the SUBSCRIPTION
+  #     row, and everything below them — AccountStates.suspend! /
+  #     lift_suspension! and now this — takes ACCOUNT rows inside it;
+  #   * the manual doors (UsersController#destroy/#update,
+  #     UsersReadOnlyController#create) take ONE account row —
+  #     Accounts.with_last_admin_guard, the row of the account that could be
+  #     stranded — and the Quotas advisory creation lock inside it. They hand
+  #     the seat back to Stripe, the only thing that would take the
+  #     subscription row, strictly AFTER the account lock is released;
+  #   * this path takes SEVERAL account rows, because a downgrade parks
+  #     people across the whole seat family (the account and its linked
+  #     children), and a manual park in a child locks the CHILD's row rather
+  #     than the parent's. Locking only the parent would leave a child
+  #     exposed to exactly the race described above. They are taken in
+  #     ascending id order, in one statement, which is what keeps two
+  #     overlapping families from deadlocking each other.
+  #
+  # So no path ever holds an account row while it waits for the subscription
+  # row, and no two paths take account rows in opposite orders. Nothing
+  # inside this block talks to Stripe: revoking a pending invitation has no
+  # Stripe call to make (the subscription it would have billed is the one
+  # that just ended) and the mail is sent by the caller, outside.
+  def park_everyone_but_one_admin!(account, seats)
+    with_seat_family_lock(account) do
+      # Asked again on the far side of the lock. Whoever else was writing to
+      # these accounts has now committed, so this is the first read that is
+      # worth acting on — and a family that no longer overflows its plan (a
+      # member archived, an invitation cancelled, a seat handed back while we
+      # queued) is left alone.
+      next nil if Accounts.seat_occupancy(account) <= seats
+
+      kept = admins_to_keep(account)
+
+      [kept, demote_members!(account, kept), revoke_pending_invites!(account)]
+    end
+  end
+
+  # Every account whose people share these seats, locked together and in
+  # ascending id order.
+  #
+  # One `SELECT ... FOR UPDATE ORDER BY id` rather than a nest of
+  # `with_lock`s: it is the same row lock the manual guard takes (that is
+  # what makes the two queue behind each other at all), and taking the whole
+  # set in one ordered statement is what makes the order impossible to get
+  # wrong. A family of one — which is nearly every account — is a single row
+  # lock and identical to what `account.with_lock` would have done.
+  def with_seat_family_lock(account)
+    ids = Accounts.seat_account_ids(account)
+
+    ApplicationRecord.transaction do
+      Account.where(id: ids).order(:id).lock.load
+
+      yield
+    end
   end
 
   # Who keeps working: the admin who was here most recently — one per ACTIVE
@@ -571,12 +666,17 @@ module BillingLifecycle
     end
   end
 
+  # Only ever called from inside park_everyone_but_one_admin!, i.e. with the
+  # account's row lock held: both the read below and the write it decides are
+  # inside it, which is what stops the manual doors interleaving between them.
   def demote_members!(account, kept)
     scope = Accounts.seat_holders(Accounts.seat_account_ids(account)).where.not(id: kept.map(&:id))
 
     # Belt and braces on top of keeping one admin per account: whatever the
     # seat arithmetic says, the last person who can administer an account is
-    # never the one it takes the seat from.
+    # never the one it takes the seat from. `Accounts.last_admin?` is the
+    # unlocked read — it is trustworthy HERE only because the account row is
+    # already locked around it.
     demotable = scope.reject { |user| Accounts.last_admin?(user) }
 
     return 0 if demotable.empty?

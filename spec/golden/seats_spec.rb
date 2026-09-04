@@ -1786,6 +1786,117 @@ RSpec.describe 'Seats and invitations', type: :request do
       expect(body_of(mail)).to include('1 pending invitation was cancelled')
     end
 
+    # F2 (review 8): the manual doors were brought under the account's row
+    # lock so two administrators could not park each other into an account
+    # with nobody in charge. The AUTOMATIC downgrade parks people too, and it
+    # was not: it chose who to keep and decided who was safe to park with no
+    # lock at all. With administrators A and B, it could decide to keep A and
+    # park B; B could then park A through the correctly locked manual door
+    # (A really is not the last administrator at that moment); and the
+    # downgrade would then park B on its stale decision, leaving nobody who
+    # can invite anyone, change a role or fix the account's billing.
+    describe 'racing the manual last-admin guard' do
+      def administrators
+        User.where(account_id: account.id).admins.active.full_access
+      end
+
+      # The manual park, committed just before the downgrade takes the
+      # account row lock — which, with the lock in place, is the only moment
+      # the other request can land in: Postgres serialises the two, so the
+      # manual write is either entirely before this lock or entirely after
+      # it. Committed OUTSIDE the locked transaction, the way the "two
+      # administrators removing each other at the same moment" group above
+      # does it, because that is where the other request's write really was.
+      def park_the_keeper_at_the_lock!
+        allow(BillingLifecycle).to receive(:with_seat_family_lock).and_wrap_original do |original, *args, &block|
+          User.where(id: recent_admin.id).update_all(read_only_at: Time.current)
+
+          original.call(*args, &block)
+        end
+      end
+
+      # The fix itself: the choice and the demotion both happen inside the
+      # account rows' lock, which is what makes the interleaving above
+      # impossible rather than merely unlikely. Asserted directly, because a
+      # single-connection spec cannot make two requests genuinely contend —
+      # it can only prove that the decision is taken where a contending
+      # request would have to wait for it.
+      it 'chooses the keepers and parks the rest under the account row lock' do
+        depth = 0
+        chose_under_lock = nil
+        parked_under_lock = nil
+        statements = []
+
+        subscriber = ActiveSupport::Notifications.subscribe('sql.active_record') do |*, payload|
+          statements << payload[:sql].to_s
+        end
+
+        allow(BillingLifecycle).to receive(:with_seat_family_lock).and_wrap_original do |original, *args, &block|
+          depth += 1
+
+          begin
+            original.call(*args, &block)
+          ensure
+            depth -= 1
+          end
+        end
+
+        allow(BillingLifecycle).to receive(:admins_to_keep).and_wrap_original do |original, *args|
+          chose_under_lock = depth.positive?
+
+          original.call(*args)
+        end
+
+        allow(BillingLifecycle).to receive(:demote_members!).and_wrap_original do |original, *args|
+          parked_under_lock = depth.positive?
+
+          original.call(*args)
+        end
+
+        downgrade!
+
+        expect(chose_under_lock).to be(true)
+        expect(parked_under_lock).to be(true)
+        # And it really was a row lock on the accounts table, taken in a
+        # fixed order so two overlapping families cannot deadlock.
+        expect(statements).to include(a_string_matching(/FROM "accounts".*ORDER BY "accounts"\."id".*FOR UPDATE/m))
+      ensure
+        ActiveSupport::Notifications.unsubscribe(subscriber)
+      end
+
+      it 'keeps a working administrator when the manual park lands first', sidekiq: :inline do
+        park_the_keeper_at_the_lock!
+
+        downgrade!
+
+        # The racing park really did commit: without that this example would
+        # be proving nothing.
+        expect(recent_admin.reload.read_only_at).to be_present
+
+        # The downgrade re-read the account under the lock, found the admin
+        # it would have kept already parked, and kept the other one instead.
+        expect(administrators.ids).to eq([admin.id])
+        expect(admin.reload.read_only_at).to be_nil
+        expect(member.reload.read_only_at).to be_present
+        expect(Accounts.users_count(account)).to eq(1)
+      end
+
+      it 'refuses the manual park when the downgrade got there first' do
+        downgrade!
+
+        expect(administrators.ids).to eq([recent_admin.id])
+
+        act_as(recent_admin.reload)
+
+        expect { post "/users/#{recent_admin.id}/read_only" }
+          .not_to(change { recent_admin.reload.read_only_at })
+
+        expect(response).to redirect_to('/settings/users')
+        expect(flash[:alert]).to eq(I18n.t('last_admin_cannot_be_removed'))
+        expect(administrators.ids).to eq([recent_admin.id])
+      end
+    end
+
     # F11: everybody may manage their own user row — that is how a password
     # gets changed — and that included clearing their own read-only mark.
     #

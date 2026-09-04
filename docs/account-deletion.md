@@ -35,16 +35,41 @@ Two things about the window are worth saying out loud:
 
 ## Accounts nobody uses
 
-An account nobody has signed in to for **a year** is deleted too, with warning
-emails **60, 30 and 7 days** before. Those warnings go to *every* person in the
+An account **nobody has used for a year** is deleted too, with warning emails
+**60, 30 and 7 days** before. Those warnings go to *every* person in the
 account, not just the administrators — the person who set it up may have left.
 Each person gets their own copy, addressed only to them: nobody is shown who
 else is in the account.
 
-**Signing in once resets the whole clock.** The date is not stored anywhere: it
-is computed every night from the last thing that happened (the most recent
-sign-in, the account's own creation, or the day its subscription ended), so one
-sign-in moves it a year into the future by itself.
+**Using the account once resets the whole clock.** "Using it" means what it
+sounds like: any page opened by somebody signed in to the account counts, and
+so does signing in. It does *not* mean signing in again — most people never do.
+This app keeps you signed in for two years, so somebody who works in it every
+day may not type a password from one year to the next, and measuring "unused"
+by the last sign-in would have deleted accounts that were in daily use. Every
+account therefore carries a **last used** date (`accounts.last_active_at`),
+stamped at most once a day by ordinary signed-in requests. Signing pages opened
+by the *recipients* of your documents are their activity, not yours, and never
+count.
+
+The deletion date is not stored anywhere: it is computed every night from the
+last thing that happened — the last time somebody used the account, the most
+recent sign-in, the account's own creation, or the day its subscription ended —
+so one visit moves it a year into the future by itself. Work done in the
+**testing sandbox** counts as use of the account it belongs to, because the
+sandbox is deleted with its parent and never on its own.
+
+**The warning email's instruction works.** It links to your templates page: if
+your browser is still signed in, opening that link is all it takes, and if it
+is not, signing in does the same thing.
+
+**When this shipped**, no account had a "last used" date, so nothing was
+invented for them — the date is simply empty until the account's next signed-in
+request, and every account's deletion schedule read exactly as it did before.
+Any account that was already part-way through its 60/30/7-day notice had that
+notice **restarted**, because it had been measured the old way: those accounts
+get a fresh set of warnings, and any of them that is genuinely in use stamps
+itself long before the new letters run out.
 
 **Nothing dormant is ever deleted unwarned.** A computed clock has no memory of
 what anybody was told, so the 7-day letter leaves a mark on the row
@@ -59,7 +84,7 @@ Two rules protect data that is not really abandoned:
 
 * an account with **paid access** is never dormant, however quiet it is;
 * an account that **used to pay** keeps everything for **a year after the
-  subscription ended**, whatever the sign-in dates say.
+  subscription ended**, whatever the usage dates say.
 
 **Downgrading is not deleting.** Dropping from the paid plan to the free one
 never removes a document, a template or a person (D43). It only changes what
@@ -148,7 +173,7 @@ the job retries it — when a document's file could not be removed from storage.
 **The decision is re-made immediately before anything is destroyed, and then
 the account is claimed.** The nightly sweep decided minutes ago, and a retry may
 be hours later; in between an administrator may have pressed "Cancel deletion",
-or a dormant account's owner may simply have signed in. So `AccountPurgeJob`
+or a dormant account's owner may simply have opened it again. So `AccountPurgeJob`
 takes a **short** lock, asks `Accounts::Retention.purge_eligible?` again, stamps
 `accounts.purge_started_at`, and commits — then runs the purge **outside** any
 transaction. (Holding the lock across the purge would mean a late failure

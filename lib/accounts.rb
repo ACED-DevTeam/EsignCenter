@@ -128,9 +128,20 @@ module Accounts
   # assigned the destination account to it by the time it asks, and the
   # question this has to answer is about the account being left.
   #
-  # Nested locks: the seat check inside the block takes Quotas' advisory
-  # creation lock, so the order is always account row → advisory lock, never
-  # the other way round, and there is nothing here to deadlock against.
+  # LOCK ORDER. One order is obeyed by every path in the application that can
+  # change who holds a seat, and it is written out in full in
+  # BillingLifecycle.park_everyone_but_one_admin!:
+  #
+  #     account_subscriptions row  →  accounts row  →  Quotas advisory lock
+  #
+  # This guard is the middle of it. The seat check inside the block takes
+  # Quotas' advisory creation lock, so the order here is always account row →
+  # advisory lock and never the other way round; and the callers hand the
+  # seat back to Stripe — the one thing that would take the subscription row
+  # — only AFTER this block has returned and the account row is free again.
+  # There is therefore nothing here to deadlock against, including the
+  # automatic downgrade, which arrives holding the subscription row and takes
+  # this same account row inside it.
   def with_last_admin_guard(user, account_id: user&.account_id)
     account = Account.find_by(id: account_id)
 
