@@ -88,14 +88,7 @@ class UsersController < ApplicationController
 
     move_to_requested_account!
 
-    # An account with no administrator can never invite anyone, change a role
-    # or fix its own billing again: archiving the last admin, demoting them,
-    # or moving them out is refused before anything is written (Phase B).
-    if strands_account?(attrs, leaving_account_id)
-      return redirect_to settings_users_path, alert: I18n.t('last_admin_cannot_be_removed')
-    end
-
-    if update_user(attrs)
+    if update_user(attrs, leaving_account_id)
       if @user.try(:pending_reconfirmation?) && @user.previous_changes.key?(:unconfirmed_email)
         SendConfirmationInstructionsJob.perform_async('user_id' => @user.id)
 
@@ -109,6 +102,12 @@ class UsersController < ApplicationController
     end
   rescue Quotas::SeatLimitReached => e
     redirect_to settings_users_path, alert: e.localized_message
+  rescue Accounts::LastAdminError
+    # An account with no administrator can never invite anyone, change a role
+    # or fix its own billing again: archiving the last admin, demoting them, or
+    # moving them out is refused, and nothing was written (Phase B; the check
+    # and the write share the account's row lock — Accounts.with_last_admin_guard).
+    redirect_to settings_users_path, alert: I18n.t('last_admin_cannot_be_removed')
   end
 
   def destroy
@@ -116,15 +115,20 @@ class UsersController < ApplicationController
       return redirect_to settings_users_path, notice: I18n.t('unable_to_remove_user')
     end
 
-    return redirect_to settings_users_path, alert: I18n.t('last_admin_cannot_be_removed') if Accounts.last_admin?(@user)
-
-    @user.update!(archived_at: Time.current)
+    # Asked and archived under the account's row lock, so a second admin
+    # archiving THIS one at the same moment cannot leave the account with
+    # nobody who can administer it (Accounts.with_last_admin_guard).
+    Accounts.with_last_admin_guard(@user) { @user.update!(archived_at: Time.current) }
 
     # Their seat goes back: the next invoice bills one fewer (D43 — a
-    # reduction takes effect at renewal, there is no mid-cycle refund).
+    # reduction takes effect at renewal, there is no mid-cycle refund). Outside
+    # the lock: it can call Stripe, and a slow payment provider must not hold
+    # an account row.
     AccountInvites.release_seat_for(current_account)
 
     redirect_back fallback_location: settings_users_path, notice: I18n.t('user_has_been_removed')
+  rescue Accounts::LastAdminError
+    redirect_to settings_users_path, alert: I18n.t('last_admin_cannot_be_removed')
   end
 
   private
@@ -168,13 +172,15 @@ class UsersController < ApplicationController
     @user.account = account
   end
 
-  # Does this edit take the last administrator away from the account they are
-  # in? All three doors it can happen through: archiving them, demoting them
-  # to a role that cannot administer anything, and moving them to another
-  # account altogether.
-  def strands_account?(attrs, account_id)
-    return false unless Accounts.last_admin?(@user, account_id:)
-
+  # Could this edit take administrator capability away from the account this
+  # person is in? All three ways it can happen through this door: archiving
+  # them, demoting them to a role that cannot administer anything, and moving
+  # them to another account altogether.
+  #
+  # It deliberately does NOT ask whether they are the last administrator —
+  # that question is only worth anything under the account's row lock, and
+  # update_user asks it there (Accounts.with_last_admin_guard).
+  def removes_admin_capability?(attrs, account_id)
     archiving = attrs.key?(:archived_at) && attrs[:archived_at].present?
     demoting = attrs[:role].present? && attrs[:role] != User::ADMIN_ROLE
     moving = @user.account_id != account_id
@@ -288,10 +294,22 @@ class UsersController < ApplicationController
     render turbo_stream: turbo_stream.replace(:modal, template: 'users/new'), status: :unprocessable_content
   end
 
+  # An edit that could cost the account an administrator is decided and
+  # committed under that account's row lock, so two admins editing each other
+  # at the same moment cannot both be told there is a second one left
+  # (Accounts.with_last_admin_guard raises Accounts::LastAdminError, which the
+  # action turns back into the refusal sentence). Every other edit — a name, a
+  # 2FA requirement, a promotion — needs no lock at all.
+  def update_user(attrs, leaving_account_id)
+    return save_user(attrs) unless removes_admin_capability?(attrs, leaving_account_id)
+
+    Accounts.with_last_admin_guard(@user, account_id: leaving_account_id) { save_user(attrs) }
+  end
+
   # "Unarchive" (users/index) fills a seat exactly like an invite does, so it
   # runs the same check under the same creation lock; every other edit of an
   # archived user (a name, a role) is a plain update.
-  def update_user(attrs)
+  def save_user(attrs)
     return @user.update(attrs) unless reactivating?(attrs)
 
     Quotas.with_creation_lock(current_account) do

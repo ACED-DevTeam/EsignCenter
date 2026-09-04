@@ -740,6 +740,124 @@ RSpec.describe 'Stripe billing', type: :request do # rubocop:disable RSpec/Multi
       expect(Plans.key_for(account)).to eq(Plans::PAID)
     end
 
+    # Both Stripe calls Accounts::Deletion.cancel_subscription! makes, asserted
+    # separately: the metadata write carries the AUTHORITY (only a secret key
+    # can make it) and the cancel carries the human-readable comment beside it.
+    # A cancel that skipped the marker would hit no stub at all.
+    def stub_account_deletion_cancel(id)
+      mark = stub_request(:post, subscription_url(id))
+             .with(body: hash_including('metadata' => hash_including(
+               StripeBilling::DUPLICATE_CANCEL_METADATA_KEY => StripeBilling::ACCOUNT_DELETION_METADATA
+             )))
+             .to_return(status: 200, body: { id:, object: 'subscription' }.to_json,
+                        headers: { 'Content-Type' => 'application/json' })
+
+      # A Stripe cancel is a DELETE, and the gem puts its parameters in the
+      # QUERY STRING rather than a body — matching on a body here would match
+      # nothing and quietly prove nothing.
+      cancel = stub_request(:delete, subscription_url(id))
+               .with(query: hash_including('cancellation_details' =>
+                                             { 'comment' => StripeBilling::ACCOUNT_DELETION_MARKER }))
+               .to_return(status: 200,
+                          body: fixture_json('subscription-canceled').merge('id' => id).to_json,
+                          headers: { 'Content-Type' => 'application/json' })
+
+      [mark, cancel]
+    end
+
+    # An account whose last member joined another team, and a Checkout they
+    # had already started finishing afterwards (review 7, D50 D3).
+    #
+    # Checkout is created against the account that clicked and leaves no local
+    # record of itself, so the move cannot see one in flight: the person
+    # accepts the invitation, their old account is archived behind them, and
+    # then the Stripe tab they left open days ago completes. The session still
+    # names the old account in its `client_reference_id`, so the webhook
+    # resolves it perfectly — and used to hand it a live subscription. That
+    # account has NOBODY in it: no one can sign in to it, reach its billing
+    # page, open its Customer Portal or cancel anything, so the card would have
+    # gone on being charged every month with no door left anywhere to stop it.
+    #
+    # The barrier that already refuses paid access to an account being purged
+    # is extended to cover this, and it is told apart from every other archived
+    # account by the AccountMove row the move writes. Refusing the access is
+    # not enough on its own, though — the money is the part that hurts — so the
+    # subscription is also cancelled at Stripe through the app's existing
+    # cancel path, and a person is told, because whether anything goes back on
+    # the card is not a decision this code may make by itself.
+    it 'refuses a Checkout completed for an account its last member has left, and stops the card' do
+      alerts = []
+      allow(OperatorAlert).to receive(:deliver) { |args| alerts << args }
+
+      gone = create(:account)
+      mover = create(:user, account: gone)
+
+      # The real move, through the real code: what makes this account
+      # different from any other archived one is the row that move writes.
+      Accounts::MoveUser.call(user: mover, to: account)
+
+      expect(gone.reload.archived_at).to be_present
+      expect(gone.users.active).to be_empty
+
+      stub_subscription(subscription_c, 'subscription-trialing-checkout')
+      mark, cancel = stub_account_deletion_cancel(subscription_c)
+
+      post_stripe_event(nil, body: checkout_body(gone.id))
+      drain_stripe_jobs
+
+      row = AccountSubscription.find_by!(account_id: gone.id)
+
+      # Stripe's facts are still written down, so the money history stays
+      # readable — but no paid access is granted on them.
+      expect(row.stripe_subscription_id).to eq(subscription_c)
+      expect(row.stripe_customer_id).to eq(customer_c)
+      expect(row.access_state).to eq('cancelled')
+      expect(Plans.key_for(gone.reload)).to eq(Plans::FREE)
+
+      # And the card stops being charged, under the marker only our secret key
+      # can write.
+      expect(mark).to have_been_requested
+      expect(cancel).to have_been_requested
+      expect(row.reload.stripe_status).to eq('canceled')
+
+      alert = alerts.sole
+
+      expect(alert[:subject]).to include('moved away')
+      expect(alert[:body]).to include(subscription_c)
+      expect(alert[:body]).to include(gone.id.to_s)
+      expect(StripeEventInbox.sole).to have_attributes(status: 'processed', account_id: gone.id)
+    end
+
+    # The barrier has to name the moved-away case and nothing else.
+    # `archived_at` on its own is far too broad to hang a money decision on:
+    # the purge stamps it on the tombstone it leaves behind and on every
+    # testing child it destroys, and it is what every ordinary "this account is
+    # gone" door in the app already reads. Barring those too would refuse paid
+    # access to accounts that are simply closed for other reasons — and, worse,
+    # would send this path's Stripe cancel after subscriptions it has no
+    # business ending.
+    it 'tells an account archived by a move apart from every other archived account' do
+      gone = create(:account)
+
+      Accounts::MoveUser.call(user: create(:user, account: gone), to: account)
+
+      closed = create(:account, archived_at: Time.current)
+      claimed = create(:account, purge_started_at: Time.current)
+
+      expect(StripeBilling::SubscriptionSync.moved_away?(gone.reload)).to be(true)
+      expect(StripeBilling::SubscriptionSync.moved_away?(closed)).to be(false)
+      expect(StripeBilling::SubscriptionSync.moved_away?(claimed)).to be(false)
+      expect(StripeBilling::SubscriptionSync.moved_away?(account)).to be(false)
+
+      # Both barred states still answer the one question the barrier asks, and
+      # an ordinary closed account is not one of them.
+      expect(StripeBilling::SubscriptionSync.barred?(cancelled_row(for_account: gone))).to be(true)
+      expect(StripeBilling::SubscriptionSync.barred?(cancelled_row(for_account: claimed,
+                                                                   customer: customer_b))).to be(true)
+      expect(StripeBilling::SubscriptionSync.barred?(cancelled_row(for_account: closed,
+                                                                   customer: customer_unknown))).to be(false)
+    end
+
     # An account that was standalone when it started Checkout writes its OWN
     # id into client_reference_id. If it has been linked under a parent by
     # the time the webhook is processed, that reference no longer names an

@@ -115,6 +115,12 @@ RSpec.describe 'Start form authorization', type: :request do
   # itself was never exposed; the leak is existence and date, which for a
   # signature is the sensitive part.
   describe 'the completed page of a share link' do
+    # One required text field, so the examples below can complete the form the
+    # way a real signer does (SigningHelpers#complete!) rather than stamping
+    # completed_at on a row by hand: the proof this page now asks for is minted
+    # on the real completion path, so the examples have to walk it.
+    let(:template) { create(:template, account:, author: user, shared_link: true, only_field_types: %w[text]) }
+
     let!(:signer) do
       create(:submitter, submission: create(:submission, template:, created_by_user: user, source: 'link'),
                          email: 'signed@example.com', uuid: submitter_uuid(template),
@@ -124,8 +130,18 @@ RSpec.describe 'Start form authorization', type: :request do
     # The page is drawn under the visitor's browser locale, so the date is
     # formatted the way that locale writes it rather than the way the default
     # one does.
-    def completion_date
-      I18n.with_locale(:'en-GB') { I18n.l(signer.completed_at.to_date, format: :long) }
+    def completion_date(submitter = signer)
+      I18n.with_locale(:'en-GB') { I18n.l(submitter.completed_at.to_date, format: :long) }
+    end
+
+    # One signer's whole journey in one browser: start the document from the
+    # share link and complete it there. That completion is where the proof
+    # comes from now — the signer's own signing session — so it is what every
+    # example below that expects to be recognised has to do first.
+    def sign_it!(email)
+      put "/d/#{template.slug}", params: { submitter: { email: } }
+
+      complete!(Submitter.order(:id).last)
     end
 
     # The address is echoed back into the "email me a copy" button, so it is
@@ -148,9 +164,39 @@ RSpec.describe 'Start form authorization', type: :request do
     end
 
     # The legitimate return visit, which is what the fix must not break: the
-    # signer types their address into the share link, this door recognises the
-    # document as one their own device started, and sends them here.
+    # signer completed the document in THIS browser, so this browser is the one
+    # holding the proof, and typing the address they signed with brings their
+    # own page back.
     it 'still shows the signer who just completed it their own page' do
+      mine = sign_it!('fresh@example.com')
+
+      put "/d/#{template.slug}", params: { submitter: { email: 'fresh@example.com' } }
+
+      expect(response).to redirect_to("/d/#{template.slug}/completed?email=fresh%40example.com")
+
+      follow_redirect!
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include(CGI.escapeHTML(template.name))
+      expect(response.body).to include(completion_date(mine))
+      # The resubmit affordance is still there for them.
+      expect(response.body).to include(I18n.t('resubmit'))
+    end
+
+    # Review 8. The other accepted proof was an IP MATCH: submit an address to
+    # the share link, and if the completed submitter it found had been signed
+    # from the same remote address, the visitor was handed the marker on the
+    # way past and read the document's name and the day it was signed off the
+    # page they were redirected to. An IP address is not an identity — an
+    # office, a household, a hotel, a school, a carrier's NAT or a VPN exit put
+    # hundreds of unrelated people behind one of them — so typing a colleague's
+    # email from the desk next to theirs was enough to learn what they had
+    # signed and when.
+    it 'refuses a visitor who only shares the signer\'s IP address' do
+      # Exactly the old proof, and nothing more: the signer completed from
+      # 127.0.0.1 and so does this request.
+      expect(signer.ip).to eq('127.0.0.1')
+
       put "/d/#{template.slug}", params: { submitter: { email: 'signed@example.com' } }
 
       expect(response).to redirect_to("/d/#{template.slug}/completed?email=signed%40example.com")
@@ -158,26 +204,48 @@ RSpec.describe 'Start form authorization', type: :request do
       follow_redirect!
 
       expect(response).to have_http_status(:ok)
-      expect(response.body).to include(CGI.escapeHTML(template.name))
-      expect(response.body).to include(completion_date)
-      # The resubmit affordance is still there for them.
-      expect(response.body).to include(I18n.t('resubmit'))
+      expect(response.body).to include(I18n.t('completed_documents_are_private'))
+      expect(response.body).not_to include(CGI.escapeHTML(template.name))
+      expect(response.body).not_to include(completion_date)
+      expect(response.body).not_to include(I18n.t('resubmit'))
+      # And still indistinguishable from an address that never completed
+      # anything: the walk past #update leaves nothing behind either.
+      expect(page_for('signed@example.com')).to eq(page_for('nobody-here@example.com'))
     end
 
-    # And the marker is a marker for THAT document: it does not become a key
-    # for asking about anybody else who used the same link.
+    # And the marker is a marker for the document it was earned on: it does not
+    # become a key for asking about anybody else who used the same link.
     it 'does not let the marker be spent on another signer\'s address' do
       other = create(:submitter, submission: create(:submission, template:, created_by_user: user, source: 'link'),
                                  email: 'someone-else@example.com', uuid: submitter_uuid(template),
                                  ip: '10.9.9.9', completed_at: Time.current)
 
-      put "/d/#{template.slug}", params: { submitter: { email: 'signed@example.com' } }
+      sign_it!('fresh@example.com')
 
       get "/d/#{template.slug}/completed", params: { email: other.email }
 
       expect(response).to have_http_status(:ok)
       expect(response.body).to include(I18n.t('completed_documents_are_private'))
       expect(response.body).not_to include(CGI.escapeHTML(template.name))
+
+      # Nor about the signer whose IP this browser happens to share.
+      get "/d/#{template.slug}/completed", params: { email: signer.email }
+
+      expect(response.body).to include(I18n.t('completed_documents_are_private'))
+      expect(response.body).not_to include(CGI.escapeHTML(template.name))
+    end
+
+    # Two documents from one browser: the marker holds a short list, so
+    # finishing a second one does not turn the first back into a stranger.
+    it 'keeps recognising the first of two documents signed in the same browser' do
+      first = sign_it!('first@example.com')
+      sign_it!('second@example.com')
+
+      get "/d/#{template.slug}/completed", params: { email: 'first@example.com' }
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include(CGI.escapeHTML(template.name))
+      expect(response.body).to include(completion_date(first))
     end
   end
 

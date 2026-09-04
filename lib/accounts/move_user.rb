@@ -43,19 +43,70 @@ module Accounts
 
     module_function
 
-    def call(user:, to:, role: nil)
-      from = user.account
-
-      assert_movable!(user:, from:, to:)
+    # Nothing outside the lock decides anything (review 7, D50 D2).
+    #
+    # This used to read `user.account` and run every eligibility check BEFORE
+    # it opened its transaction, and the acceptance door above it locked only
+    # the INVITATION row. So one person holding invitations from two different
+    # teams could accept both at once and have them not collide at all: two
+    # different invitation rows, two different locks, and both passes agreeing
+    # that the person was alone in account A. The first moved the documents
+    # into B; the second found nothing left to move (`where(account_id: A)`
+    # matched no rows by then) and moved only the PERSON, into C. The person
+    # ended in C with every document they own sitting permanently inside B — a
+    # tenant they are not a member of, whose administrators now own their work
+    # — and both AccountMove rows recorded a success.
+    #
+    # So the transaction is opened FIRST and the user row is locked and re-read
+    # inside it, which is what serialises the two acceptances: the second one
+    # waits for the first to commit and then reads the world the first one
+    # left. `expected_from_id` is the account the CALLER validated against —
+    # the account the invitee was shown, before any lock — and comparing it
+    # against the re-read row is the whole refusal: a person who is no longer
+    # in the account this call was authorized over is not moved out of
+    # whatever account they are in now.
+    #
+    # The source account is locked too, because every remaining check reads it
+    # (its kind, its members, its subscription, its lifecycle state) and a
+    # purge claim or a deletion landing between the check and the write is the
+    # worst of them (D5, `assert_source_writable!`): documents that were meant
+    # to be destroyed surviving inside another tenant.
+    #
+    # `from` is that authorizing account: the one the invitee was shown on the
+    # join screen, read before any lock was taken. It defaults to whatever the
+    # user object in hand says, which is the same thing for a caller that has
+    # not reloaded the row; passing it explicitly is what keeps the comparison
+    # honest for a caller that has (AccountInvites.accept_move!).
+    def call(user:, to:, role: nil, from: user.account)
+      expected_from_id = from.id
 
       ApplicationRecord.transaction do
+        user.lock!
+
+        raise Refused, I18n.t('invite_move_already_moved') if user.account_id != expected_from_id
+
+        # The same account, now read under its own lock: from here on `from`
+        # is the database's answer rather than the caller's.
+        from = user.account.lock!
+
+        assert_movable!(user:, from:, to:)
+
         merge_folders!(from, to)
         drop_duplicate_document_metadata!(from, to)
         MOVED_TABLES.each { |model| model.where(account_id: from.id).update_all(account_id: to.id) }
 
         # The seat they take in the team is a full one: whatever their old
         # account thought of them, they are a member here now.
-        user.update!(account: to, role: role.presence || user.role, read_only_at: nil)
+        #
+        # `session_version` goes up in the same write, and that is what ends
+        # every browser session minted while they were in the old account
+        # (User#authenticatable_salt). It is bumped HERE, inside the lock and
+        # the transaction, so a session cannot outlive the move by even the
+        # width of a second write — and if anything below raises, the rollback
+        # takes the bump with it and nobody is signed out of a move that never
+        # happened.
+        user.update!(account: to, role: role.presence || user.role, read_only_at: nil,
+                     session_version: user.session_version + 1)
 
         revoke_credentials!(user)
 
@@ -94,15 +145,19 @@ module Accounts
     # relations for them, and they are reused here rather than defined a
     # second time, so there is one place that knows those tables exist.
     #
-    # What this canNOT revoke is a live BROWSER session. Devise serialises a
-    # session as the user id plus `authenticatable_salt`, which is a slice of
-    # the password hash, and this app has no session-version column and no
-    # server-side session store (the session is a signed cookie). The only
-    # lever that would invalidate other browsers is changing the password,
-    # which is not ours to change. Remember-me is cleared, which is the part
-    # that survives a closed browser; the accepting browser is signed in again
-    # by InvitesController so the person who just pressed the button is not
-    # thrown out.
+    # Live BROWSER sessions are ended by the `session_version` bump in `call`
+    # rather than here, because they are ended by a WRITE rather than by a
+    # delete: Devise serialises a session as the user id plus
+    # `authenticatable_salt`, this app appends `users.session_version` to that
+    # salt (User#authenticatable_salt), and Warden re-compares it out of the
+    # database on every request. One number changing inside the move's
+    # transaction is every outstanding session cookie and every remember-me
+    # cookie refused at once — including cookies on machines nobody here can
+    # see. Remember-me is still cleared below as well, because
+    # `remember_created_at` is a second, independent reason for Devise to
+    # refuse a cookie and clearing it costs nothing. The accepting browser is
+    # signed in again by InvitesController, after the bump, so the person who
+    # just pressed the button is not thrown out by their own click.
     def revoke_credentials!(user)
       AccessToken.where(user_id: user.id).delete_all
       McpToken.where(user_id: user.id).delete_all
@@ -117,6 +172,14 @@ module Accounts
     # Every reason a move is refused, each with the sentence the invitee sees.
     # They are all about the account being LEFT: the team doing the inviting
     # has already been checked (it had a seat, and it paid for it).
+    #
+    # Called only from inside `call`, under the user's and the source
+    # account's row locks, on rows those locks have just re-read. Everything
+    # here is a fact that can change between the page and the button, and
+    # several of them are facts another worker changes — a purge claiming the
+    # account, an administrator asking for deletion, a failed payment
+    # suspending it — so asking them anywhere else is asking them about a
+    # world that has already moved on.
     def assert_movable!(user:, from:, to:)
       raise Refused, I18n.t('invite_move_same_account') if from.id == to.id
 
@@ -124,11 +187,49 @@ module Accounts
         raise Refused, I18n.t('invite_move_not_a_personal_account')
       end
 
+      assert_source_writable!(from)
+
       if User.where(account_id: from.id).active.where.not(id: user.id).exists?
         raise Refused, I18n.t('invite_move_other_members')
       end
 
       raise Refused, I18n.t('invite_move_paid_subscription') if Plans.live_subscription?(from)
+
+      true
+    end
+
+    # The lifecycle of the account being LEFT (review 7, D50 D5).
+    #
+    # A move is the biggest write this app makes on an account: every template,
+    # every document, every folder changes tenant, and the account is closed
+    # behind them. None of that may happen out of an account that is not
+    # allowed to be written at all.
+    #
+    # Two of these are data-loss questions rather than politeness. An account
+    # whose purge has been CLAIMED is being emptied right now, in another
+    # process, outside any lock this request could have waited on — a move
+    # racing it would carry the surviving half of somebody's data into a
+    # different tenant while the rest of it is deleted. And an account with a
+    # deletion pending is under a promise: the customer said "destroy all of
+    # this", and honouring a move would leave every document they asked us to
+    # delete alive inside a team instead.
+    #
+    # The other two are the contract. A suspended account is read-only for a
+    # reason its owner has to settle first (an unpaid card, an operator
+    # freeze), and an already-archived account is over. Asked in this order
+    # because the states overlap and the invitee deserves the specific
+    # sentence: a purge claim also reads as read-only, and a pending deletion
+    # is a suspension with `reason: 'deletion'` behind it.
+    #
+    # The predicates are the app's own — `Account#purge_claimed?`,
+    # `Account#pending_deletion?`, `AccountStates.read_only?` — never a second
+    # opinion written here, so a state added to any of them is refused here
+    # from the day it exists.
+    def assert_source_writable!(from)
+      raise Refused, I18n.t('invite_move_source_purging') if from.purge_claimed?
+      raise Refused, I18n.t('invite_move_source_archived') if from.archived_at.present?
+      raise Refused, I18n.t('invite_move_source_pending_deletion') if from.pending_deletion?
+      raise Refused, I18n.t('invite_move_source_frozen') if AccountStates.read_only?(from)
 
       true
     end

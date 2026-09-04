@@ -803,7 +803,17 @@ verifiable on `/verify` exactly as they are).
 That move is refused, with an explanation rather than an error, when the
 account being left has other people in it, still has a paid subscription
 ("cancel your subscription first"), or is an internal/operator/testing
-account. Accepting requires being signed in **as the invited address**.
+account. It is refused for the same reason when that account is **not in a
+state where anything may be written**: frozen for an unpaid card or by an
+operator, scheduled for deletion, already closed, or already being deleted.
+Each of those gets its own sentence saying what to settle first. Documents an
+account has promised to destroy must not survive by being carried into
+somebody else's team.
+
+Accepting requires being signed in **as the invited address**. If somebody
+holds invitations from two teams and accepts both at the same moment, exactly
+one of them can win: the second is told their account has already been moved,
+and their documents are never left behind in a team they are not a member of.
 
 Who an invitation is for is worked out afresh from the invited address every
 time the link is opened, not once when it was sent — because a week is long
@@ -826,12 +836,20 @@ enough for the world to move:
 
 Joining a team is a move between two companies, so **the keys the old account
 cut are thrown away as part of it**: API tokens, MCP tokens, any OAuth grant,
-and "remember me" on other browsers all stop working the moment the move
-lands. They were issued for a one-person account and would otherwise have gone
-on working — against the team's documents, on credentials the team's
-administrators never issued and cannot see. The browser that pressed the
-button stays signed in; anybody joining a team should expect to create a fresh
-API token afterwards, and to sign in again on their other devices.
+"remember me", and **every browser that person is signed in on**. They were
+issued for a one-person account and would otherwise have gone on working —
+against the team's documents, on credentials the team's administrators never
+issued and cannot see. A laptop left signed in at home is exactly that kind of
+credential, so it is ended too: the only session that survives the move is the
+browser that pressed the button. Anybody joining a team should expect to
+create a fresh API token afterwards, and to sign in again everywhere else.
+
+One last money case belongs here. If somebody starts a Checkout for their own
+account and only completes it **after** they have joined a team, that payment
+arrives for an account nobody is in any more. It is refused: no paid access is
+granted, the subscription is cancelled at Stripe straight away so the card
+stops being charged, and our operators are told so a person can decide whether
+anything already taken should go back.
 
 ### Dropping back to the free plan with more people than seats
 

@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 class SubmitFormController < ApplicationController
+  include CompletedFormMarker
+
   layout 'form'
 
   # `update` included: a consent recorded without a page-sent locale falls
@@ -89,6 +91,12 @@ class SubmitFormController < ApplicationController
 
     Submitters::SubmitValues.call(@submitter, params, request)
 
+    # This request IS the completion, so this browser is the one that made it:
+    # it gets the marker that lets the share link's completed page name the
+    # document to them later, and nobody has to guess an identity from an IP
+    # address to hand it out (CompletedFormMarker).
+    remember_completed_form(@submitter)
+
     if params[:completed] == 'true' && @submitter.submission.source_embed?
       return render json: embed_completion_response(@submitter.reload)
     end
@@ -107,9 +115,18 @@ class SubmitFormController < ApplicationController
   def completed
     raise ActionController::RoutingError, I18n.t('not_found') if @submitter.account.archived_at?
 
-    return if Submitters::AuthorizedForForm.call(@submitter, current_user, request)
+    unless Submitters::AuthorizedForForm.call(@submitter, current_user, request)
+      return redirect_to submit_form_path(params[:submit_form_slug])
+    end
 
-    redirect_to submit_form_path(params[:submit_form_slug])
+    # The page a signer lands on the instant they finish, and the one they come
+    # back to whenever they open their own signing link again. Reaching it
+    # means holding that document's own signing slug and passing whatever 2FA
+    # it carries — far more than the share link's completed page ever tells
+    # anyone — so the marker is re-stamped here as well as at the completion
+    # itself, and a signer who finished on a slow day still gets their own page
+    # back (CompletedFormMarker).
+    remember_completed_form(@submitter)
   end
 
   def success; end

@@ -36,6 +36,7 @@ class BillingSettingsController < ApplicationController
   before_action :load_billing_account
   before_action :load_subscription
   before_action :require_own_billing!, only: %i[checkout portal return]
+  before_action :refuse_moved_away_account!, only: %i[checkout portal return]
 
   helper_method :billing_date
 
@@ -180,6 +181,27 @@ class BillingSettingsController < ApplicationController
     return unless @manual
 
     redirect_to settings_billing_path, alert: I18n.t('billing_managed_by_operator')
+  end
+
+  # An account that was archived because its only member joined another team
+  # (Accounts::MoveUser) is finished, and none of the three acting doors may be
+  # used on it (review 7, D50 D3).
+  #
+  # `return` is the one that matters. A Checkout started before the move and
+  # completed after it comes back to this controller carrying a session id,
+  # and `apply_checkout_session` would take that session at face value and
+  # hand a dead account a live subscription — the same hole the webhook side
+  # closes, through the other door. The webhook barrier is what makes the
+  # money safe; this makes the browser say so in a sentence instead of
+  # applying it, or falling over somewhere further down.
+  #
+  # Reading is left alone: `show` still renders, so anybody who can still get
+  # here sees the state of the subscription rather than a wall. Only the three
+  # doors that ACT are shut, and each is shut with the same sentence.
+  def refuse_moved_away_account!
+    return unless StripeBilling::SubscriptionSync.moved_away?(@billing)
+
+    redirect_to settings_billing_path, alert: I18n.t('billing_account_moved_away')
   end
 
   def load_subscription

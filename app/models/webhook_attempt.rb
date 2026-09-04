@@ -16,6 +16,10 @@
 #
 #  index_webhook_attempts_on_webhook_event_id  (webhook_event_id)
 #
+# Foreign Keys
+#
+#  fk_rails_...  (webhook_event_id => webhook_events.id) ON DELETE => cascade
+#
 class WebhookAttempt < ApplicationRecord
   belongs_to :webhook_event
 

@@ -81,7 +81,19 @@ class AccountsController < ApplicationController
 
     code = Accounts::DeletionCodes.issue!(current_account, true_user)
 
-    AccountMailer.deletion_code(true_user, code:).deliver_later!
+    # `deliver_now!`, for the same reason the code is filtered out of the logs
+    # and kept out of the mail subject (review 7, D50 D4). This six-digit code
+    # is a second factor: it is the whole proof that the person asking to end
+    # the company's account is at the mailbox they claim. Enqueueing the mail
+    # wrote it in plain text into a Sidekiq job's arguments, where it would
+    # sit in Redis for as long as the job waited or retried — and be printed
+    # in full on the Sidekiq Web UI this app mounts in production. A code we
+    # took care never to log has no business being queued.
+    #
+    # It is delivered inline instead, which also makes the promise on the page
+    # true: the redirect says "we have emailed you a code", and now that is a
+    # statement about a message the mail server has actually taken.
+    AccountMailer.deletion_code(true_user, code:).deliver_now!
 
     redirect_to settings_account_path,
                 notice: I18n.t('account_deletion_code_sent', email: true_user.email)

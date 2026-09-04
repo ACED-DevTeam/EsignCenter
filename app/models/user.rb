@@ -28,6 +28,7 @@
 #  reset_password_sent_at :datetime
 #  reset_password_token   :string
 #  role                   :string           not null
+#  session_version        :integer          default(0), not null
 #  sign_in_count          :integer          default(0), not null
 #  unconfirmed_email      :string
 #  unlock_token           :string
@@ -57,6 +58,12 @@ class User < ApplicationRecord
   ].freeze
 
   EMAIL_REGEXP = /[^@;,<>\s]+@[^@;,<>\s]+/
+
+  # What separates the password half of the session stamp from the version
+  # half (see `authenticatable_salt`). A character bcrypt's alphabet never
+  # produces, so no salt can ever collide with a different (salt, version)
+  # pair by accident.
+  SESSION_VERSION_SEPARATOR = '~'
 
   FULL_EMAIL_REGEXP =
     /\A[a-z0-9][.']?(?:(?:[a-z0-9_-]+[.+'])*[a-z0-9_-]+)*@(?:[a-z0-9]+[.-])*[a-z0-9]+\.[a-z]{2,}\z/i
@@ -94,6 +101,50 @@ class User < ApplicationRecord
   # mailbox cannot own a free account. Invitations and internal provisioning
   # never run this — an admin may invite whoever they like.
   validate :email_must_be_permanent, on: :registration
+
+  # What the session cookie is stamped with, and the only thing this app can
+  # change to END somebody's live browser sessions (review 7, D50 D1).
+  #
+  # Warden serialises a signed-in person as `[id, authenticatable_salt]` — into
+  # the session cookie and, through `rememberable_value`, into the remember-me
+  # cookie — and re-reads the record and re-compares the salt on EVERY request
+  # (Devise::Models::Authenticatable.serialize_from_session). Devise's own salt
+  # is the first 29 characters of the bcrypt hash, so it only ever changes when
+  # the password does. That left the app with no way at all to sign somebody
+  # out of a browser it cannot see: the only lever was changing their password,
+  # which is not ours to change.
+  #
+  # It is a security boundary that made that a real problem. "Join this team"
+  # (Accounts::MoveUser) re-parents a person into somebody else's TENANT, and
+  # this app resolves the tenant dynamically — `current_account` is
+  # `current_user.account`, read fresh on every request. So a session cookie
+  # minted while the person was alone in their own account went on working
+  # after the move and simply started answering for the TEAM, at whatever role
+  # the invitation granted. Every other credential was already thrown away on
+  # the move (API tokens, MCP tokens, OAuth grants, remember-me); the live
+  # browser session was the one that could not be.
+  #
+  # Appending `session_version` closes it. Bumping the column inside the move's
+  # transaction makes every cookie ever minted for this person compare unequal
+  # the moment it commits, and the request that comes in holding one is signed
+  # out exactly as if it had never signed in. The accepting browser is the one
+  # exception, and it is handled explicitly: InvitesController re-establishes
+  # it with `bypass_sign_in` after the move, which mints a cookie carrying the
+  # new number.
+  #
+  # The password half is kept, not replaced: `super` is still the bcrypt slice,
+  # so changing a password still invalidates every session the way it always
+  # did. This only adds a second reason for the same cookie to stop matching.
+  # A blank salt (a record with no password hash, which the not-null column
+  # makes impossible in practice) is handed straight back, because Devise's
+  # rememberable raises on a nil salt and a suffix would hide that from it.
+  def authenticatable_salt
+    salt = super
+
+    return salt if salt.blank?
+
+    "#{salt}#{SESSION_VERSION_SEPARATOR}#{session_version}"
+  end
 
   def access_token
     super || build_access_token.tap(&:save!)

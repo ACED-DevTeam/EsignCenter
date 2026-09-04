@@ -16,13 +16,20 @@ class UsersReadOnlyController < ApplicationController
   before_action :load_user
 
   def create
-    return redirect_to settings_users_path, alert: I18n.t('last_admin_cannot_be_removed') if Accounts.last_admin?(@user)
+    # A read-only admin can administer nothing, so parking one is a removal of
+    # administrator capability like archiving or demoting is: asked and written
+    # under the account's row lock so two admins parking each other at the same
+    # moment cannot both be told there is a second one left
+    # (Accounts.with_last_admin_guard).
+    Accounts.with_last_admin_guard(@user) { @user.update!(read_only_at: Time.current) }
 
-    @user.update!(read_only_at: Time.current)
-
+    # Outside the lock: handing the seat back can call Stripe, and a slow
+    # payment provider must not hold an account row.
     AccountInvites.release_seat_for(current_account)
 
     redirect_back fallback_location: settings_users_path, notice: I18n.t('user_is_now_read_only')
+  rescue Accounts::LastAdminError
+    redirect_to settings_users_path, alert: I18n.t('last_admin_cannot_be_removed')
   end
 
   def destroy
