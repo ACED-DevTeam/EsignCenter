@@ -54,6 +54,11 @@ import OpenModal from './elements/open_modal'
 import BarChart from './elements/bar_chart'
 import FieldCondition from './elements/field_condition'
 import ConfirmUpload from './elements/confirm_upload'
+// Opens a <dialog> next to the button that asks for it. It has always lived
+// in the signer form pack; the account-deletion confirmation (Settings →
+// Account, Session 7 Phase C) is the first place in the authenticated app
+// that needs one, so the same element is registered here too.
+import ModalButton from './elements/modal_button'
 
 import * as TurboInstantClick from './lib/turbo_instant_click'
 
@@ -146,6 +151,7 @@ safeRegisterElement('open-modal', OpenModal)
 safeRegisterElement('bar-chart', BarChart)
 safeRegisterElement('field-condition', FieldCondition)
 safeRegisterElement('confirm-upload', ConfirmUpload)
+safeRegisterElement('modal-button', ModalButton)
 
 safeRegisterElement('template-builder', class extends HTMLElement {
   connectedCallback () {

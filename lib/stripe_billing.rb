@@ -125,6 +125,20 @@ module StripeBilling
   # what — if anything — comes back".
   DUPLICATE_CANCEL_MANUAL_METADATA = 'duplicate-manual'
 
+  # Written into `cancellation_details.comment` of a subscription we cancel
+  # because the CUSTOMER asked us to delete their whole account (D43). Again
+  # documentation for a person, never authority.
+  ACCOUNT_DELETION_MARKER = 'esigncenter:account-deletion'
+
+  # And the metadata value that carries the authority, under the same
+  # DUPLICATE_CANCEL_METADATA_KEY. It is deliberately a THIRD value rather
+  # than one of the duplicate ones: the duplicate-refund logic only ever acts
+  # on 'duplicate' (refund automatically) or 'duplicate-manual' (a person
+  # decides), so a subscription carrying this one reads as "we ended it, and
+  # no money is owed on it" — which is exactly right. A deletion is the
+  # customer choosing to stop; nothing they already used is refunded.
+  ACCOUNT_DELETION_METADATA = 'account-deletion'
+
   # Stamped on a subscription we cancelled as a REFUNDABLE duplicate whose
   # refund the app then refused to make on its own — more separate payments
   # than it will return unattended, an invoice naming no payment, a

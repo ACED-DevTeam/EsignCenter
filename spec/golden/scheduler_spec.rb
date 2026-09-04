@@ -17,7 +17,8 @@ RSpec.describe 'Scheduler', type: :lib do
   end
 
   it 'declares the heartbeat every minute on the recurrent queue' do
-    expect(schedule.keys).to contain_exactly('scheduler_heartbeat', 'stripe_reconciliation', 'billing_lifecycle')
+    expect(schedule.keys).to contain_exactly('scheduler_heartbeat', 'stripe_reconciliation', 'billing_lifecycle',
+                                             'account_retention')
     expect(schedule['scheduler_heartbeat']).to include(
       'cron' => '* * * * *', 'class' => 'SchedulerHeartbeatJob', 'queue' => 'recurrent'
     )
@@ -84,6 +85,40 @@ RSpec.describe 'Scheduler', type: :lib do
     expect(BillingLifecycle).to have_received(:run_dunning!).once
     expect(BillingLifecycle).to have_received(:expire_invites!).once
     expect(BillingLifecycle).to have_received(:reconcile_seats!).once
+  end
+
+  # The retention clock (Session 7 Phase C, D43): dormant-account warnings, the
+  # week-to-go reminder before a scheduled deletion, and the purges themselves.
+  # DAILY rather than hourly, because every deadline it enforces is a date; and
+  # on the default queue, because a purge is ordinary work rather than
+  # something the billing queue should be holding up.
+  it 'declares the retention clock daily on the default queue and runs every sweep' do
+    expect(schedule['account_retention']).to include(
+      'cron' => '30 4 * * *', 'class' => 'AccountRetentionJob', 'queue' => 'default'
+    )
+
+    Sidekiq::Cron::ScheduleLoader.new.load_schedule
+
+    job = Sidekiq::Cron::Job.find('account_retention')
+
+    expect(job).to be_present
+    expect(job.source).to eq('schedule')
+    expect(job.klass).to eq('AccountRetentionJob')
+    expect(job.cron).to eq('30 4 * * *')
+    expect(job.queue_name_with_prefix).to eq('default')
+
+    # All three sweeps, every night. A rename that quietly dropped one would
+    # stop the warnings going out, or stop the purges happening at all — and
+    # nothing else in the app would notice.
+    allow(Accounts::Retention).to receive(:schedule_dormant_warnings!)
+    allow(Accounts::Retention).to receive(:schedule_deletion_reminders!)
+    allow(Accounts::Retention).to receive(:purge_due!)
+
+    AccountRetentionJob.new.perform
+
+    expect(Accounts::Retention).to have_received(:schedule_dormant_warnings!).once
+    expect(Accounts::Retention).to have_received(:schedule_deletion_reminders!).once
+    expect(Accounts::Retention).to have_received(:purge_due!).once
   end
 
   # sidekiq-cron's own startup hook loads its default schedule file; the app

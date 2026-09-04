@@ -1,10 +1,32 @@
-<%# The one banner that sits above every signed-in page: the account is
-    suspended, so nothing new can be created until the payment is settled.
-    Shown to EVERY user of the account, not only the admin — the person who
-    finds their "New document" button refusing needs to know why, even though
-    only an admin can act on it. `read_only?` covers being billed through a
-    suspended parent as well as being suspended directly. %>
-<% if signed_in? && AccountStates.read_only?(current_account) %>
+<%# The one banner slot above every signed-in page. Two things can freeze an
+    account, and they need different sentences:
+
+      * the account is scheduled for deletion — the date, and the way back;
+      * the subscription payment failed — nothing new can be created until it
+        is settled.
+
+    Both are shown to EVERY user of the account, not only the admin: the
+    person who finds their "New document" button refusing needs to know why,
+    even though only an admin can act on it. `read_only?` covers being billed
+    through a suspended parent as well as being suspended directly. %>
+<% if signed_in? && current_account&.pending_deletion? %>
+  <div class="max-w-6xl mx-auto px-4 md:px-2 pt-3">
+    <div class="alert items-start bg-base-100 border border-red-400 text-red-400" data-account-deletion-banner>
+      <%= svg_icon('alert_circle', class: 'stroke-current shrink-0 h-6 w-6 mt-0.5') %>
+      <div dir="auto" class="text-sm space-y-1">
+        <p class="font-semibold">
+          <%= t('account_deletion_banner', date: Accounts::Deletion.format_date(current_account.purge_scheduled_for)) %>
+        </p>
+        <p><%= t('account_deletion_banner_hint') %></p>
+        <% if can?(:administer, current_account) %>
+          <p>
+            <%= button_to t('account_deletion_cancel_button'), cancel_deletion_settings_account_path, method: :post, class: 'link font-semibold', form_class: 'inline', data: { account_deletion_cancel_link: true } %>
+          </p>
+        <% end %>
+      </div>
+    </div>
+  </div>
+<% elsif signed_in? && AccountStates.read_only?(current_account) %>
   <div class="max-w-6xl mx-auto px-4 md:px-2 pt-3">
     <div class="alert items-start bg-base-100 border border-red-400 text-red-400" data-account-suspended-banner>
       <%= svg_icon('alert_circle', class: 'stroke-current shrink-0 h-6 w-6 mt-0.5') %>

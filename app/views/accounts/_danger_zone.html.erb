@@ -1,0 +1,41 @@
+<%# Deleting the account: a 90-day decision, and the only screen in the app
+    that starts it (D43). Admin-only, and hidden entirely on the accounts
+    that may not be deleted through this door — the platform's own internal
+    and operator accounts, and a testing child, which is a corner of its
+    parent rather than an account of its own. %>
+<% if can?(:administer, current_account) && Accounts::Deletion.deletable?(current_account) %>
+  <% modal_id = SecureRandom.uuid %>
+  <div class="px-1 mt-10" data-danger-zone>
+    <h2 class="text-2xl font-bold mb-2 text-red-500">
+      <%= t('danger_zone') %>
+    </h2>
+    <div class="border border-red-400 rounded-2xl p-4 md:p-5 space-y-3">
+      <% if current_account.pending_deletion? %>
+        <p class="font-semibold text-red-500" data-deletion-scheduled>
+          <%= t('account_deletion_scheduled_headline', date: Accounts::Deletion.format_date(current_account.purge_scheduled_for)) %>
+        </p>
+        <p class="text-sm">
+          <%= t('account_deletion_scheduled_hint') %>
+        </p>
+        <p class="text-sm">
+          <%= link_to t('account_deletion_export_link'), templates_path, class: 'link font-semibold' %>
+        </p>
+        <%= button_to t('account_deletion_cancel_button'), cancel_deletion_settings_account_path, method: :post, class: 'btn btn-neutral text-white', data: { cancel_deletion_button: true } %>
+      <% else %>
+        <p class="text-sm">
+          <%= t('account_deletion_card_hint', days: Accounts::Deletion::WINDOW_DAYS) %>
+        </p>
+        <modal-button data-target="<%= modal_id %>" class="flex">
+          <button class="btn btn-outline btn-error" data-delete-account-button>
+            <%= t('delete_my_account') %>
+          </button>
+        </modal-button>
+      <% end %>
+    </div>
+  </div>
+  <% unless current_account.pending_deletion? %>
+    <%= render 'shared/html_modal', title: t('delete_my_account'), uuid: modal_id do %>
+      <%= render 'accounts/delete_account_form' %>
+    <% end %>
+  <% end %>
+<% end %>

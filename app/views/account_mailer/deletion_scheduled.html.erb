@@ -1,0 +1,11 @@
+<p>Hello,</p>
+<p>An administrator has asked us to delete your EsignCenter account, <strong><%= @current_account.name %></strong>.</p>
+<p><strong>Everything is permanently deleted on <%= @purge_date %></strong> — <%= @window_days %> days from now. Until then nothing is lost.</p>
+<p><strong>What has already happened:</strong> your subscription has been cancelled, so you will not be charged again, and the account is now read-only.</p>
+<p><strong>What still works until <%= @purge_date %>:</strong> everyone can sign in, and every document, template and export stays readable and downloadable. Your email addresses stay reserved for you, so nobody else can register them in the meantime.</p>
+<p><strong>What has stopped:</strong> creating or changing anything — new documents, templates, people, API keys and webhooks — and the API, MCP and embedded signing doors.</p>
+<p><strong>Please download anything you want to keep before <%= @purge_date %>.</strong> Your documents are on the <%= link_to 'templates page', @templates_url %>.</p>
+<p><strong>Changed your mind?</strong> Any administrator can sign in and press "Cancel deletion" on the <%= link_to 'account settings page', @account_url %> at any time before <%= @purge_date %>. After that date nothing can be recovered.</p>
+<p>Public verification records for documents you have already signed keep working after the deletion. They contain a fingerprint and a date and name nobody.</p>
+<p>Questions? Write to <%= mail_to @support_email %>.</p>
+<p>Thanks,<br>EsignCenter</p>

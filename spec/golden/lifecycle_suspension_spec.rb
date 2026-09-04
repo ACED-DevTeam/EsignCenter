@@ -291,6 +291,14 @@ RSpec.describe 'Account suspension', type: :request do # rubocop:disable RSpec/M
       {
         'billing_settings#checkout' => 'the page that settles the payment',
         'billing_settings#portal' => 'the page that settles the payment',
+        # Session 7 Phase C (D43). Asking to be deleted is how a customer
+        # LEAVES, and a customer whose card kept failing must be able to walk
+        # away rather than being held on a plan they cannot pay for — so this
+        # is the one write on the account row a suspended admin may still
+        # make. It takes nothing away either: the account is already frozen,
+        # and the deletion only adds a date 90 days out.
+        'accounts#destroy' => 'requesting deletion is how a frozen account leaves',
+        'accounts#cancel_deletion' => 'changing your mind about leaving must never be the door that is shut',
         'profile#update_contact' => 'their own name and email are theirs',
         'profile#update_password' => 'their own password is theirs',
         'mfa_setup#create' => 'their own two-factor enrolment; a security door, not an account write',
@@ -320,7 +328,7 @@ RSpec.describe 'Account suspension', type: :request do # rubocop:disable RSpec/M
     # Everything else: a write on the account, refused while it is frozen.
     let(:refused_while_suspended) do
       %w[
-        accounts#update accounts#destroy
+        accounts#update
         account_configs#create account_configs#destroy account_custom_fields#create
         account_invites#create account_invites#destroy account_invites#resend
         api_settings#create
@@ -398,7 +406,6 @@ RSpec.describe 'Account suspension', type: :request do # rubocop:disable RSpec/M
 
       refused = {
         [:patch, '/settings/account'] => { account: { name: 'Renamed while suspended' } },
-        [:delete, '/settings/account'] => {},
         [:post, '/account_configs'] => {
           account_config: { key: AccountConfig::ALLOW_TO_DECLINE_KEY, value: 'true' }
         },
@@ -465,6 +472,28 @@ RSpec.describe 'Account suspension', type: :request do # rubocop:disable RSpec/M
       expect(invite.reload.revoked_at).to be_nil
       expect(account.testing_accounts).to be_empty
       expect(TemplateSharing.count).to eq(0)
+    end
+
+    # The claim on the allowed list above, driven for real: a customer whose
+    # card kept failing must be able to LEAVE. Requesting deletion is the one
+    # write on the account row the frozen state keeps open, and cancelling it
+    # again is the other — being unable to change your mind would be a worse
+    # trap than the one this whole layer exists to avoid.
+    it 'lets a suspended admin ask for deletion and then change their mind' do
+      suspend!
+      act_as(admin)
+
+      delete '/settings/account', params: { password: 'password', confirm: '1' }
+
+      expect(response).to redirect_to(settings_account_path)
+      expect(account.reload.deletion_requested_at).to be_present
+      expect(account.purge_scheduled_for).to be_present
+      expect(account.suspension_reason).to eq('deletion')
+
+      post '/settings/account/cancel_deletion'
+
+      expect(account.reload.deletion_requested_at).to be_nil
+      expect(account.purge_scheduled_for).to be_nil
     end
 
     # The two doors this account still needs, and the one thing it may still

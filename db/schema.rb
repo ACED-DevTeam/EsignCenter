@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_04_000300) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_04_000400) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gin"
   enable_extension "pg_catalog.plpgsql"
@@ -156,8 +156,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_04_000300) do
     t.string "account_kind", default: "customer", null: false
     t.datetime "archived_at"
     t.datetime "created_at", null: false
+    t.datetime "deletion_requested_at"
+    t.bigint "deletion_requested_by_id"
     t.string "locale", null: false
     t.string "name", null: false
+    t.datetime "purge_scheduled_for"
+    t.datetime "purged_at"
     t.string "sending_pause_reason"
     t.datetime "sending_paused_at"
     t.datetime "suspended_at"
@@ -166,6 +170,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_04_000300) do
     t.datetime "updated_at", null: false
     t.string "uuid", null: false
     t.index ["account_kind"], name: "index_accounts_on_account_kind"
+    t.index ["deletion_requested_by_id"], name: "index_accounts_on_deletion_requested_by_id"
+    t.index ["purge_scheduled_for"], name: "index_accounts_on_pending_purge", where: "((purge_scheduled_for IS NOT NULL) AND (purged_at IS NULL))"
     t.index ["suspended_at"], name: "index_accounts_on_suspended_at", where: "(suspended_at IS NOT NULL)"
     t.index ["uuid"], name: "index_accounts_on_uuid", unique: true
   end
@@ -736,6 +742,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_04_000300) do
   add_foreign_key "account_moves", "accounts", column: "to_account_id"
   add_foreign_key "account_moves", "users"
   add_foreign_key "account_subscriptions", "accounts"
+  add_foreign_key "accounts", "users", column: "deletion_requested_by_id", on_delete: :nullify
   add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
   add_foreign_key "document_generation_events", "submitters"
