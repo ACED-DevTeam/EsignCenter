@@ -10,17 +10,19 @@ module Accounts
   #     is written on the row (`purge_scheduled_for`, 90 days out) and the
   #     customer was told it in the confirmation email. One reminder goes out
   #     a week before.
-  #   * DORMANT — nobody has signed in for a year and there is no money
-  #     involved. No date is stored: it is COMPUTED from the last thing that
-  #     happened, so a single sign-in resets the whole clock without anything
-  #     having to be cleared. Warnings go out 60, 30 and 7 days before.
+  #   * DORMANT — nobody has USED the account for a year and there is no
+  #     money involved. No date is stored: it is COMPUTED from the last thing
+  #     that happened, so one authenticated request resets the whole clock
+  #     without anything having to be cleared. Warnings go out 60, 30 and 7
+  #     days before.
   #
   # Two rules protect data that is not really abandoned:
   #   * an account with paid access is never dormant, however quiet it is;
   #   * an account that USED to pay keeps everything for a year after its
   #     subscription ended, even if nobody signs in again.
   module Retention
-    # No sign-in for this long and the account is abandoned.
+    # No sign-in and no authenticated request for this long, and the account
+    # is abandoned.
     DORMANT_AFTER = 1.year
 
     # And a cancelled paid account keeps its documents at least this long
@@ -105,7 +107,8 @@ module Accounts
     # idle (an account created last month never can be, because its own
     # creation counts as activity) and that hold no paid access; the rest of
     # the rule is read row by row, because "last activity" is a maximum over
-    # four different columns and saying that in SQL would hide it.
+    # five different columns on three tables and saying that in SQL would
+    # hide it.
     def dormant_candidates(now: Time.current)
       dormant_scope(now:).select { |account| dormant_purgeable?(account, now:) }
     end
@@ -163,21 +166,48 @@ module Accounts
 
     # The date a dormant account is destroyed: a year after the last thing
     # that happened on it. Not stored anywhere — recomputed every night, so
-    # one sign-in moves it a year into the future by itself.
+    # one sign-in, or one page opened by somebody already signed in, moves it
+    # a year into the future by itself.
     def dormant_purge_at(account)
       last_activity_at(account) + DORMANT_AFTER
     end
 
-    # The last thing that happened: anybody signing in, the account being
-    # created, or its subscription ending. `current_sign_in_at` and
-    # `last_sign_in_at` are both read because Devise moves the first to the
-    # second on the next sign-in and a session that is still open leaves only
-    # the first set.
+    # The last thing that happened: anybody USING the account, anybody
+    # signing in, the account being created, or its subscription ending.
+    # `current_sign_in_at` and `last_sign_in_at` are both read because Devise
+    # moves the first to the second on the next sign-in and a session that is
+    # still open leaves only the first set.
+    #
+    # `used_at` is the one that carries the weight, and it was missing until
+    # review 8 (F1). Every other floor here is a fact about AUTHENTICATION,
+    # and this application hardly ever asks for it — remember-me is on for
+    # everybody and the cookie lives two years — so somebody could work in
+    # the app daily for a year and still look untouched. Reading a stamp
+    # written by ordinary authenticated requests is what makes "dormant"
+    # mean unused rather than merely un-signed-in.
     def last_activity_at(account)
       [account.created_at,
+       used_at(account),
        User.where(account_id: account.id).maximum(:current_sign_in_at),
        User.where(account_id: account.id).maximum(:last_sign_in_at),
        subscription_ended_at(account)].compact.max
+    end
+
+    # The `accounts.last_active_at` stamp (Accounts::Activity), read across
+    # the account AND its testing children.
+    #
+    # The children are included because a testing child is never purged on
+    # its own — it goes with its parent, and is destroyed by the parent's
+    # purge. Somebody who spends the year working in the sandbox is somebody
+    # using the account, and reading only the parent's own stamp would take
+    # both of them.
+    #
+    # NULL for every row that has never been stamped, which is what every row
+    # was the day the column was added: NULL contributes nothing to the
+    # maximum above, so an account that really is abandoned keeps exactly the
+    # dormancy date it had before.
+    def used_at(account)
+      Account.where(id: [account.id, *account.testing_accounts.ids]).maximum(:last_active_at)
     end
 
     # When the money stopped. `ended_at` is what Stripe said; `updated_at` is

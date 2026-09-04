@@ -14,6 +14,7 @@
 #  deletion_requested_at           :datetime
 #  dormant_warning_for             :datetime
 #  dormant_warning_sent_at         :datetime
+#  last_active_at                  :datetime
 #  locale                          :string           not null
 #  name                            :string           not null
 #  purge_scheduled_for             :datetime

@@ -6,6 +6,7 @@ class ApplicationController < ActionController::Base
   include ActiveStorage::SetCurrent
   include Pagy::Method
   include OperatorAccess
+  include AccountActivityStamp
 
   check_authorization unless: :devise_controller?
 
@@ -60,6 +61,17 @@ class ApplicationController < ActionController::Base
 
   def default_url_options
     Docuseal.default_url_options
+  end
+
+  # Ordinary authenticated use is what keeps an account out of the dormant
+  # purge (AccountActivityStamp, which explains why the stamp rides on this
+  # callback rather than on one of its own). `super` throws `:warden` when
+  # the request is NOT authenticated, so nothing below it can run for an
+  # anonymous visitor.
+  def authenticate_user!(...)
+    super
+
+    record_account_activity!
   end
 
   def impersonate_user(user)

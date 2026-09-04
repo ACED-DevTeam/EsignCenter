@@ -862,7 +862,11 @@ Paying again does not undo it automatically — the admin chooses.
 
 An account can never lose its last administrator: removing, demoting,
 archiving or making read-only the only person who can administer it is
-refused.
+refused. That holds for the automatic downgrade too, and it holds even when
+the two happen at the same instant: the downgrade and the manual buttons take
+the same lock on the account, so one of them goes first and the other is
+re-decided against what it left behind. Whichever loses the race is refused
+with the ordinary message rather than quietly emptying the account.
 
 ## 12. Deleting the account, and money
 

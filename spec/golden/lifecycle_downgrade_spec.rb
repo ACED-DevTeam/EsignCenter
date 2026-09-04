@@ -2339,6 +2339,126 @@ RSpec.describe 'Accounts nobody signs in to', type: :request do
     end
   end
 
+  # --- dormancy means UNUSED, not merely un-signed-in (review 8, F1) --------
+  #
+  # The clock used to be read entirely out of Devise: the account's creation
+  # date, `current_sign_in_at`, `last_sign_in_at` and the subscription's end
+  # date. Every one of those is a fact about AUTHENTICATION, and this
+  # application asks for authentication almost never — sign-up turns
+  # remember-me on for everybody and the cookie lives 730 days. So somebody
+  # could work in the app every day for a year and still look untouched, be
+  # told by email to "simply sign in" to save it, do exactly that (nothing
+  # happens: their browser was already signed in) and lose the account
+  # anyway.
+
+  # How many UPDATE statements this block sent to the accounts table. The
+  # stamp runs on EVERY authenticated request in the application, so "at most
+  # one a day" is not a nicety — it is the difference between a free column
+  # and a write on every page view.
+  def account_updates_while
+    updates = 0
+
+    subscriber = ActiveSupport::Notifications.subscribe('sql.active_record') do |*, payload|
+      updates += 1 if payload[:sql].to_s.start_with?('UPDATE "accounts"')
+    end
+
+    yield
+
+    updates
+  ensure
+    ActiveSupport::Notifications.unsubscribe(subscriber)
+  end
+
+  it 'is not dormant while somebody is using it, even though nobody ever signs in again', sidekiq: :inline do
+    create(:template, account:, author: owner, only_field_types: %w[text])
+    warn_finally!
+
+    expect(Accounts::Retention.purge_candidates.map(&:id)).to include(account.id)
+
+    # The letter's call to action has to be something an already-signed-in
+    # browser can actually DO. It points at the templates page, which is an
+    # ordinary authenticated page — following it is a request, and a request
+    # is what the stamp below is made of.
+    expect(warnings_for(owner).last.body.encoded).to include('/templates')
+
+    sign_in(owner)
+    get '/templates'
+
+    # That first request IS the sign-in, so Devise stamped it. Put the
+    # sign-in clock back where it was: from here on this is simply a browser
+    # that is already signed in, and Devise will never move those columns
+    # again — which is the whole scenario.
+    User.where(id: owner.id).update_all(current_sign_in_at: 13.months.ago, last_sign_in_at: 13.months.ago)
+    Account.where(id: account.id).update_all(last_active_at: nil)
+
+    get '/templates'
+
+    expect(response).to have_http_status(:ok)
+    expect(account.reload.last_active_at).to be_present
+    expect(owner.reload.current_sign_in_at).to be < 12.months.ago
+
+    expect(Accounts::Retention.purge_candidates.map(&:id)).not_to include(account.id)
+
+    # And the job that would have destroyed it stands down on the same fact,
+    # re-read a moment before anything is touched.
+    AccountPurgeJob.new.perform(account.id)
+
+    expect(account.reload.purged_at).to be_nil
+    expect(Template.where(account_id: account.id).count).to eq(1)
+    expect(User.where(account_id: account.id).count).to eq(1)
+  end
+
+  it 'writes the activity stamp at most once a day, however many requests arrive' do
+    sign_in(owner)
+    get '/templates'
+
+    stamped = account.reload.last_active_at
+
+    expect(stamped).to be_present
+    expect(account_updates_while { 5.times { get '/templates' } }).to eq(0)
+    expect(account.reload.last_active_at).to eq(stamped)
+
+    travel_to(25.hours.from_now) do
+      expect(account_updates_while { get '/templates' }).to eq(1)
+      expect(account.reload.last_active_at).to be_within(1.minute).of(Time.current)
+    end
+  end
+
+  # The column was added empty and nothing was backfilled into it, because
+  # there is no honest value to backfill: we did not record this before. A
+  # NULL stamp therefore has to leave the arithmetic exactly as it was, so
+  # that an account which really is abandoned is still warned and still
+  # purged on the day it always would have been.
+  it 'leaves an account that has never been stamped on exactly the schedule it was already on', sidekiq: :inline do
+    expect(account.reload.last_active_at).to be_nil
+
+    warn_finally!
+
+    expect(account.reload.last_active_at).to be_nil
+    expect(Accounts::Retention.purge_candidates.map(&:id)).to include(account.id)
+
+    perform_enqueued_jobs(only: AccountPurgeJob) { Accounts::Retention.purge_due! }
+
+    expect(account.reload.purged_at).to be_present
+  end
+
+  # A testing child is never purged on its own — it goes with its parent — so
+  # a year spent working in the sandbox is a year of somebody using the
+  # account. Reading only the parent's own stamp would take both of them.
+  it 'counts work done in the testing sandbox as use of the account it belongs to' do
+    parent = create(:account, :with_testing_account, created_at: 3.years.ago)
+    child = parent.testing_accounts.sole
+
+    create(:user, account: parent, created_at: 3.years.ago, current_sign_in_at: 13.months.ago)
+    warn_finally!(parent)
+
+    expect(Accounts::Retention.purge_candidates.map(&:id)).to include(parent.id)
+
+    child.update_columns(last_active_at: Time.current)
+
+    expect(Accounts::Retention.purge_candidates.map(&:id)).not_to include(parent.id)
+  end
+
   it 'never touches a testing child on its own — it goes with its parent' do
     parent = create(:account, :with_testing_account, created_at: 3.years.ago)
     child = parent.testing_accounts.sole
