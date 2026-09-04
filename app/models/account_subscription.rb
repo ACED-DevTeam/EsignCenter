@@ -4,28 +4,29 @@
 #
 # Table name: account_subscriptions
 #
-#  id                     :bigint           not null, primary key
-#  access_state           :string           not null
-#  cancel_at_period_end   :boolean          default(FALSE), not null
-#  current_period_end     :datetime
-#  current_period_start   :datetime
-#  ended_at               :datetime
-#  last_stripe_event_at   :datetime
-#  past_due_since         :datetime
-#  quantity               :integer          default(1), not null
-#  status                 :string
-#  stripe_status          :string
-#  synced_at              :datetime
-#  trial_end              :datetime
-#  trial_used_at          :datetime
-#  created_at             :datetime         not null
-#  updated_at             :datetime         not null
-#  account_id             :bigint           not null
-#  stripe_customer_id     :string
-#  stripe_item_id         :string
-#  stripe_price_id        :string
-#  stripe_product_id      :string
-#  stripe_subscription_id :string
+#  id                          :bigint           not null, primary key
+#  access_state                :string           not null
+#  cancel_at_period_end        :boolean          default(FALSE), not null
+#  current_period_end          :datetime
+#  current_period_start        :datetime
+#  ended_at                    :datetime
+#  last_stripe_event_at        :datetime
+#  past_due_since              :datetime
+#  quantity                    :integer          default(1), not null
+#  status                      :string
+#  stripe_status               :string
+#  synced_at                   :datetime
+#  trial_end                   :datetime
+#  trial_used_at               :datetime
+#  created_at                  :datetime         not null
+#  updated_at                  :datetime         not null
+#  account_id                  :bigint           not null
+#  refund_owed_subscription_id :string
+#  stripe_customer_id          :string
+#  stripe_item_id              :string
+#  stripe_price_id             :string
+#  stripe_product_id           :string
+#  stripe_subscription_id      :string
 #
 # Indexes
 #

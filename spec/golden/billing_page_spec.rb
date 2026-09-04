@@ -528,6 +528,41 @@ RSpec.describe 'Billing page', type: :request do # rubocop:disable RSpec/Multipl
       expect(WebMock).to have_requested(:post, 'https://api.stripe.com/v1/checkout/sessions').twice
     end
 
+    # X5: "has this account had its trial?" was answered when the request came
+    # in, and the Checkout session is created a moment later under the
+    # account's row lock. In between, the webhook for the customer's FIRST
+    # Checkout — completed in another tab, or a click whose page they went
+    # back from — stamps `trial_used_at`. Selling on the stale answer handed
+    # them a second 14-day trial and broke the app's own "one trial per
+    # account, ever" rule at the only door that can sell one. The question is
+    # asked again, on the row the lock has just re-read.
+    it 'never sells a second trial when the first one is stamped while the click is in flight' do
+      row = checkout_row!(customer: 'cus_known')
+      stub_checkout_create
+
+      # The concurrent webhook, landing in exactly that window: after the
+      # before_action read the row, before the lock re-reads it.
+      allow(StripeBilling::Linker).to receive(:with_account_lock).and_wrap_original do |original, record, &block|
+        AccountSubscription.where(id: record.id).update_all(trial_used_at: Time.current)
+
+        original.call(record, &block)
+      end
+
+      post '/settings/billing/checkout'
+
+      expect(response).to redirect_to(checkout_url)
+
+      session = posted('https://api.stripe.com/v1/checkout/sessions')
+
+      expect(session['subscription_data']).not_to have_key('trial_period_days')
+      expect(session['subscription_data']).not_to have_key('trial_settings')
+      # The key carries the trial answer too, so a stale one is visible there
+      # as well as in the body.
+      expect(WebMock).to have_requested(:post, 'https://api.stripe.com/v1/checkout/sessions')
+        .with(headers: { 'Idempotency-Key' => /\Acheckout-#{account.id}-1-false-\d{12}\z/ })
+      expect(row.reload.trial_used_at).to be_present
+    end
+
     it 'labels the free card as the plan\'s limits, and says so when the account has its own' do
       expect(page.at('[data-billing-free-limits-label]').text.strip).to eq(I18n.t('billing_free_plan_limits'))
       expect(page.at('[data-billing-custom-limits]')).to be_nil

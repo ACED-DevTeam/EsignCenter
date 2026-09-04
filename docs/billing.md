@@ -137,15 +137,25 @@ account's id. Anything else is never adopted (no paid access for a purchase
 that was not ours) and never cancelled (it is somebody's real purchase); it is
 logged as *"foreign subscription … left alone"* and named in the nightly
 summary. When a customer somehow holds several live subscriptions of ours, the
-survivor is decided the same way every time, in three steps: one on our price
-beats one that is merely tagged; then the one that is actually **collecting**
-(`active`, `trialing`) beats one Stripe is still dunning (`past_due`,
-`unpaid`, `paused`), which in turn beats one that has never charged at all
-(`incomplete` — an abandoned card confirmation); and only between two equally
-healthy subscriptions does the **earliest created** win. The rest are
-duplicates. Health comes before age on purpose: keeping a subscription that
-cannot collect, and cancelling and refunding the one that can, would take the
-product away from a customer who is paying for it.
+survivor is decided the same way every time, in three steps:
+
+1. **Health first.** The one that is actually **collecting** (`active`,
+   `trialing`) beats one Stripe is still dunning (`past_due`, `unpaid`,
+   `paused`), which in turn beats one that has never charged at all
+   (`incomplete` — an abandoned card confirmation).
+2. **Then our price.** Between two equally healthy ones, the one carrying an
+   item on the price we sell beats one that is merely tagged with the account
+   id.
+3. **Then the earliest created** — it has been charging longest and is the one
+   the customer is most likely to know about.
+
+The rest are duplicates. Health comes first on purpose, and it used to come
+second: an `incomplete` subscription sitting on our price beat a `trialing`
+one our own Checkout had tagged but whose price had been swapped in the
+dashboard — so the app cancelled and refunded the subscription that was
+collecting and left the account holding the one that can never pay. Whether a
+subscription can collect is the fact that decides who the customer is; which
+price it sits on only decides between two that are equally healthy.
 
 **Refunding a duplicate — which one was cancelled decides whether money goes
 back at all.** Cancelling a duplicate is only half the job: an account whose
@@ -191,8 +201,23 @@ because the two would carry different idempotency keys, fail forever on the
 second.) Each refund is capped twice over: by what those invoices collected
 through that payment, and by what the charge still has left.
 
+**And the reverse: one invoice settled by SEVERAL payments.** Stripe allows
+that too (a card that covered part of an invoice, then another), and each of
+those payments states what *it* paid. Each one is a debt of **its own amount**
+— never of the whole invoice. Handing the invoice's total to each of them
+recorded a $30 invoice as $30 owed twice over, and because each refund is
+capped only by what its own card charge still holds (usually plenty), $60 went
+back against $30 collected. If several payments settled one invoice and any of
+them does not state what it took, nothing is sent at all: there is no honest
+way to split a total between payments that do not say what they paid, and a
+guess here moves real money. A person is told instead.
+
 **Only what has not already come back.** For each payment the app reads the
-charge behind it and refunds **only the part still outstanding**. A charge an
+charge behind it and refunds **only the part still outstanding**. What counts
+as "already back" is capped by what that payment was owed in the first place:
+a shared card charge that has had $40 refunded for somebody else's business
+has still only settled *this* duplicate's $30, and the debt is square — not
+$10 overpaid. A charge an
 operator already refunded by hand, or one an earlier attempt of ours returned
 before it fell over, counts as returned and is not touched again. That is
 what lets a refund that failed half-way simply be retried: the payments
@@ -249,7 +274,21 @@ alone is enough to know the debt: we only ever write it on a subscription
 created after the survivor, so its whole paid life is owed, and no surviving
 subscription has to still exist for the settlement to be right. A dead
 subscription carrying the *manual* marker is left exactly as it is: nothing
-sent, nothing said, because a person already has it. The sweep names what it
+sent, nothing said, because a person already has it.
+
+**Being owed money never keeps a customer off the plan they are paying for.**
+When the app decides a *person* must send a refund (more payments than it
+returns unattended, an invoice naming no payment), the account's row still
+moves on to the live subscription the customer is being charged for — the
+alternative is somebody paying full price for the free plan while a refund
+sits in a queue. The debt is written down twice so it cannot be lost: in the
+dead subscription's own Stripe metadata (`esigncenter_manual_refund_owed`),
+where an audit finds it, and on the account's row itself
+(`refund_owed_subscription_id`), which is what brings the **nightly sweep**
+back to it. The sweep retries that settlement every night, and the moment the
+reason it could not be paid automatically goes away — an operator refunds part
+of it by hand, an unreadable invoice list becomes readable — the rest is sent
+and the note is cleared. The sweep names what it
 settled in its summary: *"refund settled: $30.00 for sub_…"*.
 A candidate that is **already
 over** when looked at and carries no marker — a stale webhook about an old,
@@ -258,7 +297,7 @@ nothing is cancelled, nothing is refunded, nothing is reported as cancelled.
 
 **Two live subscriptions of ours, both real.** If the row holds one and news
 of another live one arrives, the survivor policy above decides which the
-account keeps (our price, then health, then the earliest created) — not the
+account keeps (health, then our price, then the earliest created) — not the
 order the webhooks happened to arrive in. The loser, whichever it is, goes
 through the same cancel-and-refund path. A trial duplicate has paid no
 invoice and there is nothing to refund, and the page says *"…you will not be
@@ -277,8 +316,30 @@ Stripe just reported, not from the kind of event that arrived. A replayed
 `invoice.paid` from before a failure cannot stop a clock that is still
 running, and the nightly sweep repairs the clock too.
 
+**A completed Checkout has to name a customer this account may act on.** The
+browser's return door has always required the session to name *exactly* the
+Stripe customer the account's row already holds; the webhook door asks the
+same question, or it becomes the way around it — a session paid for by
+somebody else's Stripe customer would be linked onto this row and they would
+go on paying for it. Two shapes are refused, both recorded as *"customer
+mismatch"*, reported once and never retried (a session on another customer
+will never become ours):
+
+- the row already holds a **different** customer;
+- the row holds none yet, but the customer the session names belongs to
+  **another account's** row — the session's `client_reference_id` and its
+  `customer` point at two different accounts (a reference copied between
+  environments, a session id pasted by hand). This used to get as far as the
+  database, where the unique index on the Stripe customer refused it: a failed
+  event, five retries and a page for something that can never become ours.
+
 An event that resolves to an internal or operator account — which never bill —
 is ignored outright: nothing is applied and nothing is cancelled for it.
+
+A subscription that was **already over** when we looked, and that we did not
+cancel, is recorded as *"stale subscription ignored"* — its own words, not the
+*"foreign subscription"* used for a stranger's purchase, because it is usually
+the customer's own previous, legitimately ended subscription.
 
 Events for a customer no account owns (a shared test key, a deleted account)
 are recorded, reported once, and never retried. An event type we have no
@@ -319,7 +380,10 @@ every subscription the app thinks it has, straight from Stripe:
   cancelling anything;
 - a row still naming a subscription **we** cancelled as a newer duplicate and
   never refunded gets that refund settled here (see above) and named in the
-  summary as *"refund settled: $X for sub_…"*. This is the last backstop for
+  summary as *"refund settled: $X for sub_…"*. So does a debt the row has
+  already moved past and written down (`refund_owed_subscription_id`, above):
+  the sweep re-reads that subscription every night until the money is square,
+  which is the only thing that will ever look at it again. This is the last backstop for
   it: once the subscription is dead, no webhook about it will ever arrive
   again. One carrying the *manual* marker is left alone — a person owns it;
 - **every page** of the customer's subscriptions is read (Stripe pages them;
@@ -425,6 +489,12 @@ the **live** Stripe account:
 - the price is active, USD, $10.00, recurring monthly;
 - the portal cannot edit seats, and can cancel, update the card and show
   invoices;
+- the **cancel walk** matches the manifest: a cancellation takes effect at the
+  **end of the period** (never immediately — the customer keeps the month they
+  paid for) and is **not prorated** (no mid-cycle credit; a reduction is never
+  refunded), and the customer details they may edit are exactly *email,
+  address, name* — `address` in particular, because Checkout collects one and
+  it is the only way a customer who moves can fix an invoice;
 - an endpoint is registered pointing at `/stripe/webhooks` and listens to
   every event we handle. **No endpoint at all is a warning**, not a failure —
   the dev stack has none and forwards instead. An endpoint that exists but is
@@ -538,7 +608,12 @@ Two doors lead to Stripe, both server-side:
   and answers with a 303 to Stripe's page. The whole decision is one step
   under the account's row lock, so two clicks, or a click and a webhook,
   cannot sell the same account two subscriptions. The trial is offered only
-  while the account has never had one (`trial_used_at`). An account that
+  while the account has never had one (`trial_used_at`) — and that question is
+  asked **again inside the lock**, on the row it has just re-read, immediately
+  before the session is created. The answer the page was rendered with can be
+  seconds out of date: the webhook for a first Checkout completed in another
+  tab lands in exactly that window, and selling on the stale answer handed the
+  account a second 14-day trial. An account that
   already has a live Stripe subscription is turned back with *"You already
   have an active subscription"* and no session is made.
 On a subscribed account the page shows **Seats billed** — the quantity Stripe
@@ -661,7 +736,10 @@ What happens next depends on whether there is a seat free:
   what the subscription will cost from the next renewal. Only when they
   confirm is the subscription updated, and only once Stripe has actually made
   the change is the invitation written and sent. A seat is never promised
-  before it has been paid for.
+  before it has been paid for. The figure they are shown is a **preview**
+  invoice — nothing is created and nothing is charged by asking for it — and
+  the moment it is priced from is pinned and reused for the real charge, so
+  the invoice they get is the one they agreed to.
 - If the card needs an extra step (3-D Secure), Stripe parks the change rather
   than making it. Nothing is charged, no seat is added and no invitation is
   written; the admin is sent to **Manage billing** to finish it and can then
@@ -680,6 +758,13 @@ removed, and when a member is made read-only. The subscription's seat count is
 then lowered to the number actually occupied — never below that, and never
 below one — with **no mid-cycle refund** (D43): the next invoice is simply
 smaller.
+
+**Proration, in one line: additions are, reductions are not.** Adding a seat
+is charged immediately for the remainder of the current period (Stripe's
+`always_invoice`), because the customer asked for it and saw the number first.
+Taking one away is `proration_behavior: none` — no credit, no refund, the next
+invoice simply bills fewer seats. Cancelling in the Customer Portal follows
+the same rule and is checked for it (§5.3).
 
 The hourly billing job (`BillingLifecycleJob`) is the backstop under all of
 it. It notices invitations that have lapsed, retries any hand-back Stripe
@@ -718,3 +803,24 @@ Paying again does not undo it automatically — the admin chooses.
 An account can never lose its last administrator: removing, demoting,
 archiving or making read-only the only person who can administer it is
 refused.
+
+## 12. Deleting the account, and money
+
+Deleting an account is its own 90-day flow with its own page —
+**[docs/account-deletion.md](account-deletion.md)** — but two things about it
+belong here, because they are about the money:
+
+- **The subscription is cancelled the moment the deletion is requested**, so
+  nothing is charged again while the 90 days run. Nothing already paid is
+  refunded: a customer choosing to leave is not owed the month they used.
+- **Calling the deletion off does not bring the subscription back.** A Stripe
+  cancellation is not reversible from here, so the account lands on the free
+  plan and can subscribe again from the billing page whenever it likes.
+
+The cancellation we make for a deletion is stamped in Stripe metadata with a
+**third** marker value (`esigncenter_cancelled = account-deletion`) alongside
+the two the duplicate logic uses. That is deliberate: the refund machinery
+above only ever acts on `duplicate` (refund automatically) and
+`duplicate-manual` (a person decides), so a subscription carrying the deletion
+marker reads as *"we ended it, and no money is owed on it"* — which is exactly
+right, and means a deletion can never be mistaken for a duplicate and refunded.

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_04_000400) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_04_000500) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gin"
   enable_extension "pg_catalog.plpgsql"
@@ -136,6 +136,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_04_000400) do
     t.datetime "last_stripe_event_at"
     t.datetime "past_due_since"
     t.integer "quantity", default: 1, null: false
+    t.string "refund_owed_subscription_id"
     t.string "status"
     t.string "stripe_customer_id"
     t.string "stripe_item_id"
