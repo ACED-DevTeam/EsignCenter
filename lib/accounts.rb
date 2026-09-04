@@ -5,6 +5,12 @@ module Accounts
 
   class MissingEsignCertsError < StandardError; end
 
+  # Raised by with_last_admin_guard when the change it is wrapping would leave
+  # an account with nobody who can administer it. Every door that can reach it
+  # turns it back into the same sentence the check used to print
+  # (`last_admin_cannot_be_removed`).
+  class LastAdminError < StandardError; end
+
   module_function
 
   def create_duplicate(account)
@@ -92,6 +98,51 @@ module Accounts
 
     !User.where(account_id:).where.not(id: user.id)
          .admins.active.full_access.exists?
+  end
+
+  # The guard the answer above is only half of.
+  #
+  # `last_admin?` is a READ, and on its own it promises nothing: between the
+  # read and the write that follows it, another request can archive, demote or
+  # park the OTHER administrator. With exactly two administrators that is a
+  # race either of them can lose — each asks "is there a second one?", each is
+  # told yes, and each then writes to a DIFFERENT user row, so no unique index
+  # and no validation stands in the way. The account comes out of it with
+  # nobody who can invite anyone, change a role or fix its own billing, and
+  # only an operator can put it back.
+  #
+  # So every door that can take administrator capability away — archiving
+  # somebody (UsersController#destroy), demoting or moving them
+  # (UsersController#update), and handing their seat back
+  # (UsersReadOnlyController#create) — runs its write in here instead. The
+  # ACCOUNT row is locked first (the same `with_lock` the rest of the app
+  # serialises account-level decisions with), the question is asked again on
+  # the far side of that lock, and the mutation is committed inside it.
+  # Postgres then serialises the two requests: the first one wins, the second
+  # one waits, re-reads, finds itself holding the last administrator and is
+  # refused by the sentence it would have been refused by anyway.
+  #
+  # `account_id` is the account that can be STRANDED: the user's own, and the
+  # one they are leaving when the change is a move. `user`'s own in-memory
+  # state is deliberately not reloaded — UsersController#update has already
+  # assigned the destination account to it by the time it asks, and the
+  # question this has to answer is about the account being left.
+  #
+  # Nested locks: the seat check inside the block takes Quotas' advisory
+  # creation lock, so the order is always account row → advisory lock, never
+  # the other way round, and there is nothing here to deadlock against.
+  def with_last_admin_guard(user, account_id: user&.account_id)
+    account = Account.find_by(id: account_id)
+
+    # No account to strand (a user row without one, or a caller that passed
+    # nothing): there is nothing for this guard to protect.
+    return yield if account.nil?
+
+    account.with_lock do
+      raise LastAdminError if last_admin?(user, account_id:)
+
+      yield
+    end
   end
 
   def find_or_create_testing_user(account)

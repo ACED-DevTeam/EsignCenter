@@ -2,6 +2,7 @@
 
 class StartFormController < ApplicationController
   include SenderViewing
+  include CompletedFormMarker
 
   layout 'form'
 
@@ -17,11 +18,6 @@ class StartFormController < ApplicationController
 
   COOKIES_TTL = 12.hours
   COOKIES_DEFAULTS = { httponly: true, secure: Rails.env.production? }.freeze
-
-  # The marker that says "this browser is the one that completed that
-  # document", written when a visitor is sent to the completed page and read
-  # back there. See #completed for what it is for.
-  COMPLETED_COOKIE = :completed_submitter_slug
 
   def show
     if @template.shared_link?
@@ -58,8 +54,11 @@ class StartFormController < ApplicationController
     @submitter = find_or_initialize_submitter(@template, submitter_params)
 
     if @submitter.completed_at?
-      remember_completion(@submitter)
-
+      # No marker is minted here, and deliberately so: everything this door
+      # knows about the visitor is what they typed plus the address they typed
+      # it from, and neither is proof of an identity (CompletedFormMarker). The
+      # signer who really completed this document was given the marker in their
+      # own signing session; anybody else gets the neutral page.
       redirect_to start_form_completed_path(@template.slug, submitter_params.compact_blank)
     else
       if filter_undefined_submitters(@template).size > 1 && @submitter.new_record?
@@ -136,9 +135,9 @@ class StartFormController < ApplicationController
   #
   #   * the account's own signed-in user, who can read every one of these
   #     documents from the dashboard anyway (SenderViewing);
-  #   * the marker this controller wrote when it sent the visitor here
-  #     (remember_completion) — the browser that walked in through #update
-  #     and was recognised as the one that started the document;
+  #   * the completion marker (CompletedFormMarker) — the browser that
+  #     actually completed one of these documents, given the marker in its own
+  #     signing session at the moment it completed;
   #   * the email one-time-code marker, which is the strongest proof of an
   #     address the anonymous side of this app has: a code was sent to the
   #     address and typed back in.
@@ -152,31 +151,11 @@ class StartFormController < ApplicationController
 
     return completed.find_by(find_params) if sender_viewing?
 
-    slugs = [cookies.encrypted[COMPLETED_COOKIE], cookies.encrypted[:email_2fa_slug]].compact_blank
+    slugs = [*completed_form_slugs, cookies.encrypted[:email_2fa_slug]].compact_blank
 
     return nil if slugs.empty?
 
     completed.find_by(find_params.merge(slug: slugs))
-  end
-
-  # Written on the way out of #update, and only for a visitor that door has
-  # already recognised: the person whose own device started the document (the
-  # ip match find_or_initialize_submitter makes), the holder of a verified
-  # email code on a 2FA link — where the ip match is deliberately not made and
-  # so proves nothing — or the sender looking at their own template. Typing an
-  # address is never enough, which is the whole point.
-  def remember_completion(submitter)
-    return unless completion_proven?(submitter)
-
-    cookies.encrypted[COMPLETED_COOKIE] =
-      { value: submitter.slug, expires: COOKIES_TTL.from_now, **COOKIES_DEFAULTS }
-  end
-
-  def completion_proven?(submitter)
-    return true if sender_viewing?
-    return cookies.encrypted[:email_2fa_slug] == submitter.slug if @template.preferences['shared_link_2fa'] == true
-
-    submitter.ip.present? && submitter.ip == request.remote_ip
   end
 
   # A closed link takes no new submission: refused here, before the email-2FA

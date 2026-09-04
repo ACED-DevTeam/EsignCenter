@@ -548,6 +548,33 @@ RSpec.describe 'Deleting an account', type: :request do
       body[/>(\d{6})</, 1] || body[/\b(\d{6})\b/, 1]
     end
 
+    # D4, and the same rule as the subject line one line up. The code is a
+    # second factor: it is the whole proof that the person asking to end the
+    # company's account is at the mailbox they claim. `deliver_later!` wrote it
+    # in plain text into a Sidekiq job's arguments, where it sits in Redis for
+    # as long as the job waits or retries and is printed in full on the Sidekiq
+    # Web UI this app mounts in production — the same class of exposure as a
+    # log line or a subject line, and inconsistent with keeping it out of both.
+    #
+    # Deliberately NOT tagged `sidekiq: :inline`: with the queue in fake mode,
+    # a mail that arrives in `deliveries` at all is a mail that was never
+    # enqueued.
+    it 'emails the code without ever putting it in a job payload' do
+      code = emailed_code
+
+      expect(code).to be_present
+
+      queued = Sidekiq::Queues.jobs_by_queue.values.flatten.to_json
+
+      expect(queued).not_to include(code)
+
+      # And it is still the code that works, so nothing was traded away for
+      # the secrecy.
+      delete '/settings/account', params: { confirmation_code: code, confirm: '1' }
+
+      expect(account.reload.deletion_requested_at).to be_present
+    end
+
     it 'emails a six-digit code, stores only its digest, and accepts it once', sidekiq: :inline do
       code = emailed_code
 
@@ -1350,6 +1377,45 @@ RSpec.describe 'Deleting an account', type: :request do
       expect(Template.where(account_id: account.id).count).to eq(0)
     end
 
+    # Two accounts sharing one file, purged alongside each other, used to
+    # ORPHAN it for ever (review 9, C2). The share question was answered once
+    # per account, up front, and a blob the answer called shared had its rows
+    # deleted with a bare `delete_all` and no lock — so when both purges took
+    # their snapshot before either had deleted anything, BOTH saw the other's
+    # attachment, BOTH called the file shared, and BOTH deleted only their own
+    # rows. Nobody ever reached the locked path that deletes a file: the blob
+    # row and the object survived with no attachment anywhere pointing at
+    # them, the customer's document sitting in the bucket unfindable, while
+    # the census — which counts attachment ROWS — reported both accounts
+    # cleanly purged.
+    it 'takes the shared file when the account purging alongside it has already let go', sidekiq: :inline do
+      other_account = create(:account)
+      other_admin = create(:user, account: other_account)
+      other_template = create(:template, account: other_account, author: other_admin, only_field_types: %w[text])
+
+      shared_blob = template.documents_attachments.first.blob
+      foreign = ActiveStorage::Attachment.create!(blob: shared_blob, name: :documents, record: other_template)
+
+      # The first of the two. At this moment the file really is shared, so its
+      # rows go and the file stays — the honest outcome, unchanged.
+      expect(Accounts::Purge.call(account)).to eq(:purged)
+
+      expect(ActiveStorage::Attachment.exists?(foreign.id)).to be(true)
+      expect(ActiveStorage::Blob.exists?(shared_blob.id)).to be(true)
+
+      # The second of the two, with the interleaving staged: its snapshot was
+      # taken while the first account's attachment was still there, so it
+      # believes the file is somebody else's too. Under the blob's row lock it
+      # finds it is holding the LAST reference — and takes the file.
+      allow(Accounts::Purge).to receive(:shared_blob_ids_for).and_return([shared_blob.id])
+
+      expect(Accounts::Purge.call(other_account)).to eq(:purged)
+
+      expect(ActiveStorage::Attachment.where(blob_id: shared_blob.id).count).to eq(0)
+      expect(ActiveStorage::Blob.where(id: shared_blob.id).count).to eq(0)
+      expect(shared_blob.service.exist?(shared_blob.key)).to be(false)
+    end
+
     # Every page image of every document uploaded to this app is an attachment
     # hanging off ANOTHER attachment: config/initializers/active_storage.rb
     # declares `has_many_attached :preview_images` on
@@ -1572,6 +1638,73 @@ RSpec.describe 'Deleting an account', type: :request do
       expect(Template.where(account_id: account.id).count).to eq(0)
     end
 
+    # A family is emptied child-first, and the row that says the child IS the
+    # family is an `account_linked_accounts` link the walk used to delete as
+    # soon as the child had been emptied (review 9, C1). So a parent that then
+    # failed — a storage problem, a deadlock — left a retry that rebuilt the
+    # family from the database and found only the parent: it could entomb the
+    # parent while the child sat archived, claimed, half-emptied and never
+    # stamped, and the exhausted-retry release could not reach it either.
+    # Nothing left in the database named that child, so nobody could ever have
+    # found it again.
+    describe 'a family whose parent fails after its children have been emptied' do
+      # The only file in the family is the parent's, so the storage failure
+      # lands where the real one does: after the child's contents are gone and
+      # in the middle of the parent's own walk.
+      def break_the_family_purge!
+        admin
+        child = Accounts.find_or_create_testing_user(account).account
+
+        template
+        account.update!(deletion_requested_at: 90.days.ago, purge_scheduled_for: 1.minute.ago)
+
+        allow(ActiveStorage::Blob.service).to receive(:delete).and_raise(Errno::EACCES)
+
+        expect { AccountPurgeJob.new.perform(account.id) }.to raise_error(Accounts::Purge::StorageFailure)
+
+        child.reload
+      end
+
+      it 'still finds the testing child on the retry, and finishes the whole family off', sidekiq: :inline do
+        child = break_the_family_purge!
+
+        # The child was emptied and is still claimed — and, the point of all
+        # this, it is still findable from the parent.
+        expect(child.purge_started_at).to be_present
+        expect(child.purged_at).to be_nil
+        expect(User.where(account_id: child.id).count).to eq(0)
+        expect(account.reload.testing_accounts.map(&:id)).to eq([child.id])
+
+        allow(ActiveStorage::Blob.service).to receive(:delete).and_call_original
+
+        AccountPurgeJob.new.perform(account.id)
+
+        expect(account.reload.purged_at).to be_present
+        expect(child.reload).to have_attributes(purged_at: be_present, purge_started_at: nil,
+                                                name: Accounts::Purge::TOMBSTONE_NAME)
+        # And once everybody is entombed the link goes too, so the inventory
+        # really is empty at the end.
+        expect(AccountLinkedAccount.where(linked_account_id: child.id).count).to eq(0)
+      end
+
+      it 'releases the claim on the child as well as the parent when the retries run out', sidekiq: :inline do
+        child = break_the_family_purge!
+
+        allow(OperatorAlert).to receive(:deliver).and_call_original
+
+        # The last attempt, driven through ActiveJob's own dispatch with the
+        # budget for this rescue list already spent.
+        job = AccountPurgeJob.new(account.id)
+
+        job.exception_executions = { '[Accounts::Purge::StorageFailure]' => AccountPurgeJob::MAX_STORAGE_ATTEMPTS }
+        job.rescue_with_handler(Accounts::Purge::StorageFailure.new('bucket is unreachable'))
+
+        expect(account.reload).to have_attributes(purge_started_at: nil, archived_at: nil)
+        expect(child.reload).to have_attributes(purge_started_at: nil, archived_at: nil, purged_at: nil)
+        expect(OperatorAlert).to have_received(:deliver).with(hash_including(subject: 'Account purge gave up'))
+      end
+    end
+
     # And the claim is only granted once: a Stripe webhook that puts the
     # account back on a paid plan between the claim and the purge is caught by
     # the purge's own refusal, which it re-asserts on entry (P1).
@@ -1749,24 +1882,45 @@ RSpec.describe 'Deleting an account', type: :request do
       expect(Submission.where(id: submission.id).count).to eq(0)
     end
 
-    # A webhook attempt is the one row in the inventory that becomes
-    # UNREACHABLE the moment its parent goes (review 8, A3).
+    # A webhook attempt was the one row in the inventory that could become
+    # UNREACHABLE the moment its parent went (review 8, A3).
     # SendWebhookRequest creates the event, makes the outbound call — up to
-    # fifteen seconds — and only then inserts the attempt, against a
-    # webhook_event_id with no foreign key behind it. A purge that deletes the
-    # events inside that window leaves the attempt holding the customer's
-    # webhook response body, and the old emptiness count asked
-    # "attempts whose event belongs to this account": there were no events
-    # left to name, so the subquery was empty, the count read zero, and the
-    # account was entombed as empty over a row that was still there.
-    describe 'a webhook attempt that lands after its event was deleted' do
-      # The row the in-flight delivery writes. `WebhookAttempt belongs_to
-      # :webhook_event`, so it goes in the way the real race puts it there —
-      # against an id nothing points at any more.
-      def insert_straggler!(event_id)
-        WebhookAttempt.insert!({ webhook_event_id: event_id, attempt: 1, response_status_code: 500,
-                                 response_body: 'Jane Roe signed the lease', created_at: Time.current,
-                                 updated_at: Time.current })
+    # fifteen seconds of the customer's own server — and only then inserts the
+    # attempt, which holds the response body their endpoint sent back. A purge
+    # that deleted the events inside that window left the attempt behind, and
+    # the old emptiness count asked "attempts whose event belongs to this
+    # account": there were no events left to name, so the subquery was empty,
+    # the count read zero, and the account was entombed as empty over a row
+    # that was still there.
+    #
+    # There is now a foreign key with ON DELETE CASCADE behind
+    # `webhook_attempts.webhook_event_id` (review 9, C3), so the database
+    # itself serialises the insert against the delete: an attempt for an event
+    # that is gone cannot be written at all, and deleting an event takes its
+    # attempts with it. What is still possible — and still has to be caught by
+    # the walk rather than by the key — is a WHOLE delivery landing mid-purge:
+    # the event and its attempt together, after the pass that would have taken
+    # them.
+    describe 'a webhook delivery that lands in the middle of the purge' do
+      # The template exists BEFORE the purge starts, because the straggler
+      # names it: created lazily from inside the walk it would arrive after
+      # its own folder had been deleted, which is a different bug entirely.
+      before { template }
+
+      # What the in-flight delivery writes: the event first, then the attempt
+      # against it, exactly as SendWebhookRequest does. The webhook_url and
+      # the template it names may already have been deleted by the walk —
+      # neither column has a key behind it — which is precisely the row a
+      # delivery that was in flight when the purge started produces.
+      def insert_straggler!
+        event = WebhookEvent.create!(account:, webhook_url: webhook, uuid: SecureRandom.uuid,
+                                     event_type: 'template.created', record_type: 'Template',
+                                     record_id: template.id, status: 'pending')
+
+        WebhookAttempt.create!(webhook_event: event, attempt: 1, response_status_code: 500,
+                               response_body: 'Jane Roe signed the lease')
+
+        event.id
       end
 
       def event_id!
@@ -1778,31 +1932,28 @@ RSpec.describe 'Deleting an account', type: :request do
       end
 
       it 'sweeps it on the second walk rather than entombing the account over it', sidekiq: :inline do
-        event_id = event_id!
-        landed = false
+        landed = nil
 
         # delete_account_rows! runs immediately after the webhooks are
         # deleted, which is exactly where the in-flight delivery lands.
         allow(Accounts::Purge).to receive(:delete_account_rows!).and_wrap_original do |method, record|
-          insert_straggler!(event_id) unless landed
-          landed = true
+          landed ||= insert_straggler!
 
           method.call(record)
         end
 
         expect(Accounts::Purge.call(account)).to eq(:purged)
 
-        expect(landed).to be(true)
-        expect(WebhookAttempt.where(webhook_event_id: event_id).count).to eq(0)
+        expect(landed).to be_present
+        expect(WebhookAttempt.where(webhook_event_id: landed).count).to eq(0)
+        expect(WebhookEvent.where(id: landed).count).to eq(0)
       end
 
       it 'refuses to entomb the account when one lands during the second walk too', sidekiq: :inline do
-        event_id = event_id!
-
         # Every pass, so the last one leaves a row standing — the census is
         # what still sees it, and the purge says so rather than lying.
         allow(Accounts::Purge).to receive(:delete_account_rows!).and_wrap_original do |method, record|
-          insert_straggler!(event_id)
+          insert_straggler!
 
           method.call(record)
         end
@@ -1816,21 +1967,35 @@ RSpec.describe 'Deleting an account', type: :request do
           .with(hash_including(subject: 'Account purge did not empty the account'))
       end
 
-      # The count itself, on its own: taken against ids written down before
-      # the walk, it still finds the row after every event is gone. Asked the
-      # old way — through the account's surviving events — it reads zero.
-      it 'is counted against ids captured before the walk, not through parents that are already gone' do
+      # The belt and the braces, in one example. The census still counts an
+      # attempt against ids written down before the walk; the key now makes
+      # the race the census was defending against impossible to stage at all —
+      # deleting the event takes the attempt, and an attempt for an event that
+      # has gone is REFUSED rather than quietly written.
+      it 'is counted against ids captured before the walk, and can no longer outlive its event' do
         event_id = event_id!
         census = Accounts::Purge.census_for([account])
 
         expect(census[:webhook_event_ids]).to include(event_id)
 
-        WebhookEvent.where(id: event_id).delete_all
-        insert_straggler!(event_id)
+        WebhookAttempt.create!(webhook_event_id: event_id, attempt: 1, response_status_code: 500,
+                               response_body: 'Jane Roe signed the lease')
 
         expect(Accounts::Purge.remaining_rows([account], census)['webhook_attempts']).to eq(1)
-        expect(WebhookAttempt.where(webhook_event_id: WebhookEvent.where(account_id: account.id)
-                                                                  .select(:id)).count).to eq(0)
+
+        # The cascade: the event goes, and the customer's response body goes
+        # with it rather than being left behind unreachable.
+        WebhookEvent.where(id: event_id).delete_all
+
+        expect(WebhookAttempt.where(webhook_event_id: event_id).count).to eq(0)
+        expect(Accounts::Purge.remaining_rows([account], census)['webhook_attempts']).to eq(0)
+
+        # And the door the whole race came through is closed by the database.
+        expect do
+          WebhookAttempt.insert!({ webhook_event_id: event_id, attempt: 1, response_status_code: 500,
+                                   response_body: 'Jane Roe signed the lease', created_at: Time.current,
+                                   updated_at: Time.current })
+        end.to raise_error(ActiveRecord::InvalidForeignKey)
       end
     end
 

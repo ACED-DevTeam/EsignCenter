@@ -146,8 +146,53 @@ module Accounts
 
     # The account and every testing child of it: one tenant, claimed and
     # released together.
+    #
+    # THE LINK ROWS ARE WHAT MAKE THIS ANSWER SURVIVE A FAILED RUN (review 9,
+    # C1), and that is why `delete_account_rows!` no longer takes them: an
+    # `account_linked_accounts` row of type `testing` is the only thing in the
+    # database that says a child belongs to a parent, and the walk used to
+    # delete it as soon as the CHILD had been emptied. If the parent's own
+    # purge then raised — a storage failure, a deadlock — the retry rebuilt
+    # this list and found only the parent. It could then entomb the parent
+    # while the child sat archived, claimed, half-emptied and never stamped
+    # `purged_at`, and `release_claim!` could not reach it either, so the
+    # exhausted-retry release left it frozen for ever with nobody able to
+    # name it. So the family's own links are kept until every member has been
+    # emptied and the children have been entombed; see `delete_family_links!`.
     def family(account)
       [account, *account.testing_accounts.to_a]
+    end
+
+    # The links that tie two members of one family together — a parent and its
+    # testing children. Deleted last of all, so until then any run can rebuild
+    # the family from the database.
+    def family_links(ids)
+      AccountLinkedAccount.where(account_id: ids, linked_account_id: ids)
+    end
+
+    # And the links that reach OUTSIDE the family: a link to somebody else's
+    # account, or somebody else's link to ours. Those are ordinary inventory
+    # rows and the walk takes them exactly as it always did.
+    def foreign_links(ids)
+      AccountLinkedAccount.where(account_id: ids)
+                          .or(AccountLinkedAccount.where(linked_account_id: ids))
+                          .where.not(id: family_links(ids))
+    end
+
+    # The last rows of the whole purge, and deliberately after the children
+    # have their tombstones. The order matters for every way this can fail:
+    #
+    #   * a failure BEFORE this point leaves the links in place, so the retry
+    #     and the release path both still see the whole family;
+    #   * a failure HERE leaves the children entombed and the parent not, and
+    #     the retry re-derives the same family, walks a family that is already
+    #     empty, and deletes these rows again;
+    #   * a failure AFTER this point (entombing the parent) leaves a family of
+    #     one, which is the truth by then — the children are already purged.
+    def delete_family_links!(family)
+      family_links(family.map(&:id)).delete_all
+
+      nil
     end
 
     # The whole thing. Returns :purged, or :already_purged when there was
@@ -178,14 +223,15 @@ module Accounts
       assert_children_purgeable!(testing_children, account)
 
       family = [account, *testing_children]
+      family_ids = family.map(&:id)
 
       # Read BEFORE anything is destroyed, because it is what proves the walk
       # was complete (review 7, P1): afterwards there are no templates,
       # submitters or users left to ask which files hung off them.
       census = census_for(family)
 
-      testing_children.each { |child| purge_contents!(child, census) }
-      purge_contents!(account, census)
+      testing_children.each { |child| purge_contents!(child, census, family_ids) }
+      purge_contents!(account, census, family_ids)
 
       # A second pass over the whole family, and then a count (review batch 2,
       # R2d). The walk above works from ids collected at its start, so
@@ -195,11 +241,15 @@ module Accounts
       # would then say the account was emptied when it was not. Stragglers are
       # taken; if anything is still standing after that, the purge fails
       # rather than lying.
-      family.each { |record| purge_contents!(record, census) }
+      family.each { |record| purge_contents!(record, census, family_ids) }
 
       assert_emptied!(account, family, census)
 
       testing_children.each { |child| entomb!(child) }
+
+      # Only now, with every member emptied and every child stamped, is the
+      # family safe to forget (C1).
+      delete_family_links!(family)
 
       entomb!(account)
 
@@ -341,9 +391,15 @@ module Accounts
         'account_limit_overrides' => -> { AccountLimitOverride.where(account_id: ids).count },
         'account_accesses' => -> { AccountAccess.where(account_id: ids).count },
         'account_invites' => -> { AccountInvite.where(account_id: ids).count },
-        'account_linked_accounts' => lambda {
-          AccountLinkedAccount.where(account_id: ids).or(AccountLinkedAccount.where(linked_account_id: ids)).count
-        },
+        # The family's OWN links are deliberately not counted here (review 9,
+        # C1). They are the last rows of the purge — they outlive the walk on
+        # purpose, because they are the only record of which children belong
+        # to this parent and a retry has to be able to rebuild it. Everything
+        # that reaches outside the family is counted exactly as before, so a
+        # link this walk should have taken and did not still stops the
+        # tombstone; and the end state is still empty, because
+        # `delete_family_links!` runs a moment after this check passes.
+        'account_linked_accounts' => -> { foreign_links(ids).count },
         'account_moves' => lambda {
           AccountMove.where(from_account_id: ids).or(AccountMove.where(to_account_id: ids)).count
         },
@@ -377,17 +433,24 @@ module Accounts
     # in a refusal instead of a lie.
     #
     # THE WEBHOOK EVENT IDS ARE HERE FOR THE SAME REASON (review 8, A3).
-    # `webhook_attempts` has no foreign key to `webhook_events`
-    # (db/schema.rb), and SendWebhookRequest inserts the attempt AFTER the
-    # outbound HTTP call has finished — up to fifteen seconds after it loaded
-    # the event object. A purge that deletes the event inside that window
-    # leaves the attempt behind, holding the customer's webhook response body.
-    # The old count asked `WebhookAttempt.where(webhook_event_id: <events of
-    # this account>)`, and by then there were no events left to name, so the
+    # SendWebhookRequest inserts the attempt AFTER the outbound HTTP call has
+    # finished — up to fifteen seconds after it loaded the event object. A
+    # purge that deletes the event inside that window leaves the attempt
+    # behind, holding the customer's webhook response body. The old count
+    # asked `WebhookAttempt.where(webhook_event_id: <events of this
+    # account>)`, and by then there were no events left to name, so the
     # subquery was empty and the count read zero: the account was entombed as
     # empty over a row that was still there. Captured ids cannot go blank that
     # way — the straggler is either swept by the second walk or the purge
     # refuses.
+    #
+    # These ids are now the BELT to a real key's braces (review 9, C3):
+    # `webhook_attempts.webhook_event_id` has a foreign key with ON DELETE
+    # CASCADE, so the database itself refuses an attempt whose event is gone
+    # and takes the attempts with the event. The census stays because it is
+    # what still catches an attempt whose event is standing — one that arrived
+    # mid-walk — and because a count that depends on nothing but ids written
+    # down in advance is the only kind that cannot quietly read zero.
     #
     # Both ways an event belongs to the family, matching `delete_webhooks!`:
     # by `account_id`, and through a webhook_url of the family for the old
@@ -447,14 +510,20 @@ module Accounts
     # records once the walk has started: see `delete_webhooks!`. Everything
     # else is still resolved from the account, so the walk stays re-runnable
     # on its own.
-    def purge_contents!(account, census = nil)
+    #
+    # `family_ids` is the one thing this pass must NOT resolve for itself: it
+    # is the family being emptied around this member, and it is what keeps the
+    # walk from deleting the link rows that say the family exists (C1).
+    # Defaulting to this account alone makes a lone call behave exactly as it
+    # always did — there are then no intra-family links to keep.
+    def purge_contents!(account, census = nil, family_ids = nil)
       purge_attachments!(account)
 
       delete_documents!(account)
       delete_templates!(account)
       delete_projections!(account)
       delete_webhooks!(account, census)
-      delete_account_rows!(account)
+      delete_account_rows!(account, family_ids || [account.id])
       delete_users!(account)
 
       nil
@@ -486,22 +555,48 @@ module Accounts
     # template rendered a missing document, and every retry hit the same
     # violation for ever. One pass per blob, taking every row that names it
     # together, is an order that cannot fail that way.
+    #
+    # AND EVERY BLOB GOES THROUGH THE LOCKED PATH, THE SHARED ONES INCLUDED
+    # (review 9, C2). A blob the snapshot called shared used to have its rows
+    # taken here, with a bare `delete_all` and no lock at all — and that lost
+    # customers' files outright. Two accounts really do share one blob
+    # (Templates::CloneAttachments reuses `blob_id`), and if both are purged
+    # at once BOTH snapshots see the other's attachment, so BOTH call the blob
+    # shared and BOTH delete only their own rows. Nobody ever reaches the
+    # locked path that deletes a file, so the blob row and the object survive
+    # with no attachment left anywhere pointing at them: the customer's
+    # document stays in the bucket for ever, unfindable, while the census —
+    # which counts attachment ROWS — reports both accounts cleanly purged.
+    #
+    # Under the lock the question is asked again against the rows that are
+    # actually left, so whichever purge goes second sees that it holds the
+    # LAST reference and takes the file. The lock is per blob and is the only
+    # one held, so there is no ordering between two of them to get wrong;
+    # Templates::CloneAttachments, which does hold several at once, takes them
+    # in id order, and the walk below hands them over in id order within each
+    # layer for the same reason.
     def purge_attachments!(account)
       layers = family_attachment_layers(account)
       attachment_ids = layers.flatten
 
       return if attachment_ids.empty?
 
+      # Still asked, and still asked FIRST, even though it no longer decides
+      # anything: it is what tells a person which files this purge already
+      # knows it will have to leave behind, BEFORE any of them is touched, and
+      # that message reaches them even if the purge dies half-way through.
+      # It is a snapshot, so it can be wrong in one direction — if the other
+      # account's own purge releases the last reference in the meantime, the
+      # locked pass below takes the file after this message said it stayed.
+      # That is the conservative half of the truth and it costs an operator a
+      # look in the bucket; the alternative, saying nothing until every lock
+      # has been taken, costs them the whole message when the purge fails.
       shared_blob_ids = shared_blob_ids_for(attachment_ids)
 
       report_shared_blobs(account, shared_blob_ids)
 
-      # Row only, and with `delete_all` rather than `destroy`: the destroy
-      # callback would enqueue a purge of the very blob we are protecting.
-      ActiveStorage::Attachment.where(id: attachment_ids, blob_id: shared_blob_ids).delete_all
-
-      unshared_blob_ids(layers, shared_blob_ids).each do |blob_id|
-        purge_blob!(account, blob_id, attachment_ids)
+      blob_ids_in_purge_order(layers).each do |blob_id|
+        purge_blob!(account, blob_id, attachment_ids, reported: shared_blob_ids)
       end
 
       nil
@@ -543,13 +638,17 @@ module Accounts
       family_attachment_layers(account).flatten
     end
 
-    # The blobs this account is taking with it, deepest layer first so a
-    # preview's file goes before its parent document's.
-    def unshared_blob_ids(layers, shared_blob_ids)
+    # Every blob this account's attachments name, in the order they are worked
+    # through: deepest layer first, so a preview's file goes before its parent
+    # document's, and by blob id inside a layer, which is the order
+    # Templates::CloneAttachments takes its locks in.
+    #
+    # No longer "the unshared ones" (C2): a blob that looks shared is worked
+    # through here too, because whether it really is shared can only be
+    # decided under its own row lock.
+    def blob_ids_in_purge_order(layers)
       layers.reverse.flat_map do |ids|
-        ActiveStorage::Attachment.where(id: ids)
-                                 .where.not(blob_id: shared_blob_ids)
-                                 .distinct.pluck(:blob_id)
+        ActiveStorage::Attachment.where(id: ids).order(:blob_id).distinct.pluck(:blob_id)
       end.compact.uniq
     end
 
@@ -627,7 +726,11 @@ module Accounts
     # which case the clone's own insert fails rather than pointing at nothing.
     # The lock is held across the storage delete on purpose: a shorter one
     # would just be the same race in a smaller window.
-    def purge_blob!(account, blob_id, attachment_ids)
+    #
+    # `reported` is the set of blobs `purge_attachments!` has already told a
+    # person about, so a file that was shared before the walk started and is
+    # still shared now produces ONE message rather than two.
+    def purge_blob!(account, blob_id, attachment_ids, reported: [])
       # One transaction for the check, the file and all the locator rows
       # (review batch 2, R4; review 8, A1). The variant records are the
       # derivatives' own index — leaving them behind would point at files that
@@ -644,14 +747,16 @@ module Accounts
           next
         end
 
-        # Shared after all. Exactly the outcome `purge_attachments!` gives a
-        # blob it knew was shared: this account's rows go, the file and the
-        # blob row stay, and a person is told — because "everything was
+        # Shared — and this is the ONE place that decision is now made, for
+        # every blob, under the lock (C2). This account's rows go, with
+        # `delete_all` rather than `destroy` because the destroy callback
+        # would enqueue a purge of the very blob we are protecting; the file
+        # and the blob row stay; and a person is told, because "everything was
         # destroyed" is then not quite true.
         if ActiveStorage::Attachment.where(blob_id:).where.not(id: attachment_ids).exists?
           ActiveStorage::Attachment.where(id: attachment_ids, blob_id:).delete_all
 
-          report_shared_blobs(account, [blob_id])
+          report_shared_blobs(account, [blob_id]) if reported.exclude?(blob_id)
 
           next
         end
@@ -754,15 +859,29 @@ module Accounts
       SearchEntry.where(account_id: account.id).delete_all
     end
 
-    # An attempt is the only row in the inventory that becomes UNREACHABLE
-    # once its parent is gone: there is no foreign key on
-    # `webhook_attempts.webhook_event_id`, so a delivery that was mid-flight
-    # when the events were deleted inserts its attempt against an id nothing
-    # points at any more, and no query starting from the account can ever find
-    # it again (review 8, A3). So the second walk sweeps by the ids the census
-    # wrote down BEFORE anything was destroyed, which is also what the
+    # An attempt used to be the only row in the inventory that could become
+    # UNREACHABLE once its parent was gone: a delivery that was mid-flight
+    # when the events were deleted inserted its attempt against an id nothing
+    # pointed at any more, and no query starting from the account could ever
+    # find it again (review 8, A3). So the second walk sweeps by the ids the
+    # census wrote down BEFORE anything was destroyed, which is also what the
     # emptiness count asks against — a straggler is swept here, or the purge
     # refuses; it is never entombed in silence.
+    #
+    # THE DATABASE NOW ENFORCES IT TOO (review 9, C3): there is a foreign key
+    # from `webhook_attempts.webhook_event_id` to `webhook_events.id` with
+    # `ON DELETE CASCADE`, so an attempt cannot outlive its event at all — the
+    # in-flight insert either lands before the delete or fails, and deleting
+    # an event takes its attempts with it whichever line below does it.
+    #
+    # The three sweeps stay all the same. They are the belt to the key's
+    # braces: they run in this order so nothing depends on the cascade being
+    # there, they are what a mid-walk arrival is caught by on the SECOND pass
+    # (the constraint stops an orphan, it does not delete a straggler whose
+    # event is still standing), and the census line — now a no-op while the
+    # key exists, because an attempt for a deleted event cannot be there to
+    # find — is the one that would catch the orphan again if the constraint
+    # were ever dropped.
     def delete_webhooks!(account, census = nil)
       event_ids = WebhookEvent.where(account_id: account.id).ids
       url_ids = WebhookUrl.where(account_id: account.id).ids
@@ -776,15 +895,23 @@ module Accounts
     end
 
     # The account's own settings, counters and links.
-    def delete_account_rows!(account)
+    #
+    # Every link EXCEPT the ones inside the family (C1): purging a child used
+    # to delete the parent's own testing link, which is the only row that says
+    # the child is part of this purge at all — so a parent that failed after
+    # its children were emptied could never find them again, neither to finish
+    # them nor to release their claim. Those rows go in `delete_family_links!`,
+    # after every member is empty and the children have been entombed.
+    def delete_account_rows!(account, family_ids = [account.id])
       AbuseFlag.where(account_id: account.id).delete_all
       AccountCounter.where(account_id: account.id).delete_all
       AccountLimitOverride.where(account_id: account.id).delete_all
       AccountAccess.where(account_id: account.id).delete_all
       AccountInvite.where(account_id: account.id).delete_all
-      AccountLinkedAccount.where(account_id: account.id).or(
-        AccountLinkedAccount.where(linked_account_id: account.id)
-      ).delete_all
+      AccountLinkedAccount.where(account_id: account.id)
+                          .or(AccountLinkedAccount.where(linked_account_id: account.id))
+                          .where.not(id: family_links(family_ids))
+                          .delete_all
       AccountMove.where(from_account_id: account.id).or(AccountMove.where(to_account_id: account.id)).delete_all
       EncryptedConfig.where(account_id: account.id).delete_all
       AccountConfig.where(account_id: account.id).delete_all

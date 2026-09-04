@@ -831,6 +831,42 @@ RSpec.describe 'Seats and invitations', type: :request do
       expect(body_of(mail)).to include(ERB::Util.html_escape(account.name))
     end
 
+    # D4: the accept link is a BEARER CREDENTIAL. Whoever holds that token can
+    # create a confirmed user in this account with a password of their own
+    # choosing (AccountInvites.accept!), which is why the row itself only ever
+    # stores its digest — nothing that comes back out of the database can
+    # rebuild the link.
+    #
+    # `deliver_later!` was quietly undoing that. It wrote the raw token, in
+    # plain text, into a Sidekiq job's arguments, where it sits in Redis while
+    # the job waits, again on every retry, and indefinitely in the dead set if
+    # delivery keeps failing — and where it is printed in full on the Sidekiq
+    # Web UI this app mounts in production. The mail is delivered inline
+    # instead, so the token lives in one process's memory for the length of one
+    # request and is written nowhere.
+    #
+    # Deliberately NOT tagged `sidekiq: :inline`: with the queue in fake mode,
+    # a mail that arrives in `deliveries` at all is a mail that was never
+    # enqueued.
+    it 'sends the invitation without ever putting its token in a job payload' do
+      invite(other_user.email)
+
+      token = token_from_mail
+
+      expect(token).to be_present
+      expect(deliveries.size).to eq(1)
+      expect(AccountInvite.sole.raw_token).to be_nil
+
+      queued = Sidekiq::Queues.jobs_by_queue.values.flatten.to_json
+
+      expect(queued).not_to include(token)
+      # And the link really is live, which is what makes the secrecy matter.
+      anonymous!
+      get "/invites/#{token}"
+
+      expect(response).to redirect_to(new_user_session_path)
+    end
+
     it 'asks the invitee to sign in as themselves before it will say anything else', sidekiq: :inline do
       invite(other_user.email)
       anonymous!
@@ -1072,6 +1108,188 @@ RSpec.describe 'Seats and invitations', type: :request do
 
       expect(response).to have_http_status(:unprocessable_content)
       expect(response.body).to include(other_user.email)
+    end
+
+    # D1: a live browser session must not follow the person across the tenant
+    # boundary.
+    #
+    # The previous round threw away every credential the old account had cut —
+    # API tokens, MCP tokens, OAuth grants, remember-me — and could not touch
+    # the one that matters most: a signed-in browser. This app resolves the
+    # tenant dynamically (`current_account` is `current_user.account`, read
+    # fresh on every request), so a session cookie minted while this person was
+    # alone in their own free account went on working after the move and simply
+    # started answering for the TEAM, at whatever role the invitation granted.
+    # A laptop left signed in at home, a shared machine, a session somebody
+    # else is holding: none of them are things the team's administrators can
+    # see, and every one of them became a door into the team's documents.
+    #
+    # `users.session_version` is what closes it: it is appended to the salt
+    # Devise stamps into every session and remember-me cookie
+    # (User#authenticatable_salt) and re-compared out of the database on every
+    # request, so bumping it inside the move's transaction refuses every cookie
+    # minted before it. The browser that pressed the button is re-established
+    # explicitly and is the only one that survives.
+    it 'signs the person out of every other browser, and keeps only the one that pressed the button' do
+      token = invite_row.raw_token
+
+      # A second browser with its own cookie jar, signed in and working before
+      # the move — the pattern spec/golden/quota_spec.rb uses for two live
+      # sessions of one person.
+      elsewhere = open_session
+      sign_in(other_user)
+      elsewhere.get '/templates'
+
+      expect(elsewhere.response).to have_http_status(:ok)
+
+      # And a remember-me cookie from the same era, which is the half of a
+      # session that survives the browser being closed.
+      other_user.remember_me!
+      remember_token = other_user.rememberable_value
+      remembered_at = 1.second.from_now
+
+      expect(User.serialize_from_cookie(other_user.id, remember_token, remembered_at)).to eq(other_user)
+
+      act_as(other_user)
+
+      expect { post "/invites/#{token}" }.to change { other_user.reload.session_version }.by(1)
+
+      expect(response).to redirect_to(root_path)
+      expect(other_user.account).to eq(account)
+
+      # The browser that asked for the move is still signed in, and it is in
+      # the team it just joined.
+      get '/templates'
+
+      expect(response).to have_http_status(:ok)
+
+      # The one that was left signed in somewhere else is not, and it never
+      # sees a single page of the team's data.
+      elsewhere.get '/templates'
+
+      # Asserted on the other session's own response object rather than with
+      # `redirect_to`, which reads the response of the example's MAIN session
+      # and would quietly pass on the request one line up.
+      expect(elsewhere.response).to have_http_status(:found)
+      expect(elsewhere.response.location).to end_with(new_user_session_path)
+      expect(elsewhere.session['warden.user.user.key']).to be_nil
+
+      # Read from a moment after the cookie was stamped, so the assertion does
+      # not depend on how long this example happened to take.
+      travel_to(remembered_at + 1.second) do
+        expect(User.serialize_from_cookie(other_user.id, remember_token, remembered_at)).to be_nil
+      end
+    end
+
+    # D2: two teams, one person, two invitations accepted at the same moment.
+    #
+    # Everything about a move used to be decided BEFORE its transaction opened
+    # — `user.account` and every eligibility check — and the acceptance door
+    # locked only the invitation row. Two invitations are two different rows
+    # and therefore two different locks, so both passes could agree that this
+    # person was alone in their own account: the first moved the documents into
+    # B, the second found nothing left to move (`where(account_id: A)` matched
+    # no rows by then) and moved only the PERSON, into C. They ended in C with
+    # every document they own sitting inside B — a tenant they are not a member
+    # of — and both AccountMove rows recorded a success.
+    #
+    # The interleaving is reproduced without threads, and exactly: the second
+    # acceptance is handed the user object as it was BEFORE the first one ran,
+    # which is precisely what a request that read the row a moment earlier is
+    # holding. What the fix does is refuse it — the account this acceptance was
+    # authorized over is not the account the locked row is in any more.
+    it 'lets exactly one of two invitations move the person, and never splits them from their documents' do
+      second_team = create(:account)
+
+      create(:user, account: second_team)
+      stripe_paid!(second_team, seats: 3, subscription_id: subscription_b, customer_id: customer_b)
+
+      template = create(:template, account: other_account, author: other_user, only_field_types: %w[text])
+      to_second = create(:account_invite, account: second_team, email: other_user.email,
+                                          role: User::EDITOR_ROLE, collision_user: other_user)
+
+      # The user as the second request read it: still alone in their own
+      # account, because at the moment it loaded the row they were.
+      in_flight = User.find(other_user.id)
+
+      expect(in_flight.account_id).to eq(other_account.id)
+
+      AccountInvites.accept_move!(invite_row, user: other_user)
+
+      expect { AccountInvites.accept_move!(to_second, user: in_flight) }
+        .to raise_error(Accounts::MoveUser::Refused, I18n.t('invite_move_already_moved'))
+
+      # One move, one team, and the documents are in it with them.
+      expect(AccountMove.count).to eq(1)
+      expect(other_user.reload.account).to eq(account)
+      expect(template.reload.account).to eq(account)
+      expect(Template.where(account_id: second_team.id)).to be_empty
+      expect(invite_row.reload.accepted_at).to be_present
+      expect(to_second.reload).to be_pending
+    end
+
+    # D5: the lifecycle of the account being LEFT.
+    #
+    # A move is the largest write this app makes on an account — every
+    # template, every document and every folder changes tenant, and the account
+    # is closed behind them — and it used to ask nothing at all about whether
+    # that account was allowed to be written. Two of these are the reason it
+    # matters: an account whose purge has been CLAIMED is being emptied right
+    # now in another process, and an account with a deletion pending is under a
+    # promise to destroy exactly this data. Moving out of either leaves
+    # documents that were meant to be deleted alive inside somebody else's
+    # tenant.
+    #
+    # The purge-claimed and archived cases are asked of the module rather than
+    # through the browser on purpose: Devise refuses to hold a session for
+    # somebody whose account is in either state (User#active_for_authentication?),
+    # so the only way they are reached in life is a claim landing after a
+    # request has already been authorized — which is exactly this call.
+    it 'refuses to move out of an account a purge has already claimed' do
+      other_account.update!(purge_started_at: Time.current)
+
+      expect { AccountInvites.accept_move!(invite_row, user: other_user) }
+        .to raise_error(Accounts::MoveUser::Refused, I18n.t('invite_move_source_purging'))
+
+      expect(other_user.reload.account).to eq(other_account)
+      expect(invite_row.reload).to be_pending
+    end
+
+    it 'refuses to move out of an account that is already archived' do
+      other_account.update!(archived_at: Time.current)
+
+      expect { AccountInvites.accept_move!(invite_row, user: other_user) }
+        .to raise_error(Accounts::MoveUser::Refused, I18n.t('invite_move_source_archived'))
+
+      expect(other_user.reload.account).to eq(other_account)
+      expect(invite_row.reload).to be_pending
+    end
+
+    it 'refuses, with an explanation, when the account being left is scheduled for deletion' do
+      other_account.update!(deletion_requested_at: Time.current,
+                            purge_scheduled_for: Accounts::Deletion::WINDOW_DAYS.days.from_now)
+      token = invite_row.raw_token
+      act_as(other_user)
+
+      expect { post "/invites/#{token}" }.not_to change(AccountMove, :count)
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.body).to include(I18n.t('invite_move_source_pending_deletion'))
+      expect(other_user.reload.account).to eq(other_account)
+      expect(other_account.reload.archived_at).to be_nil
+    end
+
+    it 'refuses, with an explanation, when the account being left is frozen' do
+      AccountStates.suspend!(other_account, reason: AccountStates::BILLING_REASON)
+      token = invite_row.raw_token
+      act_as(other_user)
+
+      expect { post "/invites/#{token}" }.not_to change(AccountMove, :count)
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.body).to include(I18n.t('invite_move_source_frozen'))
+      expect(other_user.reload.account).to eq(other_account)
+      expect(other_account.reload.archived_at).to be_nil
     end
   end
 
@@ -1387,6 +1605,85 @@ RSpec.describe 'Seats and invitations', type: :request do
 
       expect { put "/users/#{third.id}", params: { user: { role: User::VIEWER_ROLE } } }
         .to(change { third.reload.role }.to(User::VIEWER_ROLE))
+    end
+
+    # Review 8: the guard was a check and then, some lines later, a write, with
+    # nothing holding the two together. "Unreachable while a second admin
+    # exists" is exactly the precondition for the race — two admins acting at
+    # the same moment. Each removed the OTHER: both reads saw a second
+    # administrator, both writes landed on a different user row, and the
+    # account came out the far side with nobody who could invite anyone, change
+    # a role or fix its own billing. Only an operator could put that back.
+    #
+    # The interleaving is simulated the way every other lock race in this suite
+    # is (spec/golden/billing_page_spec.rb, spec/golden/consent_version_spec.rb):
+    # the concurrent request commits while this one is queued for the account
+    # row lock, so the question has to be asked again on the far side of it.
+    # There is no such window without the lock: with the old shape the stub
+    # never fires at all, because nothing on the path ever took one.
+    describe 'two administrators removing each other at the same moment' do
+      let!(:second) { create(:user, account:) }
+
+      # The other request, landing in exactly that window: by the time this one
+      # gets the lock, the admin doing the racing has already archived
+      # themselves out of the account. Committed OUTSIDE the locked
+      # transaction, because that is where the other request's write really
+      # was — a rolled-back refusal must not take it with it.
+      def race_at_the_lock!
+        raced = false
+
+        allow_any_instance_of(Account).to receive(:with_lock).and_wrap_original do |original, *args, &block|
+          User.where(id: admin.id).update_all(archived_at: Time.current) unless raced
+          raced = true
+
+          original.call(*args, &block)
+        end
+      end
+
+      # Whoever is left has to be able to administer the account tomorrow.
+      def administrators
+        User.where(account_id: account.id).admins.active.full_access
+      end
+
+      it 'refuses the archival that would have emptied the account' do
+        race_at_the_lock!
+
+        expect { delete "/users/#{second.id}" }.not_to(change { second.reload.archived_at })
+
+        expect(response).to redirect_to('/settings/users')
+        # The racing removal really did commit: without that this example
+        # would be proving nothing.
+        expect(admin.reload.archived_at).to be_present
+        expect(flash[:alert]).to eq(I18n.t('last_admin_cannot_be_removed'))
+        expect(administrators.ids).to eq([second.id])
+      end
+
+      it 'refuses the demotion that would have emptied the account' do
+        race_at_the_lock!
+
+        expect { put "/users/#{second.id}", params: { user: { role: User::VIEWER_ROLE } } }
+          .not_to(change { second.reload.role })
+
+        expect(response).to redirect_to('/settings/users')
+        # The racing removal really did commit: without that this example
+        # would be proving nothing.
+        expect(admin.reload.archived_at).to be_present
+        expect(flash[:alert]).to eq(I18n.t('last_admin_cannot_be_removed'))
+        expect(administrators.ids).to eq([second.id])
+      end
+
+      it 'refuses the read-only parking that would have emptied the account' do
+        race_at_the_lock!
+
+        expect { post "/users/#{second.id}/read_only" }.not_to(change { second.reload.read_only_at })
+
+        expect(response).to redirect_to('/settings/users')
+        # The racing removal really did commit: without that this example
+        # would be proving nothing.
+        expect(admin.reload.archived_at).to be_present
+        expect(flash[:alert]).to eq(I18n.t('last_admin_cannot_be_removed'))
+        expect(administrators.ids).to eq([second.id])
+      end
     end
   end
 

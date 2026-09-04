@@ -146,15 +146,26 @@ class InvitesController < ApplicationController
   def accept_move
     return require_matching_sign_in unless @signed_in_as_invitee
 
-    AccountInvites.accept_move!(@invite, user: current_user)
+    moved = AccountInvites.accept_move!(@invite, user: current_user)
 
     # The move threw away every credential the person's old account had cut,
-    # remember-me included (Accounts::MoveUser#revoke_credentials!). This
+    # remember-me included (Accounts::MoveUser#revoke_credentials!), and bumped
+    # `users.session_version`, which ends every live browser session they had
+    # — this one included (User#authenticatable_salt).
+    #
+    # That is deliberate, and this line is the one exception to it. This
     # browser is the one that just asked for the move, so it is the one
-    # credential that should survive it: signing them in again re-establishes
-    # the session against the account they now belong to, instead of leaving
-    # them holding a session that was minted for a tenant they have left.
-    bypass_sign_in(current_user)
+    # credential that should survive: `bypass_sign_in` re-serialises the person
+    # into the session, which mints a cookie carrying the NEW session version
+    # and the account they now belong to. Every other browser they left signed
+    # in somewhere — including one on a machine nobody here can see — is
+    # holding the old number and is signed out on its next request.
+    #
+    # The reload is load-bearing rather than tidy: the cookie is stamped from
+    # the object in hand, so it has to be the object the move actually wrote.
+    # Serialising a stale copy would mint a cookie carrying the OLD version
+    # and sign this browser straight back out again.
+    bypass_sign_in(moved.reload)
 
     redirect_to root_path, notice: I18n.t('invite_welcome_to_team', team: @account.name)
   rescue Accounts::MoveUser::Refused => e

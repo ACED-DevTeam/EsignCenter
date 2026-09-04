@@ -33,11 +33,6 @@
 #  fk_rails_...  (collision_user_id => users.id) ON DELETE => nullify
 #  fk_rails_...  (invited_by_id => users.id) ON DELETE => nullify
 #
-# A seat held for somebody who has not arrived yet. A pending invite counts
-# towards seat occupancy exactly like a person does (Accounts.seat_occupancy),
-# which is what makes "the seat is bought before the invitation goes out"
-# true rather than a promise.
-#
 # The raw token is handed back exactly once, by `generate_token`, and is
 # never stored: the column holds its SHA-256 digest, so the accept link works
 # and a database dump does not.

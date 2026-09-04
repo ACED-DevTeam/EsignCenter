@@ -56,8 +56,9 @@ module StripeBilling
     def apply!(account_subscription, stripe_subscription)
       report_missing_price(account_subscription, stripe_subscription) if price_item(stripe_subscription).nil?
 
-      report_purge_barrier(account_subscription, stripe_subscription) if barred?(account_subscription) &&
-                                                                         paid_state?(stripe_subscription)
+      live_on_a_dead_account = barred?(account_subscription) && paid_state?(stripe_subscription)
+
+      report_barrier(account_subscription, stripe_subscription) if live_on_a_dead_account
 
       account_subscription.assign_attributes(attributes_for(account_subscription, stripe_subscription))
       account_subscription.save!
@@ -69,12 +70,110 @@ module StripeBilling
       # identically (BillingLifecycle). It never raises.
       BillingLifecycle.after_apply!(account_subscription)
 
+      # Only once the row above is written, because the cancel has to name the
+      # subscription this apply just adopted.
+      stop_charging_moved_away!(account_subscription) if live_on_a_dead_account &&
+                                                         moved_away?(account_subscription.account)
+
       account_subscription
     end
 
     # Is this row's account past the point of no return?
+    #
+    # Two ways to be, and they are one question — "is there an account left for
+    # paid access to mean anything to?" — so they share one barrier rather than
+    # each growing their own:
+    #
+    #   * a purge has CLAIMED it, or it is already a tombstone, so it is being
+    #     emptied right now (review batch 2, R2);
+    #   * its one member took the "join this team" offer and left, and it was
+    #     archived behind them (review 7, D50 D3). That account has no members
+    #     at all any more: nobody can sign in to it, reach its billing page,
+    #     open its Customer Portal or cancel anything. A subscription attached
+    #     to it would charge a card with no door left anywhere to stop it.
     def barred?(account_subscription)
-      account_subscription.account&.purge_claimed? == true
+      account = account_subscription.account
+
+      return false if account.nil?
+
+      account.purge_claimed? || moved_away?(account)
+    end
+
+    # Archived BY A MOVE, and nothing else.
+    #
+    # `archived_at` on its own is far too broad a thing to hang a money
+    # decision on: the purge stamps it on the tombstone it leaves behind and on
+    # every testing child it destroys, and it is what every ordinary "this
+    # account is gone" door in the app already reads. What is specific to a
+    # move is the AccountMove row the move writes — one line per join, out of
+    # this account, written once and never touched again — so the two together
+    # name exactly the case this barrier is for and nothing else. A
+    # purge-claimed account is still barred through its own predicate, so
+    # keeping this one narrow costs nothing.
+    def moved_away?(account)
+      account.present? && account.archived_at.present? && AccountMove.exists?(from_account_id: account.id)
+    end
+
+    # Which barrier this is, and therefore what can be done about it. Both tell
+    # a person; only the move can also be closed on the money side, because
+    # only there is the app sure the account is finished rather than mid-flight.
+    def report_barrier(account_subscription, stripe_subscription)
+      return report_moved_away_barrier(account_subscription, stripe_subscription) if
+        moved_away?(account_subscription.account)
+
+      report_purge_barrier(account_subscription, stripe_subscription)
+    end
+
+    # A Checkout that was started before the move and finished after it (review
+    # 7, D50 D3).
+    #
+    # Checkout is created against the account that clicked and leaves no local
+    # record of itself, so the move cannot see one in flight: the person
+    # accepts the invitation, their old account is archived, and then the
+    # Stripe tab they left open days ago completes. The webhook resolves the
+    # archived account through the session's own reference and, before this,
+    # handed it a live subscription — an account with nobody in it, quietly
+    # charging a card every month with no page anybody can reach to stop it.
+    #
+    # The barrier above already refuses the ACCESS. This closes the money,
+    # which is the half that actually costs the customer, and it does it
+    # through the one cancel path this app already has: mark the subscription
+    # at Stripe under the metadata key only our secret key can write, then
+    # cancel it, then apply what Stripe says back onto the row
+    # (Accounts::Deletion.cancel_subscription!). The marker it stamps is the
+    # account-deletion one, and it is the right one here: it means "we ended
+    # this, and the duplicate-refund machinery must never touch it" — the money
+    # question is not one this code may answer on its own, so it is put to a
+    # person in the alert instead.
+    #
+    # Best effort, deliberately. This runs inside a webhook whose whole job is
+    # to write down what Stripe said; a Stripe outage on the cancel must not
+    # turn that into a failed, retrying event that never records anything. The
+    # alert has already gone out, the account has no paid access either way,
+    # and the operator has the subscription id in front of them.
+    def stop_charging_moved_away!(account_subscription)
+      Accounts::Deletion.cancel_subscription!(account_subscription.account)
+    rescue StandardError => e
+      ErrorReport.error(e, account_id: account_subscription.account_id,
+                           stripe_subscription_id: account_subscription.stripe_subscription_id)
+    end
+
+    def report_moved_away_barrier(account_subscription, stripe_subscription)
+      subscription_id = field(stripe_subscription, :id)
+
+      OperatorAlert.deliver(
+        subject: 'Stripe subscription completed for an account that was moved away',
+        body: "Account #{account_subscription.account_id} was archived when its only member joined another " \
+              "team (Accounts::MoveUser), and Stripe now reports subscription #{subscription_id} as " \
+              "#{field(stripe_subscription, :status)} — almost certainly a Checkout that was started before " \
+              "the move and finished after it.\n\nThe account has NOT been given paid access, and the " \
+              'subscription is being cancelled at Stripe under the account-deletion marker. Check whether the ' \
+              'card was charged: nothing is refunded automatically for this case, and if a payment was taken ' \
+              'for a month of service nobody can use, only a person can decide what goes back.'
+      )
+
+      ErrorReport.warning('stripe subscription applied to an account archived by a move',
+                          account_id: account_subscription.account_id, stripe_subscription_id: subscription_id)
     end
 
     def paid_state?(stripe_subscription)
@@ -114,19 +213,24 @@ module StripeBilling
       period_start, period_end = period_for(stripe_subscription, item)
       trial_end = timestamp(field(stripe_subscription, :trial_end))
       status = field(stripe_subscription, :status).to_s
-      # THE PURGE BARRIER (review batch 2, R2). Stripe's facts are still
-      # written — the ids, the period, the status, so the money history stays
-      # readable — but an account whose purge has been claimed, or which is
-      # already a tombstone, is never handed paid ACCESS back. Without this a
-      # webhook arriving between the claim and the purge would put a
-      # half-emptied account back on the paid plan, and the purge's own
-      # refusal ("it still holds a live paid subscription") would then stop it
-      # finishing: the account would sit part-destroyed and paying.
+      # THE BARRIER (review batch 2, R2; review 7, D50 D3). Stripe's facts are
+      # still written — the ids, the period, the status, so the money history
+      # stays readable — but an account whose purge has been claimed, which is
+      # already a tombstone, or which was archived when its only member joined
+      # another team is never handed paid ACCESS back. Without this a webhook
+      # arriving between the claim and the purge would put a half-emptied
+      # account back on the paid plan, and the purge's own refusal ("it still
+      # holds a live paid subscription") would then stop it finishing: the
+      # account would sit part-destroyed and paying. The moved-away half is the
+      # same shape with a different ending — an account with nobody left in it
+      # acquiring a live subscription that nobody can ever cancel.
       #
-      # A genuinely live subscription on an account being purged is a money
-      # problem rather than an access problem, and `report_purge_barrier`
-      # says so to a person — the honest outcome, since only somebody at
-      # Stripe can stop the card being charged.
+      # A genuinely live subscription on a barred account is a money problem
+      # rather than an access problem, and `report_barrier` says so to a
+      # person. For the moved-away case the app can also end it (see
+      # `stop_charging_moved_away!`); for a purge in flight only somebody at
+      # Stripe can stop the card being charged, which is why the alert is the
+      # whole of the answer there.
       access_state = barred?(account_subscription) ? 'cancelled' : access_state_for(stripe_subscription)
 
       {

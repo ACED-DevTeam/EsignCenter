@@ -192,8 +192,30 @@ module AccountInvites
   # The raw token exists only on the object that minted it, so it is handed
   # to the mailer explicitly: nothing that comes back out of the database can
   # rebuild an accept link.
+  #
+  # `deliver_now!` rather than `deliver_later!`, and that is the whole of
+  # review 7's D50 D4.
+  #
+  # This token IS the invitation: whoever holds it can create a confirmed user
+  # in the inviting account with a password of their own choosing (`accept!`
+  # below). Enqueueing the mail put that token, in plain text, into a Sidekiq
+  # job's arguments — and a Sidekiq payload is not a transient thing. It sits
+  # in Redis while the job waits, again on every one of its retries, and
+  # indefinitely in the dead set if delivery keeps failing; the whole of it is
+  # printed on the operator's Sidekiq Web UI, which this app mounts in
+  # production (config/routes.rb). The row itself only ever holds the token's
+  # DIGEST, precisely so that a database read cannot rebuild an accept link —
+  # and the queue was quietly undoing that.
+  #
+  # Delivering inline keeps the token in one process's memory for the length
+  # of one request and writes it nowhere. The promise the callers depend on is
+  # unchanged: `deliver_now!` raises on a delivery that fails, exactly as
+  # `deliver_later!` did inside its job, so a failure is still surfaced rather
+  # than swallowed. What changes is WHERE it surfaces — in the request that
+  # asked for it rather than in a retrying worker — and that is the honest
+  # place for it: an invitation whose mail never left is not an invitation.
   def deliver!(invite, raw_token = invite.raw_token)
-    AccountInviteMailer.invitation(invite, raw_token).deliver_later!
+    AccountInviteMailer.invitation(invite, raw_token).deliver_now!
   end
 
   # Send the same invitation again. The token is re-minted and the clock
@@ -309,9 +331,30 @@ module AccountInvites
   # and accepts by MOVING into the team, bringing everything with them.
   def accept_move!(invite, user:)
     with_open_invite(invite) do
+      # The user row is locked and RE-READ before it is asked who they are
+      # (review 7, D50 D2). The invitation's own lock serialises two clicks on
+      # THIS invitation; it says nothing at all about a second invitation, from
+      # a different team, being accepted by the same person at the same moment
+      # — that one holds a different row. The user row is the thing both
+      # acceptances have in common, so it is the thing that has to be locked,
+      # and locking it here means the address this invitation is checked
+      # against is the address the database holds now rather than the one the
+      # page was drawn with. Accounts::MoveUser takes the same lock again
+      # inside; a lock already held in this transaction costs nothing to
+      # re-take, and re-reading under it is exactly what the second acceptance
+      # needs.
+      #
+      # `from` is read BEFORE the lock on purpose: it is the account this
+      # acceptance was offered and authorized against — the one the invitee was
+      # shown on the join screen — and handing it to the move is what lets the
+      # move refuse a person who has since been moved somewhere else entirely.
+      from = user.account
+
+      user.lock!
+
       assert_invitee!(invite, user)
 
-      Accounts::MoveUser.call(user:, to: invite.account, role: invite.role)
+      Accounts::MoveUser.call(user:, from:, to: invite.account, role: invite.role)
 
       invite.update!(accepted_at: Time.current)
 
