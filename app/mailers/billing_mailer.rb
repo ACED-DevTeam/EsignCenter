@@ -36,11 +36,15 @@ class BillingMailer < ApplicationMailer
   # The plan no longer has room for everyone (D43). Nobody was deleted: one
   # admin keeps full access, the rest became read-only, and this mail says who
   # and where to change it.
-  def seats_reduced(account, kept:, seats:)
+  def seats_reduced(account, kept:, seats:, revoked: 0)
     return if prepare(account).blank?
 
     @kept_name = kept&.full_name.presence || kept&.email
     @seats = seats
+    # Invitations that were holding a seat the plan no longer has: they are
+    # cancelled rather than left to be accepted into a full account, and the
+    # admin has to hear about it or they will wonder where they went.
+    @revoked = revoked.to_i
     @users_url = "#{root_url.delete_suffix('/')}/settings/users"
 
     mail(to: @recipients, subject: 'Your EsignCenter plan now has fewer seats')

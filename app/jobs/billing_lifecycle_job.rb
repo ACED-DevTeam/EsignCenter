@@ -12,11 +12,17 @@
 #   * invitations — a seat held for somebody who never arrived is handed back
 #     when the invitation lapses, so the next invoice bills one fewer
 #     (Session 7 Phase B).
+#
+#   * seats — the backstop under that: any subscription still billing for
+#     more seats than the account occupies is brought back down, whatever put
+#     it there (a card step the customer finished in Stripe's own portal, a
+#     hand-back that failed while Stripe was unreachable).
 class BillingLifecycleJob < ApplicationJob
   queue_as :billing
 
   def perform
     BillingLifecycle.run_dunning!
     BillingLifecycle.expire_invites!
+    BillingLifecycle.reconcile_seats!
   end
 end

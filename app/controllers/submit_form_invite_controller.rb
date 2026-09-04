@@ -60,12 +60,17 @@ class SubmitFormInviteController < ApplicationController
                                   request)
   end
 
+  # An archived account is gone, and nothing more is written into it — not
+  # even by a signer with a link in hand (Phase A policy, the same refusal
+  # the decline and delegate doors make). Suspension is deliberately NOT
+  # here: a signer part-way through a document still finishes it.
   def can_invite?(submitter)
     !submitter.declined_at? &&
       !submitter.completed_at? &&
       !submitter.submission.archived_at? &&
       !submitter.submission.expired? &&
       !submitter.submission.template&.archived_at? &&
+      !submitter.account.archived_at? &&
       Submitters::AuthorizedForForm.call(submitter, current_user, request)
   end
 

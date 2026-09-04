@@ -56,7 +56,7 @@ RSpec.describe 'Scheduler', type: :lib do
   # decides whether an account can still send, and a daily job would let a
   # suspended account keep sending (or keep a paid-up one suspended) for up
   # to a day (lib/billing_lifecycle.rb).
-  it 'declares the billing clock hourly on the billing queue and runs both sweeps' do
+  it 'declares the billing clock hourly on the billing queue and runs every sweep' do
     expect(schedule['billing_lifecycle']).to include(
       'cron' => '15 * * * *', 'class' => 'BillingLifecycleJob', 'queue' => 'billing'
     )
@@ -71,15 +71,19 @@ RSpec.describe 'Scheduler', type: :lib do
     expect(job.cron).to eq('15 * * * *')
     expect(job.queue_name_with_prefix).to eq('billing')
 
-    # One tick, both sweeps: a rename that quietly dropped one of them would
-    # leave either the dunning clock or the seats frozen.
+    # One tick, every sweep: a rename that quietly dropped one of them would
+    # leave the dunning clock, the lapsed invitations or the seat count
+    # frozen. The third (review batch 1, F2) is the backstop that brings a
+    # subscription billing for more seats than are occupied back down.
     allow(BillingLifecycle).to receive(:run_dunning!)
     allow(BillingLifecycle).to receive(:expire_invites!)
+    allow(BillingLifecycle).to receive(:reconcile_seats!)
 
     BillingLifecycleJob.new.perform
 
     expect(BillingLifecycle).to have_received(:run_dunning!).once
     expect(BillingLifecycle).to have_received(:expire_invites!).once
+    expect(BillingLifecycle).to have_received(:reconcile_seats!).once
   end
 
   # sidekiq-cron's own startup hook loads its default schedule file; the app

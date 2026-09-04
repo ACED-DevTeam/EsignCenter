@@ -28,7 +28,7 @@ class AccountsController < ApplicationController
   end
 
   def destroy
-    authorize!(:manage, current_account)
+    authorize!(:destroy, current_account)
 
     true_user.skip_reconfirmation!
     true_user.update!(locked_at: Time.current, email: true_user.email.sub('@', '+removed@'))

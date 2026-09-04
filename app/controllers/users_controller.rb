@@ -44,7 +44,7 @@ class UsersController < ApplicationController
         @pagy, @users = pagy(@users)
       end
 
-      if current_ability.can?(:manage, current_account)
+      if current_ability.can?(:administer, current_account)
         format.csv do
           send_data Users.generate_csv(@users), filename: "users-#{Time.current.iso8601}.csv", type: 'text/csv'
         end
@@ -81,13 +81,19 @@ class UsersController < ApplicationController
     return redirect_to settings_users_path, notice: I18n.t('unable_to_update_user') if Docuseal.demo?
 
     attrs = update_attributes
+    # Read BEFORE the move: the account that can be stranded is the one this
+    # person is leaving, and by the time the move has been assigned @user
+    # already answers with the destination.
+    leaving_account_id = @user.account_id
 
     move_to_requested_account!
 
     # An account with no administrator can never invite anyone, change a role
-    # or fix its own billing again: archiving the last admin, or demoting
-    # them, is refused before anything is written (Session 7 Phase B).
-    return redirect_to settings_users_path, alert: I18n.t('last_admin_cannot_be_removed') if strands_account?(attrs)
+    # or fix its own billing again: archiving the last admin, demoting them,
+    # or moving them out is refused before anything is written (Phase B).
+    if strands_account?(attrs, leaving_account_id)
+      return redirect_to settings_users_path, alert: I18n.t('last_admin_cannot_be_removed')
+    end
 
     if update_user(attrs)
       if @user.try(:pending_reconfirmation?) && @user.previous_changes.key?(:unconfirmed_email)
@@ -123,10 +129,15 @@ class UsersController < ApplicationController
 
   private
 
-  # User management (listing, inviting, editing, removing users) is admin-only.
-  # Editors/viewers manage their own profile via ProfileController instead.
+  # Seeing who is in the account is administrators only; editors and viewers
+  # manage their own profile via ProfileController instead. This is the gate
+  # on the PAGE — `:administer`, which a frozen account's admin keeps (they
+  # have to be able to see who holds a seat) and which nobody else in that
+  # account has, so a read-only viewer cannot read the list of pending
+  # invitations. Every write beyond it is authorized on the User itself by
+  # load_and_authorize_resource.
   def authorize_account_management!
-    authorize!(:manage, current_account)
+    authorize!(:administer, current_account)
   end
 
   def role_valid?(role)
@@ -157,16 +168,18 @@ class UsersController < ApplicationController
     @user.account = account
   end
 
-  # Does this edit take the last administrator away from the account? Both
-  # doors it can happen through: archiving them, and demoting them to a role
-  # that cannot administer anything.
-  def strands_account?(attrs)
-    return false unless Accounts.last_admin?(@user)
+  # Does this edit take the last administrator away from the account they are
+  # in? All three doors it can happen through: archiving them, demoting them
+  # to a role that cannot administer anything, and moving them to another
+  # account altogether.
+  def strands_account?(attrs, account_id)
+    return false unless Accounts.last_admin?(@user, account_id:)
 
     archiving = attrs.key?(:archived_at) && attrs[:archived_at].present?
     demoting = attrs[:role].present? && attrs[:role] != User::ADMIN_ROLE
+    moving = @user.account_id != account_id
 
-    archiving || demoting
+    archiving || demoting || moving
   end
 
   # Does adding a person to this account go through an invitation? Every
@@ -233,8 +246,16 @@ class UsersController < ApplicationController
 
     return redirect_to settings_users_path, alert: error.localized_message unless seat_offer_possible?(row)
 
-    @seat_offer = BillingLifecycle.preview_seat_addition(row)
-                                  .merge(email: invite_email, role: invite_role, account_id: current_account.id)
+    # The nonce is what makes the Stripe idempotency key name this CLICK
+    # rather than this address: without it, inviting somebody, cancelling and
+    # inviting them again reused the key and Stripe replayed the first answer
+    # (AccountInvitesController#seat_key).
+    # The proration instant is minted HERE, with the offer, and the charge is
+    # made from the same one: preview and invoice then describe the same slice
+    # of the billing period however long the customer takes to decide.
+    @seat_offer = BillingLifecycle.preview_seat_addition(row, proration_date: Time.current.to_i)
+                                  .merge(email: invite_email, role: invite_role, account_id: current_account.id,
+                                         nonce: SecureRandom.hex(8))
     @seat_token = Rails.application.message_verifier(:seat_add)
                        .generate(@seat_offer.stringify_keys, expires_in: SEAT_OFFER_TTL)
 

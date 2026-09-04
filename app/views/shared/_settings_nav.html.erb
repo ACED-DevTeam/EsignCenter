@@ -9,7 +9,7 @@
       <li>
         <%= link_to t('profile'), settings_profile_index_path, class: 'text-base hover:bg-base-300' %>
       </li>
-      <% if can?(:read, current_account) %>
+      <% if can?(:administer, current_account) %>
         <li>
           <%= link_to t('account'), settings_account_path, class: 'text-base hover:bg-base-300' %>
         </li>
@@ -44,7 +44,7 @@
           <%= link_to t('personalization'), settings_personalization_path, class: 'text-base hover:bg-base-300' %>
         </li>
       <% end %>
-      <% if can?(:manage, current_account) %>
+      <% if can?(:administer, current_account) %>
         <li>
           <%= link_to t('users'), settings_users_path, class: 'text-base hover:bg-base-300' %>
         </li>

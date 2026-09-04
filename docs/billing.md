@@ -630,7 +630,10 @@ is suspended: the parent is the one who pays.
 
 **Paying lifts the suspension automatically**, within seconds of the webhook —
 no support ticket, no manual step — and one "your payment went through" email
-goes out. A suspension the operator applied by hand is a different reason
+goes out. So does the subscription simply **ending**: Stripe gives up on an
+unpaid subscription about a week after our own day-14 suspension and cancels
+it, and at that point there is nothing left to collect — the account goes back
+to the free plan and can write again (quietly, with no email: nobody paid). A suspension the operator applied by hand is a different reason
 (`accounts.suspension_reason`) and a payment never lifts it; only whoever set
 it can.
 
@@ -676,8 +679,19 @@ A seat comes back when an invitation lapses or is cancelled, when a member is
 removed, and when a member is made read-only. The subscription's seat count is
 then lowered to the number actually occupied — never below that, and never
 below one — with **no mid-cycle refund** (D43): the next invoice is simply
-smaller. The hourly billing job (`BillingLifecycleJob`) is what notices
-invitations that have lapsed.
+smaller.
+
+The hourly billing job (`BillingLifecycleJob`) is the backstop under all of
+it. It notices invitations that have lapsed, retries any hand-back Stripe
+refused at the time (an invitation is only marked settled once Stripe has
+actually taken the lower number), and brings down any subscription that is
+billing for more seats than the account occupies — however it got that way,
+including a card step the customer finished later in Stripe's own portal for a
+seat whose invitation was never written.
+
+When a paid plan ends with pending invitations still outstanding, those
+invitations are **cancelled**: there is no seat left for anyone to take, and
+the email about the downgrade says how many were cancelled.
 
 ### Being invited when you already have an account
 

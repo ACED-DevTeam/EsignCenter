@@ -50,6 +50,7 @@ module Accounts
 
       ApplicationRecord.transaction do
         merge_folders!(from, to)
+        drop_duplicate_document_metadata!(from, to)
         MOVED_TABLES.each { |model| model.where(account_id: from.id).update_all(account_id: to.id) }
 
         # The seat they take in the team is a full one: whatever their old
@@ -78,9 +79,38 @@ module Accounts
         raise Refused, I18n.t('invite_move_other_members')
       end
 
-      raise Refused, I18n.t('invite_move_paid_subscription') if Plans.paid_subscription?(from)
+      raise Refused, I18n.t('invite_move_paid_subscription') if live_subscription?(from)
 
       true
+    end
+
+    # A subscription that is still ALIVE at Stripe, not merely one the app
+    # currently counts as paid. `Plans.paid_subscription?` says no for a
+    # subscription Stripe has given up on (`unpaid`), one that is paused, and
+    # one that never completed its first payment — and every one of those is
+    # still a live subscription that will charge a card, or can be revived
+    # from the customer portal. Archiving the account underneath it would
+    # leave money moving with nothing on our side watching it.
+    def live_subscription?(account)
+      row = account.account_subscription
+
+      return false if row.nil?
+
+      Plans.paid_subscription?(account) || StripeBilling::Linker.holds_live_subscription?(row)
+    end
+
+    # document_metadata is one row per (account, file checksum) — a unique
+    # index — and two accounts that have both signed the same file each hold
+    # their own. Re-parenting the incoming one would collide with the row
+    # already there and take the whole move down, so the incoming duplicate
+    # is dropped first: the surviving row says exactly the same thing about
+    # exactly the same bytes.
+    def drop_duplicate_document_metadata!(from, to)
+      existing = DocumentMetadata.where(account_id: to.id).pluck(:blob_checksum)
+
+      return if existing.empty?
+
+      DocumentMetadata.where(account_id: from.id, blob_checksum: existing).delete_all
     end
 
     # Folders are merged by NAME, because every account has a "Default" folder

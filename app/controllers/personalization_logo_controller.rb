@@ -44,9 +44,11 @@ class PersonalizationLogoController < ApplicationController
 
   private
 
-  # Branding is an account-level admin setting.
+  # Branding is an account-level admin setting, and uploading or purging a
+  # logo CHANGES the account: `:update`, so a frozen account is refused it
+  # like every other write (lib/ability.rb).
   def authorize_personalization!
-    authorize!(:manage, current_account)
+    authorize!(:update, current_account)
   end
 
   def redirect_with_alert(message)
