@@ -101,6 +101,14 @@ module BillingLifecycle
 
     account = row.account
 
+    # An account whose purge has been claimed is past every one of these
+    # decisions (review batch 2, R2): there is no suspension worth lifting, no
+    # seat worth reconciling, and no customer left to write to. Stripe's facts
+    # have already been written to the row by SubscriptionSync — which forced
+    # the access state to `cancelled` and told a person about it — and this is
+    # the half that would otherwise act on them.
+    return if account&.purge_claimed?
+
     # Three steps, in this order, each in its own rescue. Applying the
     # subscription is the important half and has already happened by the time
     # we are called, so nothing here may fail the webhook — and, just as

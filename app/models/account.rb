@@ -4,23 +4,31 @@
 #
 # Table name: accounts
 #
-#  id                       :bigint           not null, primary key
-#  account_kind             :string           default("customer"), not null
-#  archived_at              :datetime
-#  deletion_requested_at    :datetime
-#  locale                   :string           not null
-#  name                     :string           not null
-#  purge_scheduled_for      :datetime
-#  purged_at                :datetime
-#  sending_pause_reason     :string
-#  sending_paused_at        :datetime
-#  suspended_at             :datetime
-#  suspension_reason        :string
-#  timezone                 :string           not null
-#  uuid                     :string           not null
-#  created_at               :datetime         not null
-#  updated_at               :datetime         not null
-#  deletion_requested_by_id :bigint
+#  id                              :bigint           not null, primary key
+#  account_kind                    :string           default("customer"), not null
+#  archived_at                     :datetime
+#  deletion_code_attempts          :integer          default(0), not null
+#  deletion_code_digest            :string
+#  deletion_code_expires_at        :datetime
+#  deletion_code_window_started_at :datetime
+#  deletion_requested_at           :datetime
+#  dormant_warning_for             :datetime
+#  dormant_warning_sent_at         :datetime
+#  locale                          :string           not null
+#  name                            :string           not null
+#  purge_scheduled_for             :datetime
+#  purge_started_at                :datetime
+#  purged_at                       :datetime
+#  sending_pause_reason            :string
+#  sending_paused_at               :datetime
+#  suspended_at                    :datetime
+#  suspension_reason               :string
+#  timezone                        :string           not null
+#  uuid                            :string           not null
+#  created_at                      :datetime         not null
+#  updated_at                      :datetime         not null
+#  deletion_code_user_id           :bigint
+#  deletion_requested_by_id        :bigint
 #
 # Indexes
 #
@@ -146,6 +154,14 @@ class Account < ApplicationRecord
   # a tombstone (lib/accounts/purge.rb).
   def purged?
     purged_at.present?
+  end
+
+  # A purge has CLAIMED this account and is running, or died part-way and will
+  # be resumed (review batch 2, P1). From this moment the account is committed:
+  # sign-in stops, and cancelling the deletion is refused — there is no longer
+  # anything whole to come back to.
+  def purge_claimed?
+    purge_started_at.present? || purged_at.present?
   end
 
   # Configuration belongs to this account first. Testing children may inherit

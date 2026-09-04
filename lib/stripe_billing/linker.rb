@@ -177,7 +177,14 @@ module StripeBilling
     # A duplicate that charged the customer and cannot be refunded by the app:
     # the job must fail loudly rather than record a cancellation that quietly
     # kept the money.
-    class RefundUnavailable < StandardError; end
+    class RefundUnavailable < StandardError
+      # Which subscription's money is owed, when the app knows: set once the
+      # cancellation itself has gone through at Stripe, so the debt can be
+      # written onto the row AFTER the rollback that carries this error out
+      # of the lock (stamp_owed_refund!). Nil when nothing was cancelled and
+      # nothing is therefore owed.
+      attr_accessor :owed_subscription_id
+    end
 
     module_function
 
@@ -223,6 +230,49 @@ module StripeBilling
                          event_id:, event_at:, cancel_duplicates:, notify:, allow_adopt:)
         end
       end
+    rescue RefundUnavailable => e
+      stamp_owed_refund!(account_subscription, e)
+
+      raise
+    end
+
+    # The debt outlives the rollback that carries the failure out.
+    #
+    # A refund refused on the ORDINARY duplicate path re-raises, and that
+    # raise rolls the lock's whole transaction back — including anything the
+    # duplicate path wrote onto the row. What does NOT roll back is the
+    # cancellation at Stripe, so what is left behind is a dead subscription
+    # carrying our automatic marker that the row does not name: five retries
+    # later the event is given up on and nothing points at it any more. The
+    # id therefore travels out on the exception itself and is written down
+    # here, in a transaction of its own, once the rollback is over.
+    #
+    # Best effort on purpose: if this write fails, the refusal the caller is
+    # about to see is still the truth and the operator alert has already gone
+    # out — losing the note must not turn into losing the error.
+    # Callable with ANY error, so whoever ends up holding it can write the
+    # debt down: an error that carries no owed subscription id is nothing to
+    # record. The caller that matters most is the one OUTSIDE the outermost
+    # transaction — on the Checkout door the whole action runs in one lock,
+    # so the stamp made in here is rolled back with it and the controller's
+    # own handler makes it again once that rollback is over. Writing the same
+    # id twice is writing it once.
+    def stamp_owed_refund!(account_subscription, error)
+      return if account_subscription.nil?
+      return if error.try(:owed_subscription_id).blank?
+
+      # The rollback undid every write the failed pass made, but the object
+      # in hand still carries them as unsaved changes — and a record with
+      # unsaved changes cannot be locked at all. After a rollback the row in
+      # the database is the only truth about it, so it is re-read before
+      # anything else is done with it.
+      account_subscription.reload
+
+      with_account_lock(account_subscription) do
+        record_owed_refund!(account_subscription, error.owed_subscription_id)
+      end
+    rescue StandardError => e
+      ErrorReport.error(e, account_id: account_subscription.account_id)
     end
 
     # Every subscription Stripe still calls live for this customer, split into
@@ -434,7 +484,7 @@ module StripeBilling
       report_owed_refund(account_subscription, SubscriptionSync.field(own, :id),
                          refund_error: e, event_id:, notify: true)
       mark_manual_refund_owed!(account_subscription, own)
-      record_owed_refund!(account_subscription, own)
+      record_owed_refund!(account_subscription, SubscriptionSync.field(own, :id))
 
       nil
     end
@@ -443,22 +493,36 @@ module StripeBilling
     # debt is actually square, because it is the only thing that will bring
     # the nightly sweep back to a subscription the row no longer names.
     #
-    # A row can only carry one such note, and the FIRST one stays: it has
-    # been owed longest, and overwriting it would be the one way this could
-    # lose a debt. A second, different debt is still stamped at Stripe and
-    # still paged the operator, and the warning here says so rather than
-    # letting it disappear quietly.
-    def record_owed_refund!(account_subscription, own)
-      owed_id = SubscriptionSync.field(own, :id)
+    # A row can only carry ONE such note — the accepted limit of this version
+    # (docs/billing.md) — and the FIRST one stays: it has been owed longest,
+    # and overwriting it would be the one way this could lose a debt. A
+    # second, different debt is not dropped quietly: it is stamped at Stripe
+    # like every other, and a person is paged for it by name, because from
+    # here on only they can chase it.
+    def record_owed_refund!(account_subscription, owed_id)
+      return if owed_id.blank?
+
       already = account_subscription.refund_owed_subscription_id
 
-      if already.present? && already != owed_id
-        return ErrorReport.warning("account #{account_subscription.account_id} already owes a refund on #{already}; " \
-                                   "#{owed_id} owes one too and is only recorded at Stripe",
-                                   account_id: account_subscription.account_id)
-      end
+      return report_second_owed_refund(account_subscription, already, owed_id) if already.present? &&
+                                                                                  already != owed_id
 
       account_subscription.update!(refund_owed_subscription_id: owed_id)
+    end
+
+    def report_second_owed_refund(account_subscription, already, owed_id)
+      message = "account #{account_subscription.account_id} already owes a refund on #{already}; #{owed_id} owes " \
+                'one too — the nightly sweep will finish the first, and the second needs a person'
+
+      ErrorReport.warning(message, account_id: account_subscription.account_id)
+
+      OperatorAlert.deliver(
+        subject: "Second unpaid duplicate refund for account #{account_subscription.account_id}",
+        body: "#{message}.\n\nBoth subscriptions are cancelled and both carry our marker at Stripe; only one " \
+              "can be tracked on the account row, so refund #{owed_id} by hand in the Stripe dashboard."
+      )
+
+      nil
     end
 
     def forget_owed_refund!(account_subscription, own)
@@ -663,9 +727,33 @@ module StripeBilling
     rescue Stripe::StripeError, RefundUnavailable => e
       raise unless cancelled
 
-      report_duplicate(account_subscription, duplicate_id, refund_error: e, event_id:, notify: true)
+      # The debt is written onto the error FIRST, before anything that talks
+      # to the outside world. The cancellation went through, so this
+      # duplicate's money is owed whatever happens next: a Stripe error is
+      # transient and the retry will find the same subscription; a
+      # RefundUnavailable is the app's own decision, and the retries will
+      # spend themselves reaching it again — so THAT one is carried out to be
+      # written onto the row once this rollback is over (stamp_owed_refund!).
+      # Doing it after the alert meant a mailer that blew up replaced the
+      # original error on its way out and took the only record of which
+      # subscription's money is owed with it.
+      e.owed_subscription_id = SubscriptionSync.field(cancelled, :id) if e.is_a?(RefundUnavailable)
+
+      report_failed_duplicate(account_subscription, duplicate_id, e, event_id:)
 
       raise
+    end
+
+    # Telling somebody is best effort, and the refusal it describes is not:
+    # the caller is about to raise the real error, and a failure in here must
+    # not become the error everyone sees instead. Logged rather than reported
+    # through ErrorReport, because ErrorReport is one of the things that can
+    # be failing.
+    def report_failed_duplicate(account_subscription, duplicate_id, error, event_id:)
+      report_duplicate(account_subscription, duplicate_id, refund_error: error, event_id:, notify: true)
+    rescue StandardError => e
+      Rails.logger.error("could not report the failed refund of duplicate #{duplicate_id} " \
+                         "(account #{account_subscription.account_id}): #{e.class}: #{e.message}")
     end
 
     # Ends the duplicate at Stripe under the marker its age earns, and
@@ -996,6 +1084,14 @@ module StripeBilling
     # amount, and a payment that states no amount of its own is refused
     # outright: there is no honest way to split a total between payments
     # that do not say what they took, and a guess here moves real money.
+    #
+    # Inferring the missing figure from the charge behind the payment
+    # (`charge.amount_captured`) was considered and deliberately NOT done: a
+    # charge can settle more than this invoice, so its captured amount is an
+    # upper bound rather than "what this invoice collected through it", and
+    # refunding on an upper bound is exactly the over-refund this whole
+    # method exists to prevent. Refusing costs an operator ten minutes;
+    # inferring costs a customer's money.
     def invoice_allocation(invoice)
       amount_paid = SubscriptionSync.field(invoice, :amount_paid).to_i
 
@@ -1021,6 +1117,10 @@ module StripeBilling
     # a refusal rather than a skip or a guess, because every one of them
     # ends with the app either returning less than it collected and calling
     # it whole, or returning more than it ever took.
+    #
+    # Every one of them is decided BEFORE a single refund is created: this
+    # runs while the debts are still being worked out, and the whole point
+    # of the refusal is that nothing has left our account yet.
     def refuse_unallocatable_invoice!(invoice, payments, amount_paid)
       invoice_id = SubscriptionSync.field(invoice, :id)
 
@@ -1032,7 +1132,7 @@ module StripeBilling
       return if sole_unstated_payment?(payments)
 
       refuse_unstated_payment!(invoice_id, payments, amount_paid)
-      refuse_overstated_payments!(invoice_id, payments, amount_paid)
+      refuse_mismatched_payments!(invoice_id, payments, amount_paid)
     end
 
     def refuse_unstated_payment!(invoice_id, payments, amount_paid)
@@ -1042,13 +1142,26 @@ module StripeBilling
                                'and at least one of them states no amount of its own to return'
     end
 
-    # Payments claiming more than the invoice ever collected is Stripe and
-    # the app disagreeing about the money, which is the exact condition the
-    # old code failed silently on. Nothing is sent until a person has looked.
-    def refuse_overstated_payments!(invoice_id, payments, amount_paid)
+    # The payments that settled one invoice have to add up to EXACTLY what
+    # that invoice collected, and the check runs in both directions.
+    #
+    # Claiming MORE than the invoice collected is Stripe and the app
+    # disagreeing about the money, and refunding on it hands back more than
+    # was ever taken.
+    #
+    # Claiming LESS is the half that used to slip through, and it moved real
+    # money before anyone noticed: a $30 invoice whose two payments state $10
+    # and $15 was allocated as $25 of debt, the $25 was cheerfully refunded,
+    # and only then did the end-of-refund total check notice the $5 gap and
+    # raise. The refunds were already made and could not be taken back, the
+    # event failed forever, and every retry re-read the same understated
+    # split and refused again — a permanent nightly alert about money that
+    # had already gone. An allocation that does not add up is not an
+    # allocation: nothing is sent until a person has looked at it.
+    def refuse_mismatched_payments!(invoice_id, payments, amount_paid)
       stated = payments.sum { |payment| payment.amount.to_i }
 
-      return unless stated > amount_paid
+      return if stated == amount_paid
 
       raise RefundUnavailable, "invoice #{invoice_id} collected #{amount_paid} but its #{payments.size} payments " \
                                "claim #{stated} between them"

@@ -391,6 +391,46 @@ RSpec.describe 'Billing page', type: :request do # rubocop:disable RSpec/Multipl
       expect(account.reload.account_subscription.stripe_subscription_id).to eq('sub_early')
     end
 
+    # Q2: the Checkout door looks Stripe up before it sells anything, and what
+    # it finds can be a duplicate whose money the app refuses to return on
+    # its own (an invoice that names no payment at all, here). That refusal
+    # is deliberate and permanent, and it used to come out of this action as
+    # an unhandled error — a 500 page for a customer whose only crime was
+    # pressing Upgrade. Nothing is sold, the duplicate is still cancelled,
+    # the debt is written onto the row for the nightly sweep, the operator is
+    # paged, and the customer gets the same neutral sentence as a Stripe
+    # outage.
+    it 'turns a duplicate refund the app refuses into a sentence, never a 500' do
+      row = checkout_row!(customer: 'cus_known')
+      collected = { id: 'in_no_payment', object: 'invoice', amount_paid: 3000, currency: 'usd', created: 1_788_411_000,
+                    payments: { object: 'list', data: [] } }
+
+      stub_subscription_list('cus_known',
+                             { 'sub_late' => listed_subscription('sub_late', 'active', created: 2_000),
+                               'sub_early' => listed_subscription('sub_early', 'active', created: 1_000) })
+      stub_subscription_retrieve('sub_early', trialing_subscription.merge('id' => 'sub_early'))
+      stub_duplicate('sub_late', trialing_subscription, invoice: collected)
+      cancel_call = stub_cancel('sub_late', trialing_subscription, invoice: collected)
+      stub_invoice_list('sub_late', [collected])
+
+      allow(OperatorAlert).to receive(:deliver).and_return(true)
+      allow(ErrorReport).to receive(:warning)
+      allow(ErrorReport).to receive(:error)
+
+      post '/settings/billing/checkout'
+
+      expect(response).to redirect_to('/settings/billing')
+      expect(flash[:alert]).to eq(I18n.t('billing_provider_unreachable'))
+      expect(WebMock).not_to have_requested(:post, 'https://api.stripe.com/v1/checkout/sessions')
+      expect(WebMock).not_to have_requested(:post, 'https://api.stripe.com/v1/refunds')
+      expect(cancel_call).to have_been_requested
+      expect(ErrorReport).to have_received(:error)
+        .with(instance_of(StripeBilling::Linker::RefundUnavailable), hash_including(account_id: account.id))
+      # The debt survives the rollback the refusal caused, so the sweep can
+      # come back to it.
+      expect(row.reload.refund_owed_subscription_id).to eq('sub_late')
+    end
+
     # G3: a live subscription for some other product on the same Stripe
     # customer is not ours: it is neither adopted (no paid access for a
     # purchase that was not ours) nor cancelled (it is somebody's purchase).

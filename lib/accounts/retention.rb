@@ -30,6 +30,13 @@ module Accounts
     # Days before the purge date that get a warning email.
     DORMANT_WARNING_DAYS = [60, 30, 7].freeze
 
+    # The last of them, and the one that carries the authority: nothing
+    # dormant is purged until this warning has been out for this many days
+    # (K6). Named rather than `.min` at each call site, because it means
+    # something — "the notice period" — and not merely "the smallest number
+    # in that list".
+    FINAL_WARNING_DAYS = DORMANT_WARNING_DAYS.min
+
     # The explicit path already told them the date in the confirmation mail;
     # this is the one nudge before it arrives.
     DELETION_REMINDER_DAYS = 7
@@ -66,13 +73,73 @@ module Accounts
       purgeable.where(purge_scheduled_for: ..now).to_a
     end
 
+    # THE question, asked again by AccountPurgeJob under the account's row lock
+    # a moment before anything is destroyed (review batch 2, K1).
+    #
+    # The sweep that enqueued the job made this decision minutes — or, after a
+    # retry, hours — ago, and both clocks can be stopped by somebody in the
+    # meantime: an administrator presses "Cancel deletion", or a dormant
+    # account's owner simply signs in. Destroying an account on the strength of
+    # a stale decision is the one mistake in this whole area that cannot be
+    # undone, so the answer is recomputed from the row rather than trusted.
+    def purge_eligible?(account, now: Time.current)
+      return false if account.nil? || account.purged?
+      return false unless account.customer?
+      return false if testing_child?(account)
+
+      explicit_due?(account, now:) || dormant_purgeable?(account, now:)
+    end
+
+    # The explicit path: an administrator asked, and has not un-asked.
+    def explicit_due?(account, now: Time.current)
+      account.deletion_requested_at.present? &&
+        account.purge_scheduled_for.present? &&
+        account.purge_scheduled_for <= now
+    end
+
+    def testing_child?(account)
+      AccountLinkedAccount.testing.exists?(linked_account_id: account.id)
+    end
+
     # The dormant half. Prefiltered in SQL to accounts that COULD be a year
     # idle (an account created last month never can be, because its own
     # creation counts as activity) and that hold no paid access; the rest of
     # the rule is read row by row, because "last activity" is a maximum over
     # four different columns and saying that in SQL would hide it.
     def dormant_candidates(now: Time.current)
-      dormant_scope(now:).select { |account| dormant?(account, now:) }
+      dormant_scope(now:).select { |account| dormant_purgeable?(account, now:) }
+    end
+
+    # Dormant AND warned. `dormant?` alone is the arithmetic — a year of
+    # silence — and on its own it would have deleted, on the very first sweep
+    # after this shipped, every account that was already a year idle: no
+    # 60-day letter, no 30-day letter, no 7-day letter, nothing (review batch
+    # 2, K6). The computed clock has no memory of what anybody was told, so
+    # the evidence is written down (accounts.dormant_warning_sent_at) and
+    # three things have to be true before a row is destroyed:
+    #
+    #   * it is dormant by the arithmetic;
+    #   * the FINAL warning actually went out, and went out at least a week
+    #     ago — so a newly-noticed account gets its week whatever its dates
+    #     say;
+    #   * the date that warning NAMED has arrived, so nobody is deleted
+    #     earlier than the day they were given.
+    #   * the warning belongs to THIS dormancy, not an older one. An account
+    #     can go quiet, be warned, come back to life, and go quiet again a year
+    #     later; the letter from the first cycle must not authorize the second
+    #     deletion, or somebody who signed in after being warned would be
+    #     deleted a year later without ever hearing about it again (review
+    #     batch 2, P9). A warning sent before the last thing that happened on
+    #     the account is from the previous cycle, and is not evidence of
+    #     anything about this one.
+    def dormant_purgeable?(account, now: Time.current)
+      return false unless dormant?(account, now:)
+      return false if account.dormant_warning_sent_at.blank?
+      return false if account.dormant_warning_sent_at > now - FINAL_WARNING_DAYS.days
+      return false if account.dormant_warning_sent_at < last_activity_at(account)
+      return false if account.dormant_warning_for.present? && account.dormant_warning_for > now
+
+      true
     end
 
     def dormant_scope(now: Time.current, horizon: DORMANT_AFTER)
@@ -159,18 +226,57 @@ module Accounts
       dormant_scope(now:, horizon: DORMANT_AFTER - longest.days).each do |account|
         next if paid_access?(account) || within_paid_retention?(account, now:)
 
-        purge_at = dormant_purge_at(account)
-
-        next if purge_at <= now
-
+        purge_at = scheduled_dormant_purge_at(account, now:)
         days = due_warning_days(purge_at, now)
 
         next if days.nil?
 
         send_dormant_warning!(account, purge_at:, days:)
+      rescue StandardError => e
+        # One account whose mail would not go out must not stop everybody
+        # else's warnings (the shape BillingLifecycle.run_dunning! uses). The
+        # counter has already been given back, so the next sweep tries again.
+        ErrorReport.error(e, account_id: account.id)
       end
 
       nil
+    end
+
+    # The date this account is actually going to be destroyed, as the customer
+    # has been TOLD it — which is not always the arithmetic (K6).
+    #
+    # Normally it is a year after the last activity. But an account that was
+    # already past that date when this feature shipped, or that crossed it
+    # while the scheduler was down, has never heard from us at all; the old
+    # code skipped it (`next if purge_at <= now`) and it would have been
+    # deleted with no warning whatever. Such an account is given a week from
+    # the day we noticed — and that date is REMEMBERED on the row, because
+    # recomputing "a week from today" every night would move the deadline
+    # forward for ever and send a fresh email each time.
+    def scheduled_dormant_purge_at(account, now: Time.current)
+      natural = dormant_purge_at(account)
+
+      # Somebody came back. The old pin and the old letter are about a
+      # dormancy that ended, so they are cleared rather than left to be
+      # mistaken for evidence about the next one (P9).
+      clear_stale_warning!(account)
+
+      return natural if natural > now
+
+      pinned = account.dormant_warning_for
+
+      return pinned if pinned.present? && pinned > natural
+
+      now + FINAL_WARNING_DAYS.days
+    end
+
+    # A warning is stale once the account has been used since it was sent.
+    def clear_stale_warning!(account)
+      return if account.dormant_warning_sent_at.blank?
+      return if account.dormant_warning_sent_at >= last_activity_at(account)
+
+      account.update_columns(dormant_warning_sent_at: nil, dormant_warning_for: nil,
+                             updated_at: Time.current)
     end
 
     # The LATEST warning whose moment has arrived — 60 while there are 45
@@ -182,12 +288,68 @@ module Accounts
       DORMANT_WARNING_DAYS.select { |days| purge_at - days.days <= now }.min
     end
 
+    # `deliver_now!` rather than `deliver_later!`, and this is the whole of R5.
+    #
+    # The stamp below is the evidence the purge relies on — "this customer was
+    # told, a week ago, that this was coming" — and enqueueing a job is not
+    # evidence of anything: the job can fail permanently afterwards, and the
+    # purge would go ahead a week later on a letter nobody ever received.
+    # Delivering inline means the stamp is written only once the mail server
+    # has actually taken the message; a delivery that raises leaves the stamp
+    # unset and the counter released, so the next sweep tries again and the
+    # account is not purgeable in the meantime.
+    #
+    # The cost is bounded: this is a nightly sweep over the handful of
+    # accounts that cross a warning boundary on any given day, not a queue.
     def send_dormant_warning!(account, purge_at:, days:)
-      key = "dormant:#{purge_at.to_date}:#{days}"
+      claim(account, "dormant:#{purge_at.to_date}:#{days}") do
+        AccountMailer.dormant_warning(account, days_left: days, purge_at:).deliver_now!
 
-      return unless AccountCounters.increment!(account.id, key, period: COUNTER_PERIOD) == 1
+        # Only the FINAL warning writes it: it is the one that starts the
+        # notice period, and it is the date named in it that the purge must
+        # not pre-empt.
+        next unless days == FINAL_WARNING_DAYS
 
-      AccountMailer.dormant_warning(account, days_left: days, purge_at:).deliver_later!
+        account.update_columns(dormant_warning_sent_at: Time.current,
+                               dormant_warning_for: purge_at,
+                               updated_at: Time.current)
+      end
+    end
+
+    # Send-once, keyed on the deadline the mail is about.
+    #
+    # The counter is claimed FIRST, because two sweeps overlapping on one
+    # account must not both send; and it is RESET when the enqueue fails,
+    # because otherwise one Redis wobble spends the key for ever and the
+    # customer is never warned at all — which, for the 7-day letter, is the
+    # difference between a deletion they saw coming and one they did not
+    # (review batch 2, K10).
+    #
+    # Reset to zero rather than decremented (P10): a decrement is only correct
+    # if this claim was the only one, and an overlapping run would leave the
+    # key at 1 — consumed, with nothing sent. Zero is the honest statement of
+    # what happened, which is "nobody has been warned about this date".
+    #
+    # Correctness here rests on the sweeps being SINGLETON cron jobs: one
+    # AccountRetentionJob a night, declared in config/schedule.yml, never
+    # enqueued per-account and never run in parallel with itself. The claim is
+    # a guard against a double tick, not a distributed lock.
+    def claim(account, key)
+      return false unless AccountCounters.increment!(account.id, key, period: COUNTER_PERIOD) == 1
+
+      begin
+        yield
+      rescue StandardError => e
+        release(account, key)
+
+        raise e
+      end
+
+      true
+    end
+
+    def release(account, key)
+      AccountCounter.where(account_id: account.id, key:, period: COUNTER_PERIOD).update_all(value: 0)
     end
 
     # The one nudge before an explicit deletion goes through. The date was in
@@ -198,11 +360,11 @@ module Accounts
 
       purgeable.where.not(deletion_requested_at: nil)
                .where(purge_scheduled_for: now..window).each do |account|
-        key = "deletion:#{account.purge_scheduled_for.to_date}:#{DELETION_REMINDER_DAYS}"
-
-        next unless AccountCounters.increment!(account.id, key, period: COUNTER_PERIOD) == 1
-
-        AccountMailer.deletion_reminder(account).deliver_later!
+        claim(account, "deletion:#{account.purge_scheduled_for.to_date}:#{DELETION_REMINDER_DAYS}") do
+          AccountMailer.deletion_reminder(account).deliver_later!
+        end
+      rescue StandardError => e
+        ErrorReport.error(e, account_id: account.id)
       end
 
       nil

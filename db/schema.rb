@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_04_000500) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_04_030000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gin"
   enable_extension "pg_catalog.plpgsql"
@@ -157,11 +157,19 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_04_000500) do
     t.string "account_kind", default: "customer", null: false
     t.datetime "archived_at"
     t.datetime "created_at", null: false
+    t.integer "deletion_code_attempts", default: 0, null: false
+    t.string "deletion_code_digest"
+    t.datetime "deletion_code_expires_at"
+    t.bigint "deletion_code_user_id"
+    t.datetime "deletion_code_window_started_at"
     t.datetime "deletion_requested_at"
     t.bigint "deletion_requested_by_id"
+    t.datetime "dormant_warning_for"
+    t.datetime "dormant_warning_sent_at"
     t.string "locale", null: false
     t.string "name", null: false
     t.datetime "purge_scheduled_for"
+    t.datetime "purge_started_at"
     t.datetime "purged_at"
     t.string "sending_pause_reason"
     t.datetime "sending_paused_at"

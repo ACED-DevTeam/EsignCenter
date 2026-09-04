@@ -13,11 +13,19 @@ namespace :accounts do
     puts "  deletion requested: #{account.deletion_requested_at || '(never)'}"
     puts "  scheduled purge:    #{account.purge_scheduled_for || '(none)'}"
 
+    # The claim, exactly as AccountPurgeJob stamps it (review batch 2, R3):
+    # this door destroys just as thoroughly, so it must close the same
+    # barriers first — sign-in, signer writes, tokens, the quota chokepoint —
+    # and it must release them again if the purge refuses.
+    Accounts::Purge.claim!(account)
+
     result =
       begin
         Accounts::Purge.call(account)
-      rescue Accounts::Purge::Refused => e
-        abort e.message
+      rescue Accounts::Purge::Refused, Accounts::Purge::StorageFailure => e
+        Accounts::Purge.release_claim!(account)
+
+        abort "#{e.message}\n(The purge claim has been released; the account is usable again.)"
       end
 
     if result == :already_purged
@@ -41,10 +49,34 @@ namespace :accounts do
 
     scheduled = account.purge_scheduled_for
 
-    Accounts::Deletion.cancel!(account)
+    # Branch on the answer rather than printing success over a refusal (R3):
+    # once the purge has claimed the account there is nothing whole left to
+    # restore, and saying "cancelled" would send somebody away believing their
+    # documents were safe.
+    unless Accounts::Deletion.cancel!(account)
+      abort "Account ##{account.id} is already being purged (claimed at #{account.reload.purge_started_at}) " \
+            'and cannot be restored. If the purge is stuck rather than running, release the claim with ' \
+            "rake accounts:release_purge_claim[#{account.id}] and look at why it failed."
+    end
 
     puts "Cancelled the deletion of account ##{account.id}, which was scheduled for #{scheduled}."
     puts 'The subscription was cancelled when the deletion was requested and does NOT come back: ' \
          'the account is on the free plan until somebody subscribes again.'
+  end
+
+  desc 'Release a stuck purge claim so the account works again: rake accounts:release_purge_claim[account_id]'
+  task :release_purge_claim, [:account_id] => :environment do |_, args|
+    account = Account.find(args[:account_id])
+
+    abort "Account ##{account.id} has already been purged; there is no claim to release." if account.purged?
+    abort "Account ##{account.id} is not claimed by a purge." if account.purge_started_at.blank?
+
+    claimed_at = account.purge_started_at
+
+    Accounts::Purge.release_claim!(account)
+
+    puts "Released the purge claim on account ##{account.id} (claimed at #{claimed_at})."
+    puts 'Sign-in, signer writes and the API work again. NOTE: if the purge had already started deleting, ' \
+         'the account is PART-EMPTIED — check before handing it back to the customer.'
   end
 end

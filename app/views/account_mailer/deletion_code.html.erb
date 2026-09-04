@@ -1,0 +1,11 @@
+<p>Hello,</p>
+<p>You asked us to email a confirmation code so you can delete your EsignCenter account, <strong><%= @current_account.name %></strong>.</p>
+<p style="font-size: 28px; font-weight: bold; letter-spacing: 4px;"><%= @code %></p>
+<p>The code works for the next <%= @minutes %> minutes and can be used once. Entering it schedules the account for deletion — nothing is destroyed for 90 days, and any administrator can cancel before then.</p>
+<p><strong>If this was not you, do not enter the code</strong> — it does nothing on its own, and it expires by itself. But whoever asked for it is signed in to your account right now, so secure the account:</p>
+<ul>
+  <li>If you sign in with a password, change it — that signs every other session out of EsignCenter.</li>
+  <li>If you sign in with Google, sign out of Google everywhere and remove EsignCenter from your Google account's third-party access, then check who has access to your EsignCenter account.</li>
+</ul>
+<p>Then write to <%= mail_to @support_email %> and tell us what happened.</p>
+<p>Thanks,<br>EsignCenter</p>

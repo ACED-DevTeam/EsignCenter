@@ -288,7 +288,21 @@ where an audit finds it, and on the account's row itself
 back to it. The sweep retries that settlement every night, and the moment the
 reason it could not be paid automatically goes away — an operator refunds part
 of it by hand, an unreadable invoice list becomes readable — the rest is sent
-and the note is cleared. The sweep names what it
+and the note is cleared. The same note is made when a duplicate is cancelled
+on the ordinary path and its refund is refused there — including at the
+Checkout door, which is where double purchases actually come from — because
+that refusal rolls the rest of the attempt back and the row would otherwise
+end up knowing nothing about a subscription it never named. The nightly sweep
+looks at every row carrying such a note, including one that names no
+subscription of its own at all.
+
+**One account can only track one such debt at a time** — that is a deliberate
+limit of this version, not an oversight. If a second, different duplicate ends
+up owing money before the first is settled, the **first one stays** on the row
+(it has been owed longest and the sweep is already working on it) and the
+operator is emailed about the second by name: *"Second unpaid duplicate refund
+for account 123"*, naming the subscription to refund by hand. Both are still
+cancelled, and both still carry the marker at Stripe. The sweep names what it
 settled in its summary: *"refund settled: $30.00 for sub_…"*.
 A candidate that is **already
 over** when looked at and carries no marker — a stale webhook about an old,

@@ -63,7 +63,14 @@ module AccountStates
   def read_only?(account)
     return false if account.nil?
 
-    suspension_candidates(account).any? { |candidate| candidate.suspended_at.present? }
+    suspension_candidates(account).any? do |candidate|
+      # A purge that has CLAIMED the account is already destroying it (review
+      # batch 2, R2b). A dormant purge has no suspension behind it — nobody
+      # asked for it — so without this the quota chokepoint would happily let
+      # a document be created into an account whose rows are being deleted
+      # out from under it.
+      candidate.suspended_at.present? || candidate.purge_claimed?
+    end
   end
 
   # Self, the testing parent (if any) and the billing account: the three

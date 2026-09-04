@@ -39,11 +39,26 @@ class BillingSettingsController < ApplicationController
 
   helper_method :billing_date
 
-  # Stripe could not be reached — or its answer could not be used: a customer
-  # subscription list that stopped short of the end means "no live
-  # subscription" cannot be concluded, and nothing is sold on it. Either way
-  # the page says the provider is unreachable rather than 500ing.
-  rescue_from Stripe::StripeError, StripeBilling::ListIncomplete do |e|
+  # Stripe could not be reached — or its answer could not be used, in one of
+  # three ways: a customer subscription list that stopped short of the end
+  # means "no live subscription" cannot be concluded and nothing is sold on
+  # it; and a duplicate subscription found on the way in whose refund the app
+  # refuses to make on its own (more payments than it returns unattended, an
+  # invoice that does not add up) stops this request too. That last one is a
+  # decision for a person, not an outage, and the customer is told the same
+  # neutral sentence rather than meeting a 500 page: the duplicate is
+  # cancelled, the debt is recorded on their row and the operator has already
+  # been paged, so the one thing left to get right here is that nobody sells
+  # them a subscription on top of it.
+  rescue_from Stripe::StripeError, StripeBilling::ListIncomplete, StripeBilling::Linker::RefundUnavailable do |e|
+    # First, before anything else: if the failure carries a duplicate whose
+    # money is owed, write that down. The whole checkout action runs inside
+    # one row lock, so the note the Linker made was rolled back with
+    # everything else — and this handler is the first place that runs after
+    # the rollback. Without it the only record of the debt would be the alert
+    # and the marker at Stripe.
+    StripeBilling::Linker.stamp_owed_refund!(@subscription, e)
+
     ErrorReport.error(e, account_id: @billing&.id)
 
     redirect_to settings_billing_path, alert: I18n.t('billing_provider_unreachable')

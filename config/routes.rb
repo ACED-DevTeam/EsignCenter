@@ -229,6 +229,9 @@ Rails.application.routes.draw do
     # the one that changes your mind again (lib/accounts/deletion.rb).
     resource :account, only: %i[show update destroy] do
       post :cancel_deletion
+      # "Email me a confirmation code" — the second way to prove it is you,
+      # for an administrator who signs in with Google (review batch 2, K9).
+      post :deletion_code
     end
     resources :profile, only: %i[index] do
       collection do

@@ -99,8 +99,15 @@ class User < ApplicationRecord
     super || build_access_token.tap(&:save!)
   end
 
+  # A purge that has CLAIMED this account (accounts.purge_started_at) is
+  # already destroying it, outside any lock the sign-in could wait on (review
+  # batch 2, P1). Signing in at that moment would hand somebody a session over
+  # data that is disappearing under them — and, worse, would look to them like
+  # the deletion had been called off. A sign-in BEFORE the claim is a
+  # different thing entirely and is honoured: the job's re-check reads
+  # `users.current_sign_in_at` fresh, so it sees it and stands down.
   def active_for_authentication?
-    super && !archived_at? && !account.archived_at?
+    super && !archived_at? && !account.archived_at? && account.purge_started_at.blank?
   end
 
   def remember_me

@@ -1,7 +1,13 @@
 <%# Everything that is about to happen, then the two deliberate actions that
-    make it happen: proving who you are, and ticking a box under the list. %>
+    make it happen: proving who you are, and ticking a box under the list.
+
+    Two ways to prove it (review batch 2, K9). Your password is the usual
+    one. A code emailed to your own address is the other, and it is the one
+    that works for an administrator who signs in with Google and therefore
+    has no password they have ever seen. Both are offered to everybody: the
+    app cannot tell a real password from the random token OmniAuth generated,
+    so it does not try to guess which one you have. %>
 <% purge_date = Accounts::Deletion.format_date(Accounts::Deletion.purge_date) %>
-<% password_holder = true_user.encrypted_password.present? %>
 <div class="space-y-4 pt-2" data-delete-account-modal>
   <p class="text-sm"><%= t('account_deletion_modal_intro', days: Accounts::Deletion::WINDOW_DAYS) %></p>
   <ul class="list-disc list-outside pl-5 space-y-1 text-sm">
@@ -20,22 +26,20 @@
     </p>
   </div>
   <%= form_for '', url: settings_account_path, method: :delete, html: { autocomplete: 'off', class: 'space-y-4' } do |f| %>
-    <% if password_holder %>
-      <div class="form-control">
-        <%= label_tag :password, t('account_deletion_password_label'), class: 'label' %>
-        <%= password_field_tag :password, nil, required: true, autocomplete: 'current-password', class: 'base-input', data: { delete_account_password: true } %>
-      </div>
-    <% else %>
-      <div class="form-control">
-        <%= label_tag :account_name, t('account_deletion_account_name_label', name: current_account.name), class: 'label' %>
-        <%= text_field_tag :account_name, nil, required: true, dir: 'auto', autocomplete: 'off', class: 'base-input', data: { delete_account_name: true } %>
-        <span class="text-xs pt-1"><%= t('account_deletion_account_name_hint') %></span>
-      </div>
-    <% end %>
+    <div class="form-control">
+      <%= label_tag :password, t('account_deletion_password_label'), class: 'label' %>
+      <%= password_field_tag :password, nil, autocomplete: 'current-password', class: 'base-input', data: { delete_account_password: true } %>
+    </div>
+    <div class="form-control">
+      <%= label_tag :confirmation_code, t('account_deletion_code_label'), class: 'label' %>
+      <%= text_field_tag :confirmation_code, nil, autocomplete: 'one-time-code', inputmode: 'numeric', maxlength: 6, class: 'base-input', data: { delete_account_code: true } %>
+      <span class="text-xs pt-1"><%= t('account_deletion_code_hint') %></span>
+    </div>
     <label class="flex items-start gap-2 cursor-pointer text-sm">
       <%= check_box_tag :confirm, '1', false, required: true, class: 'checkbox checkbox-sm mt-0.5', data: { delete_account_confirm: true } %>
       <span><%= t('account_deletion_confirm_label', date: purge_date) %></span>
     </label>
     <%= f.button button_title(title: t('account_deletion_submit_button'), disabled_with: t('submitting')), class: 'btn btn-error btn-block text-white' %>
   <% end %>
+  <%= button_to t('account_deletion_send_code_button'), deletion_code_settings_account_path, method: :post, class: 'btn btn-outline btn-block', data: { send_deletion_code_button: true } %>
 </div>

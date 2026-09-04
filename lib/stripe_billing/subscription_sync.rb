@@ -56,6 +56,9 @@ module StripeBilling
     def apply!(account_subscription, stripe_subscription)
       report_missing_price(account_subscription, stripe_subscription) if price_item(stripe_subscription).nil?
 
+      report_purge_barrier(account_subscription, stripe_subscription) if barred?(account_subscription) &&
+                                                                         paid_state?(stripe_subscription)
+
       account_subscription.assign_attributes(attributes_for(account_subscription, stripe_subscription))
       account_subscription.save!
 
@@ -67,6 +70,30 @@ module StripeBilling
       BillingLifecycle.after_apply!(account_subscription)
 
       account_subscription
+    end
+
+    # Is this row's account past the point of no return?
+    def barred?(account_subscription)
+      account_subscription.account&.purge_claimed? == true
+    end
+
+    def paid_state?(stripe_subscription)
+      Plans::PAID_ACCESS_STATES.include?(access_state_for(stripe_subscription))
+    end
+
+    def report_purge_barrier(account_subscription, stripe_subscription)
+      subscription_id = field(stripe_subscription, :id)
+
+      OperatorAlert.deliver(
+        subject: 'Stripe subscription applied to an account being purged',
+        body: "Account #{account_subscription.account_id} is being purged (or already is a tombstone), and " \
+              "Stripe reports subscription #{subscription_id} as " \
+              "#{field(stripe_subscription, :status)}. The account has NOT been given paid access back, but " \
+              'the card may still be being charged — cancel the subscription at Stripe.'
+      )
+
+      ErrorReport.warning('stripe subscription applied to an account being purged',
+                          account_id: account_subscription.account_id, stripe_subscription_id: subscription_id)
     end
 
     # A subscription with no item on OUR price is either a subscription that
@@ -87,7 +114,20 @@ module StripeBilling
       period_start, period_end = period_for(stripe_subscription, item)
       trial_end = timestamp(field(stripe_subscription, :trial_end))
       status = field(stripe_subscription, :status).to_s
-      access_state = access_state_for(stripe_subscription)
+      # THE PURGE BARRIER (review batch 2, R2). Stripe's facts are still
+      # written — the ids, the period, the status, so the money history stays
+      # readable — but an account whose purge has been claimed, or which is
+      # already a tombstone, is never handed paid ACCESS back. Without this a
+      # webhook arriving between the claim and the purge would put a
+      # half-emptied account back on the paid plan, and the purge's own
+      # refusal ("it still holds a live paid subscription") would then stop it
+      # finishing: the account would sit part-destroyed and paying.
+      #
+      # A genuinely live subscription on an account being purged is a money
+      # problem rather than an access problem, and `report_purge_barrier`
+      # says so to a person — the honest outcome, since only somebody at
+      # Stripe can stop the card being charged.
+      access_state = barred?(account_subscription) ? 'cancelled' : access_state_for(stripe_subscription)
 
       {
         access_state:,

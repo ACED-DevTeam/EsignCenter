@@ -30,6 +30,28 @@ module Accounts
     # different problems and both need a person.
     class Refused < StandardError; end
 
+    # A document is still in the bucket. Deliberately NOT a Refused: a refusal
+    # is a decision that will be just as true in six seconds and is never
+    # retried, whereas this is a storage problem that usually clears — the job
+    # retries it, and until it clears the account is not stamped as purged
+    # (review batch 2, K4).
+    class StorageFailure < StandardError; end
+
+    # The two OAuth tables upstream DocuSeal left in the schema. The Doorkeeper
+    # gem is NOT in this application, so there is no model to ask — but the
+    # foreign keys to `users` are real and they RESTRICT, so one legacy row
+    # blew the purge up half-way through, after the documents were gone and
+    # before the tombstone (review batch 2, K7). Two throwaway relations, so
+    # the delete is bound and quoted like every other one in this file rather
+    # than being an interpolated SQL string.
+    class OauthAccessGrant < ApplicationRecord
+      self.table_name = 'oauth_access_grants'
+    end
+
+    class OauthAccessToken < ApplicationRecord
+      self.table_name = 'oauth_access_tokens'
+    end
+
     # Tables the purge empties for an account, in dependency order — children
     # before parents. Kept as a list so the docs, the rake task and the golden
     # spec can all read the same one.
@@ -43,7 +65,8 @@ module Accounts
       webhook_attempts webhook_events webhook_urls
       abuse_flags account_counters account_limit_overrides account_accesses account_invites
       account_linked_accounts account_moves encrypted_configs account_configs provisioning_events
-      access_tokens mcp_tokens user_configs encrypted_user_configs users
+      access_tokens mcp_tokens user_configs encrypted_user_configs
+      oauth_access_grants oauth_access_tokens users
     ].freeze
 
     # What a purged account's row is renamed to. Not the customer's company
@@ -52,22 +75,101 @@ module Accounts
 
     module_function
 
+    # --- the claim ---------------------------------------------------------
+    #
+    # Stamped by AccountPurgeJob (and by `rake accounts:purge`) under the
+    # account's row lock, a moment before anything is destroyed.
+    #
+    # `archived_at` goes on WITH it, and that is the whole barrier (review
+    # batch 2, R2): "archived" is the state every door in this application
+    # already understands as "this account is gone" — the signer write paths,
+    # the token guard (AccountStates::TOKEN_REFUSAL_STATES), sign-in, and the
+    # quota chokepoint all read it. Teaching each of those about a second new
+    # column would have meant eight new call sites and one of them forgotten;
+    # an account whose documents are being deleted is archived, so it says so.
+    #
+    # Testing children are claimed with their parent, because they are emptied
+    # with it (R2c).
+    def claim!(account)
+      family(account).each do |record|
+        record.update_columns(purge_started_at: record.purge_started_at || Time.current,
+                              archived_at: record.archived_at || Time.current,
+                              updated_at: Time.current)
+      end
+
+      true
+    end
+
+    # And released, for the two endings that are not "destroyed": a refusal,
+    # and a storage failure whose retries ran out (R1). `archived_at` is put
+    # back only if this claim is what set it — an account somebody archived on
+    # purpose stays archived.
+    def release_claim!(account)
+      return false if account.nil? || account.purged?
+
+      family(account).each do |record|
+        next if record.purge_started_at.blank?
+
+        archived = record.archived_at
+        record.update_columns(purge_started_at: nil,
+                              archived_at: (archived if archived && archived < record.purge_started_at),
+                              updated_at: Time.current)
+      end
+
+      true
+    end
+
+    # The account and every testing child of it: one tenant, claimed and
+    # released together.
+    def family(account)
+      [account, *account.testing_accounts.to_a]
+    end
+
     # The whole thing. Returns :purged, or :already_purged when there was
     # nothing left to do.
     def call(account)
       return :already_purged if account.nil? || account.purged?
 
+      # Re-asserted HERE, as the first thing this method does, and not only in
+      # the job that called it (review batch 2, P1). The job's claim and this
+      # purge no longer share a transaction, so between them a webhook can
+      # apply a Stripe subscription and put the account back on a paid plan.
+      # The refusals are cheap and they are the last line: an account nobody
+      # may destroy is not destroyed however it got here — the nightly sweep,
+      # a resumed retry, or `rake accounts:purge` typed by hand.
       assert_purgeable!(account)
 
       # A testing child is not an account of its own — it is a corner of this
-      # one, sharing its name and its certificates — so it goes with it, row
-      # and all. Its contents are emptied by the same walk.
+      # one, sharing its name and its certificates — so it goes with it. It
+      # gets the SAME safety checks as the parent before anything is touched
+      # (review batch 2, K2): riding in on the parent's coat-tails, a child
+      # skipped every one of them, so a malformed link could have emptied an
+      # internal account and a child holding its own live subscription could
+      # have been destroyed while its card was still being charged. One
+      # refusal stops the whole purge, parent included — a family is emptied
+      # completely or not at all.
       testing_children = account.testing_accounts.to_a
+
+      assert_children_purgeable!(testing_children, account)
 
       testing_children.each { |child| purge_contents!(child) }
       purge_contents!(account)
 
-      testing_children.each { |child| Account.where(id: child.id).delete_all }
+      # A second pass over the whole family, and then a count (review batch 2,
+      # R2d). The walk above works from ids collected at its start, so
+      # anything that arrived DURING it — a webhook that wrote a submitter, a
+      # background job that generated a document, an attachment saved a second
+      # after its record's ids were read — would survive, and the tombstone
+      # would then say the account was emptied when it was not. Stragglers are
+      # taken; if anything is still standing after that, the purge fails
+      # rather than lying.
+      family = [account, *testing_children]
+
+      family.each { |record| purge_contents!(record) }
+
+      assert_emptied!(account, family)
+
+      testing_children.each { |child| entomb!(child) }
 
       entomb!(account)
 
@@ -90,6 +192,43 @@ module Accounts
       true
     end
 
+    # EVERY child is checked before ANY of them is touched, so a family is
+    # emptied completely or not at all — half a purge is the state nobody can
+    # reason about afterwards.
+    def assert_children_purgeable!(children, parent)
+      children.each { |child| assert_child_purgeable!(child, parent) }
+
+      true
+    end
+
+    # Everything asked of the parent, plus the one question only a child
+    # raises: is it really this parent's testing corner, and nobody else's?
+    #
+    # The link table is the only thing that says so, and it is ordinary data —
+    # a bug or a bad backfill could point a testing link at an internal
+    # account, or leave a child linked to two parents. So the child must be a
+    # customer account (never the platform), must carry exactly ONE inbound
+    # link, and that link must be this parent's and of type testing.
+    def assert_child_purgeable!(child, parent)
+      links = AccountLinkedAccount.where(linked_account_id: child.id).to_a
+
+      unless child.customer?
+        refuse!(parent, "its testing child #{child.id} is a #{child.account_kind} account, not a customer one")
+      end
+
+      unless links.one? && links.first.account_id == parent.id && links.first.testing?
+        refuse!(parent, "its testing child #{child.id} is not linked to it as a testing account alone " \
+                        "(#{links.size} link(s) found)")
+      end
+
+      if paid_access?(child)
+        refuse!(parent, "its testing child #{child.id} still holds a live paid subscription — " \
+                        'cancel it at Stripe first')
+      end
+
+      true
+    end
+
     def paid_access?(account)
       Plans::PAID_ACCESS_STATES.include?(account.account_subscription&.access_state)
     end
@@ -100,6 +239,91 @@ module Accounts
       OperatorAlert.deliver(subject: 'Account purge refused', body: message)
 
       raise Refused, message
+    end
+
+    # Every table of the inventory, for the whole family, counted for real.
+    # The tombstone is only stamped when this is empty: "purged" has to mean
+    # what it says, and the one thing worse than a purge that fails is a purge
+    # that reports success over rows it left behind (R2d).
+    def assert_emptied!(account, family)
+      left = remaining_rows(family).reject { |_, count| count.zero? }
+
+      return true if left.empty?
+
+      message = "account #{account.id} is not empty after the purge: " \
+                "#{left.map { |table, count| "#{table}=#{count}" }.join(', ')}"
+
+      OperatorAlert.deliver(subject: 'Account purge did not empty the account', body: message)
+
+      raise Refused, message
+    end
+
+    # Table name => rows still belonging to this family. Keyed on INVENTORY,
+    # so a table added to that constant is counted here too or the fetch
+    # raises naming it.
+    def remaining_rows(family)
+      ids = family.map(&:id)
+      counters = row_counters(ids)
+
+      INVENTORY.index_with { |table| counters.fetch(table).call }
+    end
+
+    # rubocop:disable Metrics/AbcSize, Metrics/MethodLength
+    def row_counters(ids)
+      template_ids = Template.where(account_id: ids).select(:id)
+      submitter_ids = Submitter.where(account_id: ids).select(:id)
+      user_ids = User.where(account_id: ids).select(:id)
+      document_ids = DynamicDocument.where(template_id: template_ids).select(:id)
+      event_ids = WebhookEvent.where(account_id: ids).select(:id)
+
+      { 'active_storage_attachments' => -> { family_attachment_count(ids) },
+        'completed_documents' => -> { CompletedDocument.where(submitter_id: submitter_ids).count },
+        'document_generation_events' => -> { DocumentGenerationEvent.where(submitter_id: submitter_ids).count },
+        'submitter_versions' => -> { SubmitterVersion.where(submitter_id: submitter_ids).count },
+        'completed_submitters' => -> { CompletedSubmitter.where(account_id: ids).count },
+        'submission_events' => -> { SubmissionEvent.where(account_id: ids).count },
+        'submitters' => -> { Submitter.where(account_id: ids).count },
+        'submissions' => -> { Submission.where(account_id: ids).count },
+        'dynamic_document_versions' => -> { DynamicDocumentVersion.where(dynamic_document_id: document_ids).count },
+        'dynamic_documents' => -> { DynamicDocument.where(template_id: template_ids).count },
+        'template_sharings' => -> { TemplateSharing.where(account_id: ids).count },
+        'template_accesses' => -> { TemplateAccess.where(template_id: template_ids).count },
+        'template_versions' => -> { TemplateVersion.where(account_id: ids).count },
+        'templates' => -> { Template.where(account_id: ids).count },
+        'template_folders' => -> { TemplateFolder.where(account_id: ids).count },
+        'document_metadata' => -> { DocumentMetadata.where(account_id: ids).count },
+        'email_events' => -> { EmailEvent.where(account_id: ids).count },
+        'email_messages' => -> { EmailMessage.where(account_id: ids).count },
+        'search_entries' => -> { SearchEntry.where(account_id: ids).count },
+        'webhook_attempts' => -> { WebhookAttempt.where(webhook_event_id: event_ids).count },
+        'webhook_events' => -> { WebhookEvent.where(account_id: ids).count },
+        'webhook_urls' => -> { WebhookUrl.where(account_id: ids).count },
+        'abuse_flags' => -> { AbuseFlag.where(account_id: ids).count },
+        'account_counters' => -> { AccountCounter.where(account_id: ids).count },
+        'account_limit_overrides' => -> { AccountLimitOverride.where(account_id: ids).count },
+        'account_accesses' => -> { AccountAccess.where(account_id: ids).count },
+        'account_invites' => -> { AccountInvite.where(account_id: ids).count },
+        'account_linked_accounts' => lambda {
+          AccountLinkedAccount.where(account_id: ids).or(AccountLinkedAccount.where(linked_account_id: ids)).count
+        },
+        'account_moves' => lambda {
+          AccountMove.where(from_account_id: ids).or(AccountMove.where(to_account_id: ids)).count
+        },
+        'encrypted_configs' => -> { EncryptedConfig.where(account_id: ids).count },
+        'account_configs' => -> { AccountConfig.where(account_id: ids).count },
+        'provisioning_events' => -> { ProvisioningEvent.where(account_id: ids).count },
+        'access_tokens' => -> { AccessToken.where(user_id: user_ids).count },
+        'mcp_tokens' => -> { McpToken.where(user_id: user_ids).count },
+        'user_configs' => -> { UserConfig.where(user_id: user_ids).count },
+        'encrypted_user_configs' => -> { EncryptedUserConfig.where(user_id: user_ids).count },
+        'oauth_access_grants' => -> { OauthAccessGrant.where(resource_owner_id: user_ids).count },
+        'oauth_access_tokens' => -> { OauthAccessToken.where(resource_owner_id: user_ids).count },
+        'users' => -> { User.where(account_id: ids).count } }
+    end
+    # rubocop:enable Metrics/AbcSize, Metrics/MethodLength
+
+    def family_attachment_count(ids)
+      Account.where(id: ids).sum { |record| attachments_for(record).count }
     end
 
     # Rows that would be left pointing at a purged account if the walk above
@@ -134,26 +358,32 @@ module Accounts
     # bucket forever — paid-for storage of a customer's documents after they
     # asked us to destroy them.
     #
-    # Blob ids are collected FIRST because purging an attachment takes its
-    # blob with it, and a blob shared with another account's attachment would
-    # therefore be pulled out from under them. Nothing in the app deduplicates
-    # blobs across accounts, so the shared count is expected to be zero; it is
-    # counted and reported rather than assumed, because being wrong about this
-    # would silently break somebody else's documents.
+    # A blob is only destroyed when NOBODY ELSE is attached to it (review batch
+    # 2, K3). The app really does share blobs across accounts:
+    # Templates::CloneAttachments reuses `blob_id` rather than re-uploading,
+    # and a template can be cloned into another account, so one file can be
+    # two accounts' document. Taking the blob would have deleted the other
+    # account's copy out from under them — their template would render a
+    # missing file and there is no way back. So the shared ones lose only THIS
+    # account's attachment row, and a person is told, because a shared blob is
+    # also the one case where "the customer's data is gone" is not quite true.
     def purge_attachments!(account)
-      attachments = attachments_for(account)
-      blob_ids = attachments.pluck(:blob_id).uniq
+      attachment_ids = attachments_for(account).ids
 
-      report_shared_blobs(account, attachments.ids, blob_ids)
+      return if attachment_ids.empty?
 
-      attachments.find_each(batch_size: 200) do |attachment|
-        attachment.purge
-      rescue StandardError => e
-        # One unreadable file must not leave the rest of the account's
-        # documents in the bucket. The row goes either way.
-        ErrorReport.error(e, account_id: account.id, attachment_id: attachment.id)
+      shared_blob_ids = shared_blob_ids_for(attachment_ids)
 
-        ActiveStorage::Attachment.where(id: attachment.id).delete_all
+      report_shared_blobs(account, shared_blob_ids)
+
+      ActiveStorage::Attachment.where(id: attachment_ids).find_each(batch_size: 200) do |attachment|
+        if shared_blob_ids.include?(attachment.blob_id)
+          # Row only, and with `delete` rather than `destroy`: the destroy
+          # callback would enqueue a purge of the very blob we are protecting.
+          ActiveStorage::Attachment.where(id: attachment.id).delete_all
+        else
+          purge_attachment!(account, attachment)
+        end
       end
 
       nil
@@ -182,15 +412,93 @@ module Accounts
       ActiveStorage::Attachment.where(record_type:, record_id: ids)
     end
 
-    def report_shared_blobs(account, attachment_ids, blob_ids)
-      return if blob_ids.empty?
+    # Blobs of ours that some OTHER attachment also points at.
+    def shared_blob_ids_for(attachment_ids)
+      blob_ids = ActiveStorage::Attachment.where(id: attachment_ids).distinct.pluck(:blob_id)
 
-      shared = ActiveStorage::Attachment.where(blob_id: blob_ids).where.not(id: attachment_ids).count
+      return [] if blob_ids.empty?
 
-      return if shared.zero?
+      ActiveStorage::Attachment.where(blob_id: blob_ids)
+                               .where.not(id: attachment_ids)
+                               .distinct.pluck(:blob_id)
+    end
 
-      ErrorReport.warning("purging account #{account.id} would take #{shared} blob(s) still attached elsewhere",
-                          account_id: account.id)
+    # One attachment and its file, in the order that cannot lose the file
+    # (review batch 2, K4 and P7).
+    #
+    # ActiveStorage's own `Blob#purge` destroys the DATABASE ROWS FIRST and
+    # only then deletes the object from storage. That is backwards for us: if
+    # the delete fails, the rows that named the file are already gone and the
+    # object is orphaned in the bucket with no locator left anywhere — a
+    # customer's document, kept for ever, that nothing can ever find again to
+    # remove. (The shape before this one made it worse still: it swallowed the
+    # failure and stamped `purged_at`.)
+    #
+    # So: delete the object, delete its variants and previews, VERIFY it is
+    # gone, and only then delete the two rows. Any failure leaves BOTH rows in
+    # place and raises StorageFailure — the claim stays set, `purged_at` is
+    # never stamped, the job retries, and the retry still knows which file it
+    # was.
+    def purge_attachment!(account, attachment)
+      blob = attachment.blob
+
+      if blob.nil?
+        ActiveStorage::Attachment.where(id: attachment.id).delete_all
+
+        return
+      end
+
+      delete_stored_object!(account, blob)
+
+      # One transaction for the three locator rows (review batch 2, R4). The
+      # variant records are the derivatives' own index — leaving them behind
+      # would point at files that no longer exist — and deleting the blob row
+      # while its attachment survived, or the other way round, would leave a
+      # half-row nobody can interpret. Either all three go or none of them do,
+      # and if none do the retry still finds the file by them.
+      ApplicationRecord.transaction do
+        ActiveStorage::VariantRecord.where(blob_id: blob.id).delete_all
+        ActiveStorage::Attachment.where(id: attachment.id).delete_all
+        ActiveStorage::Blob.where(id: blob.id).delete_all
+      end
+
+      nil
+    end
+
+    # The object itself, its variants and its previews. `delete_prefixed` is
+    # how ActiveStorage removes a blob's derivatives, and they are as much the
+    # customer's document as the original is — a preview image of a signed
+    # contract left in the bucket is still their contract.
+    def delete_stored_object!(account, blob)
+      service = blob.service
+
+      service.delete(blob.key)
+      service.delete_prefixed("variants/#{blob.key}/")
+
+      raise StorageFailure, "file #{blob.key} is still in storage" if service.exist?(blob.key)
+
+      true
+    rescue StandardError => e
+      message = "account #{account.id}: could not delete the stored file for blob #{blob.id} (#{e.message})"
+
+      ErrorReport.error(e, account_id: account.id, blob_id: blob.id)
+      OperatorAlert.deliver(subject: 'Account purge could not delete a file', body: message)
+
+      raise StorageFailure, message
+    end
+
+    # A shared blob is a file this account is losing that somebody else keeps.
+    # It is the honest outcome — the alternative breaks the other account —
+    # but it means "everything was destroyed" is not quite true for those
+    # files, so it goes to a PERSON rather than only into the log (K3).
+    def report_shared_blobs(account, shared_blob_ids)
+      return if shared_blob_ids.empty?
+
+      message = "purging account #{account.id} left #{shared_blob_ids.size} file(s) in place because another " \
+                "account's attachment still points at them (blob ids: #{shared_blob_ids.sort.join(', ')})"
+
+      ErrorReport.warning(message, account_id: account.id)
+      OperatorAlert.deliver(subject: 'Account purge kept shared files', body: message)
     end
 
     # Documents, and everything projected off them.
@@ -285,6 +593,9 @@ module Accounts
       McpToken.where(user_id: user_ids).delete_all
       UserConfig.where(user_id: user_ids).delete_all
       EncryptedUserConfig.where(user_id: user_ids).delete_all
+      # Both OAuth tables restrict on `users`; see the models above (K7).
+      OauthAccessGrant.where(resource_owner_id: user_ids).delete_all
+      OauthAccessToken.where(resource_owner_id: user_ids).delete_all
       TemplateAccess.where(user_id: user_ids).delete_all
       AccountMove.where(user_id: user_ids).delete_all
       AccountInvite.where(invited_by_id: user_ids).update_all(invited_by_id: nil)
@@ -297,13 +608,23 @@ module Accounts
     # What is left: a row with an id, a uuid and a date. The locale and
     # timezone stay because a tombstone still has to render in some language
     # if anything ever loads it, and neither says anything about the customer.
+    # The claim and the confirmation code go with everything else (review
+    # batch 2, R7): the claim has served its purpose the moment `purged_at` is
+    # stamped, and a tombstone must not still carry a credential's digest or
+    # the id of the person who typed it.
     def entomb!(account)
       account.update_columns(name: TOMBSTONE_NAME,
                              archived_at: account.archived_at || Time.current,
                              purged_at: Time.current,
+                             purge_started_at: nil,
                              suspended_at: nil,
                              suspension_reason: nil,
                              deletion_requested_by_id: nil,
+                             deletion_code_digest: nil,
+                             deletion_code_expires_at: nil,
+                             deletion_code_attempts: 0,
+                             deletion_code_user_id: nil,
+                             deletion_code_window_started_at: nil,
                              updated_at: Time.current)
     end
   end
