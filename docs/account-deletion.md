@@ -25,12 +25,21 @@ Two things about the window are worth saying out loud:
   can register them in the meantime. They are released the moment the purge
   runs, which is when the user rows are deleted.
 * **Signing in does not cancel the deletion.** Only the button does.
+* **Cancelling can occasionally say "try again in a few minutes."** The
+  subscription is cancelled at Stripe the moment the deletion is asked for. If
+  Stripe was unreachable at that moment, we will not lift the read-only state
+  until we have confirmed the subscription really is cancelled — otherwise the
+  account would come back with paid features nobody is being charged for.
+  Nothing is changed when that happens: the deletion is still scheduled, and
+  the button works normally once we have caught up (usually within minutes).
 
 ## Accounts nobody uses
 
 An account nobody has signed in to for **a year** is deleted too, with warning
 emails **60, 30 and 7 days** before. Those warnings go to *every* person in the
 account, not just the administrators — the person who set it up may have left.
+Each person gets their own copy, addressed only to them: nobody is shown who
+else is in the account.
 
 **Signing in once resets the whole clock.** The date is not stored anywhere: it
 is computed every night from the last thing that happened (the most recent
@@ -62,7 +71,7 @@ you can create next.
 | --- | --- |
 | `verified_documents` — the public /verify records | They hold a SHA-256 fingerprint, a date and a signer count. They name nobody, so they are not personal data — and if they went, every document the account ever signed would stop verifying for the people who hold it. Untouched, `account_id` included. |
 | `account_subscriptions` — the money history | Stripe ids and states. No documents, no people. |
-| `stripe_event_inboxes` — what Stripe told us and when | Kept, with `account_id` set to NULL: the audit stays, the customer is unnamed. |
+| `stripe_event_inboxes` — what Stripe told us and when | Kept, with `account_id` set to NULL **and the customer scrubbed out of the stored event**. What stays is the audit: the Stripe event id, its type, when Stripe sent it, what we did with it, and every id, amount, currency, price and status inside it. What goes is the person: email addresses, names, business names, phone numbers, street addresses, cities, postal codes, tax ids and free-typed descriptions are replaced with `[redacted]` wherever they appear in the event, however deeply nested. The event keeps its shape, so it still reads as an event — it just no longer says who it was about. |
 | The `accounts` row itself | Renamed **"Deleted account"**, `archived_at` and `purged_at` stamped, uuid kept. Everything that still points at it (a verified document, a Stripe inbox row) points at *something* rather than nowhere. |
 
 ## The inventory
@@ -75,7 +84,7 @@ explicit list, in this order, children before parents.
 
 | Table | Action | Why |
 | --- | --- | --- |
-| ActiveStorage attachments + blobs | purged (files deleted) | Templates' documents; a submission's audit trail, combined, merged and preview PDFs; a submitter's documents, attachments and previews; generated documents; the account logo; each person's saved signature and initials — **and the page images that hang off all of those**. Every uploaded document is rendered into per-page PNGs, and those images are attached to the *attachment*, not to the template, so the walk goes down a level (and keeps going down until it finds nothing new) and takes the deepest ones first. Done **first** and through ActiveStorage, because the rows below are deleted with `delete_all` — anything still holding a blob at that point would leave the *file* in the bucket forever. **The work is grouped by file, not by attachment row**: cloning a template reuses the blob rather than re-uploading it, so two of this account's own attachments routinely name one file, and every row naming a file is deleted with it in one go. **A file another account is also attached to is kept**: only this account's attachment rows go, and the operator is told, because that is the one case where "everything was destroyed" is not quite true. **A file that will not delete stops the purge**: the account is *not* stamped as purged, the job retries, and the operator hears — a tombstone over a bucket that still holds their documents would be a lie. The order is deliberate: the stored object and its variants/previews go **first**, we verify the object is gone, and only then the attachment and blob rows. (ActiveStorage's own `Blob#purge` destroys the rows first, so a storage failure would orphan the file with no locator left to find it by.) |
+| ActiveStorage attachments + blobs | purged (files deleted) | Templates' documents; a submission's audit trail, combined, merged and preview PDFs; a submitter's documents, attachments and previews; generated documents; the account logo; each person's saved signature and initials — **and the page images that hang off all of those**. Every uploaded document is rendered into per-page PNGs, and those images are attached to the *attachment*, not to the template, so the walk goes down a level (and keeps going down until it finds nothing new) and takes the deepest ones first. Done **first** and through ActiveStorage, because the rows below are deleted with `delete_all` — anything still holding a blob at that point would leave the *file* in the bucket forever. **The work is grouped by file, not by attachment row**: cloning a template reuses the blob rather than re-uploading it, so two of this account's own attachments routinely name one file, and every row naming a file is deleted with it in one go. **A file another account is also attached to is kept**: only this account's attachment rows go, and the operator is told, because that is the one case where "everything was destroyed" is not quite true. **That question is asked again, under the file's own row lock, at the moment of deletion**, because somebody in a linked account can clone a template shared with them *while the purge is running* — and a clone reuses the file rather than copying it. Answering only once, at the start of the walk, meant such a clone could arrive a second too late to be seen and have its document deleted out from under it, permanently. Cloning takes the same lock, so the two serialise: the clone is either honoured and the file kept, or it comes after the file is gone and fails outright. **A file that will not delete stops the purge**: the account is *not* stamped as purged, the job retries, and the operator hears — a tombstone over a bucket that still holds their documents would be a lie. The order is deliberate: the stored object and its variants/previews go **first**, we verify the object is gone, and only then the attachment and blob rows. (ActiveStorage's own `Blob#purge` destroys the rows first, so a storage failure would orphan the file with no locator left to find it by.) |
 | `completed_documents` | delete | Per-submitter document fingerprints. |
 | `document_generation_events` | delete | Per-submitter generation log. |
 | `submitter_versions` | delete | Delegation history. |
@@ -101,7 +110,7 @@ explicit list, in this order, children before parents.
 | `account_moves` | delete | Who moved between accounts. |
 | `encrypted_configs`, `account_configs` | delete | Settings, including any custom certificate material. |
 | `provisioning_events` | delete | How the account was created. |
-| `stripe_event_inboxes` | **nullify** `account_id` | Keep the Stripe audit, unname the customer. |
+| `stripe_event_inboxes` | **scrub**, then **nullify** `account_id` | Keep the Stripe audit, remove the customer. Every verified webhook is stored byte for byte, and Stripe's bytes carry the customer's email, name, street address and postal code — so clearing `account_id` on its own de-identified nothing. The identity fields inside the stored event are redacted first; the ids, amounts, statuses and timestamps that make the row an audit are untouched. (The scrubbed bytes no longer match Stripe's signature. Nothing re-verifies them — only events the endpoint already verified are ever stored.) |
 | `access_tokens`, `mcp_tokens`, `user_configs`, `encrypted_user_configs` | delete | Each person's keys, preferences and stored signature material. |
 | `oauth_access_grants`, `oauth_access_tokens` | delete | Doorkeeper's tables (upstream DocuSeal's — the gem is not in this app, but the tables and their foreign keys are). Both **restrict** on `users`, so a single legacy row would blow the purge up half-way through. |
 | `users` | **delete** | This is what releases the email addresses: the unique index is the only thing reserving them. Devise tokens go with the row. |
@@ -117,9 +126,15 @@ operator when:
 * the account is **not a customer account** — internal and operator accounts
   are the platform itself, and purging an operator account would destroy the
   platform signing certificate;
-* the account **still holds a live paid subscription**. An account that reached
-  its purge date still being charged means the cancellation never landed, and
-  that is money leaving a customer's card. Cancel it at Stripe first.
+* the account **still holds a live subscription**. An account that reached its
+  purge date with a subscription still alive at Stripe means the cancellation
+  never landed, and that is money that can still leave a customer's card.
+  Cancel it at Stripe first. "Live" here is deliberately wider than "on the
+  paid plan": a subscription Stripe has marked `unpaid` or `paused` shows up in
+  this app as *suspended*, and one whose first payment never completed
+  (`incomplete`) shows up as *cancelled* — none of them paid, all of them
+  revivable from the customer portal and all of them able to charge a card. The
+  purge refuses on any of them.
 * a **testing child fails any of the same checks**: it is not a customer
   account, it holds a live subscription of its own, or the link table does not
   say plainly that it belongs to this parent and to nobody else (exactly one
@@ -207,10 +222,20 @@ ends the purge in a refusal instead of a false tombstone. It is not a second
 opinion on the starting list itself: the count begins from the same seven owner
 types as the walk, so a brand-new kind of attachment owner would have to be
 added to both (there is none today — every `has_*_attached` in the app is one
-of the seven). Two tables without foreign keys, `webhook_attempts` and
-`completed_documents`, are still counted through their parents, which the walk
-has already deleted by then; a row written there mid-purge is not caught yet
-(recorded for Session 10).
+of the seven).
+
+**`webhook_attempts` is counted the same way, and for a sharper reason.** A
+webhook delivery writes its attempt row *after* the outbound HTTP call comes
+back — up to fifteen seconds later — and there is no foreign key tying an
+attempt to its event. So a delivery that was in flight when the purge deleted
+the events inserts its attempt against an id nothing points at any more, and no
+query starting from the account could ever find it again: the old count read
+zero and the account was entombed with a customer's webhook response body still
+in the table. The purge now writes down the family's webhook event ids before
+the walk, sweeps by them on the second pass, and counts against them — so a
+straggler is either taken or the purge refuses. `completed_documents` is still
+counted through its submitters, which the walk has already deleted by then; a
+row written there mid-purge is not caught yet (recorded for Session 10).
 
 ## Operator commands
 

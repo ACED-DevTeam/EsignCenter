@@ -100,6 +100,14 @@ class AccountsController < ApplicationController
     return refuse(I18n.t('account_deletion_already_started')) unless Accounts::Deletion.cancel!(current_account)
 
     redirect_to settings_account_path, notice: I18n.t('account_deletion_cancelled_notice')
+  rescue Accounts::Deletion::BillingUnsettled
+    # The subscription was cancelled at Stripe when the deletion was asked
+    # for, and the local billing row has not caught up yet. Unfreezing the
+    # account on that row would hand it back every paid feature over a
+    # subscription nobody is being charged for, so nothing is changed: the
+    # deletion stays scheduled, the account stays read-only, and they are
+    # asked to press the button again in a moment.
+    refuse(I18n.t('account_deletion_billing_not_settled'))
   end
 
   private

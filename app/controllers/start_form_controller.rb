@@ -18,6 +18,11 @@ class StartFormController < ApplicationController
   COOKIES_TTL = 12.hours
   COOKIES_DEFAULTS = { httponly: true, secure: Rails.env.production? }.freeze
 
+  # The marker that says "this browser is the one that completed that
+  # document", written when a visitor is sent to the completed page and read
+  # back there. See #completed for what it is for.
+  COMPLETED_COOKIE = :completed_submitter_slug
+
   def show
     if @template.shared_link?
       # A shared template that also requires email 2FA cannot be opened by
@@ -53,6 +58,8 @@ class StartFormController < ApplicationController
     @submitter = find_or_initialize_submitter(@template, submitter_params)
 
     if @submitter.completed_at?
+      remember_completion(@submitter)
+
       redirect_to start_form_completed_path(@template.slug, submitter_params.compact_blank)
     else
       if filter_undefined_submitters(@template).size > 1 && @submitter.new_record?
@@ -83,6 +90,25 @@ class StartFormController < ApplicationController
     render_paused(e.reason, status: :unprocessable_content)
   end
 
+  # "This has already been signed", shown to a signer who comes back to the
+  # share link with an address that has already completed the form.
+  #
+  # The address in the URL is NOT proof that the address is yours. This page
+  # used to look one up and answer 200-with-the-details or 404, which turned
+  # any share link into an existence oracle: a stranger holding the link could
+  # type addresses at it and be told, one at a time, which of those people had
+  # signed that document and on what day. The document itself was never
+  # exposed — but "did Jane sign the settlement agreement, and when" is the
+  # sensitive part of a signature, not the PDF.
+  #
+  # So the page is only drawn for somebody who can show the address is theirs
+  # (proven_submitter). Everybody else gets ONE answer, the same answer, with
+  # no lookup behind it at all — no status difference, no template name, no
+  # date, and nothing that takes a different amount of time depending on
+  # whether a match exists. It offers to email a copy to the address that was
+  # typed, which is safe for exactly the reason the leak was not: the mail
+  # goes to that address and nowhere else, and SendSubmissionEmailController
+  # answers "email has been sent" whether or not there was anything to send.
   def completed
     return redirect_to start_form_path(@template.slug) if !@template.shared_link? || @template.archived_at?
 
@@ -97,12 +123,61 @@ class StartFormController < ApplicationController
     raise ActionController::RoutingError, I18n.t('not_found') if required_params.any? { |_, v| v.blank? } ||
                                                                  required_params.except('name').compact_blank.blank?
 
-    @submitter = Submitter.where(submission: @template.submissions)
-                          .where.not(completed_at: nil)
-                          .find_by!(required_params.except('name'))
+    @submitter = proven_submitter(required_params.except('name'))
+
+    render :completed_unproven if @submitter.nil?
   end
 
   private
+
+  # Whose completed document this visitor may be shown, or nil.
+  #
+  # Three ways to prove the address is yours, and the URL is not one of them:
+  #
+  #   * the account's own signed-in user, who can read every one of these
+  #     documents from the dashboard anyway (SenderViewing);
+  #   * the marker this controller wrote when it sent the visitor here
+  #     (remember_completion) — the browser that walked in through #update
+  #     and was recognised as the one that started the document;
+  #   * the email one-time-code marker, which is the strongest proof of an
+  #     address the anonymous side of this app has: a code was sent to the
+  #     address and typed back in.
+  #
+  # Both markers name a SUBMITTER, and the lookup demands that submitter AND
+  # the address in the URL, so a marker earned on one document cannot be spent
+  # asking about somebody else's. An unproven visitor is answered without any
+  # query being run, so the response cannot be timed either.
+  def proven_submitter(find_params)
+    completed = Submitter.where(submission: @template.submissions).where.not(completed_at: nil)
+
+    return completed.find_by(find_params) if sender_viewing?
+
+    slugs = [cookies.encrypted[COMPLETED_COOKIE], cookies.encrypted[:email_2fa_slug]].compact_blank
+
+    return nil if slugs.empty?
+
+    completed.find_by(find_params.merge(slug: slugs))
+  end
+
+  # Written on the way out of #update, and only for a visitor that door has
+  # already recognised: the person whose own device started the document (the
+  # ip match find_or_initialize_submitter makes), the holder of a verified
+  # email code on a 2FA link — where the ip match is deliberately not made and
+  # so proves nothing — or the sender looking at their own template. Typing an
+  # address is never enough, which is the whole point.
+  def remember_completion(submitter)
+    return unless completion_proven?(submitter)
+
+    cookies.encrypted[COMPLETED_COOKIE] =
+      { value: submitter.slug, expires: COOKIES_TTL.from_now, **COOKIES_DEFAULTS }
+  end
+
+  def completion_proven?(submitter)
+    return true if sender_viewing?
+    return cookies.encrypted[:email_2fa_slug] == submitter.slug if @template.preferences['shared_link_2fa'] == true
+
+    submitter.ip.present? && submitter.ip == request.remote_ip
+  end
 
   # A closed link takes no new submission: refused here, before the email-2FA
   # branch could send a code for a form that cannot be started. The locked

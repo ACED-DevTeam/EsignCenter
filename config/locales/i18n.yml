@@ -1,6 +1,8 @@
 en: &en
   form_not_accepting_responses: "This form is not accepting new responses right now."
   form_not_accepting_responses_hint: "Please contact the person who shared this form with you."
+  completed_documents_are_private: "Completed documents are private"
+  we_can_email_a_copy_to_the_address_you_typed_if_there_is_one_to_send: "Whether a document has been completed, and by whom, is only ever shown to the person who completed it. If there is one for the address you typed, we can email a copy to that address."
   quota_reached_completions: "You have used all %{limit} document completions for this month. Sending resumes on %{date} (UTC)."
   quota_reached_sends: "You have sent %{limit} documents this month, the free limit. Sending resumes on %{date} (UTC)."
   quota_reached_in_flight: "You have %{limit} documents waiting for signatures, the free limit. Wait for some to complete or upgrade."
@@ -42,6 +44,7 @@ en: &en
   account_deletion_not_while_impersonating: "An account can only be deleted by someone signed in to it directly."
   account_deletion_not_available: "This account cannot be deleted from here. Please write to support."
   account_deletion_not_scheduled: "This account is not scheduled for deletion."
+  account_deletion_billing_not_settled: "We could not confirm your billing status just now, so nothing was changed. Please try again in a few minutes."
   usage: "Usage"
   usage_page_intro: "What this account has used this month, and where the limits are."
   usage_plan_free: "Free plan"

@@ -824,6 +824,15 @@ enough for the world to move:
   invitation could never be accepted. The admin is told to invite a different
   address, before any seat is priced or charged.
 
+Joining a team is a move between two companies, so **the keys the old account
+cut are thrown away as part of it**: API tokens, MCP tokens, any OAuth grant,
+and "remember me" on other browsers all stop working the moment the move
+lands. They were issued for a one-person account and would otherwise have gone
+on working — against the team's documents, on credentials the team's
+administrators never issued and cannot see. The browser that pressed the
+button stays signed in; anybody joining a team should expect to create a fresh
+API token afterwards, and to sign in again on their other devices.
+
 ### Dropping back to the free plan with more people than seats
 
 Nobody is deleted. The admin who signed in most recently keeps full access and

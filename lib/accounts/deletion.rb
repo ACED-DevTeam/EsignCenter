@@ -32,6 +32,14 @@ module Accounts
     # not an account of its own but a corner of its parent.
     class NotDeletable < StandardError; end
 
+    # Raised by `cancel!` when the deletion could be called off but the
+    # account cannot safely be let out of read-only yet, because its
+    # subscription row still claims paid access over a subscription that was
+    # cancelled at Stripe when the deletion was asked for. Not a bug: it means
+    # Stripe was unreachable at some point and the retrying job has not caught
+    # up. See settle_billing!.
+    class BillingUnsettled < StandardError; end
+
     module_function
 
     # Customer accounts that stand on their own. A testing child is purged
@@ -155,6 +163,11 @@ module Accounts
     def cancel!(account)
       return false if account.nil? || !account.pending_deletion?
 
+      # Before anything is written, and before the suspension is lifted: the
+      # account may not come back out of read-only holding paid entitlements
+      # over a subscription that has already been cancelled at Stripe.
+      settle_billing!(account)
+
       cancelled = account.with_lock do
         next false if account.purge_claimed?
         next false unless account.pending_deletion?
@@ -174,6 +187,46 @@ module Accounts
       ErrorReport.info('account deletion cancelled', account_id: account.id)
 
       true
+    end
+
+    # The deletion cancelled the subscription at Stripe when it was asked for.
+    # Before the account is unfrozen, the LOCAL row has to agree.
+    #
+    # In the ordinary case there is nothing to do here and Stripe is not
+    # called at all: `cancel_subscription!` applies Stripe's answer as it goes
+    # (see apply_locally! below), so the row already reads `cancelled`. The
+    # case this exists for is the one where that write never happened —
+    # Stripe was unreachable when the deletion was asked for, the cancel fell
+    # back to CancelDeletedSubscriptionJob, and the row is still saying
+    # `active`. Lifting the suspension on that row hands the account every
+    # paid entitlement it has — seats, API, MCP, webhooks, branding — over a
+    # subscription nobody is being charged for, and it keeps them until a
+    # webhook happens to arrive or the nightly reconciliation runs.
+    #
+    # So the cancel is tried once more (it is idempotent, and it now writes
+    # the answer down), and if the row still claims paid access afterwards the
+    # cancellation is REFUSED: the deletion stays pending and the account
+    # stays read-only. That is the safe direction — an account frozen for
+    # another minute, with a banner explaining why and a button to press
+    # again, rather than a free account quietly running on paid features. The
+    # retrying job is working on the same problem from the other end.
+    def settle_billing!(account)
+      row = account.account_subscription
+
+      # Nothing this flow ever cancelled, so nothing it can be out of step
+      # with: no subscription row at all, or a plan granted by hand rather
+      # than bought at Stripe (no `stripe_subscription_id`, which is exactly
+      # what `cancel_subscription!` refuses to act on). Those keep their paid
+      # access right through the deletion and get it back when it is called
+      # off, which is correct — an operator's grant is not Stripe's to cancel.
+      return true if row.nil? || row.stripe_subscription_id.blank?
+      return true unless Plans.paid_subscription?(account)
+
+      cancel_subscription(account)
+
+      return true unless Plans.paid_subscription?(account.reload)
+
+      raise BillingUnsettled, "account #{account.id} still reads as paid after its subscription was cancelled"
     end
 
     # Stop charging the customer the moment they ask to leave. Stripe being
@@ -215,9 +268,11 @@ module Accounts
 
       mark_at_stripe!(subscription_id)
 
-      StripeBilling.client.v1.subscriptions.cancel(
+      cancelled = StripeBilling.client.v1.subscriptions.cancel(
         subscription_id, { cancellation_details: { comment: StripeBilling::ACCOUNT_DELETION_MARKER } }
       )
+
+      apply_locally!(row, cancelled)
 
       true
     rescue Stripe::InvalidRequestError => e
@@ -225,7 +280,49 @@ module Accounts
 
       Rails.logger.info("Subscription #{row.stripe_subscription_id} was already gone (#{e.message})")
 
+      settle_gone_subscription!(row)
+
       false
+    end
+
+    # Write down what Stripe just said.
+    #
+    # The answer used to be thrown away. Stripe had cancelled the
+    # subscription, but the local AccountSubscription row was left exactly as
+    # it was — `active` — so `Plans` went on reporting the account as paid
+    # until the `customer.subscription.deleted` webhook arrived or the nightly
+    # reconciliation ran. That window is small and it is real, and an
+    # administrator who asked to delete and then changed their mind inside it
+    # got a fully paid account back over a subscription nobody is charging
+    # for (`cancel!` lifts the suspension the moment the deletion is called
+    # off).
+    #
+    # Applied through the ONE mapping every Stripe door in this app shares,
+    # under the same row lock the rest of the money code takes — so a webhook
+    # about the same subscription arriving at this moment queues behind it
+    # instead of interleaving with it, and everything that hangs off an apply
+    # (BillingLifecycle) happens exactly as it would have on the webhook.
+    def apply_locally!(row, stripe_subscription)
+      StripeBilling::Linker.with_account_lock(row) do
+        StripeBilling::SubscriptionSync.apply!(row, stripe_subscription)
+      end
+
+      row.reload
+    end
+
+    # "It is already gone" with a row that still claims paid access is what a
+    # half-finished attempt leaves behind: the cancel landed at Stripe, the
+    # answer never reached the row. Read the subscription back and apply that,
+    # rather than leaving the account on paid entitlements until a webhook
+    # turns up. A subscription Stripe no longer has at all cannot be read
+    # back — that one is left to the nightly reconciliation, and the account
+    # stays read-only in the meantime (settle_billing!).
+    def settle_gone_subscription!(row)
+      return unless Plans::PAID_ACCESS_STATES.include?(row.access_state)
+
+      apply_locally!(row, StripeBilling.subscription_for(row.stripe_subscription_id))
+    rescue Stripe::StripeError => e
+      ErrorReport.error(e, account_id: row.account_id)
     end
 
     # Keyed idempotently on the subscription, so a retry after a half-finished

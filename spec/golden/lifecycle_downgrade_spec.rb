@@ -770,11 +770,15 @@ RSpec.describe 'Deleting an account', type: :request do
       expect(mark).to have_been_requested
       expect(cancel).to have_been_requested
 
-      mail = deliveries.find { |m| m.subject.include?('scheduled for deletion') }
+      # One message per administrator, each addressed to that administrator
+      # alone: a mail addressed to the whole list shows every recipient who
+      # else is in the account (AccountMailer::Broadcast).
+      mails = deliveries.select { |m| m.subject.include?('scheduled for deletion') }
 
-      expect(mail).to be_present
-      expect(mail.to).to contain_exactly(admin.email, second_admin.email)
-      expect(mail.body.encoded).to include('3 December 2026')
+      expect(mails.flat_map(&:to)).to contain_exactly(admin.email, second_admin.email)
+      expect(mails.map { |m| m.to.size }).to eq([1, 1])
+      expect(mails.map { |m| m.cc.to_a + m.bcc.to_a }).to all(be_empty)
+      expect(mails.map { |m| m.body.encoded }).to all(include('3 December 2026'))
     end
 
     it 'keeps signing in, reading and exporting open while refusing every write', sidekiq: :inline do
@@ -1083,6 +1087,47 @@ RSpec.describe 'Deleting an account', type: :request do
       expect(inbox.reload.account_id).to be_nil
     end
 
+    # Unnaming the row de-identified NOTHING (review 8, A4). Every verified
+    # webhook is stored byte for byte, and Stripe's bytes carry the customer:
+    # their email address, their name, their street address and their postal
+    # code all sit inside the event. Clearing `account_id` left all of it
+    # there, under a promise that their data was gone.
+    it 'scrubs the customer out of the Stripe events it keeps, and keeps the audit' do
+      payload = fixture_body('event-checkout.session.completed-payment')
+      details = JSON.parse(payload).dig('data', 'object', 'customer_details')
+
+      # The fixture has to really carry the person, or this proves nothing.
+      expect(details.values_at('email', 'name')).to eq(['fixture@example.com', 'Jenny Rosen'])
+      expect(details['address'].values_at('line1', 'postal_code')).to eq(['354 Oyster Point Blvd', '94080'])
+
+      inbox = StripeEventInbox.create!(account_id: account.id, stripe_event_id: "evt_#{SecureRandom.hex(6)}",
+                                       event_type: 'checkout.session.completed', payload:,
+                                       status: 'processed', stripe_created_at: Time.current)
+
+      Accounts::Purge.call(account)
+
+      inbox.reload
+      kept = inbox.event_object
+
+      # Not one of the customer's details survives, anywhere in the event.
+      [details['email'], details['name'], details['address']['line1'],
+       details['address']['postal_code'], details['address']['city']].each do |personal|
+        expect(inbox.payload).not_to include(personal)
+      end
+      expect(kept.dig('customer_details', 'email')).to eq('[redacted]')
+      expect(kept.dig('customer_details', 'address', 'postal_code')).to eq('[redacted]')
+
+      # And the audit is all still there: which event, of what type, when,
+      # what we did with it — and the money.
+      expect(inbox).to have_attributes(stripe_event_id: inbox.stripe_event_id,
+                                       event_type: 'checkout.session.completed',
+                                       status: 'processed', account_id: nil,
+                                       stripe_created_at: be_present)
+      expect(kept.values_at('id', 'mode', 'currency', 'amount_total', 'payment_status'))
+        .to eq(['cs_test_a1hd4xzTGg4aefbWwoVlyN44Ge31P23nGKzppJGU9R6VgaPRUEBMqSAqzd',
+                'payment', 'usd', 3000, 'paid'])
+    end
+
     it 'refuses an internal account and an account that is still being charged' do
       template
       internal = create(:account, :internal)
@@ -1097,6 +1142,76 @@ RSpec.describe 'Deleting an account', type: :request do
       # And nothing was half-destroyed on the way to the refusal.
       expect(Template.where(account_id: account.id).count).to eq(1)
       expect(User.where(account_id: account.id).count).to eq(1)
+    end
+
+    # "Paid" and "live" are not the same question, and the purge used to ask
+    # the wrong one (review 8, A2). SubscriptionSync maps Stripe's `unpaid`
+    # and `paused` to a local access_state of `suspended`, and `incomplete` to
+    # `cancelled` — none of them paid states, so the old check waved all three
+    # through. Every one of them is a subscription Stripe still considers
+    # alive: resumable from the customer portal, able to charge the card. And
+    # the cancellation the deletion request fires is allowed to fail into a
+    # retrying job, so "the cancellation never landed" is a state that really
+    # happens — which is how an account could be destroyed for ever while the
+    # money was still moving.
+    describe 'a subscription that is dead here but still live at Stripe' do
+      {
+        'unpaid' => 'suspended',
+        'paused' => 'suspended',
+        'incomplete' => 'cancelled'
+      }.each do |stripe_status, access_state|
+        it "refuses an account whose Stripe subscription is #{stripe_status}, releases the claim and pages " \
+           'the operator', sidekiq: :inline do
+          template
+          account.update!(deletion_requested_at: 90.days.ago, purge_scheduled_for: 1.minute.ago)
+          create(:account_subscription, account:, access_state:, stripe_status:,
+                                        stripe_subscription_id: 'sub_still_alive')
+
+          allow(OperatorAlert).to receive(:deliver).and_call_original
+
+          AccountPurgeJob.new.perform(account.id)
+
+          account.reload
+
+          # Not destroyed, not left claimed, and not left archived either —
+          # the account works again, exactly as any other refusal leaves it.
+          expect(account).to have_attributes(purged_at: nil, purge_started_at: nil, archived_at: nil)
+          expect(Template.where(account_id: account.id).count).to eq(1)
+          expect(User.where(account_id: account.id).count).to eq(1)
+          expect(OperatorAlert).to have_received(:deliver)
+            .with(hash_including(subject: 'Account purge refused'))
+        end
+      end
+
+      # The same three statuses on a TESTING CHILD stop the whole family, the
+      # parent included — a child is checked as carefully as its parent.
+      it 'refuses the whole family when a testing child holds one' do
+        template
+        child = Accounts.find_or_create_testing_user(account).account
+
+        create(:account_subscription, account: child, access_state: 'suspended', stripe_status: 'unpaid',
+                                      stripe_subscription_id: 'sub_child_alive')
+
+        expect { Accounts::Purge.call(account) }
+          .to raise_error(Accounts::Purge::Refused, /testing child #{child.id} still holds a live paid/)
+
+        expect(account.reload.purged_at).to be_nil
+        expect(child.reload.purged_at).to be_nil
+      end
+
+      # And a subscription Stripe has genuinely finished with is not a reason
+      # to keep the account alive: refusing on those would mean nothing could
+      # ever be deleted.
+      %w[canceled incomplete_expired].each do |stripe_status|
+        it "still purges an account whose Stripe subscription is #{stripe_status}", sidekiq: :inline do
+          template
+          create(:account_subscription, account:, access_state: 'cancelled', stripe_status:,
+                                        stripe_subscription_id: 'sub_finished')
+
+          expect(Accounts::Purge.call(account)).to eq(:purged)
+          expect(account.reload.purged_at).to be_present
+        end
+      end
     end
 
     # A testing child rode in on its parent's decision and was checked for
@@ -1159,6 +1274,51 @@ RSpec.describe 'Deleting an account', type: :request do
 
       expect(ActiveStorage::Blob.exists?(shared_blob.id)).to be(true)
       expect(shared.reload.blob.service.exist?(shared_blob.key)).to be(true)
+      expect(ActiveStorage::Attachment.where(record: template).count).to eq(0)
+      expect(OperatorAlert).to have_received(:deliver)
+        .with(hash_including(subject: 'Account purge kept shared files'))
+    end
+
+    # And "is this file shared?" is asked AGAIN at the moment of deletion,
+    # under the blob's own row lock (review 8, A1).
+    #
+    # The walk answered it once, at the top, over the whole account — and a
+    # member of a LINKED account can clone a template shared with them at any
+    # moment, reusing the file rather than copying it. A clone landing after
+    # that one answer found the blob already judged unshared, and the delete
+    # takes EVERY row naming a blob, deliberately: the other tenant's template
+    # lost its document and the file went with it. Permanently, silently, with
+    # nothing in the database left to say it had happened.
+    it 'keeps a file a foreign clone attached itself to after the walk called it unshared', sidekiq: :inline do
+      other_account = create(:account)
+      other_admin = create(:user, account: other_account)
+      other_template = create(:template, account: other_account, author: other_admin, only_field_types: %w[text])
+
+      shared_blob = template.documents_attachments.first.blob
+      foreign = nil
+
+      # The clone lands in the gap the one-time answer left open: after the
+      # snapshot said "nobody else holds this", before the file is deleted.
+      allow(Accounts::Purge).to receive(:shared_blob_ids_for).and_wrap_original do |original, *args|
+        answer = original.call(*args)
+
+        foreign ||= ActiveStorage::Attachment.create!(blob: shared_blob, name: :documents, record: other_template)
+
+        answer
+      end
+      allow(OperatorAlert).to receive(:deliver).and_call_original
+
+      expect(Accounts::Purge.call(account)).to eq(:purged)
+
+      # The other tenant still has their document, and the bytes are still
+      # in the bucket.
+      expect(ActiveStorage::Attachment.exists?(foreign.id)).to be(true)
+      expect(ActiveStorage::Blob.exists?(shared_blob.id)).to be(true)
+      expect(shared_blob.service.exist?(shared_blob.key)).to be(true)
+
+      # The purged account's own rows went all the same, and a person was told
+      # the file stayed — the same honest ending a blob known to be shared
+      # from the start gets.
       expect(ActiveStorage::Attachment.where(record: template).count).to eq(0)
       expect(OperatorAlert).to have_received(:deliver)
         .with(hash_including(subject: 'Account purge kept shared files'))
@@ -1587,6 +1747,91 @@ RSpec.describe 'Deleting an account', type: :request do
       expect(straggler).to eq(1)
       expect(AccountCounter.where(account_id: account.id).count).to eq(0)
       expect(Submission.where(id: submission.id).count).to eq(0)
+    end
+
+    # A webhook attempt is the one row in the inventory that becomes
+    # UNREACHABLE the moment its parent goes (review 8, A3).
+    # SendWebhookRequest creates the event, makes the outbound call — up to
+    # fifteen seconds — and only then inserts the attempt, against a
+    # webhook_event_id with no foreign key behind it. A purge that deletes the
+    # events inside that window leaves the attempt holding the customer's
+    # webhook response body, and the old emptiness count asked
+    # "attempts whose event belongs to this account": there were no events
+    # left to name, so the subquery was empty, the count read zero, and the
+    # account was entombed as empty over a row that was still there.
+    describe 'a webhook attempt that lands after its event was deleted' do
+      # The row the in-flight delivery writes. `WebhookAttempt belongs_to
+      # :webhook_event`, so it goes in the way the real race puts it there —
+      # against an id nothing points at any more.
+      def insert_straggler!(event_id)
+        WebhookAttempt.insert!({ webhook_event_id: event_id, attempt: 1, response_status_code: 500,
+                                 response_body: 'Jane Roe signed the lease', created_at: Time.current,
+                                 updated_at: Time.current })
+      end
+
+      def event_id!
+        webhook_event = WebhookEvent.create!(account:, webhook_url: webhook, uuid: SecureRandom.uuid,
+                                             event_type: 'template.created', record: template,
+                                             status: 'pending')
+
+        webhook_event.id
+      end
+
+      it 'sweeps it on the second walk rather than entombing the account over it', sidekiq: :inline do
+        event_id = event_id!
+        landed = false
+
+        # delete_account_rows! runs immediately after the webhooks are
+        # deleted, which is exactly where the in-flight delivery lands.
+        allow(Accounts::Purge).to receive(:delete_account_rows!).and_wrap_original do |method, record|
+          insert_straggler!(event_id) unless landed
+          landed = true
+
+          method.call(record)
+        end
+
+        expect(Accounts::Purge.call(account)).to eq(:purged)
+
+        expect(landed).to be(true)
+        expect(WebhookAttempt.where(webhook_event_id: event_id).count).to eq(0)
+      end
+
+      it 'refuses to entomb the account when one lands during the second walk too', sidekiq: :inline do
+        event_id = event_id!
+
+        # Every pass, so the last one leaves a row standing — the census is
+        # what still sees it, and the purge says so rather than lying.
+        allow(Accounts::Purge).to receive(:delete_account_rows!).and_wrap_original do |method, record|
+          insert_straggler!(event_id)
+
+          method.call(record)
+        end
+        allow(OperatorAlert).to receive(:deliver).and_call_original
+
+        expect { Accounts::Purge.call(account) }
+          .to raise_error(Accounts::Purge::Refused, /webhook_attempts=/)
+
+        expect(account.reload.purged_at).to be_nil
+        expect(OperatorAlert).to have_received(:deliver)
+          .with(hash_including(subject: 'Account purge did not empty the account'))
+      end
+
+      # The count itself, on its own: taken against ids written down before
+      # the walk, it still finds the row after every event is gone. Asked the
+      # old way — through the account's surviving events — it reads zero.
+      it 'is counted against ids captured before the walk, not through parents that are already gone' do
+        event_id = event_id!
+        census = Accounts::Purge.census_for([account])
+
+        expect(census[:webhook_event_ids]).to include(event_id)
+
+        WebhookEvent.where(id: event_id).delete_all
+        insert_straggler!(event_id)
+
+        expect(Accounts::Purge.remaining_rows([account], census)['webhook_attempts']).to eq(1)
+        expect(WebhookAttempt.where(webhook_event_id: WebhookEvent.where(account_id: account.id)
+                                                                  .select(:id)).count).to eq(0)
+      end
     end
 
     # The three locator rows go together, or none of them do (R4).
