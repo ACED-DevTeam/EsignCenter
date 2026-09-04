@@ -45,7 +45,19 @@ class ProcessStripeEventJob
   DUPLICATE_SUBSCRIPTION = 'duplicate subscription cancelled'
   FOREIGN_SUBSCRIPTION = 'foreign subscription'
   NON_CUSTOMER_ACCOUNT = 'non-customer account'
-  CHECKOUT_OTHER_CUSTOMER = 'checkout session on another customer'
+
+  # A Checkout session whose Stripe CUSTOMER is not the one this account's row
+  # is entitled to act on — either the row already holds a different customer,
+  # or the one the session names belongs to another account's row. One label
+  # for both, because they are one rule: a subscription somebody else's Stripe
+  # customer is paying for is never linked here (Review 6 C3).
+  CUSTOMER_MISMATCH = 'customer mismatch'
+
+  # News about a subscription that was already over and was not one we
+  # cancelled: the customer's own previous, legitimately ended subscription.
+  # Its own label rather than "foreign subscription", which would tell the
+  # operator their customer's history belonged to somebody else.
+  STALE_SUBSCRIPTION = 'stale subscription ignored'
 
   sidekiq_retries_exhausted do |msg, error|
     inbox = StripeEventInbox.find_by(id: msg['args'].first)
@@ -172,6 +184,7 @@ class ProcessStripeEventJob
       inbox.update!(status: StripeEventInbox::PROCESSED, processed_at: Time.current,
                     last_error: DUPLICATE_SUBSCRIPTION)
     when :duplicate_ignored, :foreign_ignored then ignore!(inbox, FOREIGN_SUBSCRIPTION)
+    when :stale_ignored then ignore!(inbox, STALE_SUBSCRIPTION)
     else processed!(inbox)
     end
   end
@@ -223,26 +236,39 @@ class ProcessStripeEventJob
   # before the session ever existed — "another customer" is not ours to act
   # on. Webhook processing has to mirror that rule or it becomes the way
   # around it: a session on somebody else's customer would link a
-  # subscription that customer is paying for onto this row. A row that holds
-  # no customer yet is the first purchase and is left alone, exactly as the
-  # create-or-find path above intends.
+  # subscription that customer is paying for onto this row.
+  #
+  # A row that holds no customer yet is the first purchase and is normally
+  # left alone — but only while the customer the session names is nobody
+  # else's. A session whose `client_reference_id` points at THIS account and
+  # whose `customer` is a customer another account's row already holds names
+  # two different accounts at once (a reference copied between environments,
+  # a session id pasted by hand). Writing it used to get as far as the
+  # database, where the unique index on `stripe_customer_id` refused it:
+  # RecordNotUnique, a failed event, five retries and a page — for something
+  # that will never become ours. It is decided here instead, before anything
+  # is written.
   #
   # Reported in the return door's own words (`unmatched_checkout`) so one
-  # sentence covers both doors, and the event is ignored rather than retried:
-  # a session on another customer will never become ours.
+  # sentence covers both doors, and the event is ignored rather than retried.
   def refuse_other_customer!(inbox, subscription_row, session)
     held = subscription_row.stripe_customer_id
     named = session_customer_id(session)
 
-    return false if held.blank? || named.blank? || held == named
+    return false if named.blank? || held == named
+    return false if held.blank? && !customer_of_another_row?(subscription_row, named)
 
     ErrorReport.warning("checkout session #{session['id']} could not be matched to account " \
                         "#{subscription_row.account_id}",
                         account_id: subscription_row.account_id, stripe_event_id: inbox.stripe_event_id)
 
-    ignore!(inbox, CHECKOUT_OTHER_CUSTOMER)
+    ignore!(inbox, CUSTOMER_MISMATCH)
 
     true
+  end
+
+  def customer_of_another_row?(subscription_row, customer_id)
+    AccountSubscription.where(stripe_customer_id: customer_id).where.not(id: subscription_row.id).exists?
   end
 
   # A session names its customer as a bare id; an expanded one arrives as an

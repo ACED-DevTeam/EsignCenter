@@ -51,6 +51,7 @@ class StripeReconciliationJob < ApplicationJob
   def sweep(report)
     each_row(eligible_rows, report) do |subscription_row|
       repair(subscription_row, report)
+      settle_recorded_refund(subscription_row, report)
       cancel_extra_subscriptions(subscription_row, report) if subscription_row.stripe_customer_id.present?
     end
   end
@@ -155,6 +156,25 @@ class StripeReconciliationJob < ApplicationJob
 
     report.settled << { account_id: subscription_row.account_id,
                         subscription: subscription_row.stripe_subscription_id,
+                        refunded: refund.formatted_amount }
+  end
+
+  # The other half of the same debt, and the one the row has already moved
+  # PAST: the app cancelled a duplicate, decided a person had to send its
+  # money back, and adopted the live subscription the customer is paying for
+  # (Review 6 N2). Nothing else will ever look at that dead subscription —
+  # the row names another one now — so the note the Linker left on the row
+  # (`refund_owed_subscription_id`) is retried here every night, and clears
+  # itself the moment the debt is square. Independent of the customer's other
+  # subscriptions, so it runs for every row, not only for the ones that turn
+  # out to have a duplicate.
+  def settle_recorded_refund(subscription_row, report)
+    owed_id = subscription_row.refund_owed_subscription_id
+    refund = StripeBilling::Linker.settle_recorded_refund!(subscription_row, notify: false)
+
+    return if refund.nil?
+
+    report.settled << { account_id: subscription_row.account_id, subscription: owed_id,
                         refunded: refund.formatted_amount }
   end
 

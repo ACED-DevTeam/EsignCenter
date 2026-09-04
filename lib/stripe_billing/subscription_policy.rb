@@ -69,17 +69,33 @@ module StripeBilling
       end
     end
 
-    # Which of several live subscriptions the account keeps: one on our price
-    # beats one that is merely tagged; among those the HEALTHIER one beats a
-    # sicker one (see health_rank); and only between two equally healthy ones
-    # does the EARLIEST created win — it is the one that has been charging
-    # longest and the one the customer most likely knows about. Everything
-    # after the first is a duplicate. Deterministic, so two workers reach the
-    # same answer.
+    # Which of several live subscriptions the account keeps, in three steps:
+    #
+    #   1. HEALTH first (health_rank): the one that is actually collecting
+    #      beats one Stripe is still dunning, which beats one that has never
+    #      charged at all;
+    #   2. then OUR PRICE: between two equally healthy ones, the one carrying
+    #      an item on the price we sell beats one that is merely tagged with
+    #      the account id;
+    #   3. then the EARLIEST created — it has been charging longest and is
+    #      the one the customer most likely knows about.
+    #
+    # Everything after the first is a duplicate. Deterministic, so two
+    # workers reach the same answer.
+    #
+    # Health used to come SECOND, and that was the bug (Review 6 N3): an
+    # `incomplete` subscription on our price — an abandoned card confirmation
+    # that has never taken a cent and never will — beat a `trialing` one that
+    # our own Checkout had tagged but whose price we could not read. The
+    # collecting subscription was then cancelled as the "duplicate" and
+    # refunded, and the account was left holding the one that cannot pay:
+    # free plan, API off, money returned. Whether a subscription can collect
+    # is the fact that decides who the customer is; which price it sits on
+    # only decides which of two equally healthy ones is more likely ours.
     def survivor_order(subscriptions)
       subscriptions.sort_by do |subscription|
-        [on_our_price?(subscription) ? 0 : 1,
-         health_rank(subscription),
+        [health_rank(subscription),
+         on_our_price?(subscription) ? 0 : 1,
          SubscriptionSync.field(subscription, :created).to_i,
          SubscriptionSync.field(subscription, :id).to_s]
       end

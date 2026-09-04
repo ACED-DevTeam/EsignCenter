@@ -196,7 +196,14 @@ module StripeBilling
     end
 
     # Returns an Outcome whose verdict is :applied, :adopted,
-    # :duplicate_cancelled, :duplicate_ignored or :foreign_ignored.
+    # :duplicate_cancelled, :duplicate_ignored, :stale_ignored or
+    # :foreign_ignored. The last three all mean "nothing was done", and they
+    # are told apart on purpose (Review 6): :duplicate_ignored is a second
+    # subscription this pass was not allowed to act on (an invoice, the
+    # sweep), :stale_ignored is news about a subscription that was already
+    # over and is nobody's duplicate, and :foreign_ignored is somebody else's
+    # purchase. One label for all three sent the operator reading "foreign
+    # subscription" on an event about their own old, legitimately ended one.
     #
     # `cancel_duplicates` is false for invoices (an invoice never cancels
     # anything). `allow_adopt` is false for the nightly sweep, which has
@@ -334,19 +341,25 @@ module StripeBilling
 
         settle_between_live!(account_subscription, own, subscription_id, event_id:, event_at:, notify:)
       else
-        # The debt on our own dead subscription is settled BEFORE the row
-        # moves on, because once it moves nothing looks at that subscription
-        # again. A transient Stripe failure raises out of here and the row
-        # stays where it is, on purpose; a refund the app has decided a
-        # person must make does not block the adoption behind it — the
-        # customer is paying for the live one either way (settle_own_refund!).
+        # Our own subscription is over, and it may still owe the customer
+        # money (settle_own_refund!). The ADOPTION goes first (Review 6 N2):
+        # what the customer is being charged for right now is the live
+        # subscription, and no money question of ours may stand between them
+        # and the plan they are paying for. The settlement follows it inside
+        # the same lock, so a transient Stripe failure still rolls both back
+        # and the row stays where it is for the retry to find; a refund the
+        # app has decided a PERSON must make is recorded on the row
+        # (refund_owed_subscription_id) and the adoption stands.
+        outcome =
+          if allow_adopt
+            adopt_if_ours!(account_subscription, subscription_id, event_id:, event_at:)
+          else
+            Outcome.new(verdict: :duplicate_ignored)
+          end
+
         settle_own_refund!(account_subscription, own, event_id:, notify:)
 
-        if allow_adopt
-          adopt_if_ours!(account_subscription, subscription_id, event_id:, event_at:)
-        else
-          Outcome.new(verdict: :duplicate_ignored)
-        end
+        outcome
       end
     end
 
@@ -386,13 +399,26 @@ module StripeBilling
     #
     # Adoption re-points the row, so the sweep's backstop will never look at
     # this dead subscription again — the alert would be the only record, and
-    # alerts are read once. The debt is therefore stamped into the dead
-    # subscription's own metadata at Stripe, beside the marker it already
-    # carries, where a person auditing the account finds it.
+    # alerts are read once. The debt is therefore written down twice: stamped
+    # into the dead subscription's own metadata at Stripe, beside the marker
+    # it already carries, where a person auditing the account finds it; and
+    # onto the ROW itself (`refund_owed_subscription_id`), which is what the
+    # nightly sweep re-reads. The row's copy is the one that makes the debt
+    # converge on its own: the moment the reason it could not be paid
+    # automatically goes away — an operator refunds part of it by hand, a
+    # payment list becomes readable — the next sweep finishes it.
     def settle_own_refund!(account_subscription, own, event_id:, notify:)
-      return nil unless auto_refundable?(own)
+      unless auto_refundable?(own)
+        forget_owed_refund!(account_subscription, own)
+
+        return nil
+      end
 
       settlement = refund_duplicate_charge!(own)
+
+      # Nothing is owed on it any more, whether this pass sent the money or
+      # found it already back, so the row stops carrying it.
+      forget_owed_refund!(account_subscription, own)
 
       return nil if settlement.refund.nil?
 
@@ -408,8 +434,63 @@ module StripeBilling
       report_owed_refund(account_subscription, SubscriptionSync.field(own, :id),
                          refund_error: e, event_id:, notify: true)
       mark_manual_refund_owed!(account_subscription, own)
+      record_owed_refund!(account_subscription, own)
 
       nil
+    end
+
+    # The row's own note of a refund only a person can send. Kept until the
+    # debt is actually square, because it is the only thing that will bring
+    # the nightly sweep back to a subscription the row no longer names.
+    #
+    # A row can only carry one such note, and the FIRST one stays: it has
+    # been owed longest, and overwriting it would be the one way this could
+    # lose a debt. A second, different debt is still stamped at Stripe and
+    # still paged the operator, and the warning here says so rather than
+    # letting it disappear quietly.
+    def record_owed_refund!(account_subscription, own)
+      owed_id = SubscriptionSync.field(own, :id)
+      already = account_subscription.refund_owed_subscription_id
+
+      if already.present? && already != owed_id
+        return ErrorReport.warning("account #{account_subscription.account_id} already owes a refund on #{already}; " \
+                                   "#{owed_id} owes one too and is only recorded at Stripe",
+                                   account_id: account_subscription.account_id)
+      end
+
+      account_subscription.update!(refund_owed_subscription_id: owed_id)
+    end
+
+    def forget_owed_refund!(account_subscription, own)
+      return unless account_subscription.refund_owed_subscription_id == SubscriptionSync.field(own, :id)
+
+      account_subscription.update!(refund_owed_subscription_id: nil)
+    end
+
+    # The nightly sweep's backstop for a debt the row has already moved PAST:
+    # the app cancelled a duplicate, could not return its money on its own,
+    # and adopted the live subscription the customer is paying for. Nothing
+    # else will ever look at the dead one — no webhook arrives about a dead
+    # subscription and the row names another — so the sweep comes back here
+    # every night, re-fetches it under the row lock and tries the settlement
+    # again. Once it succeeds (or the marker says nothing is owed) the note
+    # on the row is cleared and the sweep stops asking. Review 6 N2.
+    def settle_recorded_refund!(account_subscription, event_id: nil, notify: false)
+      owed_id = account_subscription.refund_owed_subscription_id
+
+      return nil if owed_id.blank?
+      # The subscription the row still names is settle_owed_refund!'s job;
+      # doing it twice in one sweep would only ask Stripe the same question.
+      return nil if owed_id == account_subscription.stripe_subscription_id
+
+      with_account_lock(account_subscription) do
+        owed = StripeBilling.subscription_for(owed_id)
+
+        # Alive again (somebody resumed it) is not a debt this may act on.
+        next nil if SubscriptionPolicy.live?(owed)
+
+        settle_own_refund!(account_subscription, owed, event_id:, notify:)
+      end
     end
 
     # The durable half of that alert: "we cancelled this as a duplicate, we
@@ -468,9 +549,9 @@ module StripeBilling
     end
 
     # The row's own subscription is live; the newcomer is fetched and, if it
-    # is live too and wins on the survivor policy (our price, earliest
-    # created), the row moves to it and the FORMER subscription is the
-    # duplicate. Otherwise the newcomer is.
+    # is live too and wins on the survivor policy (health, then our price,
+    # then the earliest created), the row moves to it and the FORMER
+    # subscription is the duplicate. Otherwise the newcomer is.
     def settle_between_live!(account_subscription, own, subscription_id, event_id:, event_at:, notify:)
       incoming = StripeBilling.subscription_for(subscription_id, expand: DUPLICATE_EXPAND)
 
@@ -767,7 +848,12 @@ module StripeBilling
       ErrorReport.info("stale subscription #{duplicate_id} ignored (already over, not ours to refund)",
                        account_id: account_subscription.account_id, stripe_event_id: event_id)
 
-      Outcome.new(verdict: :duplicate_ignored)
+      # Its own verdict, not :duplicate_ignored (Review 6): this is news about
+      # a subscription that was already over, and the inbox row an operator
+      # reads afterwards has to say that rather than "foreign subscription",
+      # which claims the customer's own old subscription belonged to somebody
+      # else.
+      Outcome.new(verdict: :stale_ignored)
     end
 
     # Money back for what the DUPLICATION cost. This runs only for a
@@ -996,6 +1082,18 @@ module StripeBilling
     # refundable: past that window the key is dead, and asking again for the
     # whole charge would either error (it is spent) or return money a second
     # time.
+    #
+    # The two guards are deliberately different in kind, and the trade-off is
+    # accepted rather than fixed (Review 6 L3). Stripe's idempotency key only
+    # protects the first 24 hours; after that the ONLY thing standing between
+    # a retry and a second payout is `payment_state`, which re-reads each
+    # charge's own `amount_refunded` at the top of every pass and hands
+    # `refundable` a cap of what is genuinely left. So this is safe as long
+    # as that read is fresh — which is why it is made per pass, inside the
+    # row lock, and never cached across one. Anything stronger (our own
+    # refund ledger in the database) would be a second bookkeeping system
+    # that could itself drift from Stripe; the charge is the authority, and
+    # asking it every time is the cheaper honesty.
     def refund_payment!(payment)
       return nil unless payment.refundable.positive?
 

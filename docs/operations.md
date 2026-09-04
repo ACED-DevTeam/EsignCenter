@@ -490,9 +490,51 @@ is happening. Restart the service; if it recurs, check `/jobs` (section 7)
 for a stuck queue and Sentry for job errors.
 
 The **scheduler** is `sidekiq-cron`: a list of jobs and their timings in
-`config/schedule.yml`, loaded into Redis when Sidekiq starts. Today it holds
-only the heartbeat; Session 7+ add suspension, dunning and purge jobs to the
-same file.
+`config/schedule.yml`, loaded into Redis when Sidekiq starts. That file is the
+only place a recurring job is ever declared (the schedule is loaded with
+`source: schedule`, so a job deleted from it is purged from Redis on the next
+deploy).
+
+### 4.1 The recurring jobs, and what to do when one has not run
+
+| Job (schedule.yml) | When | What it does | If it stops |
+| --- | --- | --- | --- |
+| `scheduler_heartbeat` | every minute | Writes the timestamp `/up` reports. | Nothing time-based is running at all — see the heartbeat notes above. |
+| `stripe_reconciliation` | `0 6 * * *` (06:00 UTC) | Re-reads every Stripe subscription, repairs drift, cancels duplicate subscriptions, settles refunds an earlier attempt owed, re-enqueues stuck webhook events. Emails the operator **once** if it had anything to fix. | The app's idea of who is paying drifts from Stripe's until it runs again. Safe to run by hand: `StripeReconciliationJob.new.perform` in the console. It is idempotent. |
+| `billing_lifecycle` | `15 * * * *` (hourly) | The dunning clock: past-due reminder emails on days 0, 3, 7 and 13, the suspension on day 14, and the seats of invitations nobody accepted (plus any seat hand-back Stripe refused earlier). | Nobody is suspended and nobody is warned; accounts keep paid features they are not paying for, and lapsed invitations keep holding seats the customer is billed for. Hourly, not daily, because day 14 is a deadline that decides whether an account can write. |
+| `account_retention` | `30 4 * * *` (04:30 UTC) | The 90-day deletion clock and the dormant-account clock: warning emails (60/30/7 days before a dormancy deletion, one week before a scheduled one) and the purges whose date has passed. See **docs/account-deletion.md**. | Nothing is destroyed early — every deadline simply slips until it runs. Deletions and dormancy warnings are late, never wrong. |
+
+All four are safe to re-run: each decides from the clock and its own dedupe
+counters, so a catch-up run after an outage sends what was missed once, not
+once per missed tick.
+
+**No new environment variables.** Everything above is driven by rows and by
+`config/schedule.yml`; the Stripe manifest in section 3 is unchanged.
+
+### 4.2 Operator commands for account deletion
+
+Both take an account id, both print what they did, and the first cannot be
+undone. The full inventory of what a purge destroys and what survives it is in
+**docs/account-deletion.md**.
+
+```
+# Destroy one account now, skipping the rest of its 90-day window.
+# Prints the orphan counts afterwards — all four must be zero.
+bundle exec rake accounts:purge[123]
+
+# Call off a scheduled deletion on the customer's behalf.
+bundle exec rake accounts:cancel_deletion[123]
+```
+
+`purge` refuses (and alerts) for an account that is not a customer account, or
+one that still holds a live paid subscription — an account still being charged
+means the cancellation never landed, and that is money leaving somebody's card.
+Cancel it at Stripe first. Running it twice is a no-op.
+
+`cancel_deletion` does **not** bring the subscription back: the cancellation
+went to Stripe when the deletion was requested and is not reversible from here.
+The account lands on the free plan and can subscribe again from its billing
+page.
 
 ---
 
@@ -755,8 +797,9 @@ Render env vars.
   holds an old storage-settings row but no `S3_ATTACHMENTS_BUCKET` (or GCS /
   Azure) variable is set, boot reports a warning to Sentry and the log. It
   never refuses to start.
-- **A scheduler exists** (`sidekiq-cron`, `config/schedule.yml`) with one
-  heartbeat job; future recurring jobs are added to that file.
+- **A scheduler exists** (`sidekiq-cron`, `config/schedule.yml`). It carried
+  one heartbeat job in Session 2; the billing, dunning and retention jobs were
+  added to the same file in Sessions 6 and 7 (section 4.1).
 - **API tokens are checked against account state at request time.** An
   archived account's still-valid API token or MCP key gets
   `401 {"error": "Account is not active"}`; an embedded template-builder

@@ -20,6 +20,27 @@ module StripeBilling
 
     WEBHOOK_PATH = '/stripe/webhooks'
 
+    # How a customer's own cancellation must behave, and the only customer
+    # details they may edit. Both are written by
+    # `rake stripe:portal_configuration` (portal_params below) and both are
+    # asserted back out of the live configuration, because a dashboard is a
+    # place where somebody changes one of them by hand:
+    #
+    #   * `at_period_end` — a customer who cancels keeps the month they have
+    #     already paid for. `immediately` would end it on the spot, and the
+    #     app's own state table (`canceling` keeps the paid features on)
+    #     would be describing something that no longer happens;
+    #   * `none` — no mid-cycle credit. The product's rule is that a
+    #     reduction is never refunded (D43), so a portal that prorated a
+    #     cancellation would hand back money the app never accounts for;
+    #   * the allowed updates — email, address and name are the invoice
+    #     details that are the customer's to correct. `address` in particular
+    #     has to stay: Checkout collects it (`customer_update: address auto`)
+    #     and a customer who moves has no other way to fix an invoice.
+    CANCEL_MODE = 'at_period_end'
+    CANCEL_PRORATION = 'none'
+    ALLOWED_CUSTOMER_UPDATES = %w[email address name].freeze
+
     WEBHOOK_EVENTS = %w[
       checkout.session.completed
       customer.subscription.created
@@ -88,8 +109,10 @@ module StripeBilling
         check('portal subscription_update off',
               features.subscription_update&.enabled != true || !adjustable_seats?(features),
               "enabled=#{features.subscription_update&.enabled}"),
-        check('portal subscription_cancel on', features.subscription_cancel&.enabled == true,
-              "enabled=#{features.subscription_cancel&.enabled}"),
+        *cancel_rows(features),
+        check('portal customer_update matches the manifest', allowed_updates_match?(features),
+              "allowed_updates=#{allowed_updates(features).join(', ').presence || '(none)'} " \
+              "(expected #{ALLOWED_CUSTOMER_UPDATES.join(', ')})"),
         check('portal payment_method_update on', features.payment_method_update&.enabled == true,
               "enabled=#{features.payment_method_update&.enabled}"),
         check('portal invoice_history on', features.invoice_history&.enabled == true,
@@ -97,6 +120,45 @@ module StripeBilling
       ]
     rescue Stripe::StripeError => e
       [row('portal', FAIL, "Stripe said: #{e.message}")]
+    end
+
+    # The cancel WALK, not just the button: that a cancellation is offered at
+    # all, how it lands, and what it does to the money (X7a). Read through
+    # `field`, which answers nil for a setting the live configuration simply
+    # does not carry — asking a Stripe object for a property it has never
+    # heard of raises.
+    def cancel_rows(features)
+      [
+        check('portal subscription_cancel on', cancel_setting(features, :enabled) == true,
+              "enabled=#{cancel_setting(features, :enabled)}"),
+        check('portal cancel at period end', cancel_setting(features, :mode) == CANCEL_MODE,
+              "mode=#{cancel_setting(features, :mode) || '(none)'} (expected #{CANCEL_MODE})"),
+        check('portal cancel proration off', cancel_setting(features, :proration_behavior) == CANCEL_PRORATION,
+              "proration_behavior=#{cancel_setting(features, :proration_behavior) || '(none)'} " \
+              "(expected #{CANCEL_PRORATION})")
+      ]
+    end
+
+    # Exactly the manifest's list, no more and no less — order does not
+    # matter, membership does. Less than the manifest means a customer cannot
+    # fix an invoice detail the app expects them to fix (a missing `address`
+    # is the one that bites, because Checkout collects one); more than it
+    # means the portal is doing something nobody wrote down.
+    def allowed_updates_match?(features)
+      customer_update = SubscriptionSync.field(features, :customer_update)
+
+      SubscriptionSync.field(customer_update, :enabled) == true &&
+        allowed_updates(features).sort == ALLOWED_CUSTOMER_UPDATES.sort
+    end
+
+    def allowed_updates(features)
+      customer_update = SubscriptionSync.field(features, :customer_update)
+
+      Array(SubscriptionSync.field(customer_update, :allowed_updates)).map(&:to_s)
+    end
+
+    def cancel_setting(features, name)
+      SubscriptionSync.field(SubscriptionSync.field(features, :subscription_cancel), name)
     end
 
     # Seats belong to the app (Session 7 owns the flow); a portal that lets a
@@ -137,12 +199,12 @@ module StripeBilling
           payment_method_update: { enabled: true },
           subscription_cancel: {
             enabled: true,
-            mode: 'at_period_end',
-            proration_behavior: 'none',
+            mode: CANCEL_MODE,
+            proration_behavior: CANCEL_PRORATION,
             cancellation_reason: { enabled: true, options: CANCELLATION_REASONS }
           },
           subscription_update: { enabled: false },
-          customer_update: { enabled: true, allowed_updates: %w[email address name] }
+          customer_update: { enabled: true, allowed_updates: ALLOWED_CUSTOMER_UPDATES }
         },
         default_return_url: billing_page_url,
         metadata: { esigncenter_manifest_version: MANIFEST_VERSION }

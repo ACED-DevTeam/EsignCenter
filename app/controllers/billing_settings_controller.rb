@@ -84,6 +84,15 @@ class BillingSettingsController < ApplicationController
       # never heard back from left a subscription at Stripe all the same.
       next nil if StripeBilling::Linker.link_live_subscriptions!(@subscription, customer_id)
 
+      # The trial question is asked AGAIN here, on the row the lock re-read,
+      # and never on the answer the before_action computed when the request
+      # came in (Review 6 X5). Between those two moments a webhook can stamp
+      # `trial_used_at` — the customer's first Checkout completing in another
+      # tab — and the stale answer sold them a SECOND 14-day trial: the
+      # server's own "one trial per account, ever" rule, broken by the only
+      # door that can sell one.
+      @trial_available = trial_available?
+
       create_checkout_session(customer_id)
     end
 
@@ -170,7 +179,8 @@ class BillingSettingsController < ApplicationController
     @state = @subscription&.access_state || 'free'
     # One trial per account, ever: the moment Stripe hands us a subscription
     # that has (or had) a trial, `trial_used_at` is stamped and never cleared.
-    @trial_available = @subscription.nil? || @subscription.trial_used_at.nil?
+    # What the PAGE renders; the Checkout door asks again under the row lock.
+    @trial_available = trial_available?
     # A rake-granted row has no Stripe subscription behind it: the operator
     # owns it, and the buttons would only lie.
     @manual = @subscription&.status == 'manual'
@@ -184,6 +194,10 @@ class BillingSettingsController < ApplicationController
     # quotes the invoice, and says the difference out loud.
     @billed_seats = @subscription&.quantity
     @monthly_total = PRICE_PER_SEAT_USD * (@billed_seats || @seats_billed)
+  end
+
+  def trial_available?
+    @subscription.nil? || @subscription.trial_used_at.nil?
   end
 
   # What the page renders, which is the access state plus the three cases the
