@@ -70,10 +70,17 @@ module AccountInvites
     user
   end
 
-  # Whoever holds the invited ADDRESS right now, archived or not. Email is
-  # unique across the whole app, so there is at most one.
+  # Whoever holds an ADDRESS right now, archived or not. Email is unique
+  # across the whole app, so there is at most one. Every question of the shape
+  # "who has this address?" — the collision hint, the accept-time verdict, the
+  # closed-login refusal — asks it here, so they can never disagree.
+  def holder_of(email)
+    User.find_by(email: normalize_email(email))
+  end
+
+  # The same question about the address an invitation names.
   def holder_for(invite)
-    User.find_by(email: normalize_email(invite.email))
+    holder_of(invite.email)
   end
 
   # What this invitation means AT THIS MOMENT, asked from the address rather
@@ -165,7 +172,7 @@ module AccountInvites
   # archived colleague of THIS account is a different story and never reaches
   # here: UsersController brings them back instead (its reactivate branch).
   def closed_login_elsewhere?(account, email)
-    holder = User.find_by(email: normalize_email(email))
+    holder = holder_of(email)
 
     holder.present? && holder.archived_at.present? && holder.account_id != account.id
   end

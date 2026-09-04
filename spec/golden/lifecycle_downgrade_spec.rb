@@ -1108,35 +1108,35 @@ RSpec.describe 'Deleting an account', type: :request do
 
       before { template }
 
-      it 'refuses when the link points at an account that is not a customer' do
-        child.update!(account_kind: Account::INTERNAL_KIND)
+      # One row per way the child fails, and the same proof every time: the
+      # WHOLE family is refused, and nothing anywhere was half-destroyed.
+      {
+        'the link points at an account that is not a customer' => {
+          break_it: ->(child) { child.update!(account_kind: Account::INTERNAL_KIND) },
+          says: ->(child) { /testing child #{child.id} is a internal account/ }
+        },
+        'the child is linked to more than this one parent' => {
+          break_it: lambda { |child|
+            AccountLinkedAccount.create!(account: create(:account), linked_account: child, account_type: :testing)
+          },
+          says: ->(_child) { /not linked to it as a testing account alone/ }
+        },
+        'the child still holds a live paid subscription of its own' => {
+          break_it: ->(child) { create(:account_subscription, account: child, access_state: 'active') },
+          says: ->(child) { /testing child #{child.id} still holds a live paid subscription/ }
+        }
+      }.each do |why, row|
+        it "refuses when #{why}" do
+          instance_exec(child, &row[:break_it])
 
-        expect { Accounts::Purge.call(account) }
-          .to raise_error(Accounts::Purge::Refused, /testing child #{child.id} is a internal account/)
+          expect { Accounts::Purge.call(account) }
+            .to raise_error(Accounts::Purge::Refused, row[:says].call(child))
 
-        expect(account.reload.purged_at).to be_nil
-        expect(child.reload.purged_at).to be_nil
-        expect(Template.where(account_id: account.id).count).to eq(1)
-      end
-
-      it 'refuses when the child is linked to more than this one parent' do
-        AccountLinkedAccount.create!(account: create(:account), linked_account: child, account_type: :testing)
-
-        expect { Accounts::Purge.call(account) }
-          .to raise_error(Accounts::Purge::Refused, /not linked to it as a testing account alone/)
-
-        expect(account.reload.purged_at).to be_nil
-        expect(User.where(account_id: child.id).count).to eq(1)
-      end
-
-      it 'refuses when the child still holds a live paid subscription of its own' do
-        create(:account_subscription, account: child, access_state: 'active')
-
-        expect { Accounts::Purge.call(account) }
-          .to raise_error(Accounts::Purge::Refused, /testing child #{child.id} still holds a live paid subscription/)
-
-        expect(account.reload.purged_at).to be_nil
-        expect(Template.where(account_id: account.id).count).to eq(1)
+          expect(account.reload.purged_at).to be_nil
+          expect(child.reload.purged_at).to be_nil
+          expect(Template.where(account_id: account.id).count).to eq(1)
+          expect(User.where(account_id: child.id).count).to eq(1)
+        end
       end
     end
 
