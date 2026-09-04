@@ -20,23 +20,25 @@
       </div>
     <% end %>
 
-    <% if @invite.collision? %>
-      <%# The move, in plain words, before the button that does it (D50). %>
+    <% if @move_offer %>
+      <%# The move, in plain words, before the button that does it (D50).
+          @holder is whoever owns the INVITED address right now, asked on this
+          request — not the collision_user_id the row was written with. %>
       <div class="rounded-2xl border border-base-300 bg-base-200/50 p-5 space-y-3">
         <p dir="auto" class="font-medium"><%= t('invite_move_heading', team: @account.name) %></p>
         <ul class="list-disc ps-5 space-y-1 text-sm text-base-content/80">
-          <li dir="auto"><%= t('invite_move_point_documents', old_team: @collision_user.account.name, team: @account.name) %></li>
-          <li dir="auto"><%= t('invite_move_point_closed', old_team: @collision_user.account.name) %></li>
+          <li dir="auto"><%= t('invite_move_point_documents', old_team: @holder.account.name, team: @account.name) %></li>
+          <li dir="auto"><%= t('invite_move_point_closed', old_team: @holder.account.name) %></li>
           <li dir="auto"><%= t('invite_move_point_verify') %></li>
         </ul>
       </div>
-      <% if current_user && current_user.id == @collision_user.id %>
+      <% if @signed_in_as_invitee %>
         <%= form_with url: invite_path(token: params[:token]), method: :post, local: true, class: 'space-y-2' do |f| %>
           <%= f.button button_title(title: t('invite_move_button', team: @account.name)), class: 'base-button w-full' %>
         <% end %>
       <% else %>
         <div class="space-y-3 text-center">
-          <p dir="auto" class="text-sm text-base-content/70"><%= t('invite_sign_in_required', email: @collision_user.email) %></p>
+          <p dir="auto" class="text-sm text-base-content/70"><%= t('invite_sign_in_required', email: @invite.email) %></p>
           <%= link_to t('sign_in'), new_user_session_path, class: 'base-button w-full' %>
         </div>
       <% end %>

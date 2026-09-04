@@ -52,9 +52,13 @@ class AccountInvite < ApplicationRecord
 
   belongs_to :account
   belongs_to :invited_by, class_name: 'User', optional: true
-  # Set when the invited address already belongs to a user in ANOTHER account:
-  # the invitation then offers to move that person and their documents here
-  # (D50), rather than failing with "email already taken".
+  # Who held the invited address when this invitation was WRITTEN, if anybody.
+  # It exists so the invitation email can name the account somebody is being
+  # asked to leave (D50). It is a hint and nothing else: it authorizes no
+  # acceptance and chooses no branch, because a week later the address can be
+  # held by somebody else, by nobody, or by a login that has since closed
+  # (review B1/B2). Everything that decides asks AccountInvites.verdict_for,
+  # which reads the address afresh.
   belongs_to :collision_user, class_name: 'User', optional: true
 
   # The raw token, readable only on the record that just generated it.
@@ -102,7 +106,10 @@ class AccountInvite < ApplicationRecord
     accepted_at.nil? && revoked_at.nil? && expires_at.present? && expires_at <= Time.current
   end
 
-  def collision?
+  # A hint about how this invitation was WRITTEN, for the mail copy — named so
+  # that nobody can mistake it for "this invitation is a move" (review B1/B2).
+  # The live answer is AccountInvites.verdict_for.
+  def collision_hinted?
     collision_user_id.present?
   end
 

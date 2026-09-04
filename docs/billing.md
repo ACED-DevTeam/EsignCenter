@@ -803,7 +803,26 @@ verifiable on `/verify` exactly as they are).
 That move is refused, with an explanation rather than an error, when the
 account being left has other people in it, still has a paid subscription
 ("cancel your subscription first"), or is an internal/operator/testing
-account. Accepting requires being signed in as that person.
+account. Accepting requires being signed in **as the invited address**.
+
+Who an invitation is for is worked out afresh from the invited address every
+time the link is opened, not once when it was sent — because a week is long
+enough for the world to move:
+
+- Somebody invited before they had an account, who then signs themselves up
+  and only afterwards clicks the link, gets the "join this team" offer rather
+  than "that email is already taken". Their seat is the one that was already
+  held (and, on a paid account, already bought) for them.
+- Somebody who changes their own email address after being invited can no
+  longer accept: the page asks them to sign in as the address that was
+  invited, and the button refuses. An invitation moves the address the admin
+  typed and nothing else.
+- If the invited address is already in the team by the time the link is
+  opened, the page says so and the seat the invitation was holding goes back.
+- An address belonging to a **closed login** (somebody archived in another
+  account) cannot be invited at all: nobody can sign in as it, so the
+  invitation could never be accepted. The admin is told to invite a different
+  address, before any seat is priced or charged.
 
 ### Dropping back to the free plan with more people than seats
 

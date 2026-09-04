@@ -24,10 +24,24 @@ module AccountInvites
   # can never be saved must not cost anybody $10.
   class InvalidEmail < StandardError; end
 
+  # The invited address belongs to a login that has been closed (an archived
+  # user in another account). Nobody can ever sign in as it, so an invitation
+  # to it is a seat held for a link that can never be used — and on a paid
+  # account it would be a seat BOUGHT for one. Refused before any money moves.
+  # A kind of AlreadyInvited so every door that already answers that refusal
+  # with a sentence answers this one the same way.
+  class AddressUnavailable < AlreadyInvited; end
+
   # The invitation cannot be acted on any more: somebody cancelled it, it
   # lapsed, the team it points at is frozen, or the seat it was holding is no
   # longer there. Carries the sentence the acceptance page shows.
   class NoLongerOpen < StandardError; end
+
+  # The person pressing the button is not the person the invitation names.
+  # Asked again inside the row lock, because who holds the invited address
+  # can change between the page and the click. Carries the sentence the page
+  # shows — never a validation error, never a 500.
+  class WrongInvitee < StandardError; end
 
   module_function
 
@@ -38,12 +52,55 @@ module AccountInvites
   # The user this address already belongs to somewhere else, or nil. Email is
   # unique across the whole app, so there is at most one — and if they are in
   # THIS account it is not a collision, it is an ordinary duplicate.
+  #
+  # `.active` because an archived login can never sign in: an invitation whose
+  # only accept path is "sign in as that person" would be dead on arrival
+  # (review B3). Those are refused outright in `assert_invitable!` below.
+  #
+  # What comes back is a HINT, stored on the row so the invitation email can
+  # name the account somebody is being asked to leave. It authorizes nothing:
+  # every decision at accept time is re-asked from the invited ADDRESS, in
+  # `verdict_for`, because the world moves between the invitation and the
+  # click (review B1/B2).
   def collision_user_for(email, account)
-    user = User.find_by(email: normalize_email(email))
+    user = User.active.find_by(email: normalize_email(email))
 
     return nil if user.nil? || user.account_id == account.id
 
     user
+  end
+
+  # Whoever holds the invited ADDRESS right now, archived or not. Email is
+  # unique across the whole app, so there is at most one.
+  def holder_for(invite)
+    User.find_by(email: normalize_email(invite.email))
+  end
+
+  # What this invitation means AT THIS MOMENT, asked from the address rather
+  # than from anything stored when it was written. Four answers:
+  #
+  #   :fresh        — nobody holds the address: the sign-up form, as always.
+  #   :move         — somebody else's active login holds it: the "join this
+  #                   team" offer (D50).
+  #   :member       — they are already in the inviting account: nothing to
+  #                   accept, and the seat the invitation still holds goes back.
+  #   :closed_login — an archived login holds it: nobody can sign in as it and
+  #                   creating a second user with it would hit the unique
+  #                   email index, so the link says so in a sentence.
+  #
+  # This is the whole of review B1: collision used to be decided once, when
+  # the invitation was written, and never asked again — so "admin invites,
+  # colleague signs themselves up, colleague clicks the link" fell down the
+  # fresh path and died on the unique email index with "Email has already
+  # been taken", holding (on a paid account, having bought) a seat for a week.
+  def verdict_for(invite)
+    holder = holder_for(invite)
+
+    return :fresh if holder.nil?
+    return :closed_login if holder.archived_at.present?
+    return :member if holder.account_id == invite.account_id
+
+    :move
   end
 
   def pending_for(account, email)
@@ -98,6 +155,19 @@ module AccountInvites
     raise AlreadyInvited, I18n.t('already_exists') if User.where(account_id: account.id).active.exists?(email:)
 
     raise AlreadyInvited, I18n.t('invite_already_pending') if pending_for(account, email)
+
+    raise AddressUnavailable, I18n.t('invite_address_closed_admin') if closed_login_elsewhere?(account, email)
+  end
+
+  # An archived login in ANOTHER account. Their address is spoken for — the
+  # unique email index will not let a second user have it — and they cannot
+  # sign in to accept a move, so no invitation to it can ever be used. An
+  # archived colleague of THIS account is a different story and never reaches
+  # here: UsersController brings them back instead (its reactivate branch).
+  def closed_login_elsewhere?(account, email)
+    holder = User.find_by(email: normalize_email(email))
+
+    holder.present? && holder.archived_at.present? && holder.account_id != account.id
   end
 
   # The model's own sentence for a bad address, so the modal says exactly what
@@ -215,6 +285,8 @@ module AccountInvites
   # invite's seat becomes their seat, so occupancy does not move.
   def accept!(invite, first_name:, last_name:, password:)
     with_open_invite(invite) do
+      assert_address_free!(invite)
+
       user = invite.account.users.new(email: invite.email, first_name:, last_name:,
                                       role: invite.role, password:)
       user.skip_confirmation!
@@ -230,11 +302,38 @@ module AccountInvites
   # and accepts by MOVING into the team, bringing everything with them.
   def accept_move!(invite, user:)
     with_open_invite(invite) do
+      assert_invitee!(invite, user)
+
       Accounts::MoveUser.call(user:, to: invite.account, role: invite.role)
 
       invite.update!(accepted_at: Time.current)
 
       user
     end
+  end
+
+  # Nobody may take a seat on an invitation addressed to somebody else. The
+  # comparison is on the ADDRESS, not on a stored user id: the id was written
+  # when the invitation was, and the person behind it can change their own
+  # email afterwards — which used to move a different address, and everything
+  # in its account, into the team (review B2).
+  def assert_invitee!(invite, user)
+    return true if normalize_email(user.email) == normalize_email(invite.email)
+
+    raise WrongInvitee, I18n.t('invite_sign_in_as_other_user', email: invite.email)
+  end
+
+  # The fresh path creates a login, so the address has to still be free when
+  # the row is written — inside the same lock, because somebody can sign
+  # themselves up in the seconds between the page and the button. Answering
+  # with a sentence is the whole point: the unique email index answers with
+  # "Email has already been taken", which leaves the invitee nowhere to go.
+  def assert_address_free!(invite)
+    holder = holder_for(invite)
+
+    return true if holder.nil?
+    raise WrongInvitee, I18n.t('invite_address_closed_login') if holder.archived_at.present?
+
+    raise WrongInvitee, I18n.t('invite_address_now_registered', email: invite.email)
   end
 end

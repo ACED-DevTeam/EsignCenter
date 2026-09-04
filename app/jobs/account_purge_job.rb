@@ -33,7 +33,12 @@
 #     the purge is half-done and the retry has to resume it;
 #   * when those retries are exhausted the claim is released too and a person
 #     is paged, because "half-purged and frozen for ever, silently" is not an
-#     outcome anybody chose.
+#     outcome anybody chose;
+#   * and ANY OTHER failure ends the same way (review 7, P2). A database error
+#     — a foreign key, a deadlock, a bug — is not a refusal and not a storage
+#     problem, so neither release path ran: after the retries the account sat
+#     claimed and archived for ever, every user locked out, `cancel!` refusing,
+#     and nobody paged, because the "gave up" alert only fired for storage.
 #
 # `rake accounts:release_purge_claim[id]` is the manual door for the same
 # thing (docs/account-deletion.md).
@@ -44,6 +49,35 @@ class AccountPurgeJob < ApplicationJob
   # as ApplicationJob's general policy; declared here because the ENDING is
   # different — the block below runs when the last attempt goes.
   MAX_STORAGE_ATTEMPTS = 5
+
+  # And the same budget for everything else.
+  MAX_ATTEMPTS = 5
+
+  # DECLARED FIRST ON PURPOSE. ActiveJob keeps its rescue handlers in
+  # declaration order and picks the LAST one that matches, so the narrow
+  # StorageFailure handler below has to be registered after this catch-all or
+  # it would never run.
+  #
+  # This is the ending for a failure nobody anticipated (review 7, P2): the
+  # purge is part-done, the retries are spent, and the one thing that must not
+  # happen is the account staying claimed. So the claim goes and a person is
+  # told what threw.
+  retry_on(StandardError, wait: :polynomially_longer, attempts: MAX_ATTEMPTS) do |job, error|
+    account_id = job.arguments.first
+
+    Accounts::Purge.release_claim!(Account.find_by(id: account_id))
+
+    ErrorReport.error(error, account_id:)
+
+    OperatorAlert.deliver(
+      subject: 'Account purge failed',
+      body: "Account #{account_id} could not be purged after #{job.executions} attempts " \
+            "(#{error.class}: #{error.message}). The purge claim has been released so the account is " \
+            'usable again, but it may be PART-EMPTIED: some documents and files may already be gone. ' \
+            'Investigate the error before deciding whether to finish it ' \
+            "(rake accounts:purge[#{account_id}])."
+    )
+  end
 
   # A storage failure keeps the claim while there are attempts left, because
   # the purge is half-done and the retry has to resume it. When the last one

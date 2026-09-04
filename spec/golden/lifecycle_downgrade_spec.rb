@@ -1164,6 +1164,93 @@ RSpec.describe 'Deleting an account', type: :request do
         .with(hash_including(subject: 'Account purge kept shared files'))
     end
 
+    # Cloning a template into YOUR OWN account reuses the blob in exactly the
+    # same way — and that file is shared with nobody, so the purge has to take
+    # it. One attachment at a time it could not: the first row's blob delete
+    # tripped the foreign key of the second, the row transaction rolled back,
+    # and the FILE had already gone. Every retry hit the same violation, so the
+    # account stayed claimed and archived for ever (review 7, P2).
+    it 'purges a template and the clone of it that shares the same file', sidekiq: :inline do
+      act_as(admin)
+
+      post "/templates/#{template.id}/clone", params: { template: { name: 'A copy' } }
+
+      clone = Template.where(account_id: account.id).where.not(id: template.id).sole
+      shared_blob = template.documents_attachments.first.blob
+
+      expect(clone.documents_attachments.first.blob_id).to eq(shared_blob.id)
+      expect(ActiveStorage::Attachment.where(blob_id: shared_blob.id).count).to eq(2)
+
+      expect(Accounts::Purge.call(account)).to eq(:purged)
+
+      # Rows, blob row and the object — and no exception on the way.
+      expect(ActiveStorage::Attachment.where(blob_id: shared_blob.id).count).to eq(0)
+      expect(ActiveStorage::Blob.where(id: shared_blob.id).count).to eq(0)
+      expect(shared_blob.service.exist?(shared_blob.key)).to be(false)
+      expect(Template.where(account_id: account.id).count).to eq(0)
+    end
+
+    # Every page image of every document uploaded to this app is an attachment
+    # hanging off ANOTHER attachment: config/initializers/active_storage.rb
+    # declares `has_many_attached :preview_images` on
+    # ActiveStorage::Attachment, so a preview's `record_type` is
+    # 'ActiveStorage::Attachment' — a type the walk never named. Rows, blob
+    # rows and the PNGs themselves survived every purge, and the completeness
+    # check could not notice because it asked the walk's own question (review
+    # 7, P1).
+    it 'destroys the page images that hang off the documents, files included', sidekiq: :inline do
+      submission = send_one
+      complete!(submission.submitters.first)
+
+      parents = [template.documents_attachments.first,
+                 submission.submitters.first.reload.documents_attachments.first,
+                 submission.reload.audit_trail_attachment]
+
+      expect(parents).to all(be_present)
+
+      previews = parents.map do |parent|
+        parent.preview_images.attach(io: StringIO.new('PNG-BYTES-OF-A-CUSTOMER-DOCUMENT-PAGE'),
+                                     filename: '0.png', content_type: 'image/png')
+
+        parent.reload.preview_images_attachments.first
+      end
+
+      blobs = previews.map(&:blob)
+
+      expect(previews.map(&:record_type)).to all(eq('ActiveStorage::Attachment'))
+      expect(blobs.map { |blob| blob.service.exist?(blob.key) }).to all(be(true))
+
+      expect(Accounts::Purge.call(account)).to eq(:purged)
+
+      expect(ActiveStorage::Attachment.where(id: previews.map(&:id)).count).to eq(0)
+      expect(ActiveStorage::Blob.where(id: blobs.map(&:id)).count).to eq(0)
+      expect(blobs.map { |blob| blob.service.exist?(blob.key) }).to all(be(false))
+    end
+
+    # And the completeness check no longer shares the walk's blind spots. With
+    # the resolver deliberately blinded to one record type — which is exactly
+    # what the preview bug was — the count is taken from the RECORD ids
+    # captured before the walk, so the purge refuses rather than stamping a
+    # tombstone over what it left behind (review 7, P1).
+    it 'refuses to entomb an account whose walk missed a whole record type', sidekiq: :inline do
+      submission = send_one
+      complete!(submission.submitters.first)
+
+      expect(ActiveStorage::Attachment.where(record_type: 'Submitter').count).to be_positive
+
+      allow(Accounts::Purge).to receive(:attachments_for).and_wrap_original do |original, *args|
+        original.call(*args).where.not(record_type: 'Submitter')
+      end
+      allow(OperatorAlert).to receive(:deliver).and_call_original
+
+      expect { Accounts::Purge.call(account) }
+        .to raise_error(Accounts::Purge::Refused, /active_storage_attachments=/)
+
+      expect(account.reload.purged_at).to be_nil
+      expect(OperatorAlert).to have_received(:deliver)
+        .with(hash_including(subject: 'Account purge did not empty the account'))
+    end
+
     # A file that will not delete used to be swallowed: the attachment row was
     # deleted, the file stayed in the bucket, and `purged_at` was stamped over
     # it — the account read as destroyed while the customer's documents were
@@ -1398,6 +1485,36 @@ RSpec.describe 'Deleting an account', type: :request do
       expect(account.archived_at).to be_nil
       expect(admin.reload.active_for_authentication?).to be(true)
       expect(OperatorAlert).to have_received(:deliver).with(hash_including(subject: 'Account purge gave up'))
+    end
+
+    # A failure that is neither a refusal nor a storage problem — a foreign
+    # key, a deadlock, a bug — had no ending at all: after the retries the
+    # account was still claimed and archived, every user locked out, `cancel!`
+    # refusing, and nobody paged, because the "gave up" alert only fired for
+    # storage (review 7, P2).
+    it 'releases the claim and pages the operator when the purge fails for any other reason', sidekiq: :inline do
+      template
+      account.update!(deletion_requested_at: 90.days.ago, purge_scheduled_for: 1.minute.ago)
+
+      allow(OperatorAlert).to receive(:deliver).and_call_original
+
+      Accounts::Purge.claim!(account)
+
+      expect(account.reload.purge_started_at).to be_present
+
+      # Same technique as the example above: the retry budget for THIS rescue
+      # list — `[StandardError]`, brackets included — is already spent, which
+      # is the state the last attempt is in, so the block under `retry_on`
+      # runs instead of a sixth retry.
+      job = AccountPurgeJob.new(account.id)
+
+      job.exception_executions = { '[StandardError]' => AccountPurgeJob::MAX_ATTEMPTS }
+      job.rescue_with_handler(ActiveRecord::InvalidForeignKey.new('violates foreign key constraint'))
+
+      expect(account.reload.purge_started_at).to be_nil
+      expect(account.archived_at).to be_nil
+      expect(admin.reload.active_for_authentication?).to be(true)
+      expect(OperatorAlert).to have_received(:deliver).with(hash_including(subject: 'Account purge failed'))
     end
 
     # The claim is a BARRIER, not a note (review batch 2, R2b): a signer
