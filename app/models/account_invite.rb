@@ -8,6 +8,8 @@
 #  accepted_at       :datetime
 #  email             :string           not null
 #  expires_at        :datetime         not null
+#  payment_pending_until :datetime
+#  pending_quantity  :integer
 #  released_at       :datetime
 #  revoked_at        :datetime
 #  role              :string           not null
@@ -25,6 +27,7 @@
 #  index_account_invites_on_email              (email)
 #  index_account_invites_on_expires_at         (expires_at)
 #  index_account_invites_on_invited_by_id      (invited_by_id)
+#  index_account_invites_on_payment_pending_until  (payment_pending_until) WHERE payment_pending_until IS NOT NULL
 #  index_account_invites_on_token_digest       (token_digest) UNIQUE
 #
 # Foreign Keys
@@ -59,8 +62,24 @@ class AccountInvite < ApplicationRecord
   # The raw token, readable only on the record that just generated it.
   attr_reader :raw_token
 
-  scope :pending, -> { where(accepted_at: nil, revoked_at: nil).where(expires_at: Time.current..) }
-  scope :expired, -> { where(accepted_at: nil, revoked_at: nil).where(expires_at: ...Time.current) }
+  # `pending` is the scope that means "this invitation is holding a seat": it
+  # is what occupancy counts, what the users page lists, and what an accept
+  # link has to find. A PARKED purchase (`payment_pending_until` set) is none
+  # of those things — Stripe has not applied the seat, nobody has been mailed,
+  # and the row exists only so the purchase can be finished later — so it is
+  # excluded from both scopes and lives in `payment_pending` instead.
+  scope :pending, lambda {
+    where(accepted_at: nil, revoked_at: nil, payment_pending_until: nil).where(expires_at: Time.current..)
+  }
+  scope :expired, lambda {
+    where(accepted_at: nil, revoked_at: nil, payment_pending_until: nil).where(expires_at: ...Time.current)
+  }
+  # A seat purchase Stripe parked and has not yet applied, still waiting for
+  # the customer's card step (checkpoint 7, B1). Not settled, not accepted,
+  # not cancelled.
+  scope :payment_pending, lambda {
+    where(accepted_at: nil, revoked_at: nil, released_at: nil).where.not(payment_pending_until: nil)
+  }
 
   validates :email, presence: true, format: { with: EMAIL_FORMAT }
   validates :role, inclusion: { in: User::ROLES }
@@ -94,11 +113,20 @@ class AccountInvite < ApplicationRecord
   end
 
   def pending?
-    accepted_at.nil? && revoked_at.nil? && expires_at.present? && expires_at > Time.current
+    payment_pending_until.nil? && accepted_at.nil? && revoked_at.nil? &&
+      expires_at.present? && expires_at > Time.current
   end
 
   def expired?
-    accepted_at.nil? && revoked_at.nil? && expires_at.present? && expires_at <= Time.current
+    payment_pending_until.nil? && accepted_at.nil? && revoked_at.nil? &&
+      expires_at.present? && expires_at <= Time.current
+  end
+
+  # A parked seat purchase that is still worth finishing: Stripe's own pending
+  # update has not expired, and nobody has cancelled, accepted or settled it.
+  def payment_pending?
+    payment_pending_until.present? && payment_pending_until > Time.current &&
+      accepted_at.nil? && revoked_at.nil? && released_at.nil?
   end
 
   # A hint about how this invitation was WRITTEN, for the mail copy — named so

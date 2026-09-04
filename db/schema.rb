@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_04_050000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_04_060000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gin"
   enable_extension "pg_catalog.plpgsql"
@@ -78,6 +78,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_04_050000) do
     t.string "email", null: false
     t.datetime "expires_at", null: false
     t.bigint "invited_by_id"
+    t.datetime "payment_pending_until"
+    t.integer "pending_quantity"
     t.datetime "released_at"
     t.datetime "revoked_at"
     t.string "role", null: false
@@ -88,6 +90,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_04_050000) do
     t.index ["email"], name: "index_account_invites_on_email"
     t.index ["expires_at"], name: "index_account_invites_on_expires_at"
     t.index ["invited_by_id"], name: "index_account_invites_on_invited_by_id"
+    t.index ["payment_pending_until"], name: "index_account_invites_on_payment_pending_until", where: "(payment_pending_until IS NOT NULL)"
     t.index ["token_digest"], name: "index_account_invites_on_token_digest", unique: true
   end
 

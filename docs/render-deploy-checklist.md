@@ -241,6 +241,77 @@ each account's own name.
    email should arrive from that app's own server, signing should complete, the
    completion email should arrive, and the app's webhook should verify. Then
    check the log has no `no SMTP config for account` lines.
+6. **Watch the four scheduled jobs fire** (Sessions 5–7 added three of them;
+   the times are UTC and they live in `config/schedule.yml`). Within the first
+   day you should see each of these in the log, and `/jobs` shows them under
+   *Cron*:
+
+   | Job | When |
+   | --- | --- |
+   | `scheduler_heartbeat` | every minute — `/up` stops reporting a fresh `scheduler_last_tick_at` if it stops |
+   | `billing_lifecycle` | every hour at :15 — the past-due reminder/suspension clock and the lapsed-invitation seat sweep |
+   | `stripe_reconciliation` | 06:00 — re-reads Stripe and repairs drift |
+   | `account_retention` | 04:30 — the deletion and dormancy clocks |
+
+   The first tick to look for is the heartbeat (one minute). If nothing is
+   firing at all, nothing time-based is running — see `docs/operations.md`
+   section 4.
+7. **Billing, only when you are opening the doors.** The steps that turn real
+   money on are a checklist of their own and live in **`docs/billing.md`
+   section 7**: create the live $10 monthly price, run
+   `bundle exec rake stripe:portal_configuration` against the live account and
+   put the `bpc_…` it prints into `STRIPE_PORTAL_CONFIGURATION_ID`, add the
+   webhook endpoint and copy its signing secret, then run
+   `bundle exec rake stripe:check` (everything must say PASS) and only then set
+   `BILLING_ENABLED=true`.
+
+   **Before you run any Stripe command line tool against production, check
+   which Stripe account it is logged into.** On the development machine the
+   Stripe CLI's saved login is a *different* Stripe account from the one the
+   app's key belongs to, and the CLI's "are you sure?" prompt prints the name
+   of the account it is *logged in as*, not the one your key targets — so a
+   destructive command can look like it is about to touch the right business
+   when it is not. Export the key you actually mean to use
+   (`export STRIPE_API_KEY=…`) and confirm with a harmless read
+   (`stripe prices retrieve $STRIPE_PRICE_ID`) before anything that writes.
+
+## Sessions 5–7 additions — what the deploy does on its own
+
+Steps 6 and 7 above are the things you *do*. These are the things that happen
+whether you do anything or not.
+
+### What a Sessions 5–7 deploy does to people who are already using it
+
+Three of the newer migrations are visible to customers or change a clock. None
+of them needs an action from you, but somebody will ask:
+
+- **Everyone signs in again on the day this ships.** `20260904041500` adds
+  `users.session_version`, which becomes part of what every browser session
+  cookie is checked against. Adding it changes that check once for every
+  existing user, so every signed-in browser and every "remember me" cookie is
+  signed out at the deploy and people sign in again. It is a one-off, it
+  affects **humans only**, and it happens on its own — nothing to run.
+  **Do not warn customers or the integrating apps:** API tokens, MCP tokens
+  and the provisioning/webhook credentials the integrating apps use are a
+  different credential entirely and are untouched, so no integration goes
+  dark. In-flight signing is unaffected too — signers are not signed-in users.
+- **Accounts part-way through a dormancy warning restart their notice.**
+  `20260904050000` adds `accounts.last_active_at`, the "somebody is actually
+  using this" stamp, which from now on is written at most once a day when a
+  signed-in member makes a request. Existing rows are deliberately left empty
+  (there is no honest value to invent for the past), so nobody's dormancy
+  clock moves — but any account already inside its 60/30/7-day dormancy notice
+  has that notice cleared and starts it again under the new, fairer
+  definition. The visible cost is one repeated round of dormancy warning
+  emails to accounts that really are abandoned; the alternative was deleting a
+  live customer's account during the deployment window.
+- **Orphaned webhook attempt rows are deleted.** `20260904040000` puts a real
+  foreign key on `webhook_attempts.webhook_event_id` (and makes deleting an
+  event take its attempts with it). Any attempt row whose event no longer
+  exists is deleted first, because the constraint cannot be created while such
+  rows are there. Count them on the rehearsal copy before you deploy — the
+  query and what to do with the answer are in `docs/operations.md`
+  section 2.3, step 4b.
 
 ## 6. After a deploy that changes built-in field mappings
 

@@ -582,6 +582,34 @@ RSpec.describe 'Self-serve registration', type: :request do
       expect_signed_out
     end
 
+    # A closed login is the one case where Google having proved the mailbox
+    # must NOT open a door. The address still belongs to a row we archived —
+    # a person removed from a team, or a whole account on its way out — so the
+    # callback refuses it in plain words instead of adopting the row or, worse,
+    # treating the address as a stranger's and minting a second account on it.
+    # Both halves are checked: the person's own row archived, and the account
+    # underneath an otherwise-live person archived.
+    it 'refuses an archived user and an archived account, creating nothing and signing nobody in' do
+      archived_user = create(:user, email: 'closed@example.com', archived_at: Time.current)
+      mock_google(email: 'closed@example.com')
+
+      expect { sign_in_with_google! }.not_to(change { [User.count, Account.count] })
+      expect(response).to redirect_to(new_user_session_path)
+      expect(flash[:alert]).to eq(I18n.t('this_account_is_no_longer_active'))
+      expect(archived_user.reload).to have_attributes(sign_in_count: 0, archived_at: be_present)
+      expect_signed_out
+
+      member = create(:user, email: 'ghost@example.com')
+      member.account.update!(archived_at: Time.current)
+      mock_google(email: 'ghost@example.com')
+
+      expect { sign_in_with_google! }.not_to(change { [User.count, Account.count] })
+      expect(response).to redirect_to(new_user_session_path)
+      expect(flash[:alert]).to eq(I18n.t('this_account_is_no_longer_active'))
+      expect(member.reload.sign_in_count).to eq(0)
+      expect_signed_out
+    end
+
     it 'stamps a new account with the timezone the sign-in button carried' do
       mock_google(email: 'paris@example.com')
 

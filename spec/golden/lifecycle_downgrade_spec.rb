@@ -49,8 +49,17 @@ RSpec.describe 'A downgrade to the free plan', type: :request do # rubocop:disab
 
   # What Stripe actually says when a subscription ends, through the one
   # mapping every Stripe door in the app shares.
-  def downgrade!
-    StripeBilling::SubscriptionSync.apply!(row, JSON.parse(fixture_body('subscription-canceled')))
+  #
+  # The capture's own `ended_at` is the moment the CLI recorded it, which will
+  # be in an earlier calendar month as soon as this file is a month old — and
+  # the free month a downgrade starts (D43, prospective counters) is measured
+  # from exactly that field. So the capture is stamped with the moment the
+  # example runs: everything else about it is Stripe's real answer.
+  def downgrade!(at: Time.current)
+    capture = JSON.parse(fixture_body('subscription-canceled'))
+                  .merge('ended_at' => at.to_i, 'canceled_at' => at.to_i)
+
+    StripeBilling::SubscriptionSync.apply!(row, capture)
 
     row.reload
     account.reload
@@ -62,6 +71,11 @@ RSpec.describe 'A downgrade to the free plan', type: :request do # rubocop:disab
 
   # Every table the deletion inventory would empty, counted before and after,
   # so "nothing was deleted" is a measurement rather than a hope.
+  #
+  # The counters are compared by VALUE, not merely by row count: a downgrade
+  # must not quietly rewrite a tally either. The one row it is allowed to ADD
+  # is the mark saying where the free month starts (D43, prospective
+  # counters) — it is excluded here and asserted in its own right below.
   def data_counts
     template_ids = Template.where(account_id: account.id).ids
 
@@ -72,7 +86,9 @@ RSpec.describe 'A downgrade to the free plan', type: :request do # rubocop:disab
       submission_events: SubmissionEvent.where(account_id: account.id).count,
       users: User.where(account_id: account.id).count,
       blobs: ActiveStorage::Attachment.where(record_type: 'Template', record_id: template_ids).count,
-      counters: AccountCounter.where(account_id: account.id).count }
+      counters: AccountCounter.where(account_id: account.id)
+                              .where.not(key: [Quotas::DOWNGRADE_SENDS_OFFSET_KEY, Quotas::DOWNGRADE_AT_KEY])
+                              .order(:key, :period).pluck(:key, :period, :value) }
   end
 
   describe 'never deletes anything (D43)' do
@@ -115,23 +131,61 @@ RSpec.describe 'A downgrade to the free plan', type: :request do # rubocop:disab
       expect(response.body).to include(submission.submitters.first.email)
     end
 
-    # Counters are PROSPECTIVE: the five completions bought and used on the
-    # paid plan still count against the free month they happened in, so a
-    # downgrade is not a way to get another five. What it must not do is take
-    # those five documents away.
-    it 'keeps the completions already counted, refuses the next send, and still reads the old documents',
+    # Counters are PROSPECTIVE (spec.md "Billing lifecycle" / D43): the free
+    # month a downgrade starts begins AT THE DOWNGRADE, not on the 1st. A
+    # customer who had a busy paid month and then cancelled — or whose card
+    # lapsed until Stripe finally gave up on the subscription — can write
+    # again straight away, which is exactly what docs/billing.md §10 promises
+    # them. What the downgrade must not do is hand out a free pass: the free
+    # caps bite from that moment on, and every document from the paid month
+    # stays where it is.
+    it 'starts the free month at the downgrade, and the free caps then bite from there',
        sidekiq: :inline do
-      submissions = Array.new(Quotas::Limits::FREE_COMPLETIONS_PER_MONTH) do
-        submission = send_one
-        complete!(submission.submitters.first)
-        submission
+      paid_month = []
+      signed = []
+
+      # Stripe stamps the end of a subscription to the whole second, so the
+      # paid month's work is put a clear minute before it: this example is
+      # about which SIDE of the cancellation a document falls on, not about
+      # sub-second ordering.
+      travel_to(1.minute.ago) do
+        paid_month = Array.new(20) { send_one }
+        signed = paid_month.first(12)
+        signed.each { |submission| complete!(submission.submitters.first) }
+        # The eight left open are deleted from the dashboard. "Waiting for
+        # signatures" is a LIVE count of what is open right now and is NOT
+        # prospective — a downgrade does not close the documents already out
+        # for signature, and they still occupy the free in-flight cap.
+        (paid_month - signed).each { |submission| submission.update!(archived_at: Time.current) }
       end
 
-      expect(Quotas.completions_this_month(account)).to eq(Quotas::Limits::FREE_COMPLETIONS_PER_MONTH)
+      expect(Quotas.completions_this_month(account)).to eq(12)
+      expect(Quotas.sends_this_month(account)).to eq(20)
 
       downgrade!
 
+      expect(Plans.key_for(account)).to eq(Plans::FREE)
+      # The paid month's usage is charged to the paid month, not to the free
+      # one that starts here.
+      expect(Quotas.completions_this_month(account)).to eq(0)
+      expect(Quotas.sends_this_month(account)).to eq(0)
+      # The durable send counter itself was never rewritten: it still holds
+      # all twenty. Only the mark saying where the free month starts is new,
+      # so "deleting a document never gives a send back" is untouched.
+      expect(AccountCounters.value(account.id, 'submissions_created')).to eq(20)
+      expect(AccountCounters.value(account.id, Quotas::DOWNGRADE_SENDS_OFFSET_KEY)).to eq(20)
+      expect(row.ended_at).to be_present
+
+      # Five free documents go out and are signed — every one allowed.
+      Array.new(Quotas::Limits::FREE_COMPLETIONS_PER_MONTH) do
+        complete!(send_one.submitters.first)
+      end
+
       expect(Quotas.completions_this_month(account)).to eq(Quotas::Limits::FREE_COMPLETIONS_PER_MONTH)
+      expect(Quotas.sends_this_month(account)).to eq(Quotas::Limits::FREE_COMPLETIONS_PER_MONTH)
+
+      # The sixth is refused: the free cap is real, it is just measured on
+      # the free month.
       expect { Quotas.assert_can_create_submissions!(account) }
         .to raise_error(Quotas::LimitReached) { |e| expect(e.reason).to eq(:completions) }
 
@@ -140,13 +194,96 @@ RSpec.describe 'A downgrade to the free plan', type: :request do # rubocop:disab
       expect { post "/templates/#{template.id}/submissions", params: { emails: unique_email, send_email: '1' } }
         .not_to change(Submission, :count)
 
-      # And every one of the five is still there to read and download.
-      submissions.each do |submission|
+      # And every document signed on the paid plan is still there to read and
+      # download.
+      signed.each do |submission|
         get "/submissions/#{submission.id}/download"
 
         expect(response).to have_http_status(:ok)
         expect(response.parsed_body).to be_present
       end
+    end
+
+    # P4/P7 (checkpoint 7, cycle 2): the downgrade that is APPLIED LATE.
+    #
+    # Stripe's clock and ours are not the same clock. A cancellation webhook
+    # can be lost and only picked up by the nightly reconciliation, so the
+    # moment Stripe says the subscription ended can be hours older than the
+    # moment this application found out. Completions used to be measured from
+    # Stripe's stamp and sends from the moment the transition was applied, so
+    # everything in between was charged to the free month on one counter and
+    # forgiven on the other.
+    #
+    # The rule, and it is the customer-friendly one: everything done before
+    # the app knew the account had stopped paying was done ON the paid plan
+    # and stays charged to it. BOTH counters are measured from the instant the
+    # downgrade was applied. It cannot be worked the other way either — the
+    # free window can only ever be shorter than "since Stripe cancelled",
+    # never longer.
+    it 'measures both counters from the moment the downgrade is applied, not from Stripe\'s clock',
+       sidekiq: :inline do
+      cancelled_at = 3.hours.ago
+      sent = []
+
+      # After Stripe cancelled, before the app was told: the account was
+      # still paid as far as everything in this application was concerned.
+      travel_to(90.minutes.ago) do
+        sent = Array.new(3) { send_one }
+        sent.each { |submission| complete!(submission.submitters.first) }
+      end
+
+      expect(Quotas.completions_this_month(account)).to eq(3)
+      expect(Quotas.sends_this_month(account)).to eq(3)
+
+      downgrade!(at: cancelled_at)
+
+      expect(Plans.key_for(account)).to eq(Plans::FREE)
+      expect(row.ended_at.to_i).to eq(cancelled_at.to_i)
+
+      # ONE instant anchors both halves, and it is the apply, not Stripe's
+      # stamp: the three documents sent and signed in between belong to the
+      # paid month on BOTH counters.
+      applied_at = AccountCounters.value(account.id, Quotas::DOWNGRADE_AT_KEY)
+
+      expect(applied_at).to be > cancelled_at.to_i
+      expect(applied_at).to be_within(60).of(Time.current.to_i)
+      expect(Quotas.period_start(account).to_i).to eq(applied_at)
+      expect(Quotas.completions_this_month(account)).to eq(0)
+      expect(Quotas.sends_this_month(account)).to eq(0)
+
+      # And it is a fresh start, not a free pass: what the account does from
+      # here counts, on both counters.
+      complete!(send_one.submitters.first)
+
+      expect(Quotas.completions_this_month(account)).to eq(1)
+      expect(Quotas.sends_this_month(account)).to eq(1)
+    end
+
+    # The other half of the same rule (P4): once the moment paid access ended
+    # is written down, nothing moves it — not even Stripe naming an earlier
+    # date later on. A row suspended when the card finally gave up and then
+    # formally cancelled days afterwards ended its paid access at the
+    # suspension; letting `canceled_at` overwrite the stamp dragged the free
+    # month's start backwards and handed back completions the sends counter
+    # had already charged for.
+    it 'never moves the moment paid access ended once it is stamped' do
+      unpaid = JSON.parse(fixture_body('subscription-past_due'))
+                   .merge('status' => 'unpaid', 'ended_at' => nil, 'canceled_at' => nil)
+
+      StripeBilling::SubscriptionSync.apply!(row, unpaid)
+
+      stamped = row.reload.ended_at
+
+      expect(row.access_state).to eq('suspended')
+      expect(stamped).to be_present
+
+      # Stripe catches up days later and names its own, earlier, moment.
+      StripeBilling::SubscriptionSync.apply!(row, JSON.parse(fixture_body('subscription-canceled'))
+                                                      .merge('ended_at' => 3.days.ago.to_i,
+                                                             'canceled_at' => 3.days.ago.to_i))
+
+      expect(row.reload.access_state).to eq('cancelled')
+      expect(row.ended_at.to_i).to eq(stamped.to_i)
     end
 
     # Phase B parks the extra people read-only when the seats go. Paying
@@ -2037,11 +2174,30 @@ RSpec.describe 'Deleting an account', type: :request do
         expect(account.reload.deletion_requested_at).to be_present
       end
 
+      # The account has to get PAST the door's eligibility question for the
+      # claim to be taken at all (checkpoint 7, C2 put that question in front
+      # of the claim), so this one is genuinely due — asked for, and the
+      # 90-day window run out — and is refused by the WALK instead: a paid
+      # subscription that came back to life afterwards. The cancellation the
+      # deletion asks for is allowed to fail into a retrying job
+      # (Accounts::Deletion), so "still holds a live paid subscription" on a
+      # due account is a state that really happens, and it is the only way
+      # into the release path.
       it 'releases the claim it took when the purge refuses' do
         template
+        act_as(admin)
+        request_deletion!
+
+        account.update_columns(purge_scheduled_for: 1.day.ago)
         create(:account_subscription, account:, access_state: 'active')
 
-        expect { run_task('purge', account.id) }.to raise_error(SystemExit)
+        account.reload
+
+        expect(Accounts::Retention.purge_eligible?(account)).to be(true)
+
+        expect { run_task('purge', account.id) }
+          .to raise_error(SystemExit)
+          .and output(/live paid subscription.+claim has been released/m).to_stderr
 
         account.reload
 
@@ -2049,6 +2205,9 @@ RSpec.describe 'Deleting an account', type: :request do
         expect(account.archived_at).to be_nil
         expect(account.purged_at).to be_nil
         expect(Template.where(account_id: account.id).count).to eq(1)
+        # And the account is usable again: the claim is a write barrier, so a
+        # refusal that left it standing would lock the customer out for good.
+        expect(admin.reload.active_for_authentication?).to be(true)
       end
 
       it 'lets an operator release a claim by hand' do
@@ -2093,7 +2252,7 @@ end
 
 # Accounts nobody uses (D43): a year of silence, three warnings, then the same
 # purge.
-RSpec.describe 'Accounts nobody signs in to', type: :request do
+RSpec.describe 'Accounts that go unused', type: :request do
   let(:account) { create(:account, created_at: 3.years.ago) }
   let!(:owner) { create(:user, account:, created_at: 3.years.ago, current_sign_in_at: 13.months.ago) }
   let(:deliveries) { ActionMailer::Base.deliveries }
@@ -2442,10 +2601,17 @@ RSpec.describe 'Accounts nobody signs in to', type: :request do
     expect(account.reload.purged_at).to be_present
   end
 
-  # A testing child is never purged on its own — it goes with its parent — so
-  # a year spent working in the sandbox is a year of somebody using the
-  # account. Reading only the parent's own stamp would take both of them.
-  it 'counts work done in the testing sandbox as use of the account it belongs to' do
+  # Named for what it actually proves, not for a customer behaviour that
+  # cannot happen: the retention clock reads a testing CHILD's `last_active_at`
+  # column into the parent's, so a fresh stamp on the child takes the parent
+  # out of the purge queue. Nothing stamps that column for a customer today —
+  # the sandbox is not available to customer accounts (D57) and only customer
+  # accounts are ever purged — so this is the column's arithmetic, not a
+  # claim that somebody working in a sandbox keeps an account alive.
+  # spec/golden/lifecycle_retention_spec.rb proves the same read at the
+  # `used_at` / `dormant?` level; this one carries it through to the queue the
+  # nightly sweep actually walks.
+  it "reads a testing child's last_active_at into the parent's purge clock" do
     parent = create(:account, :with_testing_account, created_at: 3.years.ago)
     child = parent.testing_accounts.sole
 

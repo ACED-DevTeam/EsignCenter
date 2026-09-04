@@ -51,11 +51,17 @@ class ApplicationController < ActionController::Base
     redirect_to request.referer, alert: 'Too many requests', status: :too_many_requests
   end
 
+  # A refused action. CanCan's own message ("You are not authorized to access
+  # this page.") is developer wording and is not translated anywhere in this
+  # app, so a person parked read-only by a downgrade, or anyone on a suspended
+  # account, met an English sentence about pages when the truth is about
+  # permission. The exception still carries the detail into the error report;
+  # the reader gets one plain sentence in their own language.
   if Rails.env.production? || Rails.env.test?
     rescue_from CanCan::AccessDenied do |e|
       ErrorReport.warning(e)
 
-      redirect_to root_path, alert: e.message
+      redirect_to root_path, alert: I18n.t('access_denied_alert')
     end
   end
 

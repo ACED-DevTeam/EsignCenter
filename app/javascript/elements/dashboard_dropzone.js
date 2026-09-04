@@ -79,8 +79,22 @@ export default targetable(class extends HTMLElement {
     }
   }
 
+  // Every file drop on this element ends up in the hidden multipart form, and
+  // the dashboard renders that form only for somebody allowed to create a
+  // template. When it is missing — a suspended account, an account pending
+  // deletion, a member parked read-only by a downgrade, an ordinary viewer —
+  // there is nothing to upload into, so a drop is left alone: no spinner, no
+  // greyed-out card, no exception. The cards of a read-only reader carry no
+  // drop targets either (see templates/_template and template_folders/_folder),
+  // so this is the second lock on the same door rather than the only one.
+  get canUpload () {
+    return !!this.form
+  }
+
   onDropFile = (e) => {
     e.preventDefault()
+
+    if (!this.canUpload) return
 
     this.fileDropzoneLoading.classList.remove('hidden')
     this.fileDropzoneLoading.previousElementSibling.classList.add('hidden')
@@ -93,6 +107,8 @@ export default targetable(class extends HTMLElement {
     e.preventDefault()
 
     const templateId = e.dataTransfer.getData('template_id')
+
+    if (e.dataTransfer.files.length && !this.canUpload) return
 
     if (e.dataTransfer.files.length || templateId) {
       const loading = document.createElement('div')
@@ -131,7 +147,7 @@ export default targetable(class extends HTMLElement {
   onDropTemplate = (e) => {
     e.preventDefault()
 
-    if (e.dataTransfer.files.length) {
+    if (e.dataTransfer.files.length && this.canUpload) {
       const loading = document.createElement('div')
       loading.classList.add('bottom-5', 'left-0', 'flex', 'justify-center', 'w-full', 'absolute')
       loading.innerHTML = loadingIconHtml
@@ -152,6 +168,8 @@ export default targetable(class extends HTMLElement {
   }
 
   async uploadFiles (files, url) {
+    if (!this.canUpload) return
+
     this.isLoading = true
 
     this.form.action = url
@@ -224,6 +242,11 @@ export default targetable(class extends HTMLElement {
   }
 
   showDraghover = () => {
+    // Nothing to invite a file into, so the page must not rearrange itself
+    // around one: without this the cards' author and date lines vanish
+    // (hiddenOnDrag) with no dropzone appearing in their place.
+    if (!this.canUpload) return
+
     if (this.isDrag) return
 
     this.isDrag = true

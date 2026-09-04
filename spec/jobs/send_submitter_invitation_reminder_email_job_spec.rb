@@ -10,7 +10,7 @@ describe SendSubmitterInvitationReminderEmailJob do
 
   before do
     submitter.update!(sent_at: 2.days.ago)
-    allow(SubmitterMailer).to receive(:invitation_email).with(submitter).and_return(mail)
+    allow(SubmitterMailer).to receive(:invitation_email).with(submitter, reminder: true).and_return(mail)
   end
 
   def perform(index = 1)

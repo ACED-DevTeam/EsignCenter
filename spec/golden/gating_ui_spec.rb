@@ -115,6 +115,53 @@ RSpec.describe 'Feature gating UI', type: :request do
     expect(body).to include(I18n.t('reset_default'))
   end
 
+  # Reviewer finding E1: the paid "custom email templates" row sells a REMINDER
+  # email template. Its copy is read by SubmitterMailer#invitation_email
+  # (reminder: true) — the account-level row first, then the per-template keys —
+  # but until now there was nowhere to WRITE it: the personalization page had no
+  # reminder box and the per-template collapse partial was an empty file, so a
+  # paying customer could only reach the setting through the JSON API. Both
+  # screens now offer it exactly the way they offer the invitation email:
+  # entitled accounts get the form, free accounts get the same upgrade CTA the
+  # other email-template rows show.
+  describe 'the reminder-email template' do
+    it 'offers the account-level reminder copy on the personalization page of a paid account' do
+      body = visit_as(paid_account, '/settings/personalization')
+
+      expect_no_cta(body)
+      expect(body).to include("value=\"#{AccountConfig::SUBMITTER_INVITATION_REMINDER_EMAIL_KEY}\"")
+      expect(body).to include(I18n.t('signature_request_reminder_email'))
+    end
+
+    it 'shows the upgrade CTA in place of the account-level reminder copy on a free account' do
+      body = visit_as(free_account, '/settings/personalization')
+
+      expect_cta(body)
+      expect(body).not_to include("value=\"#{AccountConfig::SUBMITTER_INVITATION_REMINDER_EMAIL_KEY}\"")
+    end
+
+    it 'offers the per-template reminder copy in the template preferences of a paid account' do
+      body = visit_as(paid_account, "/templates/#{template_for(paid_account).id}/preferences")
+
+      expect(body).to include(I18n.t('signature_request_reminder_email'))
+      expect(body).to include('id="submitter_invitation_reminder_email_form"')
+      expect(body).to include('name="template[preferences][invitation_reminder_email_subject]"')
+      expect(body).to include('form="submitter_invitation_reminder_email_template_form"')
+    end
+
+    # The collapse itself still renders on a free account — it is the row the
+    # upgrade is sold on — but it holds the CTA rather than the fields.
+    it 'shows the upgrade CTA in place of the per-template reminder copy on a free account' do
+      body = visit_as(free_account, "/templates/#{template_for(free_account).id}/preferences")
+
+      expect_cta(body)
+      expect(body).to include(I18n.t('signature_request_reminder_email'))
+      expect(body).to include('id="submitter_invitation_reminder_email_form"')
+      expect(body).not_to include('name="template[preferences][invitation_reminder_email_subject]"')
+      expect(body).not_to include('form="submitter_invitation_reminder_email_template_form"')
+    end
+  end
+
   it 'send dialog offers "save as default template message" only to an entitled account' do
     free_body = visit_as(free_account, "/templates/#{template_for(free_account).id}/submissions/new")
 
@@ -136,6 +183,33 @@ RSpec.describe 'Feature gating UI', type: :request do
       expect(body).to include(I18n.t('via_email')), account.account_kind
       expect(body).not_to include(I18n.t('via_phone')), account.account_kind
       expect(body).not_to include('id="phone"'), account.account_kind
+    end
+  end
+
+  # Reviewer finding E10: a free account whose only seat is taken was still
+  # offered "New user", and the click ended in a refusal. It is replaced by
+  # the one thing that would work. A PAID account at its seat count keeps the
+  # button — there the refusal turns into a priced offer for another seat.
+  describe 'the team page of a free account with every seat taken' do
+    it 'offers the upgrade in place of a "New user" button the server would refuse, and leaves the paid ' \
+       'account\'s button where it is' do
+      admin_for(free_account)
+
+      # The premise: the free plan's one seat is taken by the only person on it.
+      expect(Quotas.limits_for(free_account).seats).to eq(Accounts.seat_occupancy(free_account))
+
+      body = visit_as(free_account, '/settings/users')
+
+      expect(body).to include(I18n.t('all_seats_in_use'))
+      expect(body).to include(I18n.t('upgrade_to_add_more_users'))
+      expect(body).to include('data-upgrade-cta')
+      expect(body).not_to include('href="/users/new"')
+
+      paid_body = visit_as(paid_account, '/settings/users')
+
+      expect(paid_body).to include('href="/users/new"')
+      expect(paid_body).not_to include(I18n.t('all_seats_in_use'))
+      expect(paid_body).not_to include('data-upgrade-cta')
     end
   end
 

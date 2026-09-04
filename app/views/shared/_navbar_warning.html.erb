@@ -1,14 +1,20 @@
-<%# The one banner slot above every signed-in page. Two things can freeze an
-    account, and they need different sentences:
+<%# The one banner slot above every signed-in page. Four things can freeze
+    somebody, and each needs its own sentence — a banner that names the wrong
+    cause sends the reader to a page that cannot help them:
 
       * the account is scheduled for deletion — the date, and the way back;
-      * the subscription payment failed — nothing new can be created until it
-        is settled.
+      * the subscription payment failed — settle it on the billing page;
+      * we suspended the account ourselves — only support can lift that, so
+        the banner points at support rather than at a payment form;
+      * the PERSON lost their seat in a downgrade while the account itself is
+        perfectly healthy — only an administrator can hand it back.
 
-    Both are shown to EVERY user of the account, not only the admin: the
-    person who finds their "New document" button refusing needs to know why,
-    even though only an admin can act on it. `read_only?` covers being billed
-    through a suspended parent as well as being suspended directly. %>
+    The first three are shown to EVERY user of the account, not only the
+    admin: the person who finds their "New document" button refusing needs to
+    know why, even though only an admin can act on it. `read_only?` covers
+    being billed through a suspended parent as well as being suspended
+    directly, so the reason is read off whichever account in that chain is
+    actually suspended. %>
 <% if signed_in? && current_account&.pending_deletion? %>
   <div class="max-w-6xl mx-auto px-4 md:px-2 pt-3">
     <div class="alert items-start bg-base-100 border border-red-400 text-red-400" data-account-deletion-banner>
@@ -27,16 +33,40 @@
     </div>
   </div>
 <% elsif signed_in? && AccountStates.read_only?(current_account) %>
+  <% operator_suspension = AccountStates.suspension_candidates(current_account)
+                                        .filter_map(&:suspension_reason).first == 'operator' %>
   <div class="max-w-6xl mx-auto px-4 md:px-2 pt-3">
     <div class="alert items-start bg-base-100 border border-red-400 text-red-400" data-account-suspended-banner>
       <%= svg_icon('alert_circle', class: 'stroke-current shrink-0 h-6 w-6 mt-0.5') %>
       <div dir="auto" class="text-sm space-y-1">
-        <p class="font-semibold"><%= t('account_suspended_banner') %></p>
-        <p><%= t('account_suspended_banner_hint') %></p>
-        <p>
-          <%= link_to t('account_suspended_banner_link'), settings_billing_path,
-                      class: 'link font-semibold', data: { account_suspended_link: true } %>
-        </p>
+        <% if operator_suspension %>
+          <p class="font-semibold"><%= t('account_suspended_banner_operator') %></p>
+          <p><%= t('account_suspended_banner_operator_hint') %></p>
+          <p>
+            <%= link_to t('account_suspended_banner_operator_link'), "mailto:#{Docuseal::SUPPORT_EMAIL}",
+                        class: 'link font-semibold', data: { account_suspended_link: true } %>
+          </p>
+        <% else %>
+          <p class="font-semibold"><%= t('account_suspended_banner') %></p>
+          <p><%= t('account_suspended_banner_hint') %></p>
+          <p>
+            <%= link_to t('account_suspended_banner_link'), settings_billing_path,
+                        class: 'link font-semibold', data: { account_suspended_link: true } %>
+          </p>
+        <% end %>
+      </div>
+    </div>
+  </div>
+<% elsif signed_in? && current_user.read_only? %>
+  <%# The account is healthy; this person's seat is not. Nobody but an
+      administrator can give it back, so the banner says who to ask instead of
+      linking anywhere this reader would only be refused. %>
+  <div class="max-w-6xl mx-auto px-4 md:px-2 pt-3">
+    <div class="alert items-start bg-base-100 border border-base-300" data-seat-read-only-banner>
+      <%= svg_icon('alert_circle', class: 'stroke-current shrink-0 h-6 w-6 mt-0.5') %>
+      <div dir="auto" class="text-sm space-y-1">
+        <p class="font-semibold"><%= t('seat_read_only_banner') %></p>
+        <p class="text-base-content/70"><%= t('seat_read_only_banner_hint') %></p>
       </div>
     </div>
   </div>

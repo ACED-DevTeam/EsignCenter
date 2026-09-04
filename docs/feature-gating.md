@@ -156,7 +156,7 @@ never purges):
 | SMS (hidden) | `Submitters.normalize_preferences` — the one seam every submission/submitter path funnels through — refuses a requested `send_sms` before anything is stored, HTML and API alike | Redirect + alert / 403 JSON "This feature is not available" (hidden features never say "paid plan") |
 | Automatic reminders | `NotificationsSettingsController#create` for the `submitter_reminders` setting; `Submitters::ScheduleReminders.call` schedules nothing for an unentitled account | Redirect + alert; no reminder jobs |
 | Branding removal | `PersonalizationSettingsController#create` for the `remove_branding` flag; honored by `Accounts.branding_removed?` in the email footer (`shared/_email_attribution`) and the signing-page footer (`shared/_powered_by`). Only the "Powered by" / "Sent using" wording goes away — the DocuSeal attribution link and Source link always render (AGPL §7(b)) | Redirect + alert; branding stays on |
-| Custom email templates | `PersonalizationSettingsController#create` for the four account-level email templates; `TemplatesPreferencesController#create` for per-template email subject/body (invitation, reminder, documents copy, completed notification, per-signer copy); `SubmissionsController#create` when the send dialog asks to save its message onto the template (`save_message=1`). Read-time: the mailers show default copy to an unentitled account | Redirect + alert |
+| Custom email templates | `PersonalizationSettingsController#create` for the four account-level email templates; `TemplatesPreferencesController#create` for per-template email subject/body (invitation, reminder, documents copy, completed notification, per-signer copy); `SubmissionsController#create` when the send dialog asks to save its message onto the template (`save_message=1`). Read-time: the mailers show default copy to an unentitled account. The reminder wording is read too: `SendSubmitterInvitationReminderEmailJob` asks `SubmitterMailer.invitation_email(submitter, reminder: true)`, which reads the wording in one order, most specific first, subject and body each falling through it on their own: (1) this template's `invitation_reminder_email_subject/body`, (2) the account-level `submitter_invitation_reminder_email` row, (3) the invitation copy of this send — the ad-hoc message typed into the send dialog, then the per-signer copy, then this template's `request_email_*`, (4) the account-level `submitter_invitation_email` row, (5) the stock default. The account-wide reminder wording therefore beats a template's own SIGNATURE-REQUEST wording, and loses only to that template's own REMINDER wording. An account that is no longer paid gets the stock default whatever its rows say. Both places a customer WRITES that wording are on screen: Settings → Personalization → "Signature request reminder email" for the account-level copy, and the reminder row of a template's Preferences dialog for the per-template copy — each offered exactly like the signature-request email beside it (the form when the plan carries the row, the same upgrade banner when it does not) | Redirect + alert |
 | Per-account SMTP | `EmailSmtpSettingsController#create` (as a before-action, so the refusal is not swallowed by the controller's own error handling). Read-time: `MailConfigs.resolve` skips an unentitled account's pin | Redirect + alert; no SMTP row |
 | BCC / documents-copy address | `NotificationsSettingsController#create` for `bcc_emails`; `TemplatesPreferencesController#create` for a template's `bcc_completed`; `Submitters.normalize_preferences` for a per-submission `bcc_completed` (HTML send dialog, `/api/submissions`, signing sessions). Read-time: the completion job collects no BCC addresses for an unentitled account | Redirect + alert / 403 JSON |
 | Delivery tracking | Declared; enforced in Session 8 | — |
@@ -342,6 +342,27 @@ regex, so the literal grep does not list it.
   two gated surfaces (Notifications, Personalization) the second one renders
   the partial's `compact: true` variant — a one-line banner — so two identical
   cards never stack.
+- **A full free team**: Settings → Users on a free account whose one seat is
+  already taken shows the compact upgrade banner — the heading "All seats in
+  use", the line "Upgrade to add more people to this account." and an
+  "Upgrade plan" button — where the "New user" button used to be, because that
+  button's only outcome was a refusal. A PAID account at its seat count keeps
+  the button: there the refusal turns into a priced offer for one more seat.
+- **Read-only pages carry no create affordances**: when the account is
+  suspended, is scheduled for deletion, or the person's own seat was parked
+  read-only by a downgrade, the documents dashboard renders no upload
+  dropzone, no Upload button and no Create button — the same
+  `can?(:create, Template)` question the buttons already asked, now asked once
+  for every drop target. The document and folder CARDS are not drop targets
+  either: dropping a file on one uploads a document, so a reader who cannot
+  create documents gets a plain card and the browser handles their drop the
+  way it handles a drop on any other link — no spinner, no greyed-out card and
+  no error. The banner above the page says which of the three it
+  is: a failed payment points at the billing page, a suspension we applied
+  ourselves points at the support address, a parked seat says to ask an
+  administrator. Any write that still gets refused answers with one plain
+  sentence — "You don't have permission to do that in this account." — in the
+  reader's own language, instead of CanCan's untranslated default.
 - **Downgraded SMTP settings**: a per-account SMTP pin saved during a paid
   period is not used on the free plan (`MailConfigs.resolve` skips it) but it
   is not hidden either — Settings → Email SMTP shows the CTA plus a read-only
@@ -349,6 +370,16 @@ regex, so the literal grep does not list it.
   "Remove SMTP settings" button, so the owner can always see and drop it.
 - **Branding removal** now has a screen: Settings → Personalization →
   Branding shows the toggle to an entitled account and the CTA otherwise.
+- **The reminder email now has a screen too.** All four account-level email
+  templates are offered on Settings → Personalization — signature request,
+  signature request reminder, documents copy and completed notification — and
+  the template Preferences dialog carries the matching per-template row for
+  each. The reminder boxes open on the wording a reminder would actually go
+  out with today (the reminder copy if somebody wrote one, otherwise the
+  signature-request copy it inherits), so what is on screen is what recipients
+  receive. Before this the reminder copy could only be set through the JSON
+  API: the personalization page had no box for it and the per-template collapse
+  was an empty file.
 - **Refusal copy** moved to locale keys with customer-friendly wording:
   `test_mode_is_not_available_on_this_account` (was "Test mode is unavailable
   for customer accounts") and the operator's reindex notice

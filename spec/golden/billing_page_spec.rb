@@ -68,10 +68,13 @@ RSpec.describe 'Billing page', type: :request do # rubocop:disable RSpec/Multipl
 
   # Stripe is asked for a customer already tagged with this account before
   # one is created; unless an example is about that, there is none. The
-  # query is asserted, so searching for the wrong account could not pass.
+  # query is asserted — on the NAMESPACED tag key, spelled out here rather
+  # than read from the constant — so searching for the wrong account, or
+  # under a key another product on the same Stripe account could also be
+  # using, could not pass (review 7, A1).
   def stub_customer_search(*found, record: account)
     stub_request(:get, %r{\Ahttps://api\.stripe\.com/v1/customers/search})
-      .with(query: hash_including('query' => "metadata['account_id']:'#{record.id}'"))
+      .with(query: hash_including('query' => "metadata['esigncenter_account_id']:'#{record.id}'"))
       .to_return(*found.map do |ids|
         stripe_json(object: 'search_result', data: ids.map { |id| { id:, object: 'customer' } })
       end)
@@ -189,7 +192,7 @@ RSpec.describe 'Billing page', type: :request do # rubocop:disable RSpec/Multipl
   # it (the capture was made for a placeholder account id).
   def trialing_subscription
     JSON.parse(Rails.root.join('spec/fixtures/stripe/subscription-trialing.json').read)
-        .merge('metadata' => { 'account_id' => account.id.to_s })
+        .merge('metadata' => { 'esigncenter_account_id' => account.id.to_s })
   end
 
   # On the exact session id, and on the expansion the app asks for: the
@@ -300,7 +303,7 @@ RSpec.describe 'Billing page', type: :request do # rubocop:disable RSpec/Multipl
       expect(response).to redirect_to(checkout_url)
 
       customer = posted('https://api.stripe.com/v1/customers')
-      expect(customer.dig('metadata', 'account_id')).to eq(account.id.to_s)
+      expect(customer.dig('metadata', 'esigncenter_account_id')).to eq(account.id.to_s)
       expect(customer['email']).to eq(admin_for(account).email)
 
       session = posted('https://api.stripe.com/v1/checkout/sessions')
@@ -311,7 +314,7 @@ RSpec.describe 'Billing page', type: :request do # rubocop:disable RSpec/Multipl
       expect(session.dig('subscription_data', 'trial_period_days')).to eq('14')
       expect(session.dig('subscription_data', 'trial_settings', 'end_behavior',
                          'missing_payment_method')).to eq('cancel')
-      expect(session.dig('subscription_data', 'metadata', 'account_id')).to eq(account.id.to_s)
+      expect(session.dig('subscription_data', 'metadata', 'esigncenter_account_id')).to eq(account.id.to_s)
       expect(session['payment_method_collection']).to eq('always')
       expect(session['success_url']).to end_with('/settings/billing/return?session_id={CHECKOUT_SESSION_ID}')
 
@@ -627,6 +630,46 @@ RSpec.describe 'Billing page', type: :request do # rubocop:disable RSpec/Multipl
       expect(response).to redirect_to('/settings/billing')
       expect(flash[:alert]).to eq(I18n.t('billing_no_customer_yet'))
       expect(WebMock).not_to have_requested(:post, 'https://api.stripe.com/v1/billing_portal/sessions')
+    end
+  end
+
+  # C1 (review 7). The deletion has been asked for and the 90-day window is
+  # running: the subscription was cancelled with the request and the mail
+  # promised no further charge. Buying again here would break that promise AND
+  # jam the clean-up — on day 90 the purge refuses to destroy an account that
+  # is still being charged, releases its claim and pages the operator, and
+  # does the same every night after that while the card keeps being billed for
+  # an account nobody may write to. So both doors to Stripe are shut, with the
+  # one sentence that says what to do instead.
+  describe 'an account scheduled for deletion' do
+    before do
+      account.update!(deletion_requested_at: Time.current, purge_scheduled_for: 90.days.from_now,
+                      suspended_at: Time.current, suspension_reason: 'deletion')
+      act_as(admin_for(account))
+    end
+
+    it 'says to cancel the deletion first instead of offering a button that would be refused' do
+      doc = page
+
+      expect(doc.at('[data-billing-banner="pending_deletion"]').text.strip)
+        .to eq(I18n.t('billing_refused_pending_deletion'))
+      expect(doc.at('[data-billing-checkout-button]')).to be_nil
+      expect(doc.at('[data-billing-portal-button]')).to be_nil
+    end
+
+    it 'refuses Checkout and the Customer Portal without asking Stripe anything' do
+      post '/settings/billing/checkout'
+
+      expect(response).to redirect_to('/settings/billing')
+      expect(flash[:alert]).to eq(I18n.t('billing_refused_pending_deletion'))
+
+      post '/settings/billing/portal'
+
+      expect(response).to redirect_to('/settings/billing')
+      expect(flash[:alert]).to eq(I18n.t('billing_refused_pending_deletion'))
+
+      expect(WebMock).not_to have_requested(:any, %r{\Ahttps://api\.stripe\.com/})
+      expect(AccountSubscription.count).to eq(0)
     end
   end
 
@@ -969,7 +1012,7 @@ RSpec.describe 'Billing page', type: :request do # rubocop:disable RSpec/Multipl
       other = create(:account)
       stub_checkout_retrieve('cs_test_tagged', reference: account.id.to_s,
                                                subscription: trialing_subscription.merge(
-                                                 'metadata' => { 'account_id' => other.id.to_s }
+                                                 'metadata' => { 'esigncenter_account_id' => other.id.to_s }
                                                ))
 
       get '/settings/billing/return', params: { session_id: 'cs_test_tagged' }

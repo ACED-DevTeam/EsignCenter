@@ -44,9 +44,22 @@ class StripeEventInbox < ApplicationRecord
   # to be none of ours.
   TERMINAL_STATUSES = [PROCESSED, IGNORED].freeze
 
-  # How long a row may sit claimed before the reconciliation job assumes the
-  # worker that claimed it died.
+  # How long a row may sit `pending` — stored by the endpoint, never picked
+  # up — before the reconciliation job assumes its enqueue was lost.
   STUCK_AFTER = 15.minutes
+
+  # How long a row may sit `processing` before the reconciliation job decides
+  # the worker holding it died and releases the claim (checkpoint 7, P1).
+  #
+  # Longer than STUCK_AFTER on purpose. A `processing` row means a worker is
+  # INSIDE dispatch right now; a failure would have written `failed` and
+  # handed the row back on its own, and Sidekiq's whole retry chain for this
+  # job (five retries, ~17 minutes of backoff) plus its shutdown grace fits
+  # inside half an hour. So a claim older than this cannot belong to a worker
+  # that is still alive — and releasing one that IS alive would only spend a
+  # second attempt on an event that is already being handled, which is the
+  # noise the compare-and-set claim was added to stop.
+  STALE_CLAIM_AFTER = 30.minutes
 
   # Sidekiq's retry budget for ProcessStripeEventJob; a row that has spent it
   # is not re-enqueued by reconciliation.
@@ -67,9 +80,38 @@ class StripeEventInbox < ApplicationRecord
   # puts the exact received bytes back.
   before_validation :restore_raw_payload
 
+  # And the exception to storing Stripe's bytes untouched: an event about an
+  # account that has already been purged (checkpoint 7, C5).
+  #
+  # Stripe keeps talking about a cancelled subscription for a while — a late
+  # `customer.subscription.deleted`, a final `invoice.*` — and those events
+  # still resolve to the tombstone's account, because the subscription row is
+  # deliberately kept. They used to be stored exactly as they arrived: the
+  # customer's name, address, email and a working link to a Stripe-hosted
+  # invoice page, written into a database that had promised them their data
+  # was gone. The purge's own scrub had already run and cannot run again, so
+  # the scrub happens on the way IN.
+  #
+  # It has to watch `account_id`, not just `payload` (checkpoint 7, P2). The
+  # webhook endpoint inserts the row with NO account: which account an event
+  # is about is only worked out later, by ProcessStripeEventJob, and that is
+  # the moment the row becomes attributable to a tombstone. Watching the
+  # payload alone meant the scrub fired only when the stored bytes happened
+  # to be rewritten on that save — which is to say, by accident.
+  before_save :scrub_payload_of_purged_account,
+              if: -> { will_save_change_to_payload? || will_save_change_to_account_id? }
+
   scope :unprocessed, -> { where.not(status: TERMINAL_STATUSES) }
+  # Stored and then never picked up: the enqueue was lost. Nothing holds the
+  # row, so the sweep can simply enqueue it again.
   scope :stuck, lambda { |now = Time.current|
-    where(status: [PENDING, PROCESSING]).where(updated_at: ...(now - STUCK_AFTER))
+    where(status: PENDING).where(updated_at: ...(now - STUCK_AFTER))
+  }
+  # Claimed and then abandoned: the worker died mid-dispatch. The claim is a
+  # compare-and-set over `pending`/`failed`, so such a row has to be RELEASED
+  # before it can be worked again — see StripeReconciliationJob (P1).
+  scope :stale_claims, lambda { |now = Time.current|
+    where(status: PROCESSING).where(updated_at: ...(now - STALE_CLAIM_AFTER))
   }
   scope :retryable, -> { where(status: FAILED).where(attempts: ...MAX_ATTEMPTS) }
 
@@ -89,13 +131,32 @@ class StripeEventInbox < ApplicationRecord
 
   def payload=(value)
     @raw_payload = value.is_a?(String) ? value.dup : nil
+    @payload_assigned = true
 
     super
   end
 
   private
 
+  # The bytes Stripe signed, put back after ApplicationRecord's whitespace
+  # stripping has had its way with them — on EVERY save, not only the insert
+  # (checkpoint 7, P2). A row loaded from the database and re-saved for some
+  # other column (the job stamping `account_id`, say) was going through the
+  # same stripping with nothing to restore it, so a body that ended in a
+  # newline quietly lost it: the stored event no longer verified, and whether
+  # the payload "changed" on that save depended on trailing whitespace.
   def restore_raw_payload
-    self[:payload] = @raw_payload if @raw_payload && self[:payload] != @raw_payload
+    raw = @payload_assigned ? @raw_payload : attribute_in_database(:payload)
+
+    self[:payload] = raw if raw && self[:payload] != raw
+  end
+
+  # The same walk the purge uses, so what a late event keeps and what a purged
+  # account's older events keep are decided in exactly one place.
+  def scrub_payload_of_purged_account
+    return if account_id.blank?
+    return unless Account.where(id: account_id).where.not(purged_at: nil).exists?
+
+    self[:payload] = Accounts::Purge.scrub_payload(self[:payload])
   end
 end

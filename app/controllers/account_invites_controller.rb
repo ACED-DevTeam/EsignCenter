@@ -52,7 +52,7 @@ class AccountInvitesController < ApplicationController
 
     result = buy_seat_and_invite(row, offer)
 
-    respond_to_purchase(result)
+    respond_to_purchase(result, offer)
   rescue AccountInvites::AlreadyInvited, AccountInvites::InvalidEmail,
          ActiveRecord::RecordInvalid, ActiveModel::ValidationError => e
     # Every one of these is raised BEFORE Stripe is asked for anything, so no
@@ -97,8 +97,22 @@ class AccountInvitesController < ApplicationController
     end
   end
 
+  # `destroy` reaches one row that `resend` must not (checkpoint 7, P5): a
+  # PARKED purchase, waiting for a card step that may never be finished. It is
+  # listed on the users page as "Awaiting payment" and an admin can cancel it
+  # — but there is nothing to send again, because nothing was ever sent, so
+  # `resend` keeps looking only at invitations that really are pending and
+  # answers 404 for a parked row exactly as it does for one that has lapsed.
   def load_invite
-    @invite = current_account.account_invites.pending.find(params[:id])
+    scope = action_name == 'destroy' ? cancellable_invites : current_account.account_invites.pending
+
+    @invite = scope.find(params[:id])
+  end
+
+  def cancellable_invites
+    invites = current_account.account_invites
+
+    invites.pending.or(invites.payment_pending)
   end
 
   # The offer the browser is handing back, exactly as this server minted it.
@@ -154,6 +168,14 @@ class AccountInvitesController < ApplicationController
                                       invited_by: current_user)
         invite.validate!
 
+        # A seat that became free between the quote and this click is a seat
+        # that is already paid for, and charging for it again would be taking
+        # money for something the customer owns (checkpoint 7, B4). It happens
+        # when a hand-back failed — a member was archived while Stripe was
+        # unreachable, so the subscription still bills the higher number — and
+        # the honest answer is to fill the seat rather than buy a second one.
+        next save_bought_invite!(invite) if seat_already_paid_for?(row)
+
         # And the price is asked again, a moment before it is charged: a
         # renewal can fall inside the quarter-hour the offer is good for, and
         # nobody may be charged an amount they were not shown.
@@ -163,7 +185,7 @@ class AccountInvitesController < ApplicationController
                         proration_date: offer[:proration_date].to_i }
         subscription = BillingLifecycle.add_seat!(row, **seat_change)
 
-        next :pending_update if BillingLifecycle.pending_update?(subscription)
+        next park_purchase!(invite, subscription, quantity_after) if BillingLifecycle.pending_update?(subscription)
 
         StripeBilling::Linker.apply_current!(row, row.stripe_subscription_id, event_at: Time.current)
 
@@ -191,6 +213,37 @@ class AccountInvitesController < ApplicationController
     return false if quote[:quantity_after].to_i != offer[:quantity_after].to_i
 
     quote[:amount_cents].to_i - offer[:amount_cents].to_i <= SEAT_PRICE_TOLERANCE_CENTS
+  end
+
+  # Is there a seat sitting there paid for? Occupancy counts people and the
+  # invitations holding seats for people; a subscription billing for more than
+  # that has one going spare. Asked inside the lock, so the answer cannot have
+  # changed by the time the invitation is written.
+  def seat_already_paid_for?(row)
+    Accounts.seat_occupancy(current_account) < row.quantity
+  end
+
+  # Stripe parked the change: the card needs a second step, nothing has been
+  # charged, and the subscription still bills the old number. The invitation is
+  # written PARKED rather than thrown away (checkpoint 7, B1) — it holds no
+  # seat, goes to nobody, and cannot be accepted — so that the customer
+  # finishing that step in Stripe's own portal ends with the invitation they
+  # paid for instead of a seat handed silently back.
+  #
+  # Saved in a savepoint of its own for the same reason the bought one is: a
+  # row that will not insert must not take anything else down with it, and the
+  # customer is no worse off than they were before this change existed.
+  def park_purchase!(invite, subscription, quantity_after)
+    ApplicationRecord.transaction(requires_new: true) do
+      AccountInvites.park!(invite, quantity: quantity_after,
+                                   expires_at: BillingLifecycle.pending_update_expires_at(subscription))
+    end
+
+    :pending_update
+  rescue ActiveRecord::ActiveRecordError => e
+    ErrorReport.error(e, account_id: current_account.id)
+
+    :pending_update
   end
 
   def unmoved_quantity(row, quantity_after)
@@ -229,7 +282,7 @@ class AccountInvitesController < ApplicationController
     :charged_without_invite
   end
 
-  def respond_to_purchase(result)
+  def respond_to_purchase(result, offer)
     case result
     when :stale
       redirect_to settings_users_path, alert: I18n.t('seat_offer_stale')
@@ -239,9 +292,12 @@ class AccountInvitesController < ApplicationController
       redirect_to settings_users_path, alert: I18n.t('seat_add_charged_without_invite')
     when :pending_update
       # Stripe parked the change because the card needs another step. Nothing
-      # was reserved, and the customer is sent to the one page that can finish
-      # it rather than left guessing.
-      redirect_to settings_users_path, alert: I18n.t('seat_add_needs_payment_action')
+      # has been charged and no seat exists yet — but the invitation is
+      # remembered, so finishing the step really does finish the job, and the
+      # message says so rather than asking them to start again.
+      redirect_to settings_users_path,
+                  alert: I18n.t('seat_add_needs_payment_action',
+                                email: AccountInvites.normalize_email(offer[:email]))
     else
       AccountInvites.deliver!(result)
 

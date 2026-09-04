@@ -83,10 +83,11 @@ this order, and nothing else happens on that request:
    worker died) — without it the event would sit until the next 06:00 sweep.
    Only a copy that is genuinely *waiting* is put back: an event already
    processed or ignored queues nothing, one a worker is holding right now
-   queues nothing (deciding that worker died belongs to the stuck-row sweep,
-   and a second job would spend one of the event's five retries for nothing),
-   and one that has already spent all five is left where the operator can see
-   it rather than quietly restarted by a dashboard "Resend".
+   queues nothing (deciding that worker died belongs to the 06:00 sweep, which
+   hands such an event back after half an hour so it can be worked again — a
+   second job here would only spend one of the event's five retries for
+   nothing), and one that has already spent all five is left where the
+   operator can see it rather than quietly restarted by a dashboard "Resend".
 3. **Enqueue.** A background job is queued. Nothing is processed on the web
    request.
 4. **Acknowledge.** `200 {"received": true}`, immediately.
@@ -133,10 +134,17 @@ Inside that lock the rule is short:
 never sold — another product on a shared Stripe account, something made by
 hand in the dashboard. A subscription is ours only if it carries an item on
 **our price** (`STRIPE_PRICE_ID`) or our own Checkout tagged it with the
-account's id. Anything else is never adopted (no paid access for a purchase
-that was not ours) and never cancelled (it is somebody's real purchase); it is
-logged as *"foreign subscription … left alone"* and named in the nightly
-summary. When a customer somehow holds several live subscriptions of ours, the
+account's id under **our own name for that tag**
+(`metadata.esigncenter_account_id`, which is also what the Stripe customer we
+create is tagged with). The name matters: the tag used to be the bare
+`account_id`, which is what any other product sharing a Stripe account would
+plausibly call its own tenant number — and a number that happened to match one
+of our account ids would have made a stranger's subscription "ours", adopted
+and, if we already held one, cancelled and refunded. A subscription carrying
+only the old bare key counts for nothing now. Anything that is not ours is
+never adopted (no paid access for a purchase that was not ours) and never
+cancelled (it is somebody's real purchase); it is logged as *"foreign
+subscription … left alone"* and named in the nightly summary. When a customer somehow holds several live subscriptions of ours, the
 survivor is decided the same way every time, in three steps:
 
 1. **Health first.** The one that is actually **collecting** (`active`,
@@ -639,6 +647,22 @@ the account today. Dates are shown in the account's own timezone and language.
   the invoices and cancellation live. Seats are not editable there: the app
   owns them.
 
+**While a deletion is scheduled, both doors are shut.** An account whose admin
+has asked us to delete it is read-only for its 90 days and its subscription
+was cancelled with the request, so the page shows *"Your account is scheduled
+for deletion. Cancel the deletion first if you want to subscribe again."* where
+the buy and **Manage billing** buttons would be, and posting to either door
+answers with that same sentence without asking Stripe anything. Buying again
+would break the promise the deletion email made (*"you will not be charged
+again"*) and would also jam the clean-up: on day 90 the purge refuses to
+destroy an account that is still being charged, so it would refuse, page the
+operator, and do it again every night while the card kept being billed for an
+account nobody may write to. Cancelling the deletion (Settings → Account)
+opens both doors again at once. The Checkout **return** door stays open on
+purpose: a session completed a moment before the deletion request has already
+created a subscription at Stripe, and refusing to write it down would leave it
+billing with nothing in the app pointing at it.
+
 Coming back from Checkout, `/settings/billing/return` reads the session once
 and applies the subscription immediately, so the page tells the truth without
 waiting for the webhook. The session has to *be* this account's completed
@@ -722,7 +746,20 @@ no support ticket, no manual step — and one "your payment went through" email
 goes out. So does the subscription simply **ending**: Stripe gives up on an
 unpaid subscription about a week after our own day-14 suspension and cancels
 it, and at that point there is nothing left to collect — the account goes back
-to the free plan and can write again (quietly, with no email: nobody paid). A suspension the operator applied by hand is a different reason
+to the free plan and can write again (quietly, with no email: nobody paid).
+
+"Can write again" is meant literally, and it is the same promise a customer
+who cancels on purpose gets: **the free-plan month starts the day the paid
+plan ends.** Whatever was completed and sent earlier in that calendar month
+was paid for and is not charged against the free allowance, so the account
+begins at 0 of 5 completions and 0 of 15 sends and its usage page says so. The
+free month still ends with the calendar month, the free caps then apply
+normally from that moment on, and documents already out for signature still
+count as waiting for signatures until they are resolved. Nothing is deleted
+and no counter is rewritten — see `docs/quotas-and-limits.md`, "Dropping from
+paid to free part-way through a month".
+
+A suspension the operator applied by hand is a different reason
 (`accounts.suspension_reason`) and a payment never lifts it; only whoever set
 it can.
 
@@ -744,7 +781,11 @@ What happens next depends on whether there is a seat free:
 
 - **A seat is free** (the subscription already bills for more people than are
   in the account) — the invitation is written immediately and the email goes
-  out. Stripe is not called at all; the seat was already paid for.
+  out. Stripe is not called at all; the seat was already paid for. This is
+  asked again at the moment the admin confirms a purchase, not only when the
+  screen was drawn: if a seat became free in between — somebody was removed
+  while Stripe was briefly unreachable, so the subscription is still billing
+  for them — the invitation takes that seat and the card is not charged.
 - **Every seat is taken** — the admin is shown, before anything happens, what
   Stripe will charge **today** for the rest of the current billing period, and
   what the subscription will cost from the next renewal. Only when they
@@ -755,15 +796,53 @@ What happens next depends on whether there is a seat free:
   the moment it is priced from is pinned and reused for the real charge, so
   the invoice they get is the one they agreed to.
 - If the card needs an extra step (3-D Secure), Stripe parks the change rather
-  than making it. Nothing is charged, no seat is added and no invitation is
-  written; the admin is sent to **Manage billing** to finish it and can then
-  invite again.
+  than making it. At that moment nothing has been charged and no seat has been
+  added — but the invitation is **remembered**, so finishing the step finishes
+  the job. The admin is sent to **Manage billing**, and the message says what
+  will happen: complete the card step and the invitation goes out to that
+  address by itself; don't, and nothing is charged and no seat is added.
+  Underneath, the invitation is written in a parked state: it holds no seat,
+  nobody is emailed, and its link does not exist yet. It **is** shown on
+  Settings → Users under Pending invitations, marked *Awaiting payment*, with a
+  Cancel button — there is nothing to resend, because nothing was ever sent, so
+  no Resend button is offered. Cancelling one asks Stripe for nothing at all:
+  the seat count never moved, so there is nothing to take back and nothing to
+  refund.
+  When Stripe tells us the subscription really does bill for the seat that was
+  bought, the invitation becomes an ordinary pending one — a fresh 7-day link,
+  the invitation email, the seat it was paid for. **One finished card step
+  releases one invitation.** If two people were invited while the same card
+  needed a step, finishing one of them sends one invitation — the one that has
+  been waiting longest — and the other stays parked; the account is never put
+  over the number of seats the subscription bills for. That count is of
+  invitations released, not of emails delivered: if our mail provider fails on
+  the one message we send, the invitation still holds the seat it was paid for
+  (it is on Settings → Users with a Resend button, and we are alerted), and
+  nobody else is released into that seat. A parked purchase for a larger
+  number of seats than the subscription ends up billing is never released at
+  all. And if the invited address has closed its login somewhere
+  else in the meantime, the parked row is dropped instead of sent and the seat
+  goes back on the next reconciliation.
+  If the customer never finishes the step, Stripe's parked change expires
+  (usually within a day) and
+  the hourly billing job simply drops the parked row: nothing was added to the
+  subscription, so nothing has to be taken back and there is nothing to refund.
+  From the moment that deadline passes the purchase can no longer be finished,
+  and nothing waits for the hourly job to say so: Settings → Users shows the
+  row as *Payment step expired* with Cancel as its only button, cancelling it
+  really does settle it, and a seat that applies afterwards never releases it.
+  This replaces the old behaviour, where a customer who completed the card step
+  later paid the proration and then had the seat taken straight back with no
+  invitation and no explanation.
 - An account whose plan the EsignCenter team granted by hand, and a child
   account whose parent pays, cannot buy seats: they get the ordinary "all
   seats are in use" refusal instead.
 
 Pending invitations are listed on Settings → Users with the date they expire,
-and can be **resent** (a fresh link, a fresh week) or **cancelled**.
+and can be **resent** (a fresh link, a fresh week) or **cancelled**. A parked
+purchase waiting on a card step is listed there too, as *Awaiting payment*,
+and can only be cancelled — or, once its card-step deadline has passed, as
+*Payment step expired*, again with Cancel as its only button.
 
 ### Seats going back down
 
@@ -785,8 +864,9 @@ it. It notices invitations that have lapsed, retries any hand-back Stripe
 refused at the time (an invitation is only marked settled once Stripe has
 actually taken the lower number), and brings down any subscription that is
 billing for more seats than the account occupies — however it got that way,
-including a card step the customer finished later in Stripe's own portal for a
-seat whose invitation was never written.
+including a seat added in Stripe's own dashboard, or one from a parked purchase
+whose invitation had already been cancelled or dropped. It also clears out
+parked purchases whose card step was never finished.
 
 When a paid plan ends with pending invitations still outstanding, those
 invitations are **cancelled**: there is no seat left for anyone to take, and
@@ -832,7 +912,11 @@ enough for the world to move:
 - An address belonging to a **closed login** (somebody archived in another
   account) cannot be invited at all: nobody can sign in as it, so the
   invitation could never be accepted. The admin is told to invite a different
-  address, before any seat is priced or charged.
+  address, before any seat is priced or charged. The same answer is given when
+  the person's own **account** has closed — archived, or already being deleted
+  — even though their user record is untouched: nobody in such an account can
+  sign in, so the link says so plainly instead of offering a join screen that
+  could never be got past.
 
 Joining a team is a move between two companies, so **the keys the old account
 cut are thrown away as part of it**: API tokens, MCP tokens, any OAuth grant,

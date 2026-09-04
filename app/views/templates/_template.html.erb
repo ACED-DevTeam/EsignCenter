@@ -1,5 +1,7 @@
+<%# A card is a drop target only for somebody who could actually create the template a dropped file would become: dropping on it clones and replaces, and the upload form the drop submits into is rendered under the same question. A read-only reader (suspended account, account pending deletion, a seat parked by a downgrade, an ordinary viewer) therefore gets a plain card, and the browser handles their drop the way it handles a drop on any other link. %>
+<% template_card_drop_target = 'dashboard-dropzone.templateCards' if can?(:create, ::Template) %>
 <div class="h-36 relative group">
-  <a href="<%= template_path(template) %>" class="flex h-full flex-col justify-between rounded-2xl pt-6 px-7 w-full bg-base-200 before:border-2 before:border-base-300 before:border-dashed before:absolute before:left-0 before:right-0 before:top-0 before:bottom-0 before:hidden before:rounded-2xl" data-targets="dashboard-dropzone.templateCards">
+  <%= tag.a href: template_path(template), class: 'flex h-full flex-col justify-between rounded-2xl pt-6 px-7 w-full bg-base-200 before:border-2 before:border-base-300 before:border-dashed before:absolute before:left-0 before:right-0 before:top-0 before:bottom-0 before:hidden before:rounded-2xl', data: { targets: template_card_drop_target } do %>
     <div class="text-xl font-semibold" style="line-height: 1.6rem; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;">
       <% if template.template_accesses.present? %>
         <%= svg_icon('lock', class: 'w-6 h-6 inline -translate-y-[4px]') %>
@@ -27,7 +29,7 @@
         <% end %>
       </p>
     </div>
-  </a>
+  <% end %>
   <div class="absolute top-0 bottom-0 w-0 items-center hidden md:group-hover:flex" style="right: 37px" data-targets="dashboard-dropzone.hiddenOnDrag">
     <div class="space-y-1">
       <% if can?(:update, template) && !template.archived_at? && template.account_id == current_account.id %>

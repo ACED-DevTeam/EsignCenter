@@ -22,7 +22,12 @@ class SendSubmitterInvitationReminderEmailJob
   private
 
   def deliver_reminder(submitter, claim)
-    mail = SubmitterMailer.invitation_email(submitter)
+    # `reminder: true` lets the mailer prefer the customer's reminder wording
+    # (per-template `invitation_reminder_email_*`, or the account-level
+    # submitter_invitation_reminder_email row) over the invitation wording.
+    # Both are paid-only, and the mailer falls back to the invitation copy
+    # whenever no reminder copy applies.
+    mail = SubmitterMailer.invitation_email(submitter, reminder: true)
 
     Submitters::ValidateSending.call(submitter, mail)
 

@@ -160,6 +160,36 @@ container boots). The Session 1 and 2 migrations are the model:
 | `20260901090600` | Same copy for the pinned SMTP server and the timeserver URL. Cannot be rolled back. |
 | `20260901180000` | Creates the `account_counters` table (durable per-account counters) |
 
+Sessions 4 to 7 added the rest. ★ marks one that changes or destroys data, or
+that cannot be undone — the reason the rollback rule below exists.
+
+| Migration | What it does |
+| --- | --- |
+| `20260902100000` | Creates `verified_documents` — the fingerprint of every PDF this app has signed, which the public `/verify` page answers from |
+| ★ `20260902100100` | Backfills that table from every document already signed |
+| `20260902120000` | Creates `account_subscriptions` (who is on which plan, and what Stripe says) |
+| `20260902120100` | Creates `account_limit_overrides` (per-account limit overrides for the operator) |
+| `20260902120200` | Creates `abuse_flags` (fair-use, velocity, complaint, bounce and reported-document rows) |
+| `20260902120300` | Adds the sending-pause columns to accounts |
+| ★ `20260902120400` | Turns the old plan placeholders into real subscription rows. Development and test hygiene only — production has no such rows |
+| `20260903000100` | Creates `stripe_event_inboxes` (every Stripe event, recorded once, so a replay changes nothing) |
+| `20260903000200` | Adds the Stripe state columns to `account_subscriptions` |
+| `20260903010000` | Adds `submissions.resubmitted_from_id` |
+| `20260903020000` | Adds `account_subscriptions.ended_at` |
+| ★ `20260903020100` | Adds `submissions.lineage_root_id` and fills it in for every existing submission, one row at a time. Fine on today's data; **batch it before running against a large table** |
+| `20260903030000` | Adds the suspension columns to accounts (the day-14 read-only freeze) |
+| `20260904000100` | Creates `account_invites` (seat invitations) |
+| `20260904000200` | Adds `users.read_only_at` (a person parked read-only by a downgrade) |
+| `20260904000300` | Creates `account_moves` (the record of a person joining another team) |
+| `20260904000400` | Adds the deletion columns to accounts (the 90-day window) |
+| `20260904000500` | Adds `account_subscriptions.refund_owed` |
+| `20260904010000` | Adds the dormant-warning columns to accounts |
+| `20260904020000` | Adds the purge claim and the deletion confirmation code to accounts |
+| `20260904030000` | Adds the deletion code's expiry/attempt window |
+| ★ `20260904040000` | Puts a real foreign key on `webhook_attempts.webhook_event_id`, with "delete the event, delete its attempts". **Deletes orphaned attempt rows first** — count them on the rehearsal copy (section 2.3, step 4b) |
+| ★ `20260904041500` | Adds `users.session_version`. **Every signed-in person is signed out of every browser on the day this ships** (humans only — API tokens and the integrating apps' credentials are untouched) |
+| ★ `20260904050000` | Adds `accounts.last_active_at`. Existing rows stay empty on purpose, so no dormancy clock moves — but **any account part-way through a dormancy warning has that warning cleared and starts its notice again** |
+
 Because most of these are one-way, **rollback of the database is a restore
 from the pre-deploy snapshot**, never `db:rollback`.
 
@@ -235,6 +265,32 @@ database.
    Expect: every pending migration listed as migrated, and for the Session 1
    set the line `removing 0 over-copied account_configs row(s)`. Any error
    here stops the deploy.
+
+4b. **Count the orphaned webhook attempts** (only matters the first time
+   `20260904040000` runs — after that the foreign key makes orphans
+   impossible). Run this against the **restored copy, before** the migration,
+   from a `psql` shell on the rehearsal database:
+
+   ```sql
+   SELECT count(*) FROM webhook_attempts a
+     LEFT JOIN webhook_events e ON e.id = a.webhook_event_id
+    WHERE e.id IS NULL;
+   ```
+
+   These are delivery-attempt rows whose event has already been deleted —
+   nothing in the app can reach them, and the migration **deletes them** (the
+   foreign key cannot be created while they exist). What to do with the
+   answer:
+
+   - **Zero** — nothing to think about; the migration adds the key and moves on.
+   - **A small number** — expected on an older database. Write the number in
+     the deploy notes and carry on; they are unreachable rows holding a
+     customer's webhook responses, which is exactly why they are being cleared.
+   - **Large, or larger than you can explain** (say, a noticeable share of
+     `SELECT count(*) FROM webhook_attempts`) — stop and find out why events
+     are disappearing while their attempts survive before you deploy, because
+     the same cause is probably still running. The rehearsal is a throwaway
+     copy, so nothing has been lost yet; you have the snapshot either way.
 
 5. Verify the rehearsed database looks right:
 
@@ -377,6 +433,7 @@ here when they land. Turnstile and Google OAuth landed with Session 5
 | `DATABASE_URL` | Required | `config/dotenv.rb`, database config | Boot fails (production has no fallback). Use the database's **Internal** URL. |
 | `SECRET_KEY_BASE` | Required | Rails sessions; `config/environments/production.rb` derives the **encryption key** for `encrypted_configs` (certificates, SMTP pins) from it; `config/dotenv.rb` and `lib/puma/plugin/redis_server.rb` derive the embedded Redis password from it | **Boot does not fail — it quietly makes a new one.** when no persisted `docuseal.env` exists yet, `config/dotenv.rb` generates a random secret, writes it to `<WORKDIR>/docuseal.env` and carries on. New sign-ins still work but every existing signed-in session is invalidated (everyone is logged out) and `/up` still says `ok`, but every existing encrypted row (signing certificates, pinned SMTP passwords) is unreadable under the new key: signing and tenant mail break with decryption errors. Render **must keep this variable set** on the service, and it must **never change** — keep an offline copy. |
 | `ENCRYPTION_SECRET` | Optional | `config/environments/production.rb` | Derived from `SECRET_KEY_BASE`. Do not set it on an existing deployment; setting it later has the same effect as rotating the key. |
+| `SESSION_REMEMBER_DAYS` | Optional | `config/initializers/devise.rb` | How long a "remember me" cookie keeps somebody signed in. Unset = **730 days (two years)**, and sign-up turns remember-me on for everybody — which is why "unused" is measured from `accounts.last_active_at` (a real request) and not from the last sign-in (section 4.1 and `docs/account-deletion.md`). Shortening it makes people sign in more often; it changes nothing about dormancy. |
 | `HOST` | Required unless `APP_URL` set | `lib/docuseal.rb` `default_url_options` only — it is the default source for generated links (webhooks, file URLs, and emails unless `EMAIL_HOST` is set — `EMAIL_HOST` overrides the host in email links, so update or unset it when the hostname changes). It is **not** fed into any Rails host allow-list; the app has none. | Links fall back to `http://localhost:3000` — every email and webhook link breaks. A value with a port (`host:3015`) is honoured. |
 | `FORCE_SSL` | Required (`true`) | `lib/docuseal.rb` (links become `https`), production SSL redirect | Links are built with `http://` and the app does not force HTTPS. |
 | `APP_URL` | Optional | `lib/docuseal.rb` `default_url_options` | When set, the full URL (`https://esign.example.com`) wins over `HOST`/`FORCE_SSL` for every generated link. When unset, `HOST` + `FORCE_SSL` are used. This is now the **only** source; the old per-account app-URL setting in the database is gone (see section 7). |
@@ -422,6 +479,7 @@ here when they land. Turnstile and Google OAuth landed with Session 5
 | `WORD_CONVERSION_SLOTS` | Optional (Session 4) | `lib/word_converter.rb` | How many Word conversions (LibreOffice processes) may run at once on the instance. Unset = `2`. A whole number, never below 1; anything else falls back to the default. Set to `1` if the launch-gate memory check (`docs/render-deploy-checklist.md`) shows two do not fit; takes effect at the next job. |
 | `SOFFICE_PATH` | Optional (Session 4) | `lib/word_converter.rb` | Full path to the LibreOffice binary when `soffice` is not on `PATH`. Leave unset for the shipped image. |
 | One-off, for `rake email:pin`: `ACCOUNT_ID`, `SMTP_TOKEN_ENV`, `FROM_EMAIL`, `SMTP_HOST`, `SMTP_PIN_PORT`, plus one variable per internal app holding that app's Postmark server token (any name; `SMTP_TOKEN_ENV` names it) | Task-time only | `lib/tasks/email.rake` | The task aborts naming the missing one. `SMTP_HOST` defaults to `smtp.postmarkapp.com`, `SMTP_PIN_PORT` to `587`. |
+| One-off, for `rake accounts:purge`: `FORCE`, `CONFIRM` | Task-time only | `lib/tasks/accounts.rake` | Only needed to purge an account that is **not** due to be purged. Without `FORCE=1` the task refuses and changes nothing; with it, the task prints what the account still holds and then refuses again unless `CONFIRM` is the account's name typed back exactly. See section 4.2. |
 
 ---
 
@@ -530,6 +588,15 @@ bundle exec rake accounts:cancel_deletion[123]
 one that still holds a live paid subscription — an account still being charged
 means the cancellation never landed, and that is money leaving somebody's card.
 Cancel it at Stripe first. Running it twice is a no-op.
+
+It also refuses an account that is **not due** to be purged — nobody asked for
+it, or the 90-day window has not run out, or it is not a dormant account that
+has had its final warning — and it refuses an account a purge has already
+claimed. To destroy one that is not due anyway, the task makes you say so
+twice: `FORCE=1` gets it to print everything the account still holds, and then
+`CONFIRM="<the account's exact name>"` has to match before anything is
+touched. Both are on one command line, and the task tells you the exact line
+to run.
 
 `cancel_deletion` does **not** bring the subscription back: the cancellation
 went to Stripe when the deletion was requested and is not reversible from here.

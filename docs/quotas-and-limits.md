@@ -119,6 +119,42 @@ works again on the 1st. A link closed because ten documents are still waiting
 for signatures reopens as soon as one of them completes, is declined, expires
 or is deleted; a sending pause is lifted only by the operator.
 
+### Dropping from paid to free part-way through a month
+
+**Your free-plan month starts the moment your paid plan ends in EsignCenter.**
+If a paid account cancels (or its card finally lapses and Stripe gives up on
+the subscription) on the 12th, the documents it completed and sent on the 1st
+to the 12th were paid for, and they are **not** charged against the free
+allowance that begins on the 12th.
+
+"The moment your paid plan ends in EsignCenter" is the moment this application
+applies the change, which is normally within seconds of Stripe making it. If
+the message from Stripe is lost and the nightly comparison picks the
+cancellation up hours later, everything done in the meantime still counts as
+paid — the account was being treated as a paid account the whole time, so it
+is charged to the paid month rather than to the free one. Completions and
+sends are both measured from that same moment, so the two can never disagree.
+
+The account starts the free plan at 0 of 5 completions and 0 of 15 sends, and
+the usage page shows exactly that.
+
+The rest of the rules are unchanged:
+
+- The free month still **ends** with the calendar month. A downgrade on the
+  12th gives that account until the 1st, not thirty days.
+- The free caps then apply normally from the downgrade on. It is a fresh
+  start, not a free pass: the sixth completion in the rest of that month is
+  refused like any other.
+- **"Waiting for signatures" is not prospective.** It is a live count of what
+  is open right now, so documents sent while paying still occupy the free
+  in-flight cap until they are signed, declined, expire or are deleted.
+- Nothing is rewritten, deleted or refunded. The send counter is append-only
+  as always — the app simply writes down where it stood at the moment the
+  paid plan ended and measures the free month from there — so deleting a
+  document still never gives a send back.
+- Upgrading back to paid removes the caps entirely, and a second downgrade in
+  the same month starts the free month again at that later moment.
+
 ### What "a seat" means
 
 A seat is occupied by an active person in the account **and** by a pending

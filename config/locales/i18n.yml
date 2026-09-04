@@ -11,6 +11,15 @@ en: &en
   account_suspended_banner: "Account suspended — update your payment method."
   account_suspended_banner_hint: "Everything stays readable, downloadable and exportable, and signers already part-way through a document can still finish it. Nothing new can be created until the payment goes through."
   account_suspended_banner_link: "Go to billing"
+  account_suspended_banner_operator: "Account suspended — please contact support."
+  account_suspended_banner_operator_hint: "Everything stays readable, downloadable and exportable, and signers already part-way through a document can still finish it. Nothing new can be created until the suspension is lifted."
+  account_suspended_banner_operator_link: "Contact support"
+  seat_read_only_banner: "Your seat is read-only."
+  seat_read_only_banner_hint: "You can still read, download and export everything in this account. Nothing new can be created until an administrator gives your seat back under Settings → Users."
+  access_denied_alert: "You don't have permission to do that in this account."
+  upgrade_to_add_more_users: "Upgrade to add more people to this account."
+  need_help_email_us: "Need help? Email us:"
+  no_documents_here_yet: "No documents here yet."
   account_deletion_banner: "This account will be permanently deleted on %{date}."
   account_deletion_banner_hint: "Everything stays readable, downloadable and exportable until then. Nothing new can be created."
   account_deletion_cancel_button: "Cancel deletion"
@@ -119,6 +128,7 @@ en: &en
   manage_billing: "Manage billing"
   billing_view_usage: "See this month's usage"
   billing_already_subscribed: "You already have an active subscription — use Manage billing."
+  billing_refused_pending_deletion: "Your account is scheduled for deletion. Cancel the deletion first if you want to subscribe again."
   billing_account_moved_away: "This account was closed when its last member joined another team, so its billing can no longer be changed here."
   billing_no_customer_yet: "There is no billing account yet. Start a subscription first."
   billing_provider_unreachable: "We couldn't reach our billing provider. Please try again in a minute."
@@ -161,6 +171,8 @@ en: &en
   make_read_only: "Make read-only"
   pending_invitations: "Pending invitations"
   invite_pending_until: "Pending · expires %{date}"
+  invite_awaiting_payment: "Awaiting payment"
+  invite_payment_step_expired: "Payment step expired"
   send_invitation: "Send invitation"
   invite_form_hint: "They choose their own name and password when they accept. The invitation is good for %{count} days, and the seat is held for them until then."
   invite_already_pending: "has already been invited — resend or cancel that invitation instead"
@@ -177,9 +189,11 @@ en: &en
   confirm_and_invite: "Confirm and send the invitation"
   seat_offer_expired: "That price is out of date. Start the invitation again to see the current amount."
   seat_offer_stale: "Your seats changed while you were deciding. Please try again."
-  seat_add_needs_payment_action: "Stripe needs an extra step to charge your card — complete it in Settings → Billing → Manage billing, then invite again. Nothing has been charged and no seat was added."
-  billing_seats_summary: "%{seats} seats · %{in_use} in use."
-  billing_seats_summary_pending: "%{seats} seats · %{in_use} in use, including %{pending} pending invitations."
+  seat_add_needs_payment_action: "Your card needs an extra step. Finish it under Manage billing and we will send the invitation to %{email} automatically; if you don't, nothing is charged and no seat is added."
+  billing_seats_summary:
+    one: "%{count} seat · %{in_use} in use."
+    other: "%{count} seats · %{in_use} in use."
+  billing_seats_summary_pending: "%{seats} seats · %{in_use} in use, including %{pending} not yet accepted."
   billing_manage_users_link: "Manage users"
   invite_page_title: "Join %{team}"
   invite_page_intro: "%{inviter} invited you to join %{team} on EsignCenter."
@@ -916,9 +930,6 @@ en: &en
   eight_hours: 8 hours
   twelve_hours: 12 hours
   twenty_four_hours: 24 hours
-  two_days: 2 days
-  four_days: 4 days
-  eight_days: 8 days
   fifteen_days: 15 days
   twenty_one_days: 21 days
   thirty_days: 30 days
@@ -979,7 +990,6 @@ en: &en
   original_sha256: Original SHA256
   result_sha256: Result SHA256
   generated_at: Generated at
-  email_verification: Email verification
   phone_verification: Phone verification
   session_id: Session ID
   option: Option
@@ -1376,6 +1386,15 @@ es: &es
   account_suspended_banner: "Cuenta suspendida: actualiza tu método de pago."
   account_suspended_banner_hint: "Todo sigue siendo legible, descargable y exportable, y quienes ya empezaron a firmar un documento pueden terminarlo. No se puede crear nada nuevo hasta que se realice el pago."
   account_suspended_banner_link: "Ir a facturación"
+  account_suspended_banner_operator: "Cuenta suspendida: ponte en contacto con soporte."
+  account_suspended_banner_operator_hint: "Todo sigue siendo legible, descargable y exportable, y quienes ya empezaron a firmar un documento pueden terminarlo. No se puede crear nada nuevo hasta que se levante la suspensión."
+  account_suspended_banner_operator_link: "Contactar con soporte"
+  seat_read_only_banner: "Tu plaza es de solo lectura."
+  seat_read_only_banner_hint: "Puedes seguir leyendo, descargando y exportando todo lo de esta cuenta. No se puede crear nada nuevo hasta que un administrador te devuelva la plaza en Configuración → Usuarios."
+  access_denied_alert: "No tienes permiso para hacer eso en esta cuenta."
+  upgrade_to_add_more_users: "Mejora tu plan para añadir más personas a esta cuenta."
+  need_help_email_us: "¿Necesitas ayuda? Escríbenos:"
+  no_documents_here_yet: "Aún no hay documentos aquí."
   account_deletion_banner: "Esta cuenta se eliminará definitivamente el %{date}."
   account_deletion_banner_hint: "Hasta entonces, todo sigue siendo legible, descargable y exportable. No se puede crear nada nuevo."
   account_deletion_cancel_button: "Cancelar la eliminación"
@@ -1453,6 +1472,8 @@ es: &es
   manage_billing: "Gestionar facturación"
   billing_view_usage: "Ver el uso de este mes"
   billing_already_subscribed: "Ya tienes una suscripción activa: usa Gestionar facturación."
+  billing_refused_pending_deletion: "Tu cuenta está programada para eliminarse. Cancela la eliminación primero si quieres volver a suscribirte."
+  billing_account_moved_away: "Esta cuenta se cerró cuando su último miembro se unió a otro equipo, así que su facturación ya no se puede cambiar aquí."
   billing_no_customer_yet: "Todavía no hay una cuenta de facturación. Empieza una suscripción primero."
   billing_provider_unreachable: "No hemos podido contactar con nuestro proveedor de pagos. Inténtalo de nuevo en un minuto."
   billing_checkout_cancelled: "Pago cancelado: no se ha cobrado nada."
@@ -1494,6 +1515,8 @@ es: &es
   make_read_only: "Make read-only"
   pending_invitations: "Pending invitations"
   invite_pending_until: "Pending · expires %{date}"
+  invite_awaiting_payment: "Awaiting payment"
+  invite_payment_step_expired: "Payment step expired"
   send_invitation: "Send invitation"
   invite_form_hint: "They choose their own name and password when they accept. The invitation is good for %{count} days, and the seat is held for them until then."
   invite_already_pending: "has already been invited — resend or cancel that invitation instead"
@@ -1510,9 +1533,11 @@ es: &es
   confirm_and_invite: "Confirm and send the invitation"
   seat_offer_expired: "That price is out of date. Start the invitation again to see the current amount."
   seat_offer_stale: "Your seats changed while you were deciding. Please try again."
-  seat_add_needs_payment_action: "Stripe needs an extra step to charge your card — complete it in Settings → Billing → Manage billing, then invite again. Nothing has been charged and no seat was added."
-  billing_seats_summary: "%{seats} seats · %{in_use} in use."
-  billing_seats_summary_pending: "%{seats} seats · %{in_use} in use, including %{pending} pending invitations."
+  seat_add_needs_payment_action: "Your card needs an extra step. Finish it under Manage billing and we will send the invitation to %{email} automatically; if you don't, nothing is charged and no seat is added."
+  billing_seats_summary:
+    one: "%{count} seat · %{in_use} in use."
+    other: "%{count} seats · %{in_use} in use."
+  billing_seats_summary_pending: "%{seats} seats · %{in_use} in use, including %{pending} not yet accepted."
   billing_manage_users_link: "Manage users"
   invite_page_title: "Join %{team}"
   invite_page_intro: "%{inviter} invited you to join %{team} on EsignCenter."
@@ -2226,9 +2251,6 @@ es: &es
   eight_hours: 8 horas
   twelve_hours: 12 horas
   twenty_four_hours: 24 horas
-  two_days: 2 días
-  four_days: 4 días
-  eight_days: 8 días
   fifteen_days: 15 días
   twenty_one_days: 21 días
   thirty_days: 30 días
@@ -2289,7 +2311,6 @@ es: &es
   original_sha256: SHA256 Original
   result_sha256: SHA256 del Resultado
   generated_at: Generado el
-  email_verification: Verificación de correo electrónico
   phone_verification: Verificación telefónica
   session_id: ID de la Sesión
   option: Opción
@@ -2683,6 +2704,15 @@ it: &it
   account_suspended_banner: "Account sospeso: aggiorna il metodo di pagamento."
   account_suspended_banner_hint: "Tutto resta leggibile, scaricabile ed esportabile e chi ha già iniziato a firmare un documento può completarlo. Non è possibile creare nulla di nuovo finché il pagamento non va a buon fine."
   account_suspended_banner_link: "Vai alla fatturazione"
+  account_suspended_banner_operator: "Account sospeso: contatta l'assistenza."
+  account_suspended_banner_operator_hint: "Tutto resta leggibile, scaricabile ed esportabile e chi ha già iniziato a firmare un documento può completarlo. Non è possibile creare nulla di nuovo finché la sospensione non viene revocata."
+  account_suspended_banner_operator_link: "Contatta l'assistenza"
+  seat_read_only_banner: "Il tuo posto è in sola lettura."
+  seat_read_only_banner_hint: "Puoi continuare a leggere, scaricare ed esportare tutto ciò che si trova in questo account. Non è possibile creare nulla di nuovo finché un amministratore non ti restituisce il posto in Impostazioni → Utenti."
+  access_denied_alert: "Non hai il permesso di farlo in questo account."
+  upgrade_to_add_more_users: "Passa a un piano superiore per aggiungere altre persone a questo account."
+  need_help_email_us: "Hai bisogno di aiuto? Scrivici:"
+  no_documents_here_yet: "Non c'è ancora nessun documento qui."
   account_deletion_banner: "Questo account sarà eliminato definitivamente il %{date}."
   account_deletion_banner_hint: "Fino ad allora tutto resta leggibile, scaricabile ed esportabile. Non è possibile creare nulla di nuovo."
   account_deletion_cancel_button: "Annulla l'eliminazione"
@@ -2760,6 +2790,8 @@ it: &it
   manage_billing: "Gestisci fatturazione"
   billing_view_usage: "Vedi l'utilizzo di questo mese"
   billing_already_subscribed: "Hai già un abbonamento attivo: usa Gestisci fatturazione."
+  billing_refused_pending_deletion: "Il tuo account è programmato per l'eliminazione. Annulla prima l'eliminazione se vuoi abbonarti di nuovo."
+  billing_account_moved_away: "Questo account è stato chiuso quando il suo ultimo membro è entrato in un altro team, quindi la fatturazione non può più essere modificata qui."
   billing_no_customer_yet: "Non esiste ancora un account di fatturazione. Attiva prima un abbonamento."
   billing_provider_unreachable: "Non siamo riusciti a contattare il nostro fornitore di pagamenti. Riprova tra un minuto."
   billing_checkout_cancelled: "Pagamento annullato: non è stato addebitato nulla."
@@ -2801,6 +2833,8 @@ it: &it
   make_read_only: "Make read-only"
   pending_invitations: "Pending invitations"
   invite_pending_until: "Pending · expires %{date}"
+  invite_awaiting_payment: "Awaiting payment"
+  invite_payment_step_expired: "Payment step expired"
   send_invitation: "Send invitation"
   invite_form_hint: "They choose their own name and password when they accept. The invitation is good for %{count} days, and the seat is held for them until then."
   invite_already_pending: "has already been invited — resend or cancel that invitation instead"
@@ -2817,9 +2851,11 @@ it: &it
   confirm_and_invite: "Confirm and send the invitation"
   seat_offer_expired: "That price is out of date. Start the invitation again to see the current amount."
   seat_offer_stale: "Your seats changed while you were deciding. Please try again."
-  seat_add_needs_payment_action: "Stripe needs an extra step to charge your card — complete it in Settings → Billing → Manage billing, then invite again. Nothing has been charged and no seat was added."
-  billing_seats_summary: "%{seats} seats · %{in_use} in use."
-  billing_seats_summary_pending: "%{seats} seats · %{in_use} in use, including %{pending} pending invitations."
+  seat_add_needs_payment_action: "Your card needs an extra step. Finish it under Manage billing and we will send the invitation to %{email} automatically; if you don't, nothing is charged and no seat is added."
+  billing_seats_summary:
+    one: "%{count} seat · %{in_use} in use."
+    other: "%{count} seats · %{in_use} in use."
+  billing_seats_summary_pending: "%{seats} seats · %{in_use} in use, including %{pending} not yet accepted."
   billing_manage_users_link: "Manage users"
   invite_page_title: "Join %{team}"
   invite_page_intro: "%{inviter} invited you to join %{team} on EsignCenter."
@@ -3533,9 +3569,6 @@ it: &it
   eight_hours: 8 ore
   twelve_hours: 12 ore
   twenty_four_hours: 24 ore
-  two_days: 2 giorni
-  four_days: 4 giorni
-  eight_days: 8 giorni
   fifteen_days: 15 giorni
   twenty_one_days: 21 giorni
   thirty_days: 30 giorni
@@ -3596,7 +3629,6 @@ it: &it
   original_sha256: SHA256 Originale
   result_sha256: SHA256 del Risultato
   generated_at: Generato il
-  email_verification: Verifica e-mail
   phone_verification: Verifica telefono
   session_id: ID della Sessione
   option: Opzione
@@ -3990,6 +4022,15 @@ fr: &fr
   account_suspended_banner: "Compte suspendu — mettez à jour votre moyen de paiement."
   account_suspended_banner_hint: "Tout reste consultable, téléchargeable et exportable, et les signataires déjà engagés dans un document peuvent le terminer. Rien de nouveau ne peut être créé tant que le paiement n'a pas abouti."
   account_suspended_banner_link: "Aller à la facturation"
+  account_suspended_banner_operator: "Compte suspendu — contactez l'assistance."
+  account_suspended_banner_operator_hint: "Tout reste consultable, téléchargeable et exportable, et les signataires déjà engagés dans un document peuvent le terminer. Rien de nouveau ne peut être créé tant que la suspension n'est pas levée."
+  account_suspended_banner_operator_link: "Contacter l'assistance"
+  seat_read_only_banner: "Votre place est en lecture seule."
+  seat_read_only_banner_hint: "Vous pouvez toujours consulter, télécharger et exporter tout ce qui se trouve dans ce compte. Rien de nouveau ne peut être créé tant qu'un administrateur ne vous a pas rendu votre place dans Paramètres → Utilisateurs."
+  access_denied_alert: "Vous n'avez pas l'autorisation de faire cela dans ce compte."
+  upgrade_to_add_more_users: "Passez à une offre supérieure pour ajouter d'autres personnes à ce compte."
+  need_help_email_us: "Besoin d'aide ? Écrivez-nous :"
+  no_documents_here_yet: "Aucun document ici pour l'instant."
   account_deletion_banner: "Ce compte sera définitivement supprimé le %{date}."
   account_deletion_banner_hint: "D'ici là, tout reste lisible, téléchargeable et exportable. Rien de nouveau ne peut être créé."
   account_deletion_cancel_button: "Annuler la suppression"
@@ -4067,6 +4108,8 @@ fr: &fr
   manage_billing: "Gérer la facturation"
   billing_view_usage: "Voir la consommation de ce mois"
   billing_already_subscribed: "Vous avez déjà un abonnement actif — utilisez Gérer la facturation."
+  billing_refused_pending_deletion: "La suppression de votre compte est programmée. Annulez d'abord la suppression si vous souhaitez vous réabonner."
+  billing_account_moved_away: "Ce compte a été fermé lorsque son dernier membre a rejoint une autre équipe ; sa facturation ne peut donc plus être modifiée ici."
   billing_no_customer_yet: "Il n'y a pas encore de compte de facturation. Commencez d'abord un abonnement."
   billing_provider_unreachable: "Nous n'avons pas pu joindre notre prestataire de paiement. Réessayez dans une minute."
   billing_checkout_cancelled: "Paiement annulé — rien n'a été débité."
@@ -4108,6 +4151,8 @@ fr: &fr
   make_read_only: "Make read-only"
   pending_invitations: "Pending invitations"
   invite_pending_until: "Pending · expires %{date}"
+  invite_awaiting_payment: "Awaiting payment"
+  invite_payment_step_expired: "Payment step expired"
   send_invitation: "Send invitation"
   invite_form_hint: "They choose their own name and password when they accept. The invitation is good for %{count} days, and the seat is held for them until then."
   invite_already_pending: "has already been invited — resend or cancel that invitation instead"
@@ -4124,9 +4169,11 @@ fr: &fr
   confirm_and_invite: "Confirm and send the invitation"
   seat_offer_expired: "That price is out of date. Start the invitation again to see the current amount."
   seat_offer_stale: "Your seats changed while you were deciding. Please try again."
-  seat_add_needs_payment_action: "Stripe needs an extra step to charge your card — complete it in Settings → Billing → Manage billing, then invite again. Nothing has been charged and no seat was added."
-  billing_seats_summary: "%{seats} seats · %{in_use} in use."
-  billing_seats_summary_pending: "%{seats} seats · %{in_use} in use, including %{pending} pending invitations."
+  seat_add_needs_payment_action: "Your card needs an extra step. Finish it under Manage billing and we will send the invitation to %{email} automatically; if you don't, nothing is charged and no seat is added."
+  billing_seats_summary:
+    one: "%{count} seat · %{in_use} in use."
+    other: "%{count} seats · %{in_use} in use."
+  billing_seats_summary_pending: "%{seats} seats · %{in_use} in use, including %{pending} not yet accepted."
   billing_manage_users_link: "Manage users"
   invite_page_title: "Join %{team}"
   invite_page_intro: "%{inviter} invited you to join %{team} on EsignCenter."
@@ -4950,7 +4997,6 @@ fr: &fr
   this_week: Cette semaine
   last_week: La semaine dernière
   this_month: Ce mois‑ci
-  last_month: Le mois dernier
   this_year: Cette année
   policy_links: Liens de politique
   markdown_content_e_g: Contenu Markdown, p. ex.
@@ -5294,6 +5340,15 @@ pt: &pt
   account_suspended_banner: "Conta suspensa — atualize a sua forma de pagamento."
   account_suspended_banner_hint: "Tudo continua legível, disponível para download e exportável, e quem já começou a assinar um documento pode concluí-lo. Nada novo pode ser criado até o pagamento ser concluído."
   account_suspended_banner_link: "Ir para faturamento"
+  account_suspended_banner_operator: "Conta suspensa — entre em contato com o suporte."
+  account_suspended_banner_operator_hint: "Tudo continua legível, disponível para download e exportável, e quem já começou a assinar um documento pode concluí-lo. Nada novo pode ser criado até a suspensão ser retirada."
+  account_suspended_banner_operator_link: "Falar com o suporte"
+  seat_read_only_banner: "O seu lugar é somente leitura."
+  seat_read_only_banner_hint: "Você continua podendo ler, baixar e exportar tudo o que está nesta conta. Nada novo pode ser criado até um administrador devolver o seu lugar em Configurações → Usuários."
+  access_denied_alert: "Você não tem permissão para fazer isso nesta conta."
+  upgrade_to_add_more_users: "Faça upgrade para adicionar mais pessoas a esta conta."
+  need_help_email_us: "Precisa de ajuda? Escreva para nós:"
+  no_documents_here_yet: "Ainda não há documentos aqui."
   account_deletion_banner: "Esta conta será excluída permanentemente em %{date}."
   account_deletion_banner_hint: "Até lá, tudo continua legível, descarregável e exportável. Não é possível criar nada novo."
   account_deletion_cancel_button: "Cancelar a exclusão"
@@ -5371,6 +5426,8 @@ pt: &pt
   manage_billing: "Gerenciar faturamento"
   billing_view_usage: "Ver o uso deste mês"
   billing_already_subscribed: "Você já tem uma assinatura ativa — use Gerenciar faturamento."
+  billing_refused_pending_deletion: "A exclusão da sua conta está agendada. Cancele a exclusão primeiro se quiser assinar novamente."
+  billing_account_moved_away: "Esta conta foi encerrada quando seu último membro entrou em outra equipe, então o faturamento não pode mais ser alterado aqui."
   billing_no_customer_yet: "Ainda não há uma conta de faturamento. Comece uma assinatura primeiro."
   billing_provider_unreachable: "Não conseguimos falar com nosso provedor de pagamentos. Tente novamente em um minuto."
   billing_checkout_cancelled: "Pagamento cancelado — nada foi cobrado."
@@ -5412,6 +5469,8 @@ pt: &pt
   make_read_only: "Make read-only"
   pending_invitations: "Pending invitations"
   invite_pending_until: "Pending · expires %{date}"
+  invite_awaiting_payment: "Awaiting payment"
+  invite_payment_step_expired: "Payment step expired"
   send_invitation: "Send invitation"
   invite_form_hint: "They choose their own name and password when they accept. The invitation is good for %{count} days, and the seat is held for them until then."
   invite_already_pending: "has already been invited — resend or cancel that invitation instead"
@@ -5428,9 +5487,11 @@ pt: &pt
   confirm_and_invite: "Confirm and send the invitation"
   seat_offer_expired: "That price is out of date. Start the invitation again to see the current amount."
   seat_offer_stale: "Your seats changed while you were deciding. Please try again."
-  seat_add_needs_payment_action: "Stripe needs an extra step to charge your card — complete it in Settings → Billing → Manage billing, then invite again. Nothing has been charged and no seat was added."
-  billing_seats_summary: "%{seats} seats · %{in_use} in use."
-  billing_seats_summary_pending: "%{seats} seats · %{in_use} in use, including %{pending} pending invitations."
+  seat_add_needs_payment_action: "Your card needs an extra step. Finish it under Manage billing and we will send the invitation to %{email} automatically; if you don't, nothing is charged and no seat is added."
+  billing_seats_summary:
+    one: "%{count} seat · %{in_use} in use."
+    other: "%{count} seats · %{in_use} in use."
+  billing_seats_summary_pending: "%{seats} seats · %{in_use} in use, including %{pending} not yet accepted."
   billing_manage_users_link: "Manage users"
   invite_page_title: "Join %{team}"
   invite_page_intro: "%{inviter} invited you to join %{team} on EsignCenter."
@@ -6144,9 +6205,6 @@ pt: &pt
   eight_hours: 8 horas
   twelve_hours: 12 horas
   twenty_four_hours: 24 horas
-  two_days: 2 dias
-  four_days: 4 dias
-  eight_days: 8 dias
   fifteen_days: 15 dias
   twenty_one_days: 21 dias
   thirty_days: 30 dias
@@ -6207,7 +6265,6 @@ pt: &pt
   original_sha256: SHA256 Original
   result_sha256: SHA256 do Resultado
   generated_at: Gerado em
-  email_verification: Verificação de E-mail
   phone_verification: Verificação de Telefone
   session_id: ID da Sessão
   option: Opção
@@ -6601,6 +6658,15 @@ de: &de
   account_suspended_banner: "Konto gesperrt – aktualisieren Sie Ihre Zahlungsmethode."
   account_suspended_banner_hint: "Alles bleibt lesbar, herunterladbar und exportierbar, und wer bereits mit dem Unterschreiben begonnen hat, kann fertig unterschreiben. Neues kann erst wieder erstellt werden, wenn die Zahlung eingegangen ist."
   account_suspended_banner_link: "Zur Abrechnung"
+  account_suspended_banner_operator: "Konto gesperrt – wenden Sie sich an den Support."
+  account_suspended_banner_operator_hint: "Alles bleibt lesbar, herunterladbar und exportierbar, und wer bereits mit dem Unterschreiben begonnen hat, kann fertig unterschreiben. Neues kann erst wieder erstellt werden, wenn die Sperre aufgehoben ist."
+  account_suspended_banner_operator_link: "Support kontaktieren"
+  seat_read_only_banner: "Ihr Platz ist schreibgeschützt."
+  seat_read_only_banner_hint: "Sie können weiterhin alles in diesem Konto lesen, herunterladen und exportieren. Neues kann erst wieder erstellt werden, wenn eine Administratorin oder ein Administrator Ihnen den Platz unter Einstellungen → Benutzer zurückgibt."
+  access_denied_alert: "Sie haben in diesem Konto keine Berechtigung dafür."
+  upgrade_to_add_more_users: "Führen Sie ein Upgrade durch, um weitere Personen zu diesem Konto hinzuzufügen."
+  need_help_email_us: "Brauchen Sie Hilfe? Schreiben Sie uns:"
+  no_documents_here_yet: "Hier gibt es noch keine Dokumente."
   account_deletion_banner: "Dieses Konto wird am %{date} endgültig gelöscht."
   account_deletion_banner_hint: "Bis dahin bleibt alles lesbar, herunterladbar und exportierbar. Es kann nichts Neues erstellt werden."
   account_deletion_cancel_button: "Löschung abbrechen"
@@ -6678,6 +6744,8 @@ de: &de
   manage_billing: "Abrechnung verwalten"
   billing_view_usage: "Nutzung dieses Monats ansehen"
   billing_already_subscribed: "Sie haben bereits ein aktives Abonnement – nutzen Sie Abrechnung verwalten."
+  billing_refused_pending_deletion: "Ihr Konto ist zur Löschung vorgemerkt. Brechen Sie die Löschung zuerst ab, wenn Sie erneut abonnieren möchten."
+  billing_account_moved_away: "Dieses Konto wurde geschlossen, als sein letztes Mitglied einem anderen Team beigetreten ist; die Abrechnung kann hier nicht mehr geändert werden."
   billing_no_customer_yet: "Es gibt noch kein Abrechnungskonto. Starten Sie zuerst ein Abonnement."
   billing_provider_unreachable: "Wir konnten unseren Zahlungsanbieter nicht erreichen. Bitte versuchen Sie es in einer Minute erneut."
   billing_checkout_cancelled: "Bezahlvorgang abgebrochen – es wurde nichts berechnet."
@@ -6719,6 +6787,8 @@ de: &de
   make_read_only: "Make read-only"
   pending_invitations: "Pending invitations"
   invite_pending_until: "Pending · expires %{date}"
+  invite_awaiting_payment: "Awaiting payment"
+  invite_payment_step_expired: "Payment step expired"
   send_invitation: "Send invitation"
   invite_form_hint: "They choose their own name and password when they accept. The invitation is good for %{count} days, and the seat is held for them until then."
   invite_already_pending: "has already been invited — resend or cancel that invitation instead"
@@ -6735,9 +6805,11 @@ de: &de
   confirm_and_invite: "Confirm and send the invitation"
   seat_offer_expired: "That price is out of date. Start the invitation again to see the current amount."
   seat_offer_stale: "Your seats changed while you were deciding. Please try again."
-  seat_add_needs_payment_action: "Stripe needs an extra step to charge your card — complete it in Settings → Billing → Manage billing, then invite again. Nothing has been charged and no seat was added."
-  billing_seats_summary: "%{seats} seats · %{in_use} in use."
-  billing_seats_summary_pending: "%{seats} seats · %{in_use} in use, including %{pending} pending invitations."
+  seat_add_needs_payment_action: "Your card needs an extra step. Finish it under Manage billing and we will send the invitation to %{email} automatically; if you don't, nothing is charged and no seat is added."
+  billing_seats_summary:
+    one: "%{count} seat · %{in_use} in use."
+    other: "%{count} seats · %{in_use} in use."
+  billing_seats_summary_pending: "%{seats} seats · %{in_use} in use, including %{pending} not yet accepted."
   billing_manage_users_link: "Manage users"
   invite_page_title: "Join %{team}"
   invite_page_intro: "%{inviter} invited you to join %{team} on EsignCenter."
@@ -7451,9 +7523,6 @@ de: &de
   eight_hours: 8 Stunden
   twelve_hours: 12 Stunden
   twenty_four_hours: 24 Stunden
-  two_days: 2 Tage
-  four_days: 4 Tage
-  eight_days: 8 Tage
   fifteen_days: 15 Tage
   twenty_one_days: 21 Tage
   thirty_days: 30 Tage
@@ -7514,7 +7583,6 @@ de: &de
   original_sha256: Original-SHA256
   result_sha256: Ergebnis-SHA256
   generated_at: Generiert am
-  email_verification: E-Mail-Verifizierung
   phone_verification: Telefonverifizierung
   session_id: Sitzungs-ID
   option: Option
@@ -7908,6 +7976,15 @@ pl:
   account_suspended_banner: "Konto zawieszone — zaktualizuj metodę płatności."
   account_suspended_banner_hint: "Wszystko pozostaje do odczytu, pobrania i eksportu, a osoby, które już zaczęły podpisywać dokument, mogą go dokończyć. Nic nowego nie można utworzyć, dopóki płatność nie zostanie zrealizowana."
   account_suspended_banner_link: "Przejdź do rozliczeń"
+  account_suspended_banner_operator: "Konto zawieszone — skontaktuj się z pomocą techniczną."
+  account_suspended_banner_operator_hint: "Wszystko pozostaje do odczytu, pobrania i eksportu, a osoby, które już zaczęły podpisywać dokument, mogą go dokończyć. Nic nowego nie można utworzyć, dopóki zawieszenie nie zostanie zdjęte."
+  account_suspended_banner_operator_link: "Skontaktuj się z pomocą"
+  seat_read_only_banner: "Twoje miejsce jest tylko do odczytu."
+  seat_read_only_banner_hint: "Nadal możesz czytać, pobierać i eksportować wszystko na tym koncie. Nic nowego nie można utworzyć, dopóki administrator nie przywróci Ci miejsca w Ustawienia → Użytkownicy."
+  access_denied_alert: "Nie masz uprawnień, aby to zrobić na tym koncie."
+  upgrade_to_add_more_users: "Przejdź na wyższy plan, aby dodać więcej osób do tego konta."
+  need_help_email_us: "Potrzebujesz pomocy? Napisz do nas:"
+  no_documents_here_yet: "Nie ma tu jeszcze żadnych dokumentów."
   account_deletion_banner: "To konto zostanie trwale usunięte %{date}."
   account_deletion_banner_hint: "Do tego czasu wszystko pozostaje do odczytu, pobrania i eksportu. Nie można tworzyć niczego nowego."
   account_deletion_cancel_button: "Anuluj usunięcie"
@@ -7986,6 +8063,8 @@ pl:
   manage_billing: "Zarządzaj rozliczeniami"
   billing_view_usage: "Zobacz zużycie w tym miesiącu"
   billing_already_subscribed: "Masz już aktywną subskrypcję — użyj Zarządzaj rozliczeniami."
+  billing_refused_pending_deletion: "Twoje konto jest zaplanowane do usunięcia. Anuluj najpierw usuwanie, jeśli chcesz ponownie wykupić subskrypcję."
+  billing_account_moved_away: "To konto zostało zamknięte, gdy jego ostatni członek dołączył do innego zespołu, więc jego rozliczeń nie można już tutaj zmienić."
   billing_no_customer_yet: "Nie ma jeszcze konta rozliczeniowego. Najpierw rozpocznij subskrypcję."
   billing_provider_unreachable: "Nie udało się połączyć z naszym dostawcą płatności. Spróbuj ponownie za minutę."
   billing_checkout_cancelled: "Płatność anulowana — nic nie zostało pobrane."
@@ -8027,6 +8106,8 @@ pl:
   make_read_only: "Make read-only"
   pending_invitations: "Pending invitations"
   invite_pending_until: "Pending · expires %{date}"
+  invite_awaiting_payment: "Awaiting payment"
+  invite_payment_step_expired: "Payment step expired"
   send_invitation: "Send invitation"
   invite_form_hint: "They choose their own name and password when they accept. The invitation is good for %{count} days, and the seat is held for them until then."
   invite_already_pending: "has already been invited — resend or cancel that invitation instead"
@@ -8043,9 +8124,11 @@ pl:
   confirm_and_invite: "Confirm and send the invitation"
   seat_offer_expired: "That price is out of date. Start the invitation again to see the current amount."
   seat_offer_stale: "Your seats changed while you were deciding. Please try again."
-  seat_add_needs_payment_action: "Stripe needs an extra step to charge your card — complete it in Settings → Billing → Manage billing, then invite again. Nothing has been charged and no seat was added."
-  billing_seats_summary: "%{seats} seats · %{in_use} in use."
-  billing_seats_summary_pending: "%{seats} seats · %{in_use} in use, including %{pending} pending invitations."
+  seat_add_needs_payment_action: "Your card needs an extra step. Finish it under Manage billing and we will send the invitation to %{email} automatically; if you don't, nothing is charged and no seat is added."
+  billing_seats_summary:
+    one: "%{count} seat · %{in_use} in use."
+    other: "%{count} seats · %{in_use} in use."
+  billing_seats_summary_pending: "%{seats} seats · %{in_use} in use, including %{pending} not yet accepted."
   billing_manage_users_link: "Manage users"
   invite_page_title: "Join %{team}"
   invite_page_intro: "%{inviter} invited you to join %{team} on EsignCenter."
@@ -8282,6 +8365,15 @@ uk:
   account_suspended_banner: "Обліковий запис призупинено — оновіть спосіб оплати."
   account_suspended_banner_hint: "Усе залишається доступним для перегляду, завантаження та експорту, а ті, хто вже почав підписувати документ, можуть його завершити. Нічого нового створити не можна, доки не пройде оплата."
   account_suspended_banner_link: "Перейти до оплати"
+  account_suspended_banner_operator: "Обліковий запис призупинено — зверніться до підтримки."
+  account_suspended_banner_operator_hint: "Усе залишається доступним для перегляду, завантаження та експорту, а ті, хто вже почав підписувати документ, можуть його завершити. Нічого нового створити не можна, доки призупинення не буде знято."
+  account_suspended_banner_operator_link: "Звернутися до підтримки"
+  seat_read_only_banner: "Ваше місце — лише для читання."
+  seat_read_only_banner_hint: "Ви й далі можете переглядати, завантажувати та експортувати все в цьому обліковому записі. Нічого нового створити не можна, доки адміністратор не поверне вам місце в розділі Налаштування → Користувачі."
+  access_denied_alert: "У вас немає дозволу робити це в цьому обліковому записі."
+  upgrade_to_add_more_users: "Перейдіть на платний тариф, щоб додати більше людей до цього облікового запису."
+  need_help_email_us: "Потрібна допомога? Напишіть нам:"
+  no_documents_here_yet: "Тут ще немає документів."
   account_deletion_banner: "Цей обліковий запис буде остаточно видалено %{date}."
   account_deletion_banner_hint: "До того часу все залишається доступним для читання, завантаження та експорту. Створити щось нове неможливо."
   account_deletion_cancel_button: "Скасувати видалення"
@@ -8360,6 +8452,8 @@ uk:
   manage_billing: "Керувати оплатою"
   billing_view_usage: "Переглянути використання цього місяця"
   billing_already_subscribed: "У вас уже є активна підписка — скористайтеся розділом «Керувати оплатою»."
+  billing_refused_pending_deletion: "Ваш обліковий запис заплановано до видалення. Спершу скасуйте видалення, якщо ви хочете підписатися знову."
+  billing_account_moved_away: "Цей обліковий запис було закрито, коли його останній учасник приєднався до іншої команди, тож змінити тут платіжні дані вже не можна."
   billing_no_customer_yet: "Платіжного облікового запису ще немає. Спершу оформіть підписку."
   billing_provider_unreachable: "Не вдалося зв'язатися з нашим платіжним провайдером. Спробуйте ще раз за хвилину."
   billing_checkout_cancelled: "Оплату скасовано — нічого не списано."
@@ -8401,6 +8495,8 @@ uk:
   make_read_only: "Make read-only"
   pending_invitations: "Pending invitations"
   invite_pending_until: "Pending · expires %{date}"
+  invite_awaiting_payment: "Awaiting payment"
+  invite_payment_step_expired: "Payment step expired"
   send_invitation: "Send invitation"
   invite_form_hint: "They choose their own name and password when they accept. The invitation is good for %{count} days, and the seat is held for them until then."
   invite_already_pending: "has already been invited — resend or cancel that invitation instead"
@@ -8417,9 +8513,11 @@ uk:
   confirm_and_invite: "Confirm and send the invitation"
   seat_offer_expired: "That price is out of date. Start the invitation again to see the current amount."
   seat_offer_stale: "Your seats changed while you were deciding. Please try again."
-  seat_add_needs_payment_action: "Stripe needs an extra step to charge your card — complete it in Settings → Billing → Manage billing, then invite again. Nothing has been charged and no seat was added."
-  billing_seats_summary: "%{seats} seats · %{in_use} in use."
-  billing_seats_summary_pending: "%{seats} seats · %{in_use} in use, including %{pending} pending invitations."
+  seat_add_needs_payment_action: "Your card needs an extra step. Finish it under Manage billing and we will send the invitation to %{email} automatically; if you don't, nothing is charged and no seat is added."
+  billing_seats_summary:
+    one: "%{count} seat · %{in_use} in use."
+    other: "%{count} seats · %{in_use} in use."
+  billing_seats_summary_pending: "%{seats} seats · %{in_use} in use, including %{pending} not yet accepted."
   billing_manage_users_link: "Manage users"
   invite_page_title: "Join %{team}"
   invite_page_intro: "%{inviter} invited you to join %{team} on EsignCenter."
@@ -8656,6 +8754,15 @@ cs:
   account_suspended_banner: "Účet pozastaven — aktualizujte platební metodu."
   account_suspended_banner_hint: "Vše zůstává čitelné, ke stažení i k exportu a ti, kdo už dokument začali podepisovat, jej mohou dokončit. Nic nového nelze vytvořit, dokud platba neproběhne."
   account_suspended_banner_link: "Přejít na fakturaci"
+  account_suspended_banner_operator: "Účet pozastaven — kontaktujte podporu."
+  account_suspended_banner_operator_hint: "Vše zůstává čitelné, ke stažení i k exportu a ti, kdo už dokument začali podepisovat, jej mohou dokončit. Nic nového nelze vytvořit, dokud nebude pozastavení zrušeno."
+  account_suspended_banner_operator_link: "Kontaktovat podporu"
+  seat_read_only_banner: "Vaše místo je jen pro čtení."
+  seat_read_only_banner_hint: "Nadále si můžete vše v tomto účtu číst, stahovat i exportovat. Nic nového nelze vytvořit, dokud vám správce nevrátí místo v Nastavení → Uživatelé."
+  access_denied_alert: "K tomuto úkonu nemáte v tomto účtu oprávnění."
+  upgrade_to_add_more_users: "Přejděte na vyšší tarif a přidejte do tohoto účtu další lidi."
+  need_help_email_us: "Potřebujete pomoc? Napište nám:"
+  no_documents_here_yet: "Zatím tu nejsou žádné dokumenty."
   account_deletion_banner: "Tento účet bude trvale smazán %{date}."
   account_deletion_banner_hint: "Do té doby zůstává vše čitelné, ke stažení i k exportu. Nic nového nelze vytvořit."
   account_deletion_cancel_button: "Zrušit smazání"
@@ -8734,6 +8841,8 @@ cs:
   manage_billing: "Správa fakturace"
   billing_view_usage: "Zobrazit spotřebu tohoto měsíce"
   billing_already_subscribed: "Aktivní předplatné už máte — použijte Správu fakturace."
+  billing_refused_pending_deletion: "Váš účet je naplánován ke smazání. Pokud si chcete znovu předplatit, nejdřív smazání zrušte."
+  billing_account_moved_away: "Tento účet byl uzavřen, když jeho poslední člen přešel do jiného týmu, takže jeho fakturaci už zde nelze změnit."
   billing_no_customer_yet: "Fakturační účet zatím neexistuje. Nejprve založte předplatné."
   billing_provider_unreachable: "Nepodařilo se nám spojit s naším poskytovatelem plateb. Zkuste to prosím za minutu znovu."
   billing_checkout_cancelled: "Platba zrušena — nic nebylo účtováno."
@@ -8775,6 +8884,8 @@ cs:
   make_read_only: "Make read-only"
   pending_invitations: "Pending invitations"
   invite_pending_until: "Pending · expires %{date}"
+  invite_awaiting_payment: "Awaiting payment"
+  invite_payment_step_expired: "Payment step expired"
   send_invitation: "Send invitation"
   invite_form_hint: "They choose their own name and password when they accept. The invitation is good for %{count} days, and the seat is held for them until then."
   invite_already_pending: "has already been invited — resend or cancel that invitation instead"
@@ -8791,9 +8902,11 @@ cs:
   confirm_and_invite: "Confirm and send the invitation"
   seat_offer_expired: "That price is out of date. Start the invitation again to see the current amount."
   seat_offer_stale: "Your seats changed while you were deciding. Please try again."
-  seat_add_needs_payment_action: "Stripe needs an extra step to charge your card — complete it in Settings → Billing → Manage billing, then invite again. Nothing has been charged and no seat was added."
-  billing_seats_summary: "%{seats} seats · %{in_use} in use."
-  billing_seats_summary_pending: "%{seats} seats · %{in_use} in use, including %{pending} pending invitations."
+  seat_add_needs_payment_action: "Your card needs an extra step. Finish it under Manage billing and we will send the invitation to %{email} automatically; if you don't, nothing is charged and no seat is added."
+  billing_seats_summary:
+    one: "%{count} seat · %{in_use} in use."
+    other: "%{count} seats · %{in_use} in use."
+  billing_seats_summary_pending: "%{seats} seats · %{in_use} in use, including %{pending} not yet accepted."
   billing_manage_users_link: "Manage users"
   invite_page_title: "Join %{team}"
   invite_page_intro: "%{inviter} invited you to join %{team} on EsignCenter."
@@ -9030,6 +9143,15 @@ he:
   account_suspended_banner: "החשבון מושעה — עדכנו את אמצעי התשלום."
   account_suspended_banner_hint: "הכול נשאר זמין לקריאה, להורדה ולייצוא, ומי שכבר התחיל לחתום על מסמך יכול לסיים. לא ניתן ליצור דבר חדש עד שהתשלום יתקבל."
   account_suspended_banner_link: "מעבר לחיוב"
+  account_suspended_banner_operator: "החשבון מושעה — פנו לתמיכה."
+  account_suspended_banner_operator_hint: "הכול נשאר זמין לקריאה, להורדה ולייצוא, ומי שכבר התחיל לחתום על מסמך יכול לסיים. לא ניתן ליצור דבר חדש עד להסרת ההשעיה."
+  account_suspended_banner_operator_link: "פנייה לתמיכה"
+  seat_read_only_banner: "המושב שלך במצב קריאה בלבד."
+  seat_read_only_banner_hint: "אפשר להמשיך לקרוא, להוריד ולייצא את כל מה שיש בחשבון הזה. לא ניתן ליצור דבר חדש עד שמנהל יחזיר לך את המושב בהגדרות ← משתמשים."
+  access_denied_alert: "אין לך הרשאה לבצע פעולה זו בחשבון הזה."
+  upgrade_to_add_more_users: "שדרגו את התוכנית כדי להוסיף עוד אנשים לחשבון הזה."
+  need_help_email_us: "צריכים עזרה? כתבו לנו:"
+  no_documents_here_yet: "אין כאן עדיין מסמכים."
   account_deletion_banner: "חשבון זה יימחק לצמיתות בתאריך %{date}."
   account_deletion_banner_hint: "עד אז הכול נשאר קריא, ניתן להורדה ולייצוא. לא ניתן ליצור דבר חדש."
   account_deletion_cancel_button: "ביטול המחיקה"
@@ -9108,6 +9230,8 @@ he:
   manage_billing: "ניהול החיוב"
   billing_view_usage: "צפייה בשימוש של החודש"
   billing_already_subscribed: "כבר יש לך מנוי פעיל — השתמשו בניהול החיוב."
+  billing_refused_pending_deletion: "החשבון שלך מתוזמן למחיקה. בטלו קודם את המחיקה אם ברצונכם להירשם שוב למנוי."
+  billing_account_moved_away: "החשבון הזה נסגר כשהחבר האחרון בו הצטרף לצוות אחר, ולכן כבר לא ניתן לשנות כאן את החיוב שלו."
   billing_no_customer_yet: "עדיין אין חשבון חיוב. התחילו קודם מנוי."
   billing_provider_unreachable: "לא הצלחנו להגיע לספק התשלומים שלנו. נסו שוב בעוד דקה."
   billing_checkout_cancelled: "התשלום בוטל — לא בוצע כל חיוב."
@@ -9149,6 +9273,8 @@ he:
   make_read_only: "Make read-only"
   pending_invitations: "Pending invitations"
   invite_pending_until: "Pending · expires %{date}"
+  invite_awaiting_payment: "Awaiting payment"
+  invite_payment_step_expired: "Payment step expired"
   send_invitation: "Send invitation"
   invite_form_hint: "They choose their own name and password when they accept. The invitation is good for %{count} days, and the seat is held for them until then."
   invite_already_pending: "has already been invited — resend or cancel that invitation instead"
@@ -9165,9 +9291,11 @@ he:
   confirm_and_invite: "Confirm and send the invitation"
   seat_offer_expired: "That price is out of date. Start the invitation again to see the current amount."
   seat_offer_stale: "Your seats changed while you were deciding. Please try again."
-  seat_add_needs_payment_action: "Stripe needs an extra step to charge your card — complete it in Settings → Billing → Manage billing, then invite again. Nothing has been charged and no seat was added."
-  billing_seats_summary: "%{seats} seats · %{in_use} in use."
-  billing_seats_summary_pending: "%{seats} seats · %{in_use} in use, including %{pending} pending invitations."
+  seat_add_needs_payment_action: "Your card needs an extra step. Finish it under Manage billing and we will send the invitation to %{email} automatically; if you don't, nothing is charged and no seat is added."
+  billing_seats_summary:
+    one: "%{count} seat · %{in_use} in use."
+    other: "%{count} seats · %{in_use} in use."
+  billing_seats_summary_pending: "%{seats} seats · %{in_use} in use, including %{pending} not yet accepted."
   billing_manage_users_link: "Manage users"
   invite_page_title: "Join %{team}"
   invite_page_intro: "%{inviter} invited you to join %{team} on EsignCenter."
@@ -9404,6 +9532,15 @@ nl: &nl
   account_suspended_banner: "Account opgeschort — werk je betaalmethode bij."
   account_suspended_banner_hint: "Alles blijft leesbaar, te downloaden en te exporteren, en ondertekenaars die al met een document bezig zijn kunnen het afmaken. Er kan niets nieuws worden aangemaakt totdat de betaling is gelukt."
   account_suspended_banner_link: "Naar facturatie"
+  account_suspended_banner_operator: "Account opgeschort — neem contact op met support."
+  account_suspended_banner_operator_hint: "Alles blijft leesbaar, te downloaden en te exporteren, en ondertekenaars die al met een document bezig zijn kunnen het afmaken. Er kan niets nieuws worden aangemaakt totdat de opschorting is opgeheven."
+  account_suspended_banner_operator_link: "Contact opnemen met support"
+  seat_read_only_banner: "Je plek is alleen-lezen."
+  seat_read_only_banner_hint: "Je kunt alles in dit account blijven lezen, downloaden en exporteren. Er kan niets nieuws worden aangemaakt totdat een beheerder je plek teruggeeft via Instellingen → Gebruikers."
+  access_denied_alert: "Je hebt geen toestemming om dat te doen in dit account."
+  upgrade_to_add_more_users: "Upgrade om meer mensen aan dit account toe te voegen."
+  need_help_email_us: "Hulp nodig? Mail ons:"
+  no_documents_here_yet: "Hier staan nog geen documenten."
   account_deletion_banner: "Dit account wordt definitief verwijderd op %{date}."
   account_deletion_banner_hint: "Tot dan blijft alles leesbaar, downloadbaar en exporteerbaar. Er kan niets nieuws worden aangemaakt."
   account_deletion_cancel_button: "Verwijdering annuleren"
@@ -9481,6 +9618,8 @@ nl: &nl
   manage_billing: "Facturatie beheren"
   billing_view_usage: "Bekijk het verbruik van deze maand"
   billing_already_subscribed: "U heeft al een actief abonnement — gebruik Facturatie beheren."
+  billing_refused_pending_deletion: "Uw account staat gepland voor verwijdering. Annuleer eerst de verwijdering als u opnieuw een abonnement wilt nemen."
+  billing_account_moved_away: "Dit account is gesloten toen het laatste lid zich bij een ander team aansloot, dus de facturering kan hier niet meer worden gewijzigd."
   billing_no_customer_yet: "Er is nog geen factuuraccount. Start eerst een abonnement."
   billing_provider_unreachable: "We konden onze betaalprovider niet bereiken. Probeer het over een minuut opnieuw."
   billing_checkout_cancelled: "Afrekenen geannuleerd — er is niets in rekening gebracht."
@@ -9522,6 +9661,8 @@ nl: &nl
   make_read_only: "Make read-only"
   pending_invitations: "Pending invitations"
   invite_pending_until: "Pending · expires %{date}"
+  invite_awaiting_payment: "Awaiting payment"
+  invite_payment_step_expired: "Payment step expired"
   send_invitation: "Send invitation"
   invite_form_hint: "They choose their own name and password when they accept. The invitation is good for %{count} days, and the seat is held for them until then."
   invite_already_pending: "has already been invited — resend or cancel that invitation instead"
@@ -9538,9 +9679,11 @@ nl: &nl
   confirm_and_invite: "Confirm and send the invitation"
   seat_offer_expired: "That price is out of date. Start the invitation again to see the current amount."
   seat_offer_stale: "Your seats changed while you were deciding. Please try again."
-  seat_add_needs_payment_action: "Stripe needs an extra step to charge your card — complete it in Settings → Billing → Manage billing, then invite again. Nothing has been charged and no seat was added."
-  billing_seats_summary: "%{seats} seats · %{in_use} in use."
-  billing_seats_summary_pending: "%{seats} seats · %{in_use} in use, including %{pending} pending invitations."
+  seat_add_needs_payment_action: "Your card needs an extra step. Finish it under Manage billing and we will send the invitation to %{email} automatically; if you don't, nothing is charged and no seat is added."
+  billing_seats_summary:
+    one: "%{count} seat · %{in_use} in use."
+    other: "%{count} seats · %{in_use} in use."
+  billing_seats_summary_pending: "%{seats} seats · %{in_use} in use, including %{pending} not yet accepted."
   billing_manage_users_link: "Manage users"
   invite_page_title: "Join %{team}"
   invite_page_intro: "%{inviter} invited you to join %{team} on EsignCenter."
@@ -10708,6 +10851,15 @@ ar:
   account_suspended_banner: "الحساب معلق — حدّث طريقة الدفع."
   account_suspended_banner_hint: "يبقى كل شيء قابلاً للقراءة والتنزيل والتصدير، ويمكن لمن بدأ التوقيع على مستند أن يكمله. لا يمكن إنشاء أي شيء جديد حتى تتم عملية الدفع."
   account_suspended_banner_link: "الانتقال إلى الفوترة"
+  account_suspended_banner_operator: "الحساب معلق — تواصل مع الدعم."
+  account_suspended_banner_operator_hint: "يبقى كل شيء قابلاً للقراءة والتنزيل والتصدير، ويمكن لمن بدأ التوقيع على مستند أن يكمله. لا يمكن إنشاء أي شيء جديد حتى يتم رفع التعليق."
+  account_suspended_banner_operator_link: "التواصل مع الدعم"
+  seat_read_only_banner: "مقعدك للقراءة فقط."
+  seat_read_only_banner_hint: "يمكنك متابعة القراءة والتنزيل والتصدير لكل ما في هذا الحساب. لا يمكن إنشاء أي شيء جديد حتى يعيد أحد المسؤولين مقعدك من الإعدادات ← المستخدمون."
+  access_denied_alert: "ليس لديك إذن للقيام بذلك في هذا الحساب."
+  upgrade_to_add_more_users: "قم بالترقية لإضافة المزيد من الأشخاص إلى هذا الحساب."
+  need_help_email_us: "تحتاج مساعدة؟ راسلنا:"
+  no_documents_here_yet: "لا توجد مستندات هنا بعد."
   account_deletion_banner: "سيتم حذف هذا الحساب نهائيًا في %{date}."
   account_deletion_banner_hint: "حتى ذلك الحين يظل كل شيء قابلاً للقراءة والتنزيل والتصدير. لا يمكن إنشاء أي شيء جديد."
   account_deletion_cancel_button: "إلغاء الحذف"
@@ -10786,6 +10938,8 @@ ar:
   manage_billing: "إدارة الفوترة"
   billing_view_usage: "عرض استخدام هذا الشهر"
   billing_already_subscribed: "لديك اشتراك نشط بالفعل — استخدم إدارة الفوترة."
+  billing_refused_pending_deletion: "حسابك مُجدوَل للحذف. ألغِ الحذف أولاً إذا كنت ترغب في الاشتراك مرة أخرى."
+  billing_account_moved_away: "أُغلق هذا الحساب عندما انضم آخر عضو فيه إلى فريق آخر، لذلك لم يعد بالإمكان تغيير الفوترة من هنا."
   billing_no_customer_yet: "لا يوجد حساب فوترة بعد. ابدأ اشتراكًا أولًا."
   billing_provider_unreachable: "تعذّر الوصول إلى مزوّد الدفع لدينا. يُرجى المحاولة مرة أخرى بعد دقيقة."
   billing_checkout_cancelled: "تم إلغاء الدفع — لم يتم خصم أي مبلغ."
@@ -10827,6 +10981,8 @@ ar:
   make_read_only: "Make read-only"
   pending_invitations: "Pending invitations"
   invite_pending_until: "Pending · expires %{date}"
+  invite_awaiting_payment: "Awaiting payment"
+  invite_payment_step_expired: "Payment step expired"
   send_invitation: "Send invitation"
   invite_form_hint: "They choose their own name and password when they accept. The invitation is good for %{count} days, and the seat is held for them until then."
   invite_already_pending: "has already been invited — resend or cancel that invitation instead"
@@ -10843,9 +10999,11 @@ ar:
   confirm_and_invite: "Confirm and send the invitation"
   seat_offer_expired: "That price is out of date. Start the invitation again to see the current amount."
   seat_offer_stale: "Your seats changed while you were deciding. Please try again."
-  seat_add_needs_payment_action: "Stripe needs an extra step to charge your card — complete it in Settings → Billing → Manage billing, then invite again. Nothing has been charged and no seat was added."
-  billing_seats_summary: "%{seats} seats · %{in_use} in use."
-  billing_seats_summary_pending: "%{seats} seats · %{in_use} in use, including %{pending} pending invitations."
+  seat_add_needs_payment_action: "Your card needs an extra step. Finish it under Manage billing and we will send the invitation to %{email} automatically; if you don't, nothing is charged and no seat is added."
+  billing_seats_summary:
+    one: "%{count} seat · %{in_use} in use."
+    other: "%{count} seats · %{in_use} in use."
+  billing_seats_summary_pending: "%{seats} seats · %{in_use} in use, including %{pending} not yet accepted."
   billing_manage_users_link: "Manage users"
   invite_page_title: "Join %{team}"
   invite_page_intro: "%{inviter} invited you to join %{team} on EsignCenter."
@@ -11082,6 +11240,15 @@ ko:
   account_suspended_banner: "계정 정지됨 — 결제 수단을 업데이트하세요."
   account_suspended_banner_hint: "모든 문서는 계속 열람, 다운로드, 내보내기가 가능하며 이미 서명을 시작한 사람은 끝까지 서명할 수 있습니다. 결제가 완료될 때까지 새로 만들거나 변경할 수 없습니다."
   account_suspended_banner_link: "결제 페이지로 이동"
+  account_suspended_banner_operator: "계정 정지됨 — 고객지원팀에 문의하세요."
+  account_suspended_banner_operator_hint: "모든 문서는 계속 열람, 다운로드, 내보내기가 가능하며 이미 서명을 시작한 사람은 끝까지 서명할 수 있습니다. 정지가 해제될 때까지 새로 만들거나 변경할 수 없습니다."
+  account_suspended_banner_operator_link: "고객지원팀에 문의"
+  seat_read_only_banner: "회원님의 좌석은 읽기 전용입니다."
+  seat_read_only_banner_hint: "이 계정의 모든 항목을 계속 열람, 다운로드, 내보내기할 수 있습니다. 관리자가 설정 → 사용자에서 좌석을 다시 부여할 때까지 새로 만들거나 변경할 수 없습니다."
+  access_denied_alert: "이 계정에서 해당 작업을 수행할 권한이 없습니다."
+  upgrade_to_add_more_users: "업그레이드하면 이 계정에 사람을 더 추가할 수 있습니다."
+  need_help_email_us: "도움이 필요하신가요? 이메일로 문의해 주세요:"
+  no_documents_here_yet: "아직 문서가 없습니다."
   account_deletion_banner: "이 계정은 %{date}에 영구적으로 삭제됩니다."
   account_deletion_banner_hint: "그때까지 모든 자료는 읽기, 다운로드, 내보내기가 가능합니다. 새로 만들 수는 없습니다."
   account_deletion_cancel_button: "삭제 취소"
@@ -11160,6 +11327,8 @@ ko:
   manage_billing: "결제 관리"
   billing_view_usage: "이번 달 사용량 보기"
   billing_already_subscribed: "이미 활성 구독이 있습니다 — 결제 관리를 사용하세요."
+  billing_refused_pending_deletion: "계정이 삭제 예정입니다. 다시 구독하려면 먼저 삭제를 취소하세요."
+  billing_account_moved_away: "이 계정은 마지막 구성원이 다른 팀에 합류하면서 닫혔으므로 여기에서는 결제 정보를 더 이상 변경할 수 없습니다."
   billing_no_customer_yet: "아직 결제 계정이 없습니다. 먼저 구독을 시작하세요."
   billing_provider_unreachable: "결제 서비스에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요."
   billing_checkout_cancelled: "결제가 취소되었습니다 — 청구된 금액은 없습니다."
@@ -11201,6 +11370,8 @@ ko:
   make_read_only: "Make read-only"
   pending_invitations: "Pending invitations"
   invite_pending_until: "Pending · expires %{date}"
+  invite_awaiting_payment: "Awaiting payment"
+  invite_payment_step_expired: "Payment step expired"
   send_invitation: "Send invitation"
   invite_form_hint: "They choose their own name and password when they accept. The invitation is good for %{count} days, and the seat is held for them until then."
   invite_already_pending: "has already been invited — resend or cancel that invitation instead"
@@ -11217,9 +11388,11 @@ ko:
   confirm_and_invite: "Confirm and send the invitation"
   seat_offer_expired: "That price is out of date. Start the invitation again to see the current amount."
   seat_offer_stale: "Your seats changed while you were deciding. Please try again."
-  seat_add_needs_payment_action: "Stripe needs an extra step to charge your card — complete it in Settings → Billing → Manage billing, then invite again. Nothing has been charged and no seat was added."
-  billing_seats_summary: "%{seats} seats · %{in_use} in use."
-  billing_seats_summary_pending: "%{seats} seats · %{in_use} in use, including %{pending} pending invitations."
+  seat_add_needs_payment_action: "Your card needs an extra step. Finish it under Manage billing and we will send the invitation to %{email} automatically; if you don't, nothing is charged and no seat is added."
+  billing_seats_summary:
+    one: "%{count} seat · %{in_use} in use."
+    other: "%{count} seats · %{in_use} in use."
+  billing_seats_summary_pending: "%{seats} seats · %{in_use} in use, including %{pending} not yet accepted."
   billing_manage_users_link: "Manage users"
   invite_page_title: "Join %{team}"
   invite_page_intro: "%{inviter} invited you to join %{team} on EsignCenter."
@@ -11456,6 +11629,15 @@ ja:
   account_suspended_banner: "アカウント停止中 — 支払い方法を更新してください。"
   account_suspended_banner_hint: "書類の閲覧・ダウンロード・エクスポートは引き続き可能で、署名の途中の方は最後まで署名できます。お支払いが完了するまで、新規作成や変更はできません。"
   account_suspended_banner_link: "お支払いページへ"
+  account_suspended_banner_operator: "アカウント停止中 — サポートにお問い合わせください。"
+  account_suspended_banner_operator_hint: "書類の閲覧・ダウンロード・エクスポートは引き続き可能で、署名の途中の方は最後まで署名できます。停止が解除されるまで、新規作成や変更はできません。"
+  account_suspended_banner_operator_link: "サポートに問い合わせる"
+  seat_read_only_banner: "あなたの席は閲覧のみです。"
+  seat_read_only_banner_hint: "このアカウントの内容は引き続き閲覧・ダウンロード・エクスポートできます。管理者が設定 → ユーザーで席を戻すまで、新規作成や変更はできません。"
+  access_denied_alert: "このアカウントでその操作を行う権限がありません。"
+  upgrade_to_add_more_users: "アップグレードすると、このアカウントに人を追加できます。"
+  need_help_email_us: "お困りですか？メールでお問い合わせください:"
+  no_documents_here_yet: "まだ書類はありません。"
   account_deletion_banner: "このアカウントは %{date} に完全に削除されます。"
   account_deletion_banner_hint: "それまではすべて閲覧・ダウンロード・エクスポートできます。新規作成はできません。"
   account_deletion_cancel_button: "削除を取り消す"
@@ -11534,6 +11716,8 @@ ja:
   manage_billing: "お支払いの管理"
   billing_view_usage: "今月の利用状況を見る"
   billing_already_subscribed: "すでに有効なサブスクリプションがあります。「お支払いの管理」をご利用ください。"
+  billing_refused_pending_deletion: "このアカウントは削除予定です。もう一度契約するには、先に削除を取り消してください。"
+  billing_account_moved_away: "このアカウントは、最後のメンバーが別のチームに参加した時点で閉鎖されたため、ここでお支払い情報を変更することはできません。"
   billing_no_customer_yet: "まだお支払い用アカウントがありません。先にサブスクリプションを開始してください。"
   billing_provider_unreachable: "決済プロバイダーに接続できませんでした。1 分ほどしてからもう一度お試しください。"
   billing_checkout_cancelled: "お支払いをキャンセルしました。請求は発生していません。"
@@ -11575,6 +11759,8 @@ ja:
   make_read_only: "Make read-only"
   pending_invitations: "Pending invitations"
   invite_pending_until: "Pending · expires %{date}"
+  invite_awaiting_payment: "Awaiting payment"
+  invite_payment_step_expired: "Payment step expired"
   send_invitation: "Send invitation"
   invite_form_hint: "They choose their own name and password when they accept. The invitation is good for %{count} days, and the seat is held for them until then."
   invite_already_pending: "has already been invited — resend or cancel that invitation instead"
@@ -11591,9 +11777,11 @@ ja:
   confirm_and_invite: "Confirm and send the invitation"
   seat_offer_expired: "That price is out of date. Start the invitation again to see the current amount."
   seat_offer_stale: "Your seats changed while you were deciding. Please try again."
-  seat_add_needs_payment_action: "Stripe needs an extra step to charge your card — complete it in Settings → Billing → Manage billing, then invite again. Nothing has been charged and no seat was added."
-  billing_seats_summary: "%{seats} seats · %{in_use} in use."
-  billing_seats_summary_pending: "%{seats} seats · %{in_use} in use, including %{pending} pending invitations."
+  seat_add_needs_payment_action: "Your card needs an extra step. Finish it under Manage billing and we will send the invitation to %{email} automatically; if you don't, nothing is charged and no seat is added."
+  billing_seats_summary:
+    one: "%{count} seat · %{in_use} in use."
+    other: "%{count} seats · %{in_use} in use."
+  billing_seats_summary_pending: "%{seats} seats · %{in_use} in use, including %{pending} not yet accepted."
   billing_manage_users_link: "Manage users"
   invite_page_title: "Join %{team}"
   invite_page_intro: "%{inviter} invited you to join %{team} on EsignCenter."

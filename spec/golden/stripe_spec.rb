@@ -533,6 +533,41 @@ RSpec.describe 'Stripe billing', type: :request do # rubocop:disable RSpec/Multi
 
       expect(row.reload.trial_used_at).to eq(first_stamp)
     end
+
+    # A4 (review 7): the moment the trial ends and the card is charged for the
+    # first time — the one transition in the state table that starts taking
+    # money — driven through the real door. Everything the trial wrote stays
+    # (the row keeps its trial stamp, so this account can never be sold a
+    # second trial); the period moves to the one being billed.
+    it 'turns the trial into an active subscription when Stripe says the first invoice was paid' do
+      row = cancelled_row
+      stub_subscription(subscription_a, 'subscription-trialing')
+      post_stripe_event('event-customer.subscription.created-trialing')
+      drain_stripe_jobs
+
+      expect(row.reload.access_state).to eq('trialing')
+
+      trial_stamp = row.trial_used_at
+
+      stub_subscription(subscription_a, 'subscription-active')
+      post_stripe_event('event-customer.subscription.updated-active')
+      drain_stripe_jobs
+
+      row.reload
+
+      expect(row.access_state).to eq('active')
+      expect(row.status).to eq('active')
+      expect(row.stripe_status).to eq('active')
+      expect(row.cancel_at_period_end).to be(false)
+      # The trial is spent, and stays spent.
+      expect(row.trial_used_at).to eq(trial_stamp)
+      # The period being billed, not the trial's.
+      expect(row.current_period_start).to eq(Time.zone.at(1_788_411_076))
+      expect(row.current_period_end).to eq(Time.zone.at(1_791_003_076))
+      expect(StripeEventInbox.order(:id).last).to have_attributes(status: 'processed', last_error: nil)
+
+      expect_paid_access
+    end
   end
 
   describe 'out-of-order delivery' do
@@ -828,6 +863,49 @@ RSpec.describe 'Stripe billing', type: :request do # rubocop:disable RSpec/Multi
       expect(StripeEventInbox.sole).to have_attributes(status: 'processed', account_id: gone.id)
     end
 
+    # A5b (review 7). The example above lands on `cancelled` twice over: the
+    # barrier refuses the access, and the cancel that follows writes Stripe's
+    # own `canceled` back onto the row. This one takes the second half away —
+    # Stripe will not accept the cancellation (an outage) — because the
+    # barrier is only worth having for exactly this case: an account with
+    # nobody in it, a subscription Stripe still calls trialing, and no paid
+    # access all the same. The event is still recorded rather than failed and
+    # retried: the cancel is best effort, the alert has already gone out, and
+    # a webhook whose job is to write down what Stripe said must write it down.
+    it 'keeps paid access off a moved-away account even when Stripe will not take the cancellation' do
+      alerts = []
+      allow(OperatorAlert).to receive(:deliver) { |args| alerts << args }
+      allow(ErrorReport).to receive(:warning)
+      allow(ErrorReport).to receive(:error)
+
+      gone = create(:account)
+
+      Accounts::MoveUser.call(user: create(:user, account: gone), to: account)
+
+      stub_subscription(subscription_c, 'subscription-trialing-checkout')
+      stub_request(:post, subscription_url(subscription_c))
+        .to_return(status: 200, body: { id: subscription_c, object: 'subscription' }.to_json,
+                   headers: { 'Content-Type' => 'application/json' })
+      failed_cancel = stub_request(:delete, subscription_url(subscription_c))
+                      .to_return(status: 500, body: '{"error":{"message":"Stripe is having a bad day"}}',
+                                 headers: { 'Content-Type' => 'application/json' })
+
+      post_stripe_event(nil, body: checkout_body(gone.id))
+      drain_stripe_jobs
+
+      row = AccountSubscription.find_by!(account_id: gone.id)
+
+      expect(failed_cancel).to have_been_requested.at_least_once
+      # Nothing cancelled it: Stripe still says trialing, and the row says so
+      # too. The access verdict is the barrier's alone.
+      expect(row.stripe_status).to eq('trialing')
+      expect(row.access_state).to eq('cancelled')
+      expect(Plans.key_for(gone.reload)).to eq(Plans::FREE)
+      expect(alerts.sole[:subject]).to include('moved away')
+      expect(ErrorReport).to have_received(:error).with(anything, hash_including(account_id: gone.id))
+      expect(StripeEventInbox.sole).to have_attributes(status: 'processed', account_id: gone.id)
+    end
+
     # The barrier has to name the moved-away case and nothing else.
     # `archived_at` on its own is far too broad to hang a money decision on:
     # the purge stamps it on the tombstone it leaves behind and on every
@@ -976,6 +1054,44 @@ RSpec.describe 'Stripe billing', type: :request do # rubocop:disable RSpec/Multi
       expect(row.reload).to have_attributes(stripe_subscription_id: subscription_a,
                                             refund_owed_subscription_id: subscription_c)
       expect(inbox.reload.status).to eq('failed')
+    end
+
+    # A5a (review 7): the ORDINARY ending of the same story, through the same
+    # door. Two tabs, two completed Checkouts; the second one already charged
+    # the card (the trial was spent, so Stripe collects during Checkout). The
+    # subscription the account was already paying for survives, the second is
+    # cancelled at Stripe and every cent it took goes back, and the customer
+    # never loses paid access while it happens.
+    it 'cancels a second completed Checkout, refunds what it charged and keeps the live subscription' do
+      row = create(:account_subscription, account:, access_state: 'active', status: 'active',
+                                          stripe_status: 'active', stripe_customer_id: customer_c,
+                                          stripe_subscription_id: subscription_a, quantity: 1)
+      collected = paid_invoice(subscription_c, amount: 1000)
+
+      stub_subscription(subscription_a, 'subscription-active', { 'created' => 1_000 })
+      stub_duplicate(subscription_c, 'subscription-trialing-checkout', { 'created' => 2_000 }, invoice: collected)
+      cancel_call = stub_cancel(subscription_c, 'subscription-trialing-checkout', invoice: collected)
+      stub_invoice_list(subscription_c, [collected])
+      refund_call = stub_refund("pi_#{subscription_c}", amount: 1000)
+
+      allow(OperatorAlert).to receive(:deliver).and_return(true)
+      allow(ErrorReport).to receive(:warning)
+
+      post_stripe_event(nil, body: checkout_body(account.id))
+      drain_stripe_jobs
+
+      expect(cancel_call).to have_been_requested
+      expect(refund_call).to have_been_requested
+      # The row never moves onto the duplicate, and no debt is left behind.
+      expect(row.reload).to have_attributes(stripe_subscription_id: subscription_a, access_state: 'active',
+                                            refund_owed_subscription_id: nil)
+      expect(StripeEventInbox.sole)
+        .to have_attributes(status: 'processed', last_error: ProcessStripeEventJob::DUPLICATE_SUBSCRIPTION,
+                            account_id: account.id)
+      expect(OperatorAlert).to have_received(:deliver)
+        .with(hash_including(body: /\$10\.00 was refunded/))
+
+      expect_paid_access
     end
 
     # Q1: the customer this row holds is exactly what a Checkout click writes,
@@ -2635,7 +2751,7 @@ RSpec.describe 'Stripe billing', type: :request do # rubocop:disable RSpec/Multi
       incomplete = { 'id' => subscription_a, 'status' => 'incomplete', 'created' => 1_000 }
       collecting = fixture_json('subscription-trialing')
       collecting['items']['data'][0]['price'] = { 'id' => 'price_other_product', 'object' => 'price' }
-      collecting['metadata'] = { 'account_id' => account.id.to_s }
+      collecting['metadata'] = { 'esigncenter_account_id' => account.id.to_s }
       collecting = collecting.slice('items', 'metadata').merge('created' => 2_000)
 
       expect(StripeBilling::SubscriptionPolicy.ours?(fixture_json('subscription-trialing').merge(collecting),
@@ -2742,6 +2858,89 @@ RSpec.describe 'Stripe billing', type: :request do # rubocop:disable RSpec/Multi
         .to have_attributes(status: 'ignored', last_error: ProcessStripeEventJob::FOREIGN_SUBSCRIPTION)
 
       expect_free_plan
+    end
+
+    # A1 (review 7). "Our own Checkout tagged it" is the second half of what
+    # makes a subscription ours, and the tag has to be a name nobody else on
+    # the Stripe account would choose. It used to be the bare `account_id` —
+    # exactly what a second product sharing this Stripe account would call its
+    # own tenant id — so a stranger's subscription whose tenant number happened
+    # to equal one of our account ids would have been adopted, and cancelled
+    # and refunded when we already held one. The bare key confers nothing now.
+    it 'does not treat a foreign-price subscription tagged with the bare account_id as ours' do
+      row = cancelled_row
+      foreign = fixture_json('subscription-trialing')
+      foreign['items']['data'][0]['price']['id'] = 'price_other_product'
+      foreign['metadata'] = { 'account_id' => account.id.to_s }
+
+      expect(StripeBilling::SubscriptionPolicy.ours?(foreign, account.id)).to be(false)
+
+      stub_subscription(subscription_a, 'subscription-trialing', foreign.slice('items', 'metadata'))
+
+      allow(ErrorReport).to receive(:warning)
+
+      post_stripe_event('event-customer.subscription.created-trialing')
+      drain_stripe_jobs
+
+      expect(row.reload.stripe_subscription_id).to be_nil
+      expect(row.access_state).to eq('cancelled')
+      expect(StripeEventInbox.sole)
+        .to have_attributes(status: 'ignored', last_error: ProcessStripeEventJob::FOREIGN_SUBSCRIPTION)
+
+      expect_free_plan
+    end
+
+    # And the same tag on the same stranger cannot get it CANCELLED either:
+    # the account holds its own subscription, the tagged stranger arrives as a
+    # would-be duplicate, and the job refuses rather than cancelling and
+    # refunding somebody else's real purchase.
+    it 'never cancels a foreign-price subscription tagged with the bare account_id' do
+      cancelled_row
+      stub_subscription(subscription_a, 'subscription-trialing')
+      post_stripe_event('event-customer.subscription.created-trialing')
+      drain_stripe_jobs
+
+      foreign = fixture_json('subscription-active')
+      foreign['items']['data'][0]['price']['id'] = 'price_other_product'
+      foreign['metadata'] = { 'account_id' => account.id.to_s }
+      stub_duplicate(subscription_b, 'subscription-active', foreign.slice('items', 'metadata'))
+
+      duplicate = fixture_json('event-customer.subscription.created-active')
+      duplicate['data']['object']['customer'] = customer_a
+
+      post_stripe_event(nil, body: duplicate.to_json)
+
+      inbox = StripeEventInbox.order(:id).last
+
+      expect { ProcessStripeEventJob.new.perform(inbox.id) }.to raise_error(ArgumentError, /not an EsignCenter/)
+      expect(a_request(:delete, %r{api\.stripe\.com/v1/subscriptions/})).not_to have_been_made
+    end
+
+    # The other side of A1: our OWN tag, under the namespaced key, is still
+    # enough on its own. A subscription this app sold whose price was swapped
+    # in the Stripe dashboard is ours and is adopted — that is the case the
+    # tag exists for (Review 6 N3), and namespacing it must not cost it.
+    it 'adopts a subscription our Checkout tagged, even on a price we no longer recognise' do
+      row = cancelled_row
+      ours = fixture_json('subscription-trialing')
+      ours['items']['data'][0]['price']['id'] = 'price_swapped_in_the_dashboard'
+      ours['metadata'] = { 'esigncenter_account_id' => account.id.to_s }
+
+      expect(StripeBilling::SubscriptionPolicy.ours?(ours, account.id)).to be(true)
+
+      stub_subscription(subscription_a, 'subscription-trialing', ours.slice('items', 'metadata'))
+
+      allow(ErrorReport).to receive(:warning)
+
+      post_stripe_event('event-customer.subscription.created-trialing')
+      drain_stripe_jobs
+
+      row.reload
+      expect(row.stripe_subscription_id).to eq(subscription_a)
+      expect(row.access_state).to eq('trialing')
+      expect(StripeEventInbox.sole).to have_attributes(status: 'processed')
+
+      expect_paid_access
     end
 
     # Stripe then tells us that duplicate ended. Acting on that would ask
@@ -3248,6 +3447,84 @@ RSpec.describe 'Stripe billing', type: :request do # rubocop:disable RSpec/Multi
 
       expect { described_class.new.perform(inbox.id) }.not_to(change { inbox.reload.attempts })
       expect(a_request(:get, /api\.stripe\.com/)).not_to have_been_made
+    end
+
+    # A2 (review 7). Which worker gets an event is decided by ONE conditional
+    # UPDATE, not by reading the status and then writing it. A row another
+    # worker is holding right now (`processing`) is never picked up: deciding
+    # that worker died belongs to the stuck-row sweep, and a second job would
+    # spend one of the event's five retries for nothing.
+    it 'leaves a row another worker is holding alone' do
+      cancelled_row
+      stub_subscription(subscription_a, 'subscription-trialing')
+      post_stripe_event('event-customer.subscription.created-trialing')
+
+      inbox = StripeEventInbox.sole
+      # A FRESH claim: a worker took it a moment ago and is still inside its
+      # Stripe call. An OLD one is a different case entirely — the sweep
+      # releases that one rather than leaving it (P1) — so the age is spelled
+      # out here rather than left to whatever `update!` happened to write.
+      inbox.update_columns(status: StripeEventInbox::PROCESSING, attempts: 1, updated_at: Time.current)
+
+      expect(StripeEventInbox.stale_claims).to be_empty
+
+      expect { described_class.new.perform(inbox.id) }.not_to(change { inbox.reload.attempts })
+      expect(inbox.reload.status).to eq('processing')
+      expect(a_request(:get, /api\.stripe\.com/)).not_to have_been_made
+    end
+
+    # And the window that actually happens in production: Stripe re-delivers
+    # an event (or the 06:00 sweep re-enqueues one) while the first worker is
+    # still inside its Stripe call. The second worker here is started from
+    # inside that very call, so it arrives at the exact moment the claim is
+    # held. Before the claim was a compare-and-set both workers ran the whole
+    # duplicate machinery: two of the five attempts spent, the cancel sent
+    # twice and the operator paged twice for one duplicate.
+    it 'lets only one of two workers that pick up the same event do the work' do
+      row = create(:account_subscription, account:, access_state: 'trialing', status: 'trialing',
+                                          stripe_status: 'trialing', stripe_customer_id: customer_a,
+                                          stripe_subscription_id: subscription_a, quantity: 1)
+
+      duplicate = fixture_json('event-customer.subscription.created-active')
+      duplicate['data']['object']['customer'] = customer_a
+
+      post_stripe_event(nil, body: duplicate.to_json)
+
+      inbox = StripeEventInbox.sole
+      second_worker_runs = 0
+
+      # The row's OWN subscription is what the Linker re-fetches first; the
+      # second worker is let in while that request is in flight.
+      stub_request(:get, subscription_url(subscription_a))
+        .with(query: hash_including('expand' => StripeBilling::SUBSCRIPTION_EXPAND))
+        .to_return do |_request|
+          if second_worker_runs.zero?
+            second_worker_runs += 1
+            described_class.new.perform(inbox.id)
+          end
+
+          { status: 200, headers: { 'Content-Type' => 'application/json' },
+            body: fixture_json('subscription-trialing').merge('created' => 1_000).to_json }
+        end
+
+      stub_duplicate(subscription_a, 'subscription-trialing', { 'created' => 1_000 })
+      stub_duplicate(subscription_b, 'subscription-active', { 'created' => 2_000 })
+      cancel_call = stub_cancel(subscription_b)
+
+      allow(OperatorAlert).to receive(:deliver).and_return(true)
+      allow(ErrorReport).to receive(:warning)
+
+      described_class.new.perform(inbox.id)
+
+      expect(second_worker_runs).to eq(1)
+      # One dispatch: one attempt spent, one cancel sent, one page.
+      expect(inbox.reload.attempts).to eq(1)
+      expect(inbox.status).to eq('processed')
+      expect(cancel_call).to have_been_requested.once
+      expect(OperatorAlert).to have_received(:deliver).once
+      expect(row.reload.stripe_subscription_id).to eq(subscription_a)
+
+      expect_paid_access
     end
   end
 
@@ -3990,8 +4267,12 @@ RSpec.describe 'Stripe billing', type: :request do # rubocop:disable RSpec/Multi
       cancelled_row
       post_stripe_event('event-customer.subscription.created-trialing')
 
+      # Stored and never picked up: the enqueue was lost. Nothing holds the
+      # row, so it is simply enqueued again. (The other kind of stuck row —
+      # one a dead worker left `processing` — has to be released first, and
+      # is pinned end to end in the two examples below.)
       stuck = StripeEventInbox.sole
-      stuck.update_columns(status: 'processing', updated_at: 20.minutes.ago)
+      stuck.update_columns(status: 'pending', updated_at: 20.minutes.ago)
 
       failed = StripeEventInbox.create!(stripe_event_id: 'evt_failed', event_type: 'invoice.paid',
                                         payload: '{}', status: 'failed', attempts: 2)
@@ -4008,6 +4289,64 @@ RSpec.describe 'Stripe billing', type: :request do # rubocop:disable RSpec/Multi
       expect(enqueued).to contain_exactly(stuck.id, failed.id)
       expect(enqueued).not_to include(exhausted.id)
       expect(report.requeued).to eq(2)
+    end
+
+    # P1 (checkpoint 7, cycle 2). A worker that dies mid-dispatch — OOM, a
+    # deploy past Sidekiq's shutdown grace — leaves its row `processing` with
+    # nobody working it. The claim is a compare-and-set over pending/failed,
+    # so until this sweep hands the row back, every re-delivery and every
+    # re-enqueue is refused: the event is lost for ever, and a lost
+    # `checkout.session.completed` is a customer who paid and got nothing.
+    # The claim is released as a SPENT attempt, with the reason on the row,
+    # and only then is the event worked again.
+    it 'releases a claim a dead worker left behind, and the event is then processed' do
+      cancelled_row
+      stub_subscription(subscription_a, 'subscription-trialing')
+      post_stripe_event('event-customer.subscription.created-trialing')
+
+      inbox = StripeEventInbox.sole
+      inbox.update_columns(status: StripeEventInbox::PROCESSING, attempts: 1,
+                           updated_at: (StripeEventInbox::STALE_CLAIM_AFTER + 10.minutes).ago)
+
+      allow(OperatorAlert).to receive(:deliver).and_return(true)
+      ProcessStripeEventJob.jobs.clear
+
+      report = described_class.new.perform
+
+      expect(report.requeued).to eq(1)
+      expect(inbox.reload.status).to eq('failed')
+      expect(inbox.attempts).to eq(1)
+      expect(inbox.last_error).to include('claim released by reconciliation')
+
+      drain_stripe_jobs
+
+      # Worked exactly once, and the row is terminal: the event is not lost.
+      expect(inbox.reload.status).to eq('processed')
+      expect(inbox.attempts).to eq(2)
+      expect(account.reload.account_subscription.access_state).to eq('trialing')
+    end
+
+    # And the other side of the same rule: a claim that is only minutes old
+    # belongs to a worker that is still inside its Stripe call. Stealing it
+    # would spend a second of the event's five attempts and send the operator
+    # a duplicate alert — the exact noise the compare-and-set claim exists to
+    # stop.
+    it 'leaves a claim a worker is still holding alone' do
+      cancelled_row
+      post_stripe_event('event-customer.subscription.created-trialing')
+
+      inbox = StripeEventInbox.sole
+      inbox.update_columns(status: StripeEventInbox::PROCESSING, attempts: 1, updated_at: 2.minutes.ago)
+
+      ProcessStripeEventJob.jobs.clear
+
+      report = described_class.new.perform
+
+      expect(report.requeued).to eq(0)
+      expect(inbox.reload.status).to eq('processing')
+      expect(inbox.attempts).to eq(1)
+      expect(inbox.last_error).to be_nil
+      expect(ProcessStripeEventJob.jobs).to be_empty
     end
 
     it 'keeps going when Stripe fails on one account' do
@@ -4100,6 +4439,53 @@ RSpec.describe 'Stripe billing', type: :request do # rubocop:disable RSpec/Multi
       run_rake_task('plans:revoke', parent.id.to_s)
 
       expect(parent.reload.account_subscription.access_state).to eq('cancelled')
+    end
+
+    # D43, prospective counters: an operator's revoke ends paid access exactly
+    # as a Stripe cancellation does, so it has to leave the same trail — the
+    # moment the paid plan stopped and a snapshot of the send counter taken
+    # there. Without it the account would be measured against the documents it
+    # completed while it was paying and would read "3 of 5" on a free plan it
+    # has only just landed on, while a customer Stripe cancelled reads 0 of 5.
+    #
+    # Driven through the real doors: real sends, a real signer PUT for each
+    # completion. No metering row is written by hand.
+    it 'starts a fresh free month at the revoke: 0 of 5 completions, 0 of 15 sends', sidekiq: :inline do
+      platform_certificate!
+      create(:account_subscription, account: parent, access_state: 'active', status: 'manual', quantity: 2)
+
+      admin = create(:user, account: parent)
+      template = create(:template, account: parent, author: admin, only_field_types: %w[text])
+
+      # A clear minute before the revoke: this is about which SIDE of the
+      # cancellation the paid month's work falls on, and `ended_at` is stamped
+      # to the whole second.
+      travel_to(1.minute.ago) do
+        3.times do
+          submission = Submissions.create_from_emails(template:, user: admin,
+                                                      emails: "signer-#{SecureRandom.hex(4)}@example.com",
+                                                      source: :invite, mark_as_sent: true).sole
+
+          complete!(submission.submitters.first)
+        end
+      end
+
+      expect(Quotas.completions_this_month(parent)).to eq(3)
+      expect(Quotas.sends_this_month(parent)).to eq(3)
+
+      run_rake_task('plans:revoke', parent.id.to_s)
+
+      parent.reload
+
+      expect(Plans.key_for(parent)).to eq(Plans::FREE)
+      expect(parent.account_subscription.ended_at).to be_present
+      expect(Quotas.completions_this_month(parent)).to eq(0)
+      expect(Quotas.sends_this_month(parent)).to eq(0)
+      # The durable counter is append-only and was NOT rewritten — only the
+      # mark saying where the free month starts is new, so "deleting a
+      # document never gives a send back" is exactly as true as before.
+      expect(AccountCounters.value(parent.id, 'submissions_created')).to eq(3)
+      expect(AccountCounters.value(parent.id, Quotas::DOWNGRADE_SENDS_OFFSET_KEY)).to eq(3)
     end
 
     # G7: a manual row is the operator's whatever it still carries — a stale

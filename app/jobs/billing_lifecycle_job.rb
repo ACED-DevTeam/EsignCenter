@@ -11,7 +11,9 @@
 #
 #   * invitations — a seat held for somebody who never arrived is handed back
 #     when the invitation lapses, so the next invoice bills one fewer
-#     (Session 7 Phase B).
+#     (Session 7 Phase B). Parked seat purchases — a card step the customer
+#     never finished — are dropped here too, and cost nothing to drop: Stripe
+#     never applied them, so there is no quantity to take back.
 #
 #   * seats — the backstop under that: any subscription still billing for
 #     more seats than the account occupies is brought back down, whatever put
@@ -23,6 +25,7 @@ class BillingLifecycleJob < ApplicationJob
   def perform
     BillingLifecycle.run_dunning!
     BillingLifecycle.expire_invites!
+    BillingLifecycle.discard_parked_invites!
     BillingLifecycle.reconcile_seats!
   end
 end

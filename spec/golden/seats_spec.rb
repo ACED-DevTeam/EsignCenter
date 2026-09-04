@@ -114,6 +114,20 @@ RSpec.describe 'Seats and invitations', type: :request do
 
       expect(Accounts.users_count(account)).to eq(2)
     end
+
+    # A seat purchase Stripe parked for a card step is not a seat: nothing was
+    # charged, the subscription still bills the old number, and the row exists
+    # only so that finishing the step can finish the job (checkpoint 7, B1).
+    # If it counted, the account would be one person over its plan for a day
+    # on the strength of a payment that may never happen.
+    it 'does not count a parked purchase as occupancy' do
+      create(:account_invite, account:, payment_pending_until: 6.hours.from_now,
+                              pending_quantity: 2, expires_at: 6.hours.from_now)
+
+      expect(Accounts.users_count(account)).to eq(1)
+      expect(AccountInvite.pending.count).to eq(0)
+      expect(AccountInvite.payment_pending.count).to eq(1)
+    end
   end
 
   describe 'inviting' do
@@ -266,20 +280,39 @@ RSpec.describe 'Seats and invitations', type: :request do
     end
 
     # Stripe parks a change it cannot charge for (3-D Secure) as a
-    # `pending_update`. The seat is not bought, so nothing is promised.
-    it 'reserves nothing when Stripe parks the change for a payment step' do
+    # `pending_update`. The seat is not bought, so nothing is promised — but
+    # the purchase is REMEMBERED, parked exactly like Stripe's own update
+    # (checkpoint 7, B1), so that finishing the card step finishes the job.
+    it 'promises no seat when Stripe parks the change for a payment step, and mails nobody' do
+      # Stripe's own deadline for the card step, which becomes the parked
+      # invitation's clock.
+      parked_until = 20.hours.from_now.change(usec: 0)
+
       stub_invoice_preview(amount_cents: 634)
       stub_subscription_update(subscription_a, quantity: 2,
-                                               overrides: { 'pending_update' => { 'expires_at' => 1_788_411_000 } })
+                                               overrides: { 'pending_update' =>
+                                                              { 'expires_at' => parked_until.to_i } })
 
       invite('new-hire@example.com')
 
-      expect { post '/account_invites', params: { offer: offer_token } }
-        .not_to change(AccountInvite, :count)
+      post '/account_invites', params: { offer: offer_token }
 
       expect(response).to redirect_to('/settings/users')
-      expect(flash[:alert]).to eq(I18n.t('seat_add_needs_payment_action'))
+      expect(flash[:alert]).to eq(I18n.t('seat_add_needs_payment_action', email: 'new-hire@example.com'))
       expect(account.account_subscription.reload.quantity).to eq(1)
+
+      parked = AccountInvite.sole
+
+      # Parked is not pending: it holds no seat and no accept link for it has
+      # ever left this building. It IS listed on the users page, as Awaiting
+      # payment with a Cancel next to it (checkpoint 7, P5), which is the only
+      # way an admin can change their mind before Stripe's deadline.
+      expect(parked).not_to be_pending
+      expect(parked).to be_payment_pending
+      expect(parked.pending_quantity).to eq(2)
+      expect(parked.payment_pending_until).to eq(parked_until)
+      expect(Accounts.users_count(account)).to eq(1)
+      expect(deliveries).to be_empty
     end
 
     it 'refuses an offer whose seat count is no longer the one that was priced' do
@@ -325,6 +358,35 @@ RSpec.describe 'Seats and invitations', type: :request do
 
         expect(flash[:alert]).to eq(I18n.t('seat_offer_expired'))
       end
+    end
+
+    # An offer is signed by THIS server, so its price cannot be edited in the
+    # form — but a signature says nothing about who it was minted for. The
+    # account it names is inside the signature and is checked against the
+    # account making the request, or one company's admin could hand another
+    # company's subscription a seat (checkpoint 7, B3). Nothing is stubbed
+    # after the preview, so WebMock proves Stripe was never asked.
+    it 'refuses an offer minted for a different account' do
+      other_account = create(:account)
+      other_admin = create(:user, account: other_account)
+
+      stripe_paid!(other_account, seats: 1, subscription_id: subscription_b, customer_id: customer_b)
+
+      stub_invoice_preview(amount_cents: 634)
+
+      invite('new-hire@example.com')
+
+      token = offer_token
+
+      act_as(other_admin)
+
+      expect { post '/account_invites', params: { offer: token } }.not_to change(AccountInvite, :count)
+
+      expect(flash[:alert]).to eq(I18n.t('seat_offer_expired'))
+      expect(other_account.account_subscription.reload.quantity).to eq(1)
+      expect(account.account_subscription.reload.quantity).to eq(1)
+      expect(WebMock).not_to have_requested(:post, "https://api.stripe.com/v1/subscriptions/#{subscription_a}")
+      expect(WebMock).not_to have_requested(:post, "https://api.stripe.com/v1/subscriptions/#{subscription_b}")
     end
   end
 
@@ -459,6 +521,46 @@ RSpec.describe 'Seats and invitations', type: :request do
       expect(account.account_subscription.reload.quantity).to eq(2)
       expect(deliveries.map(&:subject).join(' ')).to include('seat charged but invitation not saved')
     end
+
+    # A seat can come free between the quote and the click, and then the
+    # customer already owns it (checkpoint 7, B4). The way it happens in
+    # practice: somebody is archived while Stripe is unreachable, so the
+    # hand-back fails and the subscription goes on billing the higher number.
+    # Charging again for a seat that is sitting there paid for is taking money
+    # for nothing, so the invitation is simply written into it.
+    it 'charges nothing when a seat came free between the quote and the click' do
+      row = account.account_subscription
+      member = create(:user, account:, role: User::EDITOR_ROLE)
+      row.update!(quantity: 2)
+
+      # Quoted while every seat was taken: two people, two seats.
+      token = offer_for('new-hire@example.com')
+
+      # The member leaves and Stripe will not take the lower number.
+      stub_request(:post, seat_subscription_url(subscription_a))
+        .to_return(status: 500, body: { error: { type: 'api_error', message: 'boom' } }.to_json,
+                   headers: { 'Content-Type' => 'application/json' })
+
+      delete "/users/#{member.id}"
+
+      expect(member.reload.archived_at).to be_present
+      expect(row.reload.quantity).to eq(2)
+      expect(Accounts.seat_occupancy(account)).to eq(1)
+
+      # Everything Stripe has been asked so far is forgotten, so what follows
+      # is a statement about THIS click and nothing else.
+      WebMock::RequestRegistry.instance.reset!
+
+      expect { post '/account_invites', params: { offer: token } }.to change(AccountInvite, :count).by(1)
+
+      expect(response).to redirect_to('/settings/users')
+      expect(flash[:notice]).to eq(I18n.t('user_has_been_invited'))
+      expect(AccountInvite.sole.email).to eq('new-hire@example.com')
+      expect(row.reload.quantity).to eq(2)
+      expect(Accounts.seat_occupancy(account)).to eq(2)
+      expect(WebMock).not_to have_requested(:post, seat_subscription_url(subscription_a))
+      expect(WebMock).not_to have_requested(:post, 'https://api.stripe.com/v1/invoices/create_preview')
+    end
   end
 
   describe 'releasing a seat' do
@@ -539,6 +641,102 @@ RSpec.describe 'Seats and invitations', type: :request do
       expect(row.reload.quantity).to eq(1)
     end
 
+    # Checkpoint 7, P5. A parked purchase used to have exactly one way out —
+    # waiting for Stripe's deadline — even though the code said an admin could
+    # cancel it "like any other invitation". Now it is on the users page under
+    # Awaiting payment with a Cancel next to it, and cancelling asks Stripe for
+    # nothing at all: the quantity never moved, so there is nothing to take
+    # back.
+    #
+    # The subscription bills for TWO seats and only one is occupied (the
+    # second member's login was closed), so a hand-back here would really ask
+    # Stripe to go down to one — checkpoint 7, V4: at quantity 1 the claim
+    # could not fail, because a hand-back would have been a no-op whether or
+    # not the code asked for it. Nothing Stripe-side is stubbed and the
+    # example asserts zero requests to api.stripe.com, so any outbound call
+    # fails it outright.
+    it 'lets an admin cancel a parked purchase, and asks Stripe for nothing' do
+      row = stripe_paid!(account, seats: 2)
+      create(:user, account:, archived_at: Time.current)
+      parked = create(:account_invite, account:, email: 'parked@example.com',
+                                       payment_pending_until: 20.hours.from_now,
+                                       pending_quantity: 2, expires_at: 20.hours.from_now)
+
+      get '/settings/users'
+
+      expect(response.body).to include('parked@example.com')
+      expect(doc.at('[data-invite-awaiting-payment="parked@example.com"]').text.strip)
+        .to eq(I18n.t('invite_awaiting_payment'))
+
+      # There is nothing to send again: nobody was ever mailed.
+      row_html = doc.at('[data-pending-invite="parked@example.com"]')
+
+      expect(row_html.at("form[action='/account_invites/#{parked.id}/resend']")).to be_nil
+      expect(row_html.at("form[action='/account_invites/#{parked.id}']")).to be_present
+
+      delete "/account_invites/#{parked.id}"
+
+      expect(response).to redirect_to('/settings/users')
+      expect(flash[:notice]).to eq(I18n.t('invitation_has_been_cancelled'))
+      expect(parked.reload.revoked_at).to be_present
+      expect(parked.released_at).to be_present
+      expect(parked).not_to be_payment_pending
+      expect(row.reload.quantity).to eq(2)
+      expect(deliveries).to be_empty
+      expect(Accounts.seat_occupancy(account)).to eq(1)
+      expect(WebMock).not_to have_requested(:any, %r{\Ahttps://api\.stripe\.com/})
+    end
+
+    # Checkpoint 7, V2. Between Stripe's deadline for the card step and the
+    # hourly sweep that settles the row, a parked purchase used to render as
+    # an ordinary invitation: a "Pending · expires" line, a Resend button that
+    # answered 404, and a Cancel that reported success and changed nothing. It
+    # is the same parked purchase it always was — it simply cannot be finished
+    # any more — so the page says so, offers only Cancel, and Cancel really
+    # settles it.
+    it 'settles a parked purchase whose payment deadline passed before the sweep ran' do
+      row = stripe_paid!(account, seats: 2)
+      parked = create(:account_invite, account:, email: 'lapsed@example.com',
+                                       payment_pending_until: 30.minutes.ago,
+                                       pending_quantity: 2, expires_at: 20.hours.from_now)
+
+      get '/settings/users'
+
+      row_html = doc.at('[data-pending-invite="lapsed@example.com"]')
+
+      expect(row_html).to be_present
+      expect(doc.at('[data-invite-payment-expired="lapsed@example.com"]').text.strip)
+        .to eq(I18n.t('invite_payment_step_expired'))
+      expect(doc.at('[data-invite-awaiting-payment="lapsed@example.com"]')).to be_nil
+
+      # Nothing was ever sent, so there is nothing to send again — on the page
+      # or at the door.
+      expect(row_html.at("form[action='/account_invites/#{parked.id}/resend']")).to be_nil
+      expect(row_html.at("form[action='/account_invites/#{parked.id}']")).to be_present
+      expect { post "/account_invites/#{parked.id}/resend" }.to raise_error(ActiveRecord::RecordNotFound)
+
+      delete "/account_invites/#{parked.id}"
+
+      expect(response).to redirect_to('/settings/users')
+      expect(flash[:notice]).to eq(I18n.t('invitation_has_been_cancelled'))
+      expect(parked.reload.revoked_at).to be_present
+      expect(parked.released_at).to be_present
+      expect(row.reload.quantity).to eq(2)
+      expect(deliveries).to be_empty
+      expect(WebMock).not_to have_requested(:any, %r{\Ahttps://api\.stripe\.com/})
+    end
+
+    it 'refuses to resend a parked purchase, because nothing was ever sent' do
+      stripe_paid!(account, seats: 1)
+      parked = create(:account_invite, account:, payment_pending_until: 20.hours.from_now,
+                                       pending_quantity: 2, expires_at: 20.hours.from_now)
+
+      expect { post "/account_invites/#{parked.id}/resend" }.to raise_error(ActiveRecord::RecordNotFound)
+
+      expect(parked.reload).to be_payment_pending
+      expect(deliveries).to be_empty
+    end
+
     it 'sends the invitation again on a fresh token and leaves the seat alone', sidekiq: :inline do
       stripe_paid!(account, seats: 2)
       invite_row = create(:account_invite, account:)
@@ -557,23 +755,252 @@ RSpec.describe 'Seats and invitations', type: :request do
   # there, and the two things that bring it back: the release that runs the
   # moment Stripe tells us the quantity, and the hourly backstop under it.
   describe 'a seat count that drifted upward' do
-    it 'takes back a parked seat the customer completed in Stripe\'s own portal' do
+    # The other half of the parked purchase (checkpoint 7, B1): the customer
+    # DID finish the card step, so the seat they paid for is theirs and the
+    # invitation goes out. This used to be the worst outcome in the whole seat
+    # flow — the proration was charged, the seat was handed straight back with
+    # no credit, and nobody was ever invited.
+    it 'writes and sends the invitation when the parked seat is finally paid' do
       row = stripe_paid!(account, seats: 1)
       stub_invoice_preview(amount_cents: 634)
       stub_subscription_update(subscription_a, quantity: 2,
-                                               overrides: { 'pending_update' => { 'expires_at' => 1_788_411_000 } })
+                                               overrides: { 'pending_update' =>
+                                                              { 'expires_at' => 20.hours.from_now.to_i } })
 
       invite('new-hire@example.com')
 
-      expect { post '/account_invites', params: { offer: offer_token } }.not_to change(AccountInvite, :count)
+      post '/account_invites', params: { offer: offer_token }
 
-      expect(flash[:alert]).to eq(I18n.t('seat_add_needs_payment_action'))
+      expect(flash[:alert]).to eq(I18n.t('seat_add_needs_payment_action', email: 'new-hire@example.com'))
+      expect(AccountInvite.sole).to be_payment_pending
+      expect(deliveries).to be_empty
 
       # Days later the customer finishes the card step in Stripe's own portal
-      # and the subscription really does bill for two. Nobody was ever invited
-      # into that seat and nobody ever will be, so applying that news asks for
-      # it back — from a JOB, once the webhook's own transaction is over, and
-      # never with an outbound call from inside the lock that is applying it.
+      # and the subscription really does bill for two. That news arrives the
+      # way every other Stripe fact does.
+      Sidekiq::Queues.clear_all
+
+      StripeBilling::SubscriptionSync.apply!(row, subscription_with_quantity(subscription_a, 2))
+
+      invite_row = AccountInvite.sole.reload
+
+      expect(row.reload.quantity).to eq(2)
+      expect(invite_row).to be_pending
+      expect(invite_row.payment_pending_until).to be_nil
+      expect(invite_row.pending_quantity).to be_nil
+      expect(invite_row.expires_at).to be_within(1.hour).of(BillingLifecycle::INVITE_TOKEN_DAYS.days.from_now)
+      expect(deliveries.map(&:to).flatten).to include('new-hire@example.com')
+
+      # And the seat is NOT handed back: somebody occupies it now.
+      expect(Accounts.users_count(account)).to eq(2)
+      expect(Sidekiq::Queues['billing'].select { |job| job['wrapped'] == 'ReconcileSeatsJob' }).to be_empty
+    end
+
+    # Checkpoint 7, P3. Two people invited while one card needed a second step
+    # leave two parked rows, both bought at quantity 2 (the subscription still
+    # billed 1 when each was priced). The customer finishes ONE of them and
+    # Stripe bills for 2. Promoting both would mail two people an invitation
+    # for one seat and put the account at 3 on a subscription that bills 2 —
+    # and the second person would then be refused at the accept button, having
+    # been told they were invited. Only the seat that was actually bought is
+    # promoted; the other stays parked until Stripe's own deadline drops it.
+    it 'promotes only as many parked purchases as the applied seats paid for' do
+      row = stripe_paid!(account, seats: 1)
+      stub_invoice_preview(amount_cents: 634)
+      stub_subscription_update(subscription_a, quantity: 2,
+                                               overrides: { 'pending_update' =>
+                                                              { 'expires_at' => 20.hours.from_now.to_i } })
+
+      invite('first-hire@example.com')
+      post '/account_invites', params: { offer: offer_token }
+
+      invite('second-hire@example.com')
+      post '/account_invites', params: { offer: offer_token }
+
+      first, second = AccountInvite.order(:id).to_a
+
+      expect(AccountInvite.payment_pending.count).to eq(2)
+      expect([first, second].map(&:pending_quantity)).to eq([2, 2])
+      expect(deliveries).to be_empty
+
+      # One card step finished. Stripe bills for two seats — one more than the
+      # one the account already occupies, so exactly one invitation was paid
+      # for.
+      Sidekiq::Queues.clear_all
+
+      StripeBilling::SubscriptionSync.apply!(row, subscription_with_quantity(subscription_a, 2))
+
+      expect(row.reload.quantity).to eq(2)
+      expect(first.reload).to be_pending
+      expect(second.reload).to be_payment_pending
+      expect(second).not_to be_pending
+
+      # One person told they are invited, and it is the one who was waiting
+      # longest.
+      expect(deliveries.map(&:to).flatten).to eq(['first-hire@example.com'])
+
+      # The rule underneath all of it: the account never occupies more seats
+      # than the subscription bills for.
+      expect(Accounts.seat_occupancy(account)).to eq(2)
+      expect(Accounts.seat_occupancy(account)).to be <= row.quantity
+    end
+
+    # Checkpoint 7, V1. The cap above counts PROMOTIONS, not delivered mail.
+    # The moment a parked row is flipped it is a live pending invitation
+    # occupying its seat — so if the mail server hiccups on that one message,
+    # the seat is still spent. Treating the failure as "nothing happened"
+    # would promote the next parked row into the very same seat and put the
+    # account back at two invitations for one paid-for seat, which is the
+    # whole of P3. The failure is reported and the invitation is on the users
+    # page with a Resend button; nobody else is promoted for it.
+    it 'spends the seat on a promotion whose invitation email failed, and promotes nobody else' do
+      row = stripe_paid!(account, seats: 1)
+      stub_invoice_preview(amount_cents: 634)
+      stub_subscription_update(subscription_a, quantity: 2,
+                                               overrides: { 'pending_update' =>
+                                                              { 'expires_at' => 20.hours.from_now.to_i } })
+
+      invite('first-hire@example.com')
+      post '/account_invites', params: { offer: offer_token }
+
+      invite('second-hire@example.com')
+      post '/account_invites', params: { offer: offer_token }
+
+      first, second = AccountInvite.order(:id).to_a
+
+      expect(AccountInvite.payment_pending.count).to eq(2)
+
+      # The mail server is down for exactly the message the older row sends.
+      allow(AccountInvites).to receive(:deliver!).and_wrap_original do |original, invite, *args|
+        raise StandardError, 'smtp down' if invite.email == 'first-hire@example.com'
+
+        original.call(invite, *args)
+      end
+
+      allow(ErrorReport).to receive(:error).and_call_original
+
+      StripeBilling::SubscriptionSync.apply!(row, subscription_with_quantity(subscription_a, 2))
+
+      # The seat the customer paid for was spent by the promotion, not by the
+      # email: the older row is a live invitation and the younger one is still
+      # parked.
+      expect(row.reload.quantity).to eq(2)
+      expect(first.reload).to be_pending
+      expect(second.reload).to be_payment_pending
+      expect(second).not_to be_pending
+
+      # Nobody was mailed — the one message that was attempted failed — and
+      # the failure was reported once rather than swallowed.
+      expect(deliveries).to be_empty
+      expect(ErrorReport).to have_received(:error).once
+
+      # The rule underneath it: the account never occupies more seats than the
+      # subscription bills for.
+      expect(Accounts.seat_occupancy(account)).to eq(2)
+      expect(Accounts.seat_occupancy(account)).to be <= row.quantity
+    end
+
+    # Checkpoint 7, V2. Stripe's own deadline for the card step has passed, so
+    # the purchase can never be finished — the hourly sweep will settle the
+    # row, but a seat applying in the meantime must not promote it.
+    it 'never promotes a parked purchase whose payment deadline has passed' do
+      row = stripe_paid!(account, seats: 1)
+      parked = create(:account_invite, account:, email: 'lapsed@example.com',
+                                       payment_pending_until: 30.minutes.ago,
+                                       pending_quantity: 2, expires_at: 20.hours.from_now)
+
+      StripeBilling::SubscriptionSync.apply!(row, subscription_with_quantity(subscription_a, 2))
+
+      expect(parked.reload).not_to be_pending
+      expect(parked.payment_pending_until).to be_present
+      expect(deliveries).to be_empty
+    end
+
+    # The other half of the same rule: a row parked for a HIGHER quantity than
+    # the one that applied was not paid for at all, so no amount of free seat
+    # promotes it.
+    it 'leaves a parked purchase alone when the applied quantity is below what it bought' do
+      row = stripe_paid!(account, seats: 1)
+      parked = create(:account_invite, account:, payment_pending_until: 20.hours.from_now,
+                                       pending_quantity: 4, expires_at: 20.hours.from_now)
+
+      StripeBilling::SubscriptionSync.apply!(row, subscription_with_quantity(subscription_a, 3))
+
+      expect(parked.reload).to be_payment_pending
+      expect(parked).not_to be_pending
+      expect(deliveries).to be_empty
+    end
+
+    # Checkpoint 7, P6. A week is long enough for a parked address to close
+    # its login somewhere else, and `assert_invitable!` answers that with
+    # `AddressUnavailable`. That is an ordinary refusal like "they joined in
+    # the meantime": the row is released, the seat goes back through the
+    # normal reconciliation, and nobody is paged about it on every apply.
+    it 'drops a parked purchase whose address has closed elsewhere, without paging anybody' do
+      row = stripe_paid!(account, seats: 1)
+      other = create(:account)
+      create(:user, account: other, email: 'gone@example.com', archived_at: Time.current)
+
+      parked = create(:account_invite, account:, email: 'gone@example.com',
+                                       payment_pending_until: 20.hours.from_now,
+                                       pending_quantity: 2, expires_at: 20.hours.from_now)
+
+      allow(ErrorReport).to receive(:error).and_call_original
+
+      Sidekiq::Queues.clear_all
+
+      StripeBilling::SubscriptionSync.apply!(row, subscription_with_quantity(subscription_a, 2))
+
+      expect(parked.reload.released_at).to be_present
+      expect(parked).not_to be_payment_pending
+      expect(parked).not_to be_pending
+      expect(deliveries).to be_empty
+      expect(ErrorReport).not_to have_received(:error)
+
+      # The seat nobody can use is handed back the ordinary way.
+      expect(Sidekiq::Queues['billing'].count { |job| job['wrapped'] == 'ReconcileSeatsJob' }).to eq(1)
+    end
+
+    it 'discards a parked purchase Stripe gave up on, and asks Stripe for nothing' do
+      stripe_paid!(account, seats: 1)
+      stub_invoice_preview(amount_cents: 634)
+      stub_subscription_update(subscription_a, quantity: 2,
+                                               overrides: { 'pending_update' =>
+                                                              { 'expires_at' => 1.hour.from_now.to_i } })
+
+      invite('new-hire@example.com')
+
+      post '/account_invites', params: { offer: offer_token }
+
+      parked = AccountInvite.sole
+
+      expect(parked).to be_payment_pending
+
+      # Stripe's own deadline for the card step passes and the subscription
+      # was never changed, so there is nothing to hand back and nothing to
+      # refund: the row is simply dropped.
+      travel_to(2.hours.from_now) { BillingLifecycleJob.perform_now }
+
+      expect(parked.reload.released_at).to be_present
+      expect(parked).not_to be_payment_pending
+      expect(parked).not_to be_pending
+      expect(account.account_subscription.reload.quantity).to eq(1)
+      expect(deliveries).to be_empty
+
+      # One POST to Stripe in the whole example: the purchase it parked.
+      expect(WebMock).to(
+        have_requested(:post, "https://api.stripe.com/v1/subscriptions/#{subscription_a}").once
+      )
+    end
+
+    it 'still takes back a seat that arrived with no parked purchase behind it' do
+      row = stripe_paid!(account, seats: 1)
+
+      # A quantity the app never asked for — a hand-back that failed while
+      # Stripe was unreachable, or an edit in Stripe's own dashboard. Nobody
+      # was ever invited into it, so applying that news asks for it back —
+      # from a JOB, once the webhook's own transaction is over, and never with
+      # an outbound call from inside the lock that is applying it.
       Sidekiq::Queues.clear_all
 
       StripeBilling::SubscriptionSync.apply!(row, subscription_with_quantity(subscription_a, 2))
@@ -1472,6 +1899,36 @@ RSpec.describe 'Seats and invitations', type: :request do
       no_validation_error!
     end
 
+    # Q-3: the user row is untouched, but the ACCOUNT they are in has been
+    # archived (or its purge claimed), and nobody in such an account can sign
+    # in at all. So the move this invitation offers could never be accepted,
+    # and the seat it holds was bought for a link that can never be used. It
+    # is answered with the closed-login sentence rather than a join screen
+    # nobody can get past.
+    it 'treats an invitee whose own account has closed as a closed login' do
+      shuttered = create(:account, archived_at: Time.current)
+      stranded = create(:user, account: shuttered, email: invited_email)
+      invite_row = create(:account_invite, account:, email: invited_email, collision_user: stranded)
+
+      expect(stranded.archived_at).to be_nil
+      expect(AccountInvites.verdict_for(invite_row)).to eq(:closed_login)
+
+      anonymous!
+      get "/invites/#{invite_row.raw_token}"
+
+      expect(response).to have_http_status(:gone)
+      expect(response.body).to include(I18n.t('invite_address_closed_login'))
+      no_validation_error!
+
+      # And the same answer for an account whose purge has been claimed, whose
+      # rows are still there and whose people still cannot sign in.
+      claimed = create(:account, purge_started_at: Time.current)
+      other_invite = create(:account_invite, account:, email: unique_email)
+      create(:user, account: claimed, email: other_invite.email)
+
+      expect(AccountInvites.verdict_for(other_invite)).to eq(:closed_login)
+    end
+
     # The address is already in the team — they accepted another copy of the
     # link, or an admin created them by hand. There is nothing to accept, and
     # the seat the invitation is still holding goes back.
@@ -1735,6 +2192,39 @@ RSpec.describe 'Seats and invitations', type: :request do
         .not_to change(Template, :count)
 
       expect(response).to redirect_to(root_path)
+    end
+
+    # The machine door for the same person. A parked member keeps their MCP
+    # token, and the account behind it can be perfectly healthy — it pays
+    # again, and D43 still keeps them parked — so the token guard (which asks
+    # about the ACCOUNT) lets the request in and the ability layer is what
+    # refuses it. That refusal has to look like every other refusal this door
+    # makes: JSON-RPC and 403, never an HTML 500.
+    it 'refuses a parked member their own MCP token with 403 JSON and creates nothing', sidekiq: :inline do
+      template = create(:template, account:, author: recent_admin, only_field_types: %w[text])
+
+      downgrade!
+      # The account pays again; the member stays parked (D43).
+      row.update!(access_state: 'active', status: 'manual')
+      create(:account_config, account:, key: AccountConfig::ENABLE_MCP_KEY, value: true)
+
+      expect(Plans.key_for(account.reload)).to eq(Plans::PAID)
+      expect(member.reload.read_only_at).to be_present
+
+      token = member.mcp_tokens.create!(name: 'Old laptop')
+      call = { name: 'send_documents',
+               arguments: { template_id: template.id, submitters: [{ email: unique_email }] } }
+
+      expect do
+        post '/mcp',
+             headers: { 'Authorization' => "Bearer #{token.token}", 'Content-Type' => 'application/json',
+                        'Accept' => 'application/json' },
+             params: { jsonrpc: '2.0', id: 1, method: 'tools/call', params: call }.to_json
+      end.not_to change(Submission, :count)
+
+      expect(response).to have_http_status(:forbidden)
+      expect(response.parsed_body['error']).to include('code' => -32_603, 'message' => 'Forbidden')
+      expect(Submitter.where(account:).count).to eq(0)
     end
 
     it 'gives a seat back when there is one, and refuses when there is not' do

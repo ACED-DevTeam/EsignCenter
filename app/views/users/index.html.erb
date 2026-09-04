@@ -12,8 +12,22 @@
         <% end %>
       </h1>
       <div class="flex flex-col md:flex-row gap-y-2 gap-x-4 md:items-center">
-        <% if params[:status].blank? %>
-          <% if can?(:create, User.new(account: current_account)) %>
+        <%# A free account whose seats are all taken has no "add a user" to
+            offer: the server refuses the invitation, and on the free plan
+            there is no seat to buy either. So the button is replaced by the
+            one thing that would actually work — the upgrade. A PAID account
+            at its seat count keeps the button: there the refusal turns into
+            a priced offer for one more seat. %>
+        <% can_add_user = can?(:create, User.new(account: current_account)) %>
+        <% seat_limit = Plans.seats_for(current_account) %>
+        <% seats_sold_out = can_add_user && seat_limit.present? &&
+                            Plans.key_for(current_account) == Plans::FREE &&
+                            Accounts.seat_occupancy(current_account) >= seat_limit %>
+        <% if params[:status].blank? && seats_sold_out %>
+          <%= render 'shared/upgrade_cta', feature: t('users'), title: t('all_seats_in_use'),
+                                           body: t('upgrade_to_add_more_users'), compact: true %>
+        <% elsif params[:status].blank? %>
+          <% if can_add_user %>
             <%= render 'users/extra_buttons' %>
             <% if content_for(:add_user_button) %>
               <%= content_for(:add_user_button) %>
@@ -121,7 +135,34 @@
     <% if @pending_invites.present? %>
       <div class="mt-8">
         <h2 class="text-2xl font-bold mb-2"><%= t('pending_invitations') %></h2>
-        <div class="overflow-x-auto">
+        <%# On a phone the table below scrolls sideways, and Resend/Cancel sat
+            off the right edge of the screen with nothing to say they were
+            there (checkpoint 7, B5). So on small screens each invitation is a
+            card with its actions underneath it, and the table starts at md. %>
+        <ul class="md:hidden space-y-3">
+          <% @pending_invites.each do |invite| %>
+            <% expires_on = l(invite.expires_at.in_time_zone(current_account.timezone).to_date, format: :long, locale: current_account.locale) %>
+            <% parked = invite.payment_pending_until.present? %>
+            <li class="rounded-2xl border border-base-300 bg-base-100 p-4" data-pending-invite-card="<%= invite.email %>">
+              <p dir="auto" class="font-medium break-all"><%= invite.email %></p>
+              <p class="mt-1 text-sm text-base-content/70">
+                <% if parked %>
+                  <%= invite.payment_pending? ? t('invite_awaiting_payment') : t('invite_payment_step_expired') %>
+                <% else %>
+                  <%= t('invite_pending_until', date: expires_on) %>
+                <% end %>
+              </p>
+              <div class="mt-3 flex flex-wrap items-center gap-2">
+                <span class="badge badge-info badge-outline whitespace-nowrap"><%= t(invite.role) %></span>
+                <% unless parked %>
+                  <%= button_to t('resend'), resend_account_invite_path(invite), method: :post, class: 'btn btn-outline btn-xs ms-auto' %>
+                <% end %>
+                <%= button_to t('cancel'), account_invite_path(invite), method: :delete, class: "btn btn-outline btn-error btn-xs#{' ms-auto' if parked}", form: { data: { turbo_confirm: t('are_you_sure_') } } %>
+              </div>
+            </li>
+          <% end %>
+        </ul>
+        <div class="hidden md:block overflow-x-auto">
           <table class="table w-full table-lg rounded-b-none overflow-hidden">
             <thead class="bg-base-200">
               <tr class="text-neutral uppercase">
@@ -133,16 +174,34 @@
             </thead>
             <tbody>
               <% @pending_invites.each do |invite| %>
+                <% parked = invite.payment_pending_until.present? %>
                 <tr scope="row" data-pending-invite="<%= invite.email %>">
                   <td dir="auto"><%= invite.email %></td>
                   <td>
                     <span class="badge badge-info badge-outline whitespace-nowrap"><%= t(invite.role) %></span>
                   </td>
+                  <%# A parked purchase (checkpoint 7, P5) has no invitation
+                      clock to show and nothing to send again: the card step it
+                      is waiting for was never finished, so the only honest
+                      status is "Awaiting payment" and the only action is
+                      Cancel. Once Stripe's own deadline for that step has
+                      passed the purchase can no longer be finished at all —
+                      the hourly sweep settles the row, but until it runs the
+                      status says so rather than pretending the clock is still
+                      ticking (checkpoint 7, V2). %>
                   <td class="whitespace-nowrap">
-                    <%= t('invite_pending_until', date: l(invite.expires_at.in_time_zone(current_account.timezone).to_date, format: :long, locale: current_account.locale)) %>
+                    <% if parked && invite.payment_pending? %>
+                      <span class="badge badge-ghost whitespace-nowrap" data-invite-awaiting-payment="<%= invite.email %>"><%= t('invite_awaiting_payment') %></span>
+                    <% elsif parked %>
+                      <span class="badge badge-ghost whitespace-nowrap" data-invite-payment-expired="<%= invite.email %>"><%= t('invite_payment_step_expired') %></span>
+                    <% else %>
+                      <%= t('invite_pending_until', date: l(invite.expires_at.in_time_zone(current_account.timezone).to_date, format: :long, locale: current_account.locale)) %>
+                    <% end %>
                   </td>
                   <td class="flex items-center space-x-2 justify-end">
-                    <%= button_to t('resend'), resend_account_invite_path(invite), method: :post, class: 'btn btn-outline btn-xs' %>
+                    <% unless parked %>
+                      <%= button_to t('resend'), resend_account_invite_path(invite), method: :post, class: 'btn btn-outline btn-xs' %>
+                    <% end %>
                     <%= button_to t('cancel'), account_invite_path(invite), method: :delete, class: 'btn btn-outline btn-error btn-xs', form: { data: { turbo_confirm: t('are_you_sure_') } } %>
                   </td>
                 </tr>

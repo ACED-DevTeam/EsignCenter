@@ -21,6 +21,28 @@ module Quotas
   # Where the upgrade call-to-action sends people (Phase D builds the page).
   USAGE_PATH = '/settings/usage'
 
+  # The snapshot of the durable send counter taken at the instant a paid
+  # subscription ended (D43: "counters apply prospectively"). It is written
+  # under the CURRENT month's period, so it disappears by itself at rollover
+  # and can never make an older month's numbers wrong.
+  DOWNGRADE_SENDS_OFFSET_KEY = 'submissions_created:downgrade_offset'
+
+  # The instant that snapshot was taken, as a Unix time, under the same
+  # month's period (checkpoint 7, P4/P7). ONE instant has to anchor BOTH
+  # halves of a prospective month, or the two disagree whenever a downgrade
+  # is applied late: Stripe's `ended_at` can be hours older than the moment
+  # the app found out (a lost webhook the nightly reconciliation picks up),
+  # and counting completions from Stripe's clock while counting sends from
+  # ours forgave a day of sends and charged the same day's completions.
+  #
+  # The instant chosen is when the transition was APPLIED, and the rule it
+  # encodes is the customer-friendly one: everything the account did before
+  # the app knew it had stopped paying was done on the paid plan, and stays
+  # charged to the paid plan. It cannot be gamed the other way either — the
+  # window can only ever be SHORTER than "since Stripe cancelled", never
+  # longer, so a late apply never hands anybody extra free allowance.
+  DOWNGRADE_AT_KEY = 'downgrade_applied_at'
+
   LimitSet = Struct.new(:completions_per_month, :sends_per_month, :in_flight, :seats, :storage_bytes)
 
   class LimitReached < StandardError
@@ -99,26 +121,108 @@ module Quotas
     end
   end
 
-  # UTC calendar month.
-  def month_range
-    Time.current.utc.beginning_of_month..
+  # UTC calendar month — or, on a free account whose paid subscription ended
+  # part-way through this month, the shorter window that starts where the
+  # paid plan stopped (see period_start).
+  def month_range(account = nil)
+    period_start(account)..
   end
 
   def resets_at(_account = nil)
     Time.current.utc.beginning_of_month.next_month
   end
 
+  # Where THIS account's current free month begins.
+  #
+  # Normally the 1st, UTC. But D43 says a downgrade's counters "apply
+  # prospectively": a customer who used the paid plan hard and then cancelled
+  # on the 3rd starts their free month at the cancellation, not on the 1st —
+  # otherwise the free caps would be measured against usage that was paid
+  # for, and docs/billing.md's promise that a lapsed customer "can write
+  # again" would be false until the 1st. Only ever moves the start FORWARD
+  # inside the current month, and only on the free plan, so nothing else in
+  # the app sees a different month.
+  def period_start(account = nil)
+    month_start = Time.current.utc.beginning_of_month
+
+    return month_start if account.nil?
+
+    billing = Plans.billing_account(account)
+
+    return month_start unless Plans.key_for(billing) == Plans::FREE
+
+    started_at = downgrade_at(billing) || billing.account_subscription&.ended_at
+
+    return month_start if started_at.blank? || started_at <= month_start
+
+    started_at
+  end
+
+  # When the paid → free transition was APPLIED, if it was applied this month.
+  # The send snapshot beside it was taken at this same instant, which is the
+  # whole point: completions and sends measure the same window (P4/P7).
+  #
+  # `ended_at` is only the fallback, for a row stamped by a path that recorded
+  # no snapshot — an account downgraded before this existed, or one whose
+  # counter row was removed. Stripe's clock is the second-best answer to
+  # "when did this account stop paying", not the first.
+  def downgrade_at(billing)
+    seconds = AccountCounters.value(billing.id, DOWNGRADE_AT_KEY)
+
+    seconds.positive? ? Time.zone.at(seconds) : nil
+  end
+
   # Documents completed this month: a document counts the first time ANY of
   # its signers completes it (is_first, D41) — later signers, corrections and
   # resubmits never add.
   def completions_this_month(account)
-    CompletedSubmitter.where(account_id: account_ids(account), is_first: true, completed_at: month_range).count
+    billing = Plans.billing_account(account)
+
+    CompletedSubmitter.where(account_id: account_ids(billing), is_first: true,
+                             completed_at: month_range(billing)).count
   end
 
   # Documents sent this month: every submission created on any path, selfsign
   # included (D58); deleting a submission never gives the send back.
+  #
+  # The counter itself is append-only and is never rewritten — a downgrade
+  # subtracts the snapshot taken when the paid plan ended (D43, prospective
+  # counters), which leaves "deletion never resets a send" exactly as true as
+  # it was.
   def sends_this_month(account)
-    account_ids(account).sum { |id| AccountCounters.value(id, 'submissions_created') }
+    billing = Plans.billing_account(account)
+    counted = account_ids(billing).sum { |id| AccountCounters.value(id, 'submissions_created') }
+
+    [counted - downgrade_sends_offset(billing), 0].max
+  end
+
+  # How many of this month's sends were spent while the account was still
+  # paying. Zero unless the paid plan ended this month AND the account is on
+  # the free plan now: a paid account is never blocked by a send cap, and the
+  # snapshot's month period makes it vanish at rollover.
+  def downgrade_sends_offset(billing)
+    return 0 unless Plans.key_for(billing) == Plans::FREE
+
+    AccountCounters.value(billing.id, DOWNGRADE_SENDS_OFFSET_KEY)
+  end
+
+  # Called by StripeBilling::SubscriptionSync at a paid → free transition,
+  # inside the transaction that writes the subscription row. Records where
+  # the send counter stood so the free month that starts here counts only
+  # what is sent from now on. Overwrites a snapshot from earlier in the same
+  # month: the LAST downgrade is the one the free month starts at.
+  def record_downgrade!(account)
+    billing = Plans.billing_account(account)
+    counted = account_ids(billing).sum { |id| AccountCounters.value(id, 'submissions_created') }
+    # ONE instant, read once, written beside the snapshot it belongs to: the
+    # completions window and the sends window are the same window (P4/P7).
+    at = Time.current
+    period = AccountCounters.month_period(at)
+
+    AccountCounters.set!(billing.id, DOWNGRADE_SENDS_OFFSET_KEY, counted, period:)
+    AccountCounters.set!(billing.id, DOWNGRADE_AT_KEY, at.to_i, period:)
+
+    counted
   end
 
   def sends_today(account)

@@ -37,6 +37,7 @@ class BillingSettingsController < ApplicationController
   before_action :load_subscription
   before_action :require_own_billing!, only: %i[checkout portal return]
   before_action :refuse_moved_away_account!, only: %i[checkout portal return]
+  before_action :refuse_pending_deletion!, only: %i[checkout portal]
 
   helper_method :billing_date
 
@@ -204,6 +205,27 @@ class BillingSettingsController < ApplicationController
     redirect_to settings_billing_path, alert: I18n.t('billing_account_moved_away')
   end
 
+  # An account whose deletion has been asked for may not start paying again
+  # (review 7, C1). The deletion cancelled the subscription and the mail said
+  # "you will not be charged again"; buying a new one through this page kept
+  # that promise broken AND made the account unpurgeable — on day 90 the purge
+  # refuses to destroy an account that is still being charged, releases its
+  # claim and pages the operator, and does the same every night after that,
+  # while the card keeps being billed for an account nobody can write to.
+  #
+  # Both doors that could restart the money are shut with one sentence that
+  # says what to do instead: cancel the deletion first. `show` still renders
+  # (with the same sentence in place of the buttons), and the Checkout return
+  # is deliberately NOT shut: a session completed a moment before the deletion
+  # request has already created a subscription at Stripe, and refusing to
+  # record it would leave it billing with nothing in the app pointing at it —
+  # the webhook writes it down either way.
+  def refuse_pending_deletion!
+    return unless current_account.pending_deletion?
+
+    redirect_to settings_billing_path, alert: I18n.t('billing_refused_pending_deletion')
+  end
+
   def load_subscription
     @subscription = @billing.account_subscription
     # Occupancy: the people who hold a seat plus the invitations holding one
@@ -224,7 +246,10 @@ class BillingSettingsController < ApplicationController
     # A child account reads its parent's billing and cannot act on it.
     @read_only = @billing != current_account
     @parent_name = @read_only ? @billing.name : nil
-    @actionable = !@read_only && !@manual
+    # The deletion is scheduled: the page says so where the buy button was,
+    # rather than offering a button the server would only turn away.
+    @pending_deletion = current_account.pending_deletion?
+    @actionable = !@read_only && !@manual && !@pending_deletion
     @view_state = view_state
     # What Stripe actually bills: the quantity frozen at Checkout, which is
     # not the same as the number of people in the account today. The page
@@ -285,7 +310,10 @@ class BillingSettingsController < ApplicationController
       customer: customer_id,
       client_reference_id: @billing.id.to_s,
       line_items: [{ price: StripeBilling.price_id, quantity: @seats_billed }],
-      subscription_data: { metadata: { account_id: @billing.id } },
+      # Namespaced, because this tag is half of "is this subscription ours"
+      # (StripeBilling::SubscriptionPolicy) and a bare `account_id` is a name
+      # another product on the same Stripe account would use too.
+      subscription_data: { metadata: { account_tag_key => @billing.id } },
       payment_method_collection: 'always',
       allow_promotion_codes: false,
       success_url: "#{settings_billing_return_url}?session_id={CHECKOUT_SESSION_ID}",
@@ -345,17 +373,23 @@ class BillingSettingsController < ApplicationController
 
   def find_customer
     StripeBilling.client.v1.customers.search(
-      { query: "metadata['account_id']:'#{@billing.id}'", limit: 1 }
+      { query: "metadata['#{account_tag_key}']:'#{@billing.id}'", limit: 1 }
     ).data.first
   end
 
   def create_customer
     StripeBilling.client.v1.customers.create(
-      { email: billing_contact_email, name: @billing.name, metadata: { account_id: @billing.id } },
+      { email: billing_contact_email, name: @billing.name, metadata: { account_tag_key => @billing.id } },
       idempotency_key: "customer-account-#{@billing.id}"
     )
   rescue Stripe::IdempotencyError
     find_customer || raise
+  end
+
+  # One name for "this Stripe object belongs to account N", written on the
+  # customer and on the subscription and read back by SubscriptionPolicy.
+  def account_tag_key
+    StripeBilling::SubscriptionPolicy::ACCOUNT_TAG_KEY
   end
 
   # The account's first active admin, not whoever is clicking: the customer

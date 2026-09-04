@@ -455,6 +455,52 @@ RSpec.describe 'Word document uploads', type: :request do
                                               'schema_item' => hash_including('conversion_failed' => true))
     end
 
+    # The Word blob is detached the moment the PDF is swapped in, so a
+    # conversion that dies AFTER that point and never comes back is the one
+    # path that can strand it: nothing references it any more, and the account
+    # purge's inventory walks attachments, not loose blobs. Success purges it
+    # (the resume examples above); giving up must purge it too.
+    it 'purges the detached Word blob when a conversion fails for good after the PDF was stored' do
+      orphans_before = ActiveStorage::Blob.where.missing(:attachments).ids
+      template, attachment = upload_word_to_dashboard
+      word_blob_id = attachment.blob_id
+      job = ConvertWordDocumentJob.jobs.sole
+
+      runner = ConvertWordDocumentJob.new
+      allow(runner).to receive(:update_schema_item)
+        .and_raise(ActiveRecord::ConnectionTimeoutError, 'database down')
+
+      expect { runner.perform(job['args'].first) }.to raise_error(/database down/)
+
+      # The PDF is in, the Word blob is detached but still stored, and the
+      # markers say a retry still owes the rest.
+      attachment.reload
+      expect(attachment.content_type).to eq('application/pdf')
+      expect(attachment.blob_id).not_to eq(word_blob_id)
+      expect(attachment.metadata).to include('converting' => true, 'conversion_stage' => 'pdf_stored',
+                                             'word_blob_id' => word_blob_id)
+      expect(ActiveStorage::Blob.exists?(word_blob_id)).to be(true)
+
+      # Sidekiq has run out of retries: the job leaves the queue for good and
+      # the exhausted hook is the last thing that touches this conversion.
+      ConvertWordDocumentJob.clear
+      ConvertWordDocumentJob.sidekiq_retries_exhausted_block
+                            .call(job, ActiveRecord::ConnectionTimeoutError.new('database down for good'))
+      Sidekiq::Worker.drain_all
+
+      attachment.reload
+      expect(attachment.metadata['conversion_failed']).to be(true)
+      expect(attachment.metadata.keys).not_to include('converting', 'conversion_stage', 'conversion_started_at',
+                                                      'word_blob_id')
+      expect(Templates.documents_status(template.reload)).to eq('failed')
+
+      # Nothing is left behind: the uploaded Word file is gone from the blobs
+      # table, and this example left no blob of its own with nothing pointing
+      # at it (orphans other examples left in a shared database are not ours).
+      expect(ActiveStorage::Blob.where(id: word_blob_id)).to be_empty
+      expect(ActiveStorage::Blob.where.missing(:attachments).ids - orphans_before).to be_empty
+    end
+
     it 'refuses a Word file above the size cap before queueing anything' do
       big = Rack::Test::UploadedFile.new(StringIO.new('x' * (WordConverter::MAX_FILE_SIZE + 1.megabyte)), docx_type,
                                          original_filename: 'big.docx')

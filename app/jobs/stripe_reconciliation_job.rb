@@ -14,6 +14,11 @@ class StripeReconciliationJob < ApplicationJob
   # Rows the operator granted by hand are not Stripe's to correct.
   MANUAL_STATUS = 'manual'
 
+  # Written onto an inbox row whose claim this sweep released, so the row
+  # itself says why it is `failed` when nothing ever raised.
+  STALE_CLAIM_NOTE = 'claim released by reconciliation: the worker holding this event ' \
+                     "did not finish within #{StripeEventInbox::STALE_CLAIM_AFTER.inspect}".freeze
+
   Report = Struct.new(:repaired, :errors, :requeued, :duplicates, :foreign, :unlinked, :settled,
                       :manual_refunds) do
     def anything?
@@ -260,15 +265,36 @@ class StripeReconciliationJob < ApplicationJob
     current != wanted
   end
 
-  # An inbox row still `pending` or `processing` long after it was claimed
-  # means the worker that had it died; a `failed` row with retries left means
-  # Sidekiq's own retry chain was lost with it.
+  # An inbox row still `pending` long after the endpoint stored it means its
+  # enqueue was lost; a `failed` row with retries left means Sidekiq's own
+  # retry chain was lost with it; and a row still `processing` long after it
+  # was claimed means the worker that had it died.
+  #
+  # That last kind has to be RELEASED before it is re-enqueued (checkpoint 7,
+  # P1): the job's claim is a compare-and-set over `pending`/`failed`, so a
+  # row left `processing` is refused by every worker that picks it up. This
+  # sweep is the only thing that ever decides a worker died, so it is the
+  # only thing that may hand the row back.
   def requeue_stuck_events
+    release_stale_claims!
+
     ids = StripeEventInbox.stuck.pluck(:id) + StripeEventInbox.retryable.pluck(:id)
 
     ids.uniq.each { |id| ProcessStripeEventJob.perform_async(id) }
 
     ids.uniq.size
+  end
+
+  # Back to `failed`, not to `pending`: the attempt that worker spent really
+  # was spent, so the row keeps its `attempts` and stays inside the same
+  # five-attempt budget every other failure obeys — a row that has burned the
+  # budget is left alone here exactly as it is everywhere else
+  # (`StripeEventInbox.retryable`). `update_all`, so nothing about the stored
+  # bytes can be touched on the way through.
+  def release_stale_claims!
+    StripeEventInbox.stale_claims.update_all(
+      status: StripeEventInbox::FAILED, last_error: STALE_CLAIM_NOTE, updated_at: Time.current
+    )
   end
 
   def alert(report)

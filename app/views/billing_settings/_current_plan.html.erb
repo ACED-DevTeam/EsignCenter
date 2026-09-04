@@ -53,7 +53,7 @@
         <% if @pending_invites_count.to_i.positive? %>
           <%= t('billing_seats_summary_pending', seats: @billed_seats, in_use: @seats_in_use, pending: @pending_invites_count) %>
         <% else %>
-          <%= t('billing_seats_summary', seats: @billed_seats, in_use: @seats_in_use) %>
+          <%= t('billing_seats_summary', count: @billed_seats, in_use: @seats_in_use) %>
         <% end %>
         <%= link_to t('billing_manage_users_link'), settings_users_path, class: 'link' %>
       </p>

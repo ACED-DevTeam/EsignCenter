@@ -26,11 +26,11 @@ billing_lifecycle:
   queue: billing
   description: 'Sends past-due reminders, suspends accounts whose 14-day grace period ran out, and releases the seats of expired invitations'
 
-# The retention clock (D43): warning emails for accounts nobody has signed in
-# to for nearly a year, the one-week reminder before a scheduled deletion, and
-# the purges themselves. Daily rather than hourly — every deadline here is a
-# date, not an hour — and early enough in the morning that a person is around
-# if the operator alert fires.
+# The retention clock (D43): warning emails for accounts that have gone unused
+# — no sign-in and no authenticated activity — for nearly a year, the one-week
+# reminder before a scheduled deletion, and the purges themselves. Daily rather
+# than hourly — every deadline here is a date, not an hour — and early enough
+# in the morning that a person is around if the operator alert fires.
 account_retention:
   cron: '30 4 * * *'
   class: 'AccountRetentionJob'

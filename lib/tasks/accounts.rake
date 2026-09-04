@@ -13,6 +13,48 @@ namespace :accounts do
     puts "  deletion requested: #{account.deletion_requested_at || '(never)'}"
     puts "  scheduled purge:    #{account.purge_scheduled_for || '(none)'}"
 
+    abort "Account ##{account.id} has already been purged; there is nothing left to destroy." if account.purged?
+
+    # Never join a purge somebody else is already running (checkpoint 7, C7).
+    # A claim means a job is walking this family, or is between retries, and a
+    # second walk over one family ends with one run releasing the claim — and
+    # un-archiving the account — while the other is still deleting.
+    if account.purge_started_at.present?
+      abort "Account ##{account.id} is already claimed by a purge (claimed at #{account.purge_started_at}). " \
+            'Leave it to finish, or, if it is genuinely stuck, release the claim first with ' \
+            "rake accounts:release_purge_claim[#{account.id}] and look at why it failed."
+    end
+
+    # THE ELIGIBILITY QUESTION, asked here as well as in the nightly job
+    # (checkpoint 7, C2). This command used to destroy any customer account on
+    # one mistyped id: it printed "deletion requested: (never)" and emptied it
+    # anyway. The same predicate the job asks under its lock is asked here —
+    # the 90-day window has run out, or the account is dormant AND has had its
+    # final warning — and everything else needs FORCE.
+    unless Accounts::Retention.purge_eligible?(account)
+      unless ENV['FORCE'] == '1'
+        abort "Account ##{account.id} is not due to be purged: nobody has asked for it to be deleted (or the " \
+              '90-day window has not run out), and it is not a dormant account that has had its final warning. ' \
+              'Nothing was changed. If it really has to go now, re-run with ' \
+              "FORCE=1 CONFIRM=\"#{account.name}\" rake accounts:purge[#{account.id}]"
+      end
+
+      puts
+      puts "FORCE: about to permanently destroy \"#{account.name}\" (account ##{account.id}), which is NOT due " \
+           'to be purged. This cannot be undone. It holds:'
+
+      Accounts::Purge.remaining_rows([account, *account.testing_accounts])
+                     .reject { |_, count| count.zero? }
+                     .each { |table, count| puts "  #{table}: #{count}" }
+
+      if ENV.fetch('CONFIRM', nil) != account.name
+        abort 'Refusing: CONFIRM does not match the account name. Type it back exactly — ' \
+              "FORCE=1 CONFIRM=\"#{account.name}\" rake accounts:purge[#{account.id}]"
+      end
+
+      puts "Confirmed. Purging account ##{account.id}."
+    end
+
     # The claim, exactly as AccountPurgeJob stamps it (review batch 2, R3):
     # this door destroys just as thoroughly, so it must close the same
     # barriers first — sign-in, signer writes, tokens, the quota chokepoint —

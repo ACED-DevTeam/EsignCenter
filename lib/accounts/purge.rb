@@ -85,11 +85,20 @@ module Accounts
     # nothing downstream reads either: over-redacting costs an operator a
     # glance at the Stripe dashboard, under-redacting keeps a customer's
     # details after we told them they were gone.
+    # A LINK to a Stripe-hosted page is as personal as the address on it
+    # (checkpoint 7, C5). Every `invoice.*` event carries `hosted_invoice_url`
+    # and `invoice_pdf`, and every `charge.*` a `receipt_url`: unguessable but
+    # permanent addresses of a page Stripe renders with the customer's name,
+    # street address and email on it. Keeping them would have left a working
+    # door to everything the rest of this list scrubs out. `card` goes with
+    # them for the same reason `payment_method_details` already does — the
+    # last four digits and the fingerprint of somebody's card identify them.
     PERSONAL_PAYLOAD_KEYS = %w[
-      address addresses billing_details business_name city collected_information custom_fields
+      address addresses billing_details business_name card city collected_information custom_fields
       customer_address customer_details customer_email customer_name customer_phone customer_tax_exempt
-      customer_tax_ids description email individual_name line1 line2 name owner payment_method_details
-      phone postal_code receipt_email shipping shipping_address shipping_details state tax_ids
+      customer_tax_ids description email hosted_invoice_url individual_name invoice_pdf line1 line2 name
+      owner payment_method_details phone postal_code receipt_email receipt_url shipping shipping_address
+      shipping_details state tax_ids
     ].freeze
 
     # The marker left behind. A row whose payload could not be parsed at all
@@ -365,7 +374,7 @@ module Accounts
       event_ids = WebhookEvent.where(account_id: ids).select(:id)
 
       { 'active_storage_attachments' => -> { census_attachment_count(census) },
-        'completed_documents' => -> { CompletedDocument.where(submitter_id: submitter_ids).count },
+        'completed_documents' => -> { census_completed_document_count(census, submitter_ids) },
         'document_generation_events' => -> { DocumentGenerationEvent.where(submitter_id: submitter_ids).count },
         'submitter_versions' => -> { SubmitterVersion.where(submitter_id: submitter_ids).count },
         'completed_submitters' => -> { CompletedSubmitter.where(account_id: ids).count },
@@ -482,6 +491,23 @@ module Accounts
       scope.or(owned('ActiveStorage::Attachment', census[:attachment_ids])).count
     end
 
+    # The SAME shape, for the one table that needed it and did not have it
+    # (review 7, P-L2-1; checkpoint 7). `completed_documents` is the only
+    # table in the inventory with no foreign key that is counted through a
+    # parent the walk has already deleted: by the time the count ran there
+    # were no submitters left to name, so the subquery was empty and the
+    # answer was always zero. A fingerprint written by a document generation
+    # that finished mid-purge was therefore entombed in silence, under a
+    # tombstone claiming the account was empty. Counting against submitter ids
+    # written down BEFORE the walk cannot go blank that way — the straggler is
+    # either swept by the second walk (which deletes by the same ids) or the
+    # purge refuses.
+    def census_completed_document_count(census, submitter_ids)
+      CompletedDocument.where(submitter_id: submitter_ids)
+                       .or(CompletedDocument.where(submitter_id: census[:owners].fetch('Submitter', [])))
+                       .count
+    end
+
     # Attempts hanging off an event the census wrote down, OR off one that
     # only appeared during the walk. The captured half is what catches the
     # attempt inserted after its event was deleted; the live half is what
@@ -519,7 +545,7 @@ module Accounts
     def purge_contents!(account, census = nil, family_ids = nil)
       purge_attachments!(account)
 
-      delete_documents!(account)
+      delete_documents!(account, census)
       delete_templates!(account)
       delete_projections!(account)
       delete_webhooks!(account, census)
@@ -812,10 +838,19 @@ module Accounts
     end
 
     # Documents, and everything projected off them.
-    def delete_documents!(account)
+    #
+    # `completed_documents` is swept by the census ids as well as the live
+    # ones, and it is the only table here that needs to be: it has no foreign
+    # key, so a fingerprint written after its submitter was deleted survives
+    # the ordinary query (there is no submitter left to find it by) and would
+    # otherwise sit in the table for ever. Everything else below is either
+    # resolved from the account itself or protected by a key that would not
+    # let the row exist.
+    def delete_documents!(account, census = nil)
       submitter_ids = Submitter.where(account_id: account.id).ids
+      censused_submitter_ids = census ? census[:owners].fetch('Submitter', []) : []
 
-      CompletedDocument.where(submitter_id: submitter_ids).delete_all
+      CompletedDocument.where(submitter_id: submitter_ids + censused_submitter_ids).delete_all
       DocumentGenerationEvent.where(submitter_id: submitter_ids).delete_all
       SubmitterVersion.where(submitter_id: submitter_ids).delete_all
       CompletedSubmitter.where(account_id: account.id).delete_all
@@ -948,11 +983,7 @@ module Accounts
     # life.
     def scrub_stripe_payloads!(account)
       StripeEventInbox.where(account_id: account.id).find_each do |row|
-        scrubbed = begin
-          scrub_personal_data(JSON.parse(row.payload)).to_json
-        rescue JSON::ParserError
-          UNREADABLE_PAYLOAD
-        end
+        scrubbed = scrub_payload(row.payload)
 
         # update_columns, so ApplicationRecord's whitespace stripping and the
         # model's raw-payload callback leave the scrubbed bytes exactly as
@@ -961,6 +992,20 @@ module Accounts
       end
 
       nil
+    end
+
+    # One stored event body in, the scrubbed body out. THE one place that
+    # answers "what does a purged account's Stripe event keep": the purge's
+    # own walk over the rows it already holds and StripeEventInbox's scrub of
+    # a late event arriving after the tombstone (checkpoint 7, P2) both come
+    # here, so the key list can never be applied in two slightly different
+    # ways. Bytes that will not parse are replaced outright rather than
+    # guessed at — `payload` is NOT NULL, and bytes we cannot read are bytes
+    # we cannot promise are impersonal.
+    def scrub_payload(raw)
+      scrub_personal_data(JSON.parse(raw.to_s)).to_json
+    rescue JSON::ParserError
+      UNREADABLE_PAYLOAD
     end
 
     # Walks the parsed event and replaces the values under any identity key,
