@@ -904,6 +904,89 @@ RSpec.describe 'Seats and invitations', type: :request do
       expect(move.user).to eq(other_user)
     end
 
+    # The Doorkeeper pair upstream DocuSeal left in the schema has no model in
+    # this app; the rows go in the way the purge takes them out, through a
+    # relation on the bare table.
+    def oauth_applications
+      Class.new(ApplicationRecord) { self.table_name = 'oauth_applications' }
+    end
+
+    # A move is a security-boundary transition, and every key cut for the old
+    # account is thrown away as part of it.
+    #
+    # API and MCP auth resolve the TENANT through the person: the token names
+    # its user and `current_account` is `user.account`. So a token minted while
+    # this person was alone in their own one-person account would, the instant
+    # the move landed, start answering for the TEAM — at the role the
+    # invitation granted, over documents the team's administrators own, on a
+    # credential none of them issued, can see or could revoke. The free account
+    # it was cut for has no API at all, which is the measure of the escalation:
+    # 403 before, and it must not become 200 after.
+    it 'throws away every credential the account being left had issued' do
+      api_token = other_user.access_token.token
+      mcp_token = other_user.mcp_tokens.create!(name: 'Old laptop').token
+      application = oauth_applications.create!(name: 'Partner', uid: SecureRandom.hex, scopes: 'read',
+                                               secret: SecureRandom.hex, redirect_uri: 'https://example.com/cb')
+      Accounts::Purge::OauthAccessGrant.create!(application_id: application.id, resource_owner_id: other_user.id,
+                                                token: SecureRandom.hex, expires_in: 600,
+                                                redirect_uri: 'https://example.com/cb', scopes: 'read')
+      Accounts::Purge::OauthAccessToken.create!(application_id: application.id, resource_owner_id: other_user.id,
+                                                token: SecureRandom.hex, scopes: 'read',
+                                                previous_refresh_token: 'none')
+
+      other_user.remember_me!
+      remember_token = other_user.rememberable_value
+      # Devise refuses a cookie stamped before `remember_created_at`, so the
+      # cookie is dated the way the real one is: after the row was written.
+      remembered_at = 1.second.from_now
+
+      expect(User.serialize_from_cookie(other_user.id, remember_token, remembered_at)).to eq(other_user)
+
+      token = invite_row.raw_token
+      act_as(other_user)
+
+      # The free personal account has no API, so the token is refused for the
+      # ordinary reason before the move — it exists and it resolves.
+      get '/api/templates', headers: { 'x-auth-token': api_token }
+
+      expect(response).to have_http_status(:forbidden)
+
+      post "/invites/#{token}"
+
+      expect(response).to redirect_to(root_path)
+      expect(other_user.reload.account).to eq(account)
+
+      # The browser that pressed the button is the one credential that should
+      # survive: they are still signed in, and they are in the team.
+      get '/templates'
+
+      expect(response).to have_http_status(:ok)
+
+      expect(AccessToken.where(user_id: other_user.id)).to be_empty
+      expect(McpToken.where(user_id: other_user.id)).to be_empty
+      expect(McpToken.where(sha256: Digest::SHA256.hexdigest(mcp_token))).to be_empty
+      expect(Accounts::Purge::OauthAccessGrant.where(resource_owner_id: other_user.id)).to be_empty
+      expect(Accounts::Purge::OauthAccessToken.where(resource_owner_id: other_user.id)).to be_empty
+      expect(other_user.remember_created_at).to be_nil
+
+      # Devise judges a remember-me cookie against `remember_created_at`, and
+      # with the column cleared it refuses every cookie stamped before now.
+      # Read from a moment after the cookie was stamped, so the assertion does
+      # not depend on how long this example happened to take.
+      travel_to(remembered_at + 1.second) do
+        expect(User.serialize_from_cookie(other_user.id, remember_token, remembered_at)).to be_nil
+      end
+
+      # And the old API token does not inherit the team it was never issued
+      # for: not the team's paid API, not anything.
+      anonymous!
+
+      get '/api/templates', headers: { 'x-auth-token': api_token }
+
+      expect(response).to have_http_status(:unauthorized)
+      expect(response.parsed_body).to eq('error' => 'Not authenticated')
+    end
+
     it 'refuses, with an explanation, when the account being left has other people in it' do
       create(:user, account: other_account)
       token = invite_row.raw_token

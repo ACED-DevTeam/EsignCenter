@@ -73,6 +73,31 @@ module Accounts
     # name: a tombstone must not still say who it was.
     TOMBSTONE_NAME = 'Deleted account'
 
+    # Keys inside a stored Stripe event whose values are the CUSTOMER rather
+    # than the transaction: who they are, where they live and how to reach
+    # them. Every one of them is scrubbed out of the events we keep after a
+    # purge; everything else — ids, amounts, currencies, statuses, prices,
+    # timestamps — stays, because that is what makes the row an audit.
+    #
+    # Deliberately generous. `name` also catches a product's name and
+    # `description` a line item's, neither of which is personal, but Stripe
+    # puts a person's name and a free-typed description in the same shapes and
+    # nothing downstream reads either: over-redacting costs an operator a
+    # glance at the Stripe dashboard, under-redacting keeps a customer's
+    # details after we told them they were gone.
+    PERSONAL_PAYLOAD_KEYS = %w[
+      address addresses billing_details business_name city collected_information custom_fields
+      customer_address customer_details customer_email customer_name customer_phone customer_tax_exempt
+      customer_tax_ids description email individual_name line1 line2 name owner payment_method_details
+      phone postal_code receipt_email shipping shipping_address shipping_details state tax_ids
+    ].freeze
+
+    # The marker left behind. A row whose payload could not be parsed at all
+    # is replaced outright rather than guessed at — `payload` is NOT NULL, and
+    # bytes we cannot read are bytes we cannot promise are impersonal.
+    REDACTED = '[redacted]'
+    UNREADABLE_PAYLOAD = '{"redacted":true}'
+
     module_function
 
     # --- the claim ---------------------------------------------------------
@@ -157,10 +182,10 @@ module Accounts
       # Read BEFORE anything is destroyed, because it is what proves the walk
       # was complete (review 7, P1): afterwards there are no templates,
       # submitters or users left to ask which files hung off them.
-      census = attachment_census(family)
+      census = census_for(family)
 
-      testing_children.each { |child| purge_contents!(child) }
-      purge_contents!(account)
+      testing_children.each { |child| purge_contents!(child, census) }
+      purge_contents!(account, census)
 
       # A second pass over the whole family, and then a count (review batch 2,
       # R2d). The walk above works from ids collected at its start, so
@@ -170,7 +195,7 @@ module Accounts
       # would then say the account was emptied when it was not. Stragglers are
       # taken; if anything is still standing after that, the purge fails
       # rather than lying.
-      family.each { |record| purge_contents!(record) }
+      family.each { |record| purge_contents!(record, census) }
 
       assert_emptied!(account, family, census)
 
@@ -188,12 +213,23 @@ module Accounts
     # reached its purge date still holding a live subscription means the
     # cancellation never landed, and that is money still leaving a customer's
     # card.
+    #
+    # `Plans.live_subscription?`, NOT `Plans.paid_subscription?` (review 8,
+    # A2). The paid question asks what the app currently GRANTS; this one asks
+    # whether money can still move. Stripe's `unpaid` and `paused` map to a
+    # local access_state of `suspended` and `incomplete` maps to `cancelled`,
+    # so the paid question said "free, go ahead" over three subscriptions that
+    # are still live at Stripe and revivable from the customer portal — and
+    # the deletion-time cancellation is allowed to fail into a retrying job
+    # (Accounts::Deletion), so "the cancellation never landed" is a state that
+    # really happens. Destroying the account then is irreversible while the
+    # card is not.
     def assert_purgeable!(account)
       refuse!(account, 'it is not a customer account (internal and operator accounts are the platform itself)') \
         unless account.customer?
 
       refuse!(account, 'it still holds a live paid subscription — cancel it at Stripe first') \
-        if Plans.paid_subscription?(account)
+        if Plans.live_subscription?(account)
 
       true
     end
@@ -227,7 +263,7 @@ module Accounts
                         "(#{links.size} link(s) found)")
       end
 
-      if Plans.paid_subscription?(child)
+      if Plans.live_subscription?(child)
         refuse!(parent, "its testing child #{child.id} still holds a live paid subscription — " \
                         'cancel it at Stripe first')
       end
@@ -247,7 +283,7 @@ module Accounts
     # The tombstone is only stamped when this is empty: "purged" has to mean
     # what it says, and the one thing worse than a purge that fails is a purge
     # that reports success over rows it left behind (R2d).
-    def assert_emptied!(account, family, census = attachment_census(family))
+    def assert_emptied!(account, family, census = census_for(family))
       left = remaining_rows(family, census).reject { |_, count| count.zero? }
 
       return true if left.empty?
@@ -263,7 +299,7 @@ module Accounts
     # Table name => rows still belonging to this family. Keyed on INVENTORY,
     # so a table added to that constant is counted here too or the fetch
     # raises naming it.
-    def remaining_rows(family, census = attachment_census(family))
+    def remaining_rows(family, census = census_for(family))
       ids = family.map(&:id)
       counters = row_counters(ids, census)
 
@@ -271,7 +307,7 @@ module Accounts
     end
 
     # rubocop:disable Metrics/AbcSize, Metrics/MethodLength
-    def row_counters(ids, census = attachment_census(Account.where(id: ids).to_a))
+    def row_counters(ids, census = census_for(Account.where(id: ids).to_a))
       template_ids = Template.where(account_id: ids).select(:id)
       submitter_ids = Submitter.where(account_id: ids).select(:id)
       user_ids = User.where(account_id: ids).select(:id)
@@ -297,7 +333,7 @@ module Accounts
         'email_events' => -> { EmailEvent.where(account_id: ids).count },
         'email_messages' => -> { EmailMessage.where(account_id: ids).count },
         'search_entries' => -> { SearchEntry.where(account_id: ids).count },
-        'webhook_attempts' => -> { WebhookAttempt.where(webhook_event_id: event_ids).count },
+        'webhook_attempts' => -> { census_webhook_attempt_count(census, event_ids) },
         'webhook_events' => -> { WebhookEvent.where(account_id: ids).count },
         'webhook_urls' => -> { WebhookUrl.where(account_id: ids).count },
         'abuse_flags' => -> { AbuseFlag.where(account_id: ids).count },
@@ -339,10 +375,28 @@ module Accounts
     # points at). Counting against those ids afterwards is independent of how
     # the walk chose to find things, so a hole in the resolver ends the purge
     # in a refusal instead of a lie.
-    def attachment_census(family)
+    #
+    # THE WEBHOOK EVENT IDS ARE HERE FOR THE SAME REASON (review 8, A3).
+    # `webhook_attempts` has no foreign key to `webhook_events`
+    # (db/schema.rb), and SendWebhookRequest inserts the attempt AFTER the
+    # outbound HTTP call has finished — up to fifteen seconds after it loaded
+    # the event object. A purge that deletes the event inside that window
+    # leaves the attempt behind, holding the customer's webhook response body.
+    # The old count asked `WebhookAttempt.where(webhook_event_id: <events of
+    # this account>)`, and by then there were no events left to name, so the
+    # subquery was empty and the count read zero: the account was entombed as
+    # empty over a row that was still there. Captured ids cannot go blank that
+    # way — the straggler is either swept by the second walk or the purge
+    # refuses.
+    #
+    # Both ways an event belongs to the family, matching `delete_webhooks!`:
+    # by `account_id`, and through a webhook_url of the family for the old
+    # rows whose account_id was never filled in.
+    def census_for(family)
       ids = family.map(&:id)
       template_ids = Template.where(account_id: ids).ids
       dynamic_document_ids = DynamicDocument.where(template_id: template_ids).ids
+      webhook_url_ids = WebhookUrl.where(account_id: ids).ids
 
       { owners: { 'Template' => template_ids,
                   'Submission' => Submission.where(account_id: ids).ids,
@@ -352,7 +406,9 @@ module Accounts
                     DynamicDocumentVersion.where(dynamic_document_id: dynamic_document_ids).ids,
                   'User' => User.where(account_id: ids).ids,
                   'Account' => ids },
-        attachment_ids: family.flat_map { |record| family_attachment_ids(record) }.uniq }
+        attachment_ids: family.flat_map { |record| family_attachment_ids(record) }.uniq,
+        webhook_event_ids: (WebhookEvent.where(account_id: ids).ids +
+                            WebhookEvent.where(webhook_url_id: webhook_url_ids).ids).uniq }
     end
 
     # Rows still hanging off anything the census named — including a preview
@@ -361,6 +417,17 @@ module Accounts
       scope = census[:owners].map { |record_type, record_ids| owned(record_type, record_ids) }.reduce(:or)
 
       scope.or(owned('ActiveStorage::Attachment', census[:attachment_ids])).count
+    end
+
+    # Attempts hanging off an event the census wrote down, OR off one that
+    # only appeared during the walk. The captured half is what catches the
+    # attempt inserted after its event was deleted; the live half is what
+    # catches an event (and its attempts) that arrived after the census was
+    # taken.
+    def census_webhook_attempt_count(census, event_ids)
+      WebhookAttempt.where(webhook_event_id: event_ids)
+                    .or(WebhookAttempt.where(webhook_event_id: census[:webhook_event_ids]))
+                    .count
     end
 
     # Rows that would be left pointing at a purged account if the walk above
@@ -376,13 +443,17 @@ module Accounts
 
     # --- the walk --------------------------------------------------------------
 
-    def purge_contents!(account)
+    # The census rides along because one table cannot be found from the
+    # records once the walk has started: see `delete_webhooks!`. Everything
+    # else is still resolved from the account, so the walk stays re-runnable
+    # on its own.
+    def purge_contents!(account, census = nil)
       purge_attachments!(account)
 
       delete_documents!(account)
       delete_templates!(account)
       delete_projections!(account)
-      delete_webhooks!(account)
+      delete_webhooks!(account, census)
       delete_account_rows!(account)
       delete_users!(account)
 
@@ -429,7 +500,9 @@ module Accounts
       # callback would enqueue a purge of the very blob we are protecting.
       ActiveStorage::Attachment.where(id: attachment_ids, blob_id: shared_blob_ids).delete_all
 
-      unshared_blob_ids(layers, shared_blob_ids).each { |blob_id| purge_blob!(account, blob_id) }
+      unshared_blob_ids(layers, shared_blob_ids).each do |blob_id|
+        purge_blob!(account, blob_id, attachment_ids)
+      end
 
       nil
     end
@@ -531,29 +604,64 @@ module Accounts
     # place and raises StorageFailure — the claim stays set, `purged_at` is
     # never stamped, the job retries, and the retry still knows which file it
     # was.
-    def purge_blob!(account, blob_id)
-      blob = ActiveStorage::Blob.find_by(id: blob_id)
-
-      if blob.nil?
-        ActiveStorage::Attachment.where(blob_id:).delete_all
-
-        return
-      end
-
-      delete_stored_object!(account, blob)
-
-      # One transaction for all the locator rows (review batch 2, R4). The
-      # variant records are the derivatives' own index — leaving them behind
-      # would point at files that no longer exist — and deleting the blob row
-      # while an attachment survived, or the other way round, would leave a
-      # half-row nobody can interpret. Either they all go or none of them do,
-      # and if none do the retry still finds the file by them.
-      #
-      # ALL of the blob's attachments, not just the ones the walk listed:
-      # nobody outside the family holds this blob (that is what makes it
-      # unshared), and leaving even one row behind would put the blob delete
-      # straight into a foreign-key violation (P2).
+    #
+    # AND THE WHOLE THING HAPPENS UNDER THE BLOB'S ROW LOCK, because "is this
+    # file shared?" and "delete this file" have to be ONE decision (review 8,
+    # A1). `purge_attachments!` answers the share question once, at the top,
+    # over the whole account; between that answer and this method a member of
+    # a LINKED account can clone a template this account shared with them
+    # (Abilities::TemplateConditions authorises the cross-account read, and
+    # Templates::CloneAttachments reuses the blob_id rather than copying the
+    # bytes). Their attachment row did not exist when the snapshot was taken,
+    # so the blob still read as unshared — and the deletes below take EVERY
+    # row naming the blob, deliberately. The other tenant's template lost its
+    # document and the file went with it, permanently, with nothing anywhere
+    # saying it had happened.
+    #
+    # Re-asking under `SELECT ... FOR UPDATE` closes the window from both
+    # ends: a clone that has already committed is seen, and one that is still
+    # in flight is BLOCKED — inserting an attachment takes a FOR KEY SHARE
+    # lock on the blob row for the foreign key, and Templates::CloneAttachments
+    # now takes the same lock explicitly — so it either lands before the check
+    # and is honoured, or after the file is gone and the blob row with it, in
+    # which case the clone's own insert fails rather than pointing at nothing.
+    # The lock is held across the storage delete on purpose: a shorter one
+    # would just be the same race in a smaller window.
+    def purge_blob!(account, blob_id, attachment_ids)
+      # One transaction for the check, the file and all the locator rows
+      # (review batch 2, R4; review 8, A1). The variant records are the
+      # derivatives' own index — leaving them behind would point at files that
+      # no longer exist — and deleting the blob row while an attachment
+      # survived, or the other way round, would leave a half-row nobody can
+      # interpret. Either they all go or none of them do, and if none do the
+      # retry still finds the file by them.
       ApplicationRecord.transaction do
+        blob = ActiveStorage::Blob.lock.find_by(id: blob_id)
+
+        if blob.nil?
+          ActiveStorage::Attachment.where(blob_id:).delete_all
+
+          next
+        end
+
+        # Shared after all. Exactly the outcome `purge_attachments!` gives a
+        # blob it knew was shared: this account's rows go, the file and the
+        # blob row stay, and a person is told — because "everything was
+        # destroyed" is then not quite true.
+        if ActiveStorage::Attachment.where(blob_id:).where.not(id: attachment_ids).exists?
+          ActiveStorage::Attachment.where(id: attachment_ids, blob_id:).delete_all
+
+          report_shared_blobs(account, [blob_id])
+
+          next
+        end
+
+        delete_stored_object!(account, blob)
+
+        # ALL of the blob's attachments, not just the ones the walk listed:
+        # nobody outside the family holds this blob (that is what the check
+        # above just proved, under the lock), and leaving even one row behind
+        # would put the blob delete straight into a foreign-key violation (P2).
         ActiveStorage::VariantRecord.where(blob_id:).delete_all
         ActiveStorage::Attachment.where(blob_id:).delete_all
         ActiveStorage::Blob.where(id: blob_id).delete_all
@@ -646,12 +754,22 @@ module Accounts
       SearchEntry.where(account_id: account.id).delete_all
     end
 
-    def delete_webhooks!(account)
+    # An attempt is the only row in the inventory that becomes UNREACHABLE
+    # once its parent is gone: there is no foreign key on
+    # `webhook_attempts.webhook_event_id`, so a delivery that was mid-flight
+    # when the events were deleted inserts its attempt against an id nothing
+    # points at any more, and no query starting from the account can ever find
+    # it again (review 8, A3). So the second walk sweeps by the ids the census
+    # wrote down BEFORE anything was destroyed, which is also what the
+    # emptiness count asks against — a straggler is swept here, or the purge
+    # refuses; it is never entombed in silence.
+    def delete_webhooks!(account, census = nil)
       event_ids = WebhookEvent.where(account_id: account.id).ids
       url_ids = WebhookUrl.where(account_id: account.id).ids
 
       WebhookAttempt.where(webhook_event_id: event_ids).delete_all
       WebhookAttempt.where(webhook_event_id: WebhookEvent.where(webhook_url_id: url_ids).select(:id)).delete_all
+      WebhookAttempt.where(webhook_event_id: census[:webhook_event_ids]).delete_all if census
       WebhookEvent.where(account_id: account.id).delete_all
       WebhookEvent.where(webhook_url_id: url_ids).delete_all
       WebhookUrl.where(account_id: account.id).delete_all
@@ -673,8 +791,76 @@ module Accounts
       ProvisioningEvent.where(account_id: account.id).delete_all
 
       # The Stripe audit is not the customer's to take away: what Stripe told
-      # us and when stays, with the account it belonged to unnamed.
+      # us and when stays, with the account it belonged to unnamed. But
+      # unnaming is not de-identifying, so the payload is scrubbed FIRST.
+      scrub_stripe_payloads!(account)
+
       StripeEventInbox.where(account_id: account.id).update_all(account_id: nil)
+    end
+
+    # Every verified webhook is stored byte for byte
+    # (StripeWebhooksController), and Stripe's bytes carry the customer: their
+    # email address, their name, their street address and postal code all sit
+    # inside `data.object.customer_details` and `billing_details`. Clearing
+    # `account_id` moved none of that — the row still said plainly who the
+    # former tenant was, while docs/account-deletion.md promised their data
+    # was gone (review 8, A4).
+    #
+    # REDACTED IN PLACE, not nulled. The column is NOT NULL, and more to the
+    # point a row that is not yet terminal can still be picked up by
+    # ProcessStripeEventJob (through the reconciliation sweep or Stripe's own
+    # retry), which reads `event_object` for ids and statuses. So the JSON
+    # keeps its shape and every id, amount, status and timestamp in it; only
+    # the values under the identity keys are replaced. What is left answers
+    # "what did Stripe tell us, about which object, when, and what did we do
+    # with it" — the whole reason the row is kept — and names nobody.
+    #
+    # The stored bytes no longer match Stripe's signature afterwards. Nothing
+    # re-verifies them: only rows the endpoint already verified exist at all
+    # (see StripeEventInbox), and this runs once, at the end of the account's
+    # life.
+    def scrub_stripe_payloads!(account)
+      StripeEventInbox.where(account_id: account.id).find_each do |row|
+        scrubbed = begin
+          scrub_personal_data(JSON.parse(row.payload)).to_json
+        rescue JSON::ParserError
+          UNREADABLE_PAYLOAD
+        end
+
+        # update_columns, so ApplicationRecord's whitespace stripping and the
+        # model's raw-payload callback leave the scrubbed bytes exactly as
+        # written.
+        row.update_columns(payload: scrubbed, updated_at: Time.current)
+      end
+
+      nil
+    end
+
+    # Walks the parsed event and replaces the values under any identity key,
+    # however deep. A `nil` stays `nil`: "line2": null said nothing about
+    # anybody in the first place, and a redaction marker there would only make
+    # the row harder to read.
+    def scrub_personal_data(value)
+      case value
+      when Hash
+        value.to_h do |key, nested|
+          [key, PERSONAL_PAYLOAD_KEYS.include?(key) ? redact(nested) : scrub_personal_data(nested)]
+        end
+      when Array then value.map { |nested| scrub_personal_data(nested) }
+      else value
+      end
+    end
+
+    # Structure kept, leaves replaced — so an address stays an address-shaped
+    # object with nothing in it, and any reader that walks into it finds a
+    # string rather than a NoMethodError.
+    def redact(value)
+      case value
+      when Hash then value.transform_values { |nested| redact(nested) }
+      when Array then value.map { |nested| redact(nested) }
+      when nil then nil
+      else REDACTED
+      end
     end
 
     # People last, because half the tables above point at them. Deleting the

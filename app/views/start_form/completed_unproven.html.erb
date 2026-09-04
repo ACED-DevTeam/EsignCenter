@@ -1,0 +1,23 @@
+<%# The one answer this page gives to anybody who has not proved the address
+    is theirs. It says nothing about whether that address completed the form:
+    no template name, no date, no difference in status. See
+    StartFormController#completed. %>
+<main class="max-w-md mx-auto px-2 mt-12 mb-4">
+  <div class="space-y-6 mx-auto">
+    <div class="flex items-center justify-center">
+      <%= render 'banner' %>
+    </div>
+    <div dir="auto" class="text-center text-2xl font-semibold">
+      <%= t('completed_documents_are_private') %>
+    </div>
+    <p dir="auto" class="text-center">
+      <%= t('we_can_email_a_copy_to_the_address_you_typed_if_there_is_one_to_send') %>
+    </p>
+    <% if Accounts.can_send_emails?(@template.account) %>
+      <toggle-submit class="block">
+        <%= button_to button_title(title: t('send_copy_to_email'), disabled_with: t('sending'), icon: svg_icon('mail_forward', class: 'w-6 h-6')), send_submission_email_index_path, params: { template_slug: @template.slug, email: params[:email] }, class: 'base-button w-full' %>
+      </toggle-submit>
+    <% end %>
+  </div>
+</main>
+<%= render 'shared/attribution', link_path: '/start', account: @template.account %>

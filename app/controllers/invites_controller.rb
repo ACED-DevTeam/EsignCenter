@@ -148,6 +148,14 @@ class InvitesController < ApplicationController
 
     AccountInvites.accept_move!(@invite, user: current_user)
 
+    # The move threw away every credential the person's old account had cut,
+    # remember-me included (Accounts::MoveUser#revoke_credentials!). This
+    # browser is the one that just asked for the move, so it is the one
+    # credential that should survive it: signing them in again re-establishes
+    # the session against the account they now belong to, instead of leaving
+    # them holding a session that was minted for a tenant they have left.
+    bypass_sign_in(current_user)
+
     redirect_to root_path, notice: I18n.t('invite_welcome_to_team', team: @account.name)
   rescue Accounts::MoveUser::Refused => e
     @error = e.message

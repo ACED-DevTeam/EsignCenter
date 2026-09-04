@@ -65,4 +65,36 @@ module Plans
   def paid_subscription?(billing)
     PAID_ACCESS_STATES.include?(billing.account_subscription&.access_state)
   end
+
+  # A subscription that is still ALIVE at Stripe, as opposed to one this app
+  # currently counts as paid. The two are NOT the same question, and asking
+  # the paid one where the live one was meant is how an account gets destroyed
+  # while its card is still being charged.
+  #
+  # StripeBilling::SubscriptionSync maps Stripe's `unpaid` and `paused` to a
+  # local access_state of `suspended`, and `incomplete` to `cancelled` — none
+  # of them in PAID_ACCESS_STATES, so `paid_subscription?` says no. But
+  # StripeBilling::SubscriptionPolicy classifies all three as LIVE: an unpaid
+  # or paused subscription can be resumed from the customer portal, and an
+  # incomplete one is a first payment that has not finished, not one that
+  # failed. Every one of them can still move money.
+  #
+  # This is the ROW's answer, never a call to Stripe: it is the cheap verdict
+  # the billing page and the Checkout pre-check already use, and for anything
+  # irreversible (archiving an account underneath a subscription, destroying
+  # one) refusing is the safe direction — a false "still live" costs somebody
+  # a support ticket, a false "already dead" costs a customer their money or
+  # their documents.
+  #
+  # Lives here rather than in StripeBilling because it is an ACCOUNT-level
+  # question and this is the module the whole app asks account-level
+  # subscription questions of; `Linker.holds_live_subscription?` beneath it
+  # takes the row.
+  def live_subscription?(account)
+    row = account&.account_subscription
+
+    return false if row.nil?
+
+    paid_subscription?(account) || StripeBilling::Linker.holds_live_subscription?(row)
+  end
 end

@@ -107,6 +107,80 @@ RSpec.describe 'Start form authorization', type: :request do
     end
   end
 
+  # Carried over from the Session 6 security stage. The "this has already been
+  # signed" page looked up whatever address the URL carried and answered either
+  # 200 with the template's name and the exact completion date, or a 404 — so
+  # anybody holding the public share link could ask it, one address at a time,
+  # whether a given person had signed a given document and when. The document
+  # itself was never exposed; the leak is existence and date, which for a
+  # signature is the sensitive part.
+  describe 'the completed page of a share link' do
+    let!(:signer) do
+      create(:submitter, submission: create(:submission, template:, created_by_user: user, source: 'link'),
+                         email: 'signed@example.com', uuid: submitter_uuid(template),
+                         ip: '127.0.0.1', completed_at: Time.current)
+    end
+
+    # The page is drawn under the visitor's browser locale, so the date is
+    # formatted the way that locale writes it rather than the way the default
+    # one does.
+    def completion_date
+      I18n.with_locale(:'en-GB') { I18n.l(signer.completed_at.to_date, format: :long) }
+    end
+
+    # The address is echoed back into the "email me a copy" button, so it is
+    # blanked before the two answers are compared: everything else about them
+    # has to be identical.
+    def page_for(email)
+      get "/d/#{template.slug}/completed", params: { email: }
+
+      [response.status, response.body.gsub(email, 'ADDRESS')]
+    end
+
+    it 'answers a stranger the same way whether or not the address completed it' do
+      status, body = page_for('signed@example.com')
+
+      expect([status, body]).to eq(page_for('nobody-here@example.com'))
+      expect(status).to eq(200)
+      expect(body).to include(I18n.t('completed_documents_are_private'))
+      expect(body).not_to include(CGI.escapeHTML(template.name))
+      expect(body).not_to include(completion_date)
+    end
+
+    # The legitimate return visit, which is what the fix must not break: the
+    # signer types their address into the share link, this door recognises the
+    # document as one their own device started, and sends them here.
+    it 'still shows the signer who just completed it their own page' do
+      put "/d/#{template.slug}", params: { submitter: { email: 'signed@example.com' } }
+
+      expect(response).to redirect_to("/d/#{template.slug}/completed?email=signed%40example.com")
+
+      follow_redirect!
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include(CGI.escapeHTML(template.name))
+      expect(response.body).to include(completion_date)
+      # The resubmit affordance is still there for them.
+      expect(response.body).to include(I18n.t('resubmit'))
+    end
+
+    # And the marker is a marker for THAT document: it does not become a key
+    # for asking about anybody else who used the same link.
+    it 'does not let the marker be spent on another signer\'s address' do
+      other = create(:submitter, submission: create(:submission, template:, created_by_user: user, source: 'link'),
+                                 email: 'someone-else@example.com', uuid: submitter_uuid(template),
+                                 ip: '10.9.9.9', completed_at: Time.current)
+
+      put "/d/#{template.slug}", params: { submitter: { email: 'signed@example.com' } }
+
+      get "/d/#{template.slug}/completed", params: { email: other.email }
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include(I18n.t('completed_documents_are_private'))
+      expect(response.body).not_to include(CGI.escapeHTML(template.name))
+    end
+  end
+
   describe 'the flows this door exists for' do
     it 'starts a new document from the share link' do
       expect do

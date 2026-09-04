@@ -1,6 +1,10 @@
 # frozen_string_literal: true
 
 module Templates
+  # Copying a template's documents onto a new template WITHOUT re-uploading a
+  # byte: the new attachment rows point at the original's blobs. That is what
+  # makes cloning instant, and it is also why one file can belong to two
+  # templates — and, when a template is shared across a link, to two accounts.
   module CloneAttachments
     module_function
 
@@ -47,9 +51,53 @@ module Templates
           new_document
         end
 
-      template.save! if save
+      save_under_blob_locks!(template) if save
 
       attachments
+    end
+
+    # The new rows are inserted while every blob they reuse is held under
+    # `SELECT ... FOR UPDATE` (review 8, A1).
+    #
+    # Accounts::Purge decides whether a file is shared and then deletes it,
+    # and it takes the same lock to make those one decision. Without this the
+    # clone could land in the gap between them: the purge would have already
+    # decided the file was nobody else's, and its delete takes EVERY row
+    # naming the blob — so a template cloned out of an account that was being
+    # purged lost its document, and the file with it, permanently. Locking
+    # here means the clone either commits before the purge looks (and is
+    # honoured, the file kept) or waits until the blob is gone (and fails on
+    # the foreign key, leaving no template pointing at nothing).
+    #
+    # Ordered by id, so two clones reusing the same two files can never take
+    # them in opposite orders and deadlock. Nothing is locked when the clone
+    # reuses no blobs at all.
+    #
+    # `save: false` callers own their own insert and get no protection — there
+    # are none today; every caller lets this method save.
+    def save_under_blob_locks!(template)
+      blob_ids = reused_blob_ids(template)
+
+      return template.save! if blob_ids.empty?
+
+      ApplicationRecord.transaction do
+        ActiveStorage::Blob.where(id: blob_ids).order(:id).lock.pluck(:id)
+
+        template.save!
+      end
+    end
+
+    # Every blob the about-to-be-saved rows point at: the documents, the
+    # attachments of any dynamic document cloned with them, and the page
+    # preview images hanging off each document.
+    def reused_blob_ids(template)
+      documents = template.documents_attachments.select(&:new_record?)
+
+      previews = documents.flat_map { |document| document.preview_images_attachments.to_a }
+      dynamic = template.dynamic_documents.select(&:new_record?)
+                        .flat_map { |dynamic_document| dynamic_document.attachments_attachments.to_a }
+
+      (documents + previews + dynamic).filter_map(&:blob_id).uniq
     end
 
     def maybe_clone_dynamic_document(template, original_template, document, original_document)

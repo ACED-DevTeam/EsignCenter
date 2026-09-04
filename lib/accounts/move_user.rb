@@ -57,12 +57,61 @@ module Accounts
         # account thought of them, they are a member here now.
         user.update!(account: to, role: role.presence || user.role, read_only_at: nil)
 
+        revoke_credentials!(user)
+
         from.update!(archived_at: Time.current) if from.archived_at.blank?
 
         AccountMove.create!(from_account: from, to_account: to, user:)
       end
 
       user
+    end
+
+    # A move is a SECURITY-BOUNDARY transition, so every key cut for the old
+    # account is thrown away as part of it.
+    #
+    # The move re-parents the person in place, and API and MCP auth derive the
+    # tenant from the person: a token resolves its user and reads
+    # `user.account` (Api::ApiBaseController#user_from_token). So every
+    # credential minted while they were alone in their own one-person account
+    # — the API token pasted into a script years ago, an MCP token on an old
+    # laptop, a Doorkeeper grant left behind by upstream DocuSeal, the
+    # remember-me cookie on a shared browser — would silently start resolving
+    # to the TEAM, at whatever role the invitation granted. The team's
+    # administrators never issued any of them, cannot see them and could not
+    # revoke them. A leaked personal-account key is a small thing; the same
+    # key against somebody else's tenant is not.
+    #
+    # Both token associations are cleared: `access_token` is a has_one that
+    # builds itself on first read, and `access_tokens` is the has_many behind
+    # it, so a row can hang off either. The cached associations are reset
+    # afterwards because the user object outlives this call — the accepting
+    # request goes on to use it — and a stale has_one would hand back a row
+    # that no longer exists in the database.
+    #
+    # The two OAuth tables have no model in this application (the Doorkeeper
+    # gem is not installed); Accounts::Purge already owns the two throwaway
+    # relations for them, and they are reused here rather than defined a
+    # second time, so there is one place that knows those tables exist.
+    #
+    # What this canNOT revoke is a live BROWSER session. Devise serialises a
+    # session as the user id plus `authenticatable_salt`, which is a slice of
+    # the password hash, and this app has no session-version column and no
+    # server-side session store (the session is a signed cookie). The only
+    # lever that would invalidate other browsers is changing the password,
+    # which is not ours to change. Remember-me is cleared, which is the part
+    # that survives a closed browser; the accepting browser is signed in again
+    # by InvitesController so the person who just pressed the button is not
+    # thrown out.
+    def revoke_credentials!(user)
+      AccessToken.where(user_id: user.id).delete_all
+      McpToken.where(user_id: user.id).delete_all
+      Accounts::Purge::OauthAccessGrant.where(resource_owner_id: user.id).delete_all
+      Accounts::Purge::OauthAccessToken.where(resource_owner_id: user.id).delete_all
+
+      user.forget_me!
+
+      %i[access_token access_tokens mcp_tokens].each { |name| user.association(name).reset }
     end
 
     # Every reason a move is refused, each with the sentence the invitee sees.
@@ -79,24 +128,9 @@ module Accounts
         raise Refused, I18n.t('invite_move_other_members')
       end
 
-      raise Refused, I18n.t('invite_move_paid_subscription') if live_subscription?(from)
+      raise Refused, I18n.t('invite_move_paid_subscription') if Plans.live_subscription?(from)
 
       true
-    end
-
-    # A subscription that is still ALIVE at Stripe, not merely one the app
-    # currently counts as paid. `Plans.paid_subscription?` says no for a
-    # subscription Stripe has given up on (`unpaid`), one that is paused, and
-    # one that never completed its first payment — and every one of those is
-    # still a live subscription that will charge a card, or can be revived
-    # from the customer portal. Archiving the account underneath it would
-    # leave money moving with nothing on our side watching it.
-    def live_subscription?(account)
-      row = account.account_subscription
-
-      return false if row.nil?
-
-      Plans.paid_subscription?(account) || StripeBilling::Linker.holds_live_subscription?(row)
     end
 
     # document_metadata is one row per (account, file checksum) — a unique

@@ -53,10 +53,19 @@ namespace :accounts do
     # once the purge has claimed the account there is nothing whole left to
     # restore, and saying "cancelled" would send somebody away believing their
     # documents were safe.
-    unless Accounts::Deletion.cancel!(account)
-      abort "Account ##{account.id} is already being purged (claimed at #{account.reload.purge_started_at}) " \
-            'and cannot be restored. If the purge is stuck rather than running, release the claim with ' \
-            "rake accounts:release_purge_claim[#{account.id}] and look at why it failed."
+    begin
+      unless Accounts::Deletion.cancel!(account)
+        abort "Account ##{account.id} is already being purged (claimed at #{account.reload.purge_started_at}) " \
+              'and cannot be restored. If the purge is stuck rather than running, release the claim with ' \
+              "rake accounts:release_purge_claim[#{account.id}] and look at why it failed."
+      end
+    rescue Accounts::Deletion::BillingUnsettled => e
+      # The subscription was cancelled at Stripe when the deletion was asked
+      # for, but the local row has not caught up, so unfreezing the account
+      # now would give it paid features nobody is being charged for. Nothing
+      # was changed; try again once the retrying job has been through.
+      abort "Account ##{account.id} was left alone: #{e.message}. Nothing was cancelled. " \
+            'Wait for CancelDeletedSubscriptionJob (or the nightly Stripe reconciliation) and run this again.'
     end
 
     puts "Cancelled the deletion of account ##{account.id}, which was scheduled for #{scheduled}."
