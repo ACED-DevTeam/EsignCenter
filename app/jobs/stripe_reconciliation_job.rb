@@ -38,22 +38,61 @@ class StripeReconciliationJob < ApplicationJob
 
   private
 
+  # Every row this job has anything to say about: one that names a Stripe
+  # subscription, and one that names none but still owes a refund on a
+  # subscription it no longer names. That second kind is not a curiosity —
+  # the Checkout door records exactly that debt on a row it never linked
+  # anything to (a duplicate found on the way in, cancelled, its refund
+  # refused), and asking only for rows with a subscription id left those
+  # debts with nothing to come back for them at all.
+  #
   # `status` is nullable, and NULL is not 'manual': `where.not` would quietly
   # drop every legacy row and never reconcile it again.
   def eligible_rows
-    AccountSubscription.where('status IS DISTINCT FROM ?', MANUAL_STATUS).where.not(stripe_subscription_id: nil)
+    AccountSubscription.where('status IS DISTINCT FROM ?', MANUAL_STATUS)
+                       .where('stripe_subscription_id IS NOT NULL OR refund_owed_subscription_id IS NOT NULL')
   end
 
-  # One pass per row: first the row is repaired from Stripe, then — only if
-  # that went through — the customer's other subscriptions are looked at. A
-  # row whose repair failed is stale by definition, and nothing about
-  # duplicates may be decided on a stale row.
+  # One pass per row, in three steps that fail independently on purpose:
+  #
+  #   1. the row is repaired from Stripe. Its failure is caught HERE rather
+  #      than left to the per-row rescue, because the two steps behind it are
+  #      not equally poisoned by it;
+  #   2. a refund the row remembers owing is settled whether or not the
+  #      repair went through. It is a debt on a DEAD subscription that this
+  #      step re-fetches under the row lock — it reads nothing off the row's
+  #      cached columns — so a stale row is no reason to keep the customer's
+  #      money for another night. Before this split, one account whose
+  #      repair failed every night (a subscription deleted at Stripe, an
+  #      outage on that one object) meant its owed refund was never even
+  #      attempted;
+  #   3. the duplicate pass, which IS skipped when the repair failed: a stale
+  #      row is no basis for cancelling anything.
   def sweep(report)
     each_row(eligible_rows, report) do |subscription_row|
-      repair(subscription_row, report)
+      # A row that names no subscription has nothing to repair and nothing to
+      # measure a duplicate against: it is in this sweep for its debt alone.
+      repaired = subscription_row.stripe_subscription_id.present? && repair_row(subscription_row, report)
+
       settle_recorded_refund(subscription_row, report)
+
+      next unless repaired
+
       cancel_extra_subscriptions(subscription_row, report) if subscription_row.stripe_customer_id.present?
     end
+  end
+
+  # The repair, with its own rescue: reported exactly as the per-row rescue
+  # would have reported it (one error line, one Sentry report), and answering
+  # whether the row can be trusted for the duplicate pass.
+  def repair_row(subscription_row, report)
+    repair(subscription_row, report)
+
+    true
+  rescue StandardError => e
+    record_row_error(subscription_row, report, e)
+
+    false
   end
 
   # One account's Stripe error must never stop the sweep: the whole point of
@@ -67,10 +106,14 @@ class StripeReconciliationJob < ApplicationJob
 
       yield subscription_row
     rescue StandardError => e
-      report.errors << "account #{subscription_row.account_id}: #{e.class}"
-
-      ErrorReport.error(e, account_id: subscription_row.account_id)
+      record_row_error(subscription_row, report, e)
     end
+  end
+
+  def record_row_error(subscription_row, report, error)
+    report.errors << "account #{subscription_row.account_id}: #{error.class}"
+
+    ErrorReport.error(error, account_id: subscription_row.account_id)
   end
 
   # The fetch, the comparison and the write all happen under the row lock the

@@ -44,6 +44,27 @@ class AccountMailer < ApplicationMailer
     mail(to: @recipients, subject: "Your unused EsignCenter account will be deleted in #{days_left} days")
   end
 
+  # The second way to confirm a deletion: a code to the administrator's own
+  # address, so somebody who signs in with Google — and therefore has no
+  # password they know — can still prove it is them (review batch 2, K9).
+  # Goes to ONE person, the one who asked, and never to "every admin": it is
+  # a credential, not an announcement.
+  # The code goes in the BODY and never in the subject (review batch 2, P5):
+  # a subject line is the part that shows on a lock screen, in a notification
+  # bar and in every mail client's list view, so a code there is readable by
+  # anyone standing near the phone — and by anything that indexes or logs
+  # subjects.
+  def deletion_code(user, code:)
+    @current_account = user.account
+    mail_account(user.account)
+
+    @code = code
+    @minutes = Accounts::DeletionCodes::TTL.in_minutes.to_i
+    @support_email = Docuseal::SUPPORT_EMAIL
+
+    mail(to: user.email, subject: 'Your EsignCenter account deletion code')
+  end
+
   private
 
   def format_date(time)

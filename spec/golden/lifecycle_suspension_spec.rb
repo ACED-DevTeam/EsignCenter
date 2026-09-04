@@ -299,6 +299,7 @@ RSpec.describe 'Account suspension', type: :request do # rubocop:disable RSpec/M
         # and the deletion only adds a date 90 days out.
         'accounts#destroy' => 'requesting deletion is how a frozen account leaves',
         'accounts#cancel_deletion' => 'changing your mind about leaving must never be the door that is shut',
+        'accounts#deletion_code' => 'the second way to confirm leaving; it emails the admin a code and writes nothing',
         'profile#update_contact' => 'their own name and email are theirs',
         'profile#update_password' => 'their own password is theirs',
         'mfa_setup#create' => 'their own two-factor enrolment; a security door, not an account write',

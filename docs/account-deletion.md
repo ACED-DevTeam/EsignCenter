@@ -37,6 +37,15 @@ is computed every night from the last thing that happened (the most recent
 sign-in, the account's own creation, or the day its subscription ended), so one
 sign-in moves it a year into the future by itself.
 
+**Nothing dormant is ever deleted unwarned.** A computed clock has no memory of
+what anybody was told, so the 7-day letter leaves a mark on the row
+(`accounts.dormant_warning_sent_at`, and the date it named in
+`dormant_warning_for`) and an account is only destroyed once that mark is at
+least a week old and the date it named has arrived. An account that was already
+a year idle when this shipped — or that crossed its deadline while the
+scheduler was down — therefore gets its final warning first and goes a week
+later, rather than disappearing on the first sweep.
+
 Two rules protect data that is not really abandoned:
 
 * an account with **paid access** is never dormant, however quiet it is;
@@ -66,7 +75,7 @@ explicit list, in this order, children before parents.
 
 | Table | Action | Why |
 | --- | --- | --- |
-| ActiveStorage attachments + blobs | purged (files deleted) | Templates' documents; a submission's audit trail, combined, merged and preview PDFs; a submitter's documents, attachments and previews; generated documents; the account logo; each person's saved signature and initials. Done **first** and through ActiveStorage, because the rows below are deleted with `delete_all` — anything still holding a blob at that point would leave the *file* in the bucket forever. |
+| ActiveStorage attachments + blobs | purged (files deleted) | Templates' documents; a submission's audit trail, combined, merged and preview PDFs; a submitter's documents, attachments and previews; generated documents; the account logo; each person's saved signature and initials. Done **first** and through ActiveStorage, because the rows below are deleted with `delete_all` — anything still holding a blob at that point would leave the *file* in the bucket forever. **A file another account is also attached to is kept** (cloning a template reuses the blob rather than re-uploading it): only this account's attachment row goes, and the operator is told, because that is the one case where "everything was destroyed" is not quite true. **A file that will not delete stops the purge**: the account is *not* stamped as purged, the job retries, and the operator hears — a tombstone over a bucket that still holds their documents would be a lie. The order is deliberate: the stored object and its variants/previews go **first**, we verify the object is gone, and only then the attachment and blob rows. (ActiveStorage's own `Blob#purge` destroys the rows first, so a storage failure would orphan the file with no locator left to find it by.) |
 | `completed_documents` | delete | Per-submitter document fingerprints. |
 | `document_generation_events` | delete | Per-submitter generation log. |
 | `submitter_versions` | delete | Delegation history. |
@@ -88,12 +97,13 @@ explicit list, in this order, children before parents.
 | `account_limit_overrides` | delete | Per-account limit overrides. |
 | `account_accesses` | delete | Last-seen-in-account records. |
 | `account_invites` | delete | Seats held for people who never arrived. |
-| `account_linked_accounts` | delete (both sides) | A **testing child** is a corner of its parent, not an account of its own: it is purged *with* the parent and its row is deleted outright. |
+| `account_linked_accounts` | delete (both sides) | A **testing child** is a corner of its parent, not an account of its own: it is purged *with* the parent, and its row is left as a tombstone exactly like the parent's (deleting it would leave `verified_documents.account_id` pointing at nothing, and `account_subscriptions` has a restricting foreign key). Every child is checked before any of them is touched — see the refusals below — so a family is emptied completely or not at all. |
 | `account_moves` | delete | Who moved between accounts. |
 | `encrypted_configs`, `account_configs` | delete | Settings, including any custom certificate material. |
 | `provisioning_events` | delete | How the account was created. |
 | `stripe_event_inboxes` | **nullify** `account_id` | Keep the Stripe audit, unname the customer. |
 | `access_tokens`, `mcp_tokens`, `user_configs`, `encrypted_user_configs` | delete | Each person's keys, preferences and stored signature material. |
+| `oauth_access_grants`, `oauth_access_tokens` | delete | Doorkeeper's tables (upstream DocuSeal's — the gem is not in this app, but the tables and their foreign keys are). Both **restrict** on `users`, so a single legacy row would blow the purge up half-way through. |
 | `users` | **delete** | This is what releases the email addresses: the unique index is the only thing reserving them. Devise tokens go with the row. |
 | `account_subscriptions` | **keep** | Money history (see above). |
 | `verified_documents` | **untouched** | Public verification (see above). |
@@ -110,6 +120,67 @@ operator when:
 * the account **still holds a live paid subscription**. An account that reached
   its purge date still being charged means the cancellation never landed, and
   that is money leaving a customer's card. Cancel it at Stripe first.
+* a **testing child fails any of the same checks**: it is not a customer
+  account, it holds a live subscription of its own, or the link table does not
+  say plainly that it belongs to this parent and to nobody else (exactly one
+  inbound link, of type `testing`, from this parent). A child rides in on its
+  parent's decision, so it is checked as carefully as the parent is.
+
+The purge also raises `Accounts::Purge::StorageFailure` — *not* a refusal, so
+the job retries it — when a document's file could not be removed from storage.
+`purged_at` is never stamped in that case.
+
+**The decision is re-made immediately before anything is destroyed, and then
+the account is claimed.** The nightly sweep decided minutes ago, and a retry may
+be hours later; in between an administrator may have pressed "Cancel deletion",
+or a dormant account's owner may simply have signed in. So `AccountPurgeJob`
+takes a **short** lock, asks `Accounts::Retention.purge_eligible?` again, stamps
+`accounts.purge_started_at`, and commits — then runs the purge **outside** any
+transaction. (Holding the lock across the purge would mean a late failure
+rolling back the row deletes while the files were already gone, and every
+"Cancel deletion" queueing behind minutes of file deletion.)
+
+The claim stamps `archived_at` as well, and that is the barrier: "archived" is
+the state every door in this app already understands as *this account is gone*,
+so from the moment of the claim the account is committed to deletion —
+
+* **sign-in stops**, and so do the **signer write paths** (a signer part-way
+  through a document cannot complete it into an account whose rows are being
+  deleted), the **API and MCP tokens**, and the **quota chokepoint** every
+  creation path shares;
+* **cancelling is refused**, and says so ("This account is already being
+  deleted and can no longer be restored") rather than reporting a success;
+* a run that **fails leaves the claim in place**, so the retry resumes rather
+  than re-deciding — a half-emptied account no longer looks eligible, and
+  re-deciding would leave it half-emptied for ever;
+* the purge **re-asserts its own refusals on entry**, so a Stripe webhook that
+  puts the account back on a paid plan between the claim and the purge is still
+  caught;
+* **and the claim is released again** for the two endings that are not
+  "destroyed": a refusal (the account is not being deleted after all, so it
+  must not go on looking as though it is), and a storage failure whose retries
+  have run out — which also pages the operator, because *half-purged and frozen
+  for ever, silently* is not an outcome anybody chose. A claim left set would
+  lock every user out of an account nobody is deleting.
+
+**A Stripe subscription can never hand paid access back to a claimed account.**
+`SubscriptionSync.apply!` still writes Stripe's facts — the ids, the status,
+the period, so the money history stays readable — but forces the access state
+to `cancelled` and alerts the operator: a live subscription on an account being
+purged is a *money* problem, and only somebody at Stripe can stop the card
+being charged.
+
+**Nothing is entombed until it is actually empty.** The walk works from ids
+collected at its start, so anything that lands during it — a webhook writing a
+submitter, a job generating a document — would otherwise survive under a
+tombstone claiming the account was emptied. So the family is swept a second
+time and then every table of the inventory is counted; a count that is not zero
+raises rather than stamping `purged_at`.
+
+**Nobody can delete an account they are only visiting.** All three deletion
+doors refuse while an operator is impersonating somebody: it would be the
+operator's password or mailbox confirming the end of a customer's company. A
+support agent who genuinely has to do this uses the rake tasks below.
 
 Running the purge twice is a no-op: the second call sees `purged_at` and
 answers `:already_purged`.
@@ -126,11 +197,19 @@ task ask instead. All four must be zero.
 
 ```
 # Destroy one account now, skipping the rest of its 90-day window.
-# Prints the orphan counts afterwards.
+# Claims the barrier first (exactly as the nightly job does), releases it
+# again if the purge refuses, and prints the orphan counts afterwards.
 rake accounts:purge[123]
 
-# Call off a scheduled deletion on the customer's behalf.
+# Call off a scheduled deletion on the customer's behalf. Refuses out loud if
+# the purge has already claimed the account — there is nothing whole left to
+# restore.
 rake accounts:cancel_deletion[123]
+
+# Release a purge claim that is stuck: the account can be signed into and used
+# again. If the purge had already begun deleting, the account is PART-EMPTIED —
+# check before handing it back to the customer.
+rake accounts:release_purge_claim[123]
 ```
 
 `cancel_deletion` does **not** bring the subscription back — a Stripe
@@ -142,6 +221,7 @@ and can subscribe again from the billing page.
 | Piece | File |
 | --- | --- |
 | Requesting and cancelling a deletion, and the Stripe cancel | `lib/accounts/deletion.rb` |
+| The emailed confirmation code | `lib/accounts/deletion_codes.rb` |
 | The purge inventory | `lib/accounts/purge.rb` |
 | Dormant rules, warning schedule, purge scheduling | `lib/accounts/retention.rb` |
 | Nightly sweep (`30 4 * * *`) | `config/schedule.yml` → `AccountRetentionJob` |

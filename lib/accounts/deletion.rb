@@ -74,18 +74,27 @@ module Accounts
     def request!(account, requested_by: nil)
       assert_deletable!(account)
 
-      already = account.pending_deletion?
+      # "Was it already pending?" is decided INSIDE the lock and reported out
+      # of it (review batch 2, K11). Read before the lock — the shape this
+      # replaces — two double-clicked requests both saw "no" and both went on
+      # to cancel at Stripe and mail every administrator, so the customer got
+      # the same alarming email twice for one decision.
+      already = ApplicationRecord.transaction do
+        was_pending = account.with_lock do
+          pending = account.pending_deletion?
 
-      ApplicationRecord.transaction do
-        account.with_lock do
-          unless account.pending_deletion?
+          unless pending
             account.update!(deletion_requested_at: Time.current,
                             purge_scheduled_for: purge_date,
                             deletion_requested_by_id: requested_by&.id)
           end
+
+          pending
         end
 
         suspend_for_deletion!(account)
+
+        was_pending
       end
 
       account.reload
@@ -135,12 +144,27 @@ module Accounts
     # reversible from here, and the honest thing is to tell the customer they
     # are on the free plan and can subscribe again. The billing page already
     # says so.
+    # Returns true only when a deletion was actually called off. False means
+    # there was nothing to call off, or — the case that matters — the purge has
+    # already claimed the account and there is no longer anything whole to come
+    # back to (review batch 2, P1). That check is made INSIDE the lock and
+    # re-read there, because the claim can land between a caller deciding to
+    # cancel and this method running; saying "your deletion has been
+    # cancelled" over an account that is at that moment being emptied would be
+    # the worst lie this feature could tell.
     def cancel!(account)
       return false if account.nil? || !account.pending_deletion?
 
-      account.with_lock do
+      cancelled = account.with_lock do
+        next false if account.purge_claimed?
+        next false unless account.pending_deletion?
+
         account.update!(deletion_requested_at: nil, purge_scheduled_for: nil, deletion_requested_by_id: nil)
+
+        true
       end
+
+      return false unless cancelled
 
       AccountStates.lift_suspension!(account, reason: SUSPENSION_REASON)
 

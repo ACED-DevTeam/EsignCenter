@@ -113,13 +113,58 @@ class ProcessStripeEventJob
     subscription_row = claim_row!(inbox, checkout_subscription_row(session))
 
     return if subscription_row.nil?
-    return if refuse_other_customer!(inbox, subscription_row, session)
 
-    new_subscription_id = session['subscription']
+    apply_checkout(inbox, subscription_row, session)
+  end
 
-    return ignore!(inbox, 'checkout session carries no subscription') if new_subscription_id.blank?
+  # The customer check and the link it guards happen under ONE lock, in one
+  # transaction. Checking under a lock and then letting the Linker take its
+  # own for the write leaves exactly the window the check exists to close:
+  # the browser's Checkout return door creates the Stripe customer inside its
+  # own lock, and it can land in that gap — so the event would be checked
+  # against one row and written against another.
+  #
+  # The Linker takes the same row lock again inside; a lock we already hold
+  # in this transaction costs nothing to re-take, and it re-reads the row
+  # exactly as it would on any other path.
+  #
+  # And the last word belongs to the database. Two rows that both hold no
+  # customer yet can race for one Stripe customer — one passes the check, the
+  # other passes it a moment later, and the unique index refuses the second
+  # write. That is the same fact the check was looking for, learned later, so
+  # it ends in the same verdict rather than as a failed job that retries
+  # forever into the same wall.
+  def apply_checkout(inbox, subscription_row, session)
+    StripeBilling::Linker.with_account_lock(subscription_row) do
+      next if refuse_other_customer!(inbox, subscription_row, session)
 
-    record(inbox, link!(inbox, subscription_row, new_subscription_id))
+      new_subscription_id = session['subscription']
+
+      next ignore!(inbox, 'checkout session carries no subscription') if new_subscription_id.blank?
+
+      record(inbox, link!(inbox, subscription_row, new_subscription_id))
+    end
+  rescue ActiveRecord::RecordNotUnique => e
+    raise unless customer_index_conflict?(e)
+
+    refuse_customer!(inbox, subscription_row, session)
+  rescue StripeBilling::Linker::RefundUnavailable => e
+    # The Linker writes this debt down itself — but from in here that write
+    # is inside the lock above, and the error escaping rolls it back with
+    # everything else. This handler is the first code that runs after that
+    # rollback, and Checkout is the door duplicates actually come through, so
+    # the note is made again here where it survives. The event still fails
+    # and still retries: the money is owed either way, and now something
+    # points at it.
+    StripeBilling::Linker.stamp_owed_refund!(subscription_row, e)
+
+    raise
+  end
+
+  # Only the Stripe-customer index answers this question; any other unique
+  # violation is a bug and must stay loud.
+  def customer_index_conflict?(error)
+    error.message.include?('index_account_subscriptions_on_stripe_customer_id')
   end
 
   def handle_subscription(inbox)
@@ -249,22 +294,48 @@ class ProcessStripeEventJob
   # that will never become ours. It is decided here instead, before anything
   # is written.
   #
+  # A session that names NO customer at all is refused the same way once the
+  # row holds one. The return door has always required an exact match, and
+  # blank is not a match: a session with no customer on a row that has one
+  # cannot be that row's purchase, and letting it through would apply a
+  # subscription to an account on nothing but a session id somebody pasted.
+  #
   # Reported in the return door's own words (`unmatched_checkout`) so one
   # sentence covers both doors, and the event is ignored rather than retried.
   def refuse_other_customer!(inbox, subscription_row, session)
-    held = subscription_row.stripe_customer_id
-    named = session_customer_id(session)
+    return false unless customer_mismatch?(subscription_row, session_customer_id(session))
 
-    return false if named.blank? || held == named
-    return false if held.blank? && !customer_of_another_row?(subscription_row, named)
+    refuse_customer!(inbox, subscription_row, session)
 
+    true
+  end
+
+  def refuse_customer!(inbox, subscription_row, session)
     ErrorReport.warning("checkout session #{session['id']} could not be matched to account " \
                         "#{subscription_row.account_id}",
                         account_id: subscription_row.account_id, stripe_event_id: inbox.stripe_event_id)
 
     ignore!(inbox, CUSTOMER_MISMATCH)
+  end
 
-    true
+  # Read off the row as the caller's lock has just re-read it, never off the
+  # copy this job loaded a moment earlier: the customer a row holds is
+  # exactly the thing a Checkout click writes, so a stale copy would refuse
+  # the customer's own first purchase, or accept a session for a customer
+  # they have only just been given.
+  def customer_mismatch?(subscription_row, named)
+    held = subscription_row.stripe_customer_id
+
+    # The row holds a customer: the session has to name exactly it — naming
+    # none is not a match either.
+    return held != named if held.present?
+
+    # It holds none, so this is a first purchase and there is nothing to
+    # compare against; the only way it can still be a mismatch is the named
+    # customer already belonging to somebody else's row.
+    return false if named.blank?
+
+    customer_of_another_row?(subscription_row, named)
   end
 
   def customer_of_another_row?(subscription_row, customer_id)

@@ -4,22 +4,104 @@
 # never stops the rest of the night's work (Accounts::Retention.purge_due!
 # enqueues one of these per account).
 #
-# A REFUSAL is not retried: "this account still holds a live subscription" or
-# "this is an internal account" will be just as true in six seconds, and the
-# operator has already been told. Anything else — a broken file, a database
-# hiccup — retries through ApplicationJob's normal policy.
+# TWO STEPS, and the split is the point (review batch 2, P1).
+#
+#   1. Under a SHORT lock: re-check eligibility and stamp a claim
+#      (`accounts.purge_started_at`, and `archived_at` with it). Commit.
+#   2. Outside any transaction: run the purge.
+#
+# The shape this replaces held the account's row lock across the whole purge —
+# storage I/O included. That was wrong twice over: a failure near the end
+# rolled back the row deletes while the FILES were already gone, and every
+# "Cancel deletion" queued behind minutes of file deletion.
+#
+# The claim is what makes the split safe, and it is a BARRIER, not a note: it
+# stamps `archived_at` as well, which is the state every door in this
+# application already understands as "this account is gone" — signer writes
+# stop, tokens are refused, sign-in stops, and the quota chokepoint refuses.
+# Nothing can start after the decision and expect to be honoured.
+#
+# THE CLAIM IS ALSO RELEASED, and that is R1. A claim left set for ever on an
+# account that was never emptied is worse than the bug it prevents: every user
+# is locked out, `Deletion.cancel!` refuses, and nothing on earth clears it.
+# So:
+#
+#   * a REFUSAL (a live subscription that came back, a malformed testing
+#     child) releases the claim — the account is not being destroyed, so it
+#     must not go on looking as though it is;
+#   * a STORAGE failure keeps the claim while there are retries left, because
+#     the purge is half-done and the retry has to resume it;
+#   * when those retries are exhausted the claim is released too and a person
+#     is paged, because "half-purged and frozen for ever, silently" is not an
+#     outcome anybody chose.
+#
+# `rake accounts:release_purge_claim[id]` is the manual door for the same
+# thing (docs/account-deletion.md).
 class AccountPurgeJob < ApplicationJob
   queue_as :default
+
+  # How many times a file that will not delete is worth retrying. Same count
+  # as ApplicationJob's general policy; declared here because the ENDING is
+  # different — the block below runs when the last attempt goes.
+  MAX_STORAGE_ATTEMPTS = 5
+
+  # A storage failure keeps the claim while there are attempts left, because
+  # the purge is half-done and the retry has to resume it. When the last one
+  # goes, this runs: without it the account is still claimed, still frozen,
+  # and nobody would ever look at it again.
+  retry_on(Accounts::Purge::StorageFailure, wait: :polynomially_longer,
+                                            attempts: MAX_STORAGE_ATTEMPTS) do |job, error|
+    account_id = job.arguments.first
+
+    Accounts::Purge.release_claim!(Account.find_by(id: account_id))
+
+    OperatorAlert.deliver(
+      subject: 'Account purge gave up',
+      body: "Account #{account_id} could not be purged after #{job.executions} attempts (#{error.message}). " \
+            'The purge claim has been released so the account is usable again, but it is PART-EMPTIED: ' \
+            'some documents and files are already gone. Decide whether to finish it ' \
+            "(rake accounts:purge[#{account_id}]) or to investigate the storage failure first."
+    )
+  end
 
   def perform(account_id)
     account = Account.find_by(id: account_id)
 
     return if account.nil?
+    return unless claim(account)
 
     Accounts::Purge.call(account)
   rescue Accounts::Purge::Refused => e
+    # Not being destroyed after all, so not left looking as if it were (R1).
+    Accounts::Purge.release_claim!(account)
+
     ErrorReport.warning(e.message, account_id:)
 
     nil
+  end
+
+  private
+
+  # The short lock. Returns whether this job may go on to destroy the account.
+  #
+  # An account that is ALREADY claimed goes ahead without re-deciding: that is
+  # a resumed run, and the questions were answered when the claim was made.
+  # Re-deciding would be worse than pointless — a half-emptied account no
+  # longer looks eligible (its users may be gone), so the retry would refuse
+  # to finish what it started and leave it half-emptied for ever.
+  def claim(account)
+    account.with_lock do
+      next true if account.purge_started_at.present?
+
+      unless Accounts::Retention.purge_eligible?(account, now: Time.current)
+        ErrorReport.info('account purge skipped: no longer eligible', account_id: account.id)
+
+        next false
+      end
+
+      Accounts::Purge.claim!(account)
+
+      true
+    end
   end
 end
