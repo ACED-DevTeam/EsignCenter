@@ -4,25 +4,35 @@
 #
 # Table name: accounts
 #
-#  id                   :bigint           not null, primary key
-#  account_kind         :string           default("customer"), not null
-#  archived_at          :datetime
-#  locale               :string           not null
-#  name                 :string           not null
-#  sending_pause_reason :string
-#  sending_paused_at    :datetime
-#  suspended_at         :datetime
-#  suspension_reason    :string
-#  timezone             :string           not null
-#  uuid                 :string           not null
-#  created_at           :datetime         not null
-#  updated_at           :datetime         not null
+#  id                       :bigint           not null, primary key
+#  account_kind             :string           default("customer"), not null
+#  archived_at              :datetime
+#  deletion_requested_at    :datetime
+#  locale                   :string           not null
+#  name                     :string           not null
+#  purge_scheduled_for      :datetime
+#  purged_at                :datetime
+#  sending_pause_reason     :string
+#  sending_paused_at        :datetime
+#  suspended_at             :datetime
+#  suspension_reason        :string
+#  timezone                 :string           not null
+#  uuid                     :string           not null
+#  created_at               :datetime         not null
+#  updated_at               :datetime         not null
+#  deletion_requested_by_id :bigint
 #
 # Indexes
 #
-#  index_accounts_on_account_kind  (account_kind)
-#  index_accounts_on_suspended_at  (suspended_at) WHERE (suspended_at IS NOT NULL)
-#  index_accounts_on_uuid          (uuid) UNIQUE
+#  index_accounts_on_account_kind              (account_kind)
+#  index_accounts_on_deletion_requested_by_id  (deletion_requested_by_id)
+#  index_accounts_on_pending_purge             (purge_scheduled_for) WHERE ((purge_scheduled_for IS NOT NULL) AND (purged_at IS NULL))
+#  index_accounts_on_suspended_at              (suspended_at) WHERE (suspended_at IS NOT NULL)
+#  index_accounts_on_uuid                      (uuid) UNIQUE
+#
+# Foreign Keys
+#
+#  fk_rails_...  (deletion_requested_by_id => users.id) ON DELETE => nullify
 #
 class Account < ApplicationRecord
   KINDS = [
@@ -57,6 +67,25 @@ class Account < ApplicationRecord
   has_many :webhook_urls, dependent: :destroy
   has_many :webhook_events, dependent: nil
   has_many :account_accesses, dependent: :destroy
+  # Rows the app deletes by hand in the purge inventory (lib/accounts/purge.rb)
+  # rather than through a cascade. They are declared here anyway, because a
+  # foreign key with no association is exactly what makes `account.destroy`
+  # blow up with InvalidForeignKey — the Session 1 handoff's provisioning_events
+  # bug. `search_entries` and `completed_submitters` are projections that can be
+  # rebuilt; `provisioning_events` is a log of how the account was created.
+  has_many :provisioning_events, dependent: :delete_all
+  has_many :search_entries, dependent: :delete_all
+  has_many :completed_submitters, dependent: :delete_all
+  # The Stripe audit is NOT the account's to take with it: the inbox rows say
+  # what Stripe told us and when, and they outlive the customer (nullified, so
+  # the money history stays readable).
+  has_many :stripe_event_inboxes, dependent: :nullify
+  # Where people came from and where they went. Both sides point at accounts,
+  # so both are declared; the purge deletes them outright.
+  has_many :account_moves_from, class_name: 'AccountMove', foreign_key: :from_account_id,
+                                dependent: :delete_all, inverse_of: :from_account
+  has_many :account_moves_to, class_name: 'AccountMove', foreign_key: :to_account_id,
+                              dependent: :delete_all, inverse_of: :to_account
   has_many :account_testing_accounts, -> { testing }, dependent: :destroy,
                                                       class_name: 'AccountLinkedAccount',
                                                       inverse_of: :account
@@ -77,6 +106,8 @@ class Account < ApplicationRecord
   attribute :locale, :string, default: 'en-US'
 
   scope :active, -> { where(archived_at: nil) }
+  # Accounts whose 90-day deletion window has not yet been purged away.
+  scope :pending_deletion, -> { where.not(deletion_requested_at: nil).where(purged_at: nil) }
 
   validates :account_kind, inclusion: { in: KINDS }
 
@@ -102,6 +133,19 @@ class Account < ApplicationRecord
 
   def testing?
     linked_account_account&.testing?
+  end
+
+  # An admin has asked us to delete the account and the 90 days have not run
+  # out yet. The account is suspended (read-only) for the whole window, so
+  # everyone can still sign in, read and export what they need.
+  def pending_deletion?
+    deletion_requested_at.present? && purged_at.blank?
+  end
+
+  # Everything this account owned has been destroyed; the row that is left is
+  # a tombstone (lib/accounts/purge.rb).
+  def purged?
+    purged_at.present?
   end
 
   # Configuration belongs to this account first. Testing children may inherit

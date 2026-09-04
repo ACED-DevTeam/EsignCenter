@@ -1,0 +1,7 @@
+<p>Hello,</p>
+<p>Nobody has signed in to your EsignCenter account, <strong><%= @current_account.name %></strong>, for almost a year.</p>
+<p>Accounts that go unused for a year are deleted, so <strong>this one is deleted on <%= @purge_date %></strong> — <%= @days_left %> days from now. Its documents, templates, people and settings go with it.</p>
+<p><strong>To keep the account, simply sign in.</strong> One sign-in starts the year again and you will hear nothing more from us about this.</p>
+<p><strong>To keep the documents instead,</strong> sign in and download them from the <%= link_to 'templates page', @templates_url %> before <%= @purge_date %>.</p>
+<p>Questions? Write to <%= mail_to @support_email %>.</p>
+<p>Thanks,<br>EsignCenter</p>

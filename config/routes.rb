@@ -225,7 +225,11 @@ Rails.application.routes.draw do
         post :refresh, on: :member
       end
     end
-    resource :account, only: %i[show update destroy]
+    # Deleting the account is a 90-day decision, so it has a second door:
+    # the one that changes your mind again (lib/accounts/deletion.rb).
+    resource :account, only: %i[show update destroy] do
+      post :cancel_deletion
+    end
     resources :profile, only: %i[index] do
       collection do
         patch :update_contact
