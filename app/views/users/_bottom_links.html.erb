@@ -1,5 +1,5 @@
 <div class="flex items-center space-x-1">
-  <% if (is_with_download = can?(:manage, :download_users) && can?(:manage, current_account)) %>
+  <% if (is_with_download = can?(:manage, :download_users) && can?(:administer, current_account)) %>
     <%= button_to(t(:download), url_for(format: :csv), class: 'link text-sm', form: { class: 'flex' }, method: :get) %>
   <% end %>
   <% if %w[archived integration].include?(params[:status]) %>

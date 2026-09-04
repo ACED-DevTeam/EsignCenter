@@ -35,14 +35,45 @@ class Ability
   # what a role gave, and BEFORE the plan flags so those still decide which
   # features are visible.
   #
-  # Deliberately NOT listed: Account (the billing page authorizes
-  # `:manage, current_account`, and taking that away would lock the admin out
-  # of the one page that can fix this) and the personal UserConfig rows.
-  # `:read` is never touched anywhere, and the download/export controllers
-  # authorize a read.
+  # Deliberately NOT listed: the personal UserConfig rows, and reading of any
+  # kind — every download and export controller authorizes a read. The
+  # account row itself is handled below, and differently for the two kinds of
+  # person this layer catches.
   def apply_read_only_layer(user)
+    # Two shapes of refusal, because CanCan asks a different question for
+    # each. A `cannot :create` rule is never even LOOKED AT by
+    # `authorize!(:manage, thing)` — the rule's action has to match the one
+    # being asked about — so every door that authorizes `:manage` walked
+    # straight through the list below: the testing-share toggle, renaming or
+    # deleting the account, uploading a logo, and buying a seat. The `:manage`
+    # refusals therefore come FIRST, and the reading each role was given is
+    # put back immediately after, because `:manage` covers `:read` too and
+    # losing that would close the pages a frozen account must keep.
+    cannot :manage, [TemplateSharing, AccountInvite, Account]
+    can :read, TemplateSharing, template: { account_id: user.account_id }
+
+    # The billing page is the one door that has to stay open — it is where
+    # the money problem gets fixed — and the people page has to stay readable,
+    # because that is where the admin decides who keeps a seat. Both are handed
+    # back as abilities of their own, narrow enough to give without giving
+    # everything `:manage, Account` implies (renaming it, deleting it, a logo).
+    #
+    # ONLY to an administrator who still holds a seat, and this is the whole
+    # point of the condition: read-only is not one situation but two. An
+    # account frozen for a failed payment puts EVERY member here — its viewers
+    # and editors included — and handing them `:billing` would let any of them
+    # open the Customer Portal and cancel the company's subscription. A member
+    # parked read-only by a downgrade is in the same layer on a perfectly
+    # healthy paying account, and they must not reach the money either.
+    can(%i[read billing administer], Account, id: user.account_id) if user.admin? && !user.read_only?
+
     cannot %i[create update destroy], [Template, TemplateFolder, TemplateSharing, Submission, Submitter,
                                        User, EncryptedConfig, AccountConfig, WebhookUrl, AccessToken, McpToken]
+
+    # Re-delivering a webhook pushes this account's data out again, on its
+    # order. They are member actions with names of their own, so nothing in
+    # the create/update/destroy list ever matched them.
+    cannot %i[resend refresh], WebhookUrl
 
     # The MCP door needs `:manage, :mcp` on top of `:use, :mcp`; taking the
     # first away closes it without touching the plan's feature flags.
@@ -120,6 +151,13 @@ class Ability
     can :manage, EncryptedConfig, account_id: user.account_id
     can :manage, AccountConfig, account_id: user.account_id
     can :manage, Account, id: user.account_id
+    # Paying for the account, and administering its people: two abilities of
+    # their own, so the billing page and the users page can be authorized
+    # without `:manage` — which is what lets a frozen account still be paid
+    # for, and its people page still be read, while everything else about the
+    # account row is closed (lib/ability.rb read-only layer).
+    can %i[billing administer], Account, id: user.account_id
+    can :manage, AccountInvite, account_id: user.account_id
     can :manage, AccessToken, user_id: user.id
     can :manage, McpToken, user_id: user.id
     can :manage, WebhookUrl, account_id: user.account_id

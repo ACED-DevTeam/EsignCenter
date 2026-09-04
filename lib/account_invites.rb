@@ -24,6 +24,11 @@ module AccountInvites
   # can never be saved must not cost anybody $10.
   class InvalidEmail < StandardError; end
 
+  # The invitation cannot be acted on any more: somebody cancelled it, it
+  # lapsed, the team it points at is frozen, or the seat it was holding is no
+  # longer there. Carries the sentence the acceptance page shows.
+  class NoLongerOpen < StandardError; end
+
   module_function
 
   def normalize_email(email)
@@ -61,17 +66,26 @@ module AccountInvites
 
       Quotas.assert_seat_available!(account) if seats_bought.nil?
 
-      invite = account.account_invites.new(
-        email:, role:, invited_by:,
-        collision_user: collision_user_for(email, account),
-        expires_at: BillingLifecycle::INVITE_TOKEN_DAYS.days.from_now
-      )
-
-      invite.generate_token
+      invite = build(account:, email:, role:, invited_by:)
       invite.save!
 
       invite
     end
+  end
+
+  # The invitation row, built and tokened but not saved. The buying path needs
+  # it in this state: it has to know the invitation WILL save before it puts a
+  # charge on somebody's card.
+  def build(account:, email:, role:, invited_by:)
+    invite = account.account_invites.new(
+      email: normalize_email(email), role:, invited_by:,
+      collision_user: collision_user_for(email, account),
+      expires_at: BillingLifecycle::INVITE_TOKEN_DAYS.days.from_now
+    )
+
+    invite.generate_token
+
+    invite
   end
 
   # An address already in the account (or already invited), or one that is not
@@ -118,29 +132,89 @@ module AccountInvites
   end
 
   # Cancel a pending invitation and hand the seat back (the next invoice bills
-  # one fewer — D43, no mid-cycle refunds).
+  # one fewer — D43, no mid-cycle refunds). Under the invitation's own lock,
+  # so a cancel and an acceptance racing each other can only settle one way.
   def revoke!(invite)
-    invite.update!(revoked_at: Time.current, released_at: Time.current)
+    revoked = invite.with_lock do
+      next false unless invite.pending?
 
-    release_seat_for(invite.account)
+      invite.update!(revoked_at: Time.current)
+
+      true
+    end
+
+    return invite unless revoked
+
+    # `released_at` is a "handled with Stripe" marker, so it is written only
+    # once Stripe has actually taken the lower number. A failure leaves it
+    # nil and the hourly sweep tries the same account again.
+    invite.update!(released_at: Time.current) unless release_seat_for(invite.account) == :failed
 
     invite
   end
 
   # Somebody left, or lost their seat: tell Stripe the account needs fewer.
   # Safe to call for any account — it does nothing unless there is a live
-  # subscription billing for more seats than are occupied.
+  # subscription billing for more seats than are occupied. Answers with
+  # BillingLifecycle's verdict (:updated / :noop / :failed).
   def release_seat_for(account)
     row = Plans.billing_account(account).account_subscription
 
-    BillingLifecycle.release_seats!(row) if row
+    row ? BillingLifecycle.release_seats!(row) : :noop
+  end
+
+  # The one door every acceptance goes through.
+  #
+  # Between the page being rendered and the button being pressed, everything
+  # can have changed: an admin cancelled the invitation, it lapsed, the
+  # account was suspended for a failed payment, or the plan dropped to one
+  # seat. So all of it is asked again INSIDE the invitation's row lock, and
+  # the person's creation (or their move) and the "accepted" stamp happen in
+  # that same transaction — a concurrent cancel can only win or lose whole,
+  # never leave a member behind in an account that has no seat for them.
+  def with_open_invite(invite)
+    invite.with_lock do
+      raise NoLongerOpen, I18n.t('invite_unavailable_hint') unless invite.pending?
+      raise NoLongerOpen, I18n.t('invite_account_frozen') if AccountStates.read_only?(invite.account)
+
+      assert_seat_for_acceptance!(invite)
+
+      yield
+    end
+  end
+
+  # Is there still a seat for the person accepting? Their own invitation is
+  # the seat they are about to take, so it is not counted against them —
+  # everything else is. A plan that shrank while the invitation was in the
+  # post (a downgrade to the free plan's single seat) is refused here rather
+  # than quietly handing the account a second full-access member.
+  def assert_seat_for_acceptance!(invite)
+    billing = Plans.billing_account(invite.account)
+
+    return true if Plans.key_for(billing) == Plans::INTERNAL
+
+    seats = Plans.seats_for(billing)
+
+    return true if seats.nil?
+    return true if Accounts.seat_occupancy(billing) - held_by(invite, billing) < seats
+
+    raise NoLongerOpen, I18n.t('invite_no_seat_left')
+  end
+
+  # The seat this invitation is holding, which is the one the person accepting
+  # is about to take and so must not be counted against them: 1 when the
+  # invitation is inside the family whose seats are being counted, 0 when it
+  # is not (a testing child is the same tenant but is never billed, so its
+  # invitations occupy nothing).
+  def held_by(invite, billing)
+    Accounts.seat_account_ids(billing).include?(invite.account_id) ? 1 : 0
   end
 
   # A fresh invitation accepted: the person is created here, in the account
   # that invited them, with the role the invitation carried. The pending
   # invite's seat becomes their seat, so occupancy does not move.
   def accept!(invite, first_name:, last_name:, password:)
-    ApplicationRecord.transaction do
+    with_open_invite(invite) do
       user = invite.account.users.new(email: invite.email, first_name:, last_name:,
                                       role: invite.role, password:)
       user.skip_confirmation!
@@ -155,10 +229,12 @@ module AccountInvites
   # The collision case (D50): the invitee already has an account of their own
   # and accepts by MOVING into the team, bringing everything with them.
   def accept_move!(invite, user:)
-    Accounts::MoveUser.call(user:, to: invite.account, role: invite.role)
+    with_open_invite(invite) do
+      Accounts::MoveUser.call(user:, to: invite.account, role: invite.role)
 
-    invite.update!(accepted_at: Time.current)
+      invite.update!(accepted_at: Time.current)
 
-    user
+      user
+    end
   end
 end

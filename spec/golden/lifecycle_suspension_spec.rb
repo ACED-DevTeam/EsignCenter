@@ -247,6 +247,21 @@ RSpec.describe 'Account suspension', type: :request do # rubocop:disable RSpec/M
         .not_to change(SubmitterVersion, :count)
     end
 
+    # Review batch 1, F8: the "invite another party" step of an
+    # invite-then-complete signing writes new submitters into the account and
+    # completes the signer, and it was the one signer write door that never
+    # asked whether the account was still there.
+    it 'refuses inviting another party into the document' do
+      expect do
+        post "/s/#{submitter.slug}/invite", params: {
+          submission: { submitters: [{ uuid: SecureRandom.uuid, email: unique_email }] }
+        }
+      end.not_to change(Submitter, :count)
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(submitter.reload.completed_at).to be_nil
+    end
+
     it 'refuses an attachment upload' do
       post '/api/attachments', params: {
         submitter_slug: submitter.slug,
@@ -255,6 +270,355 @@ RSpec.describe 'Account suspension', type: :request do # rubocop:disable RSpec/M
 
       expect(response).to have_http_status(:unprocessable_content)
       expect(response.parsed_body).to eq('error' => I18n.t('form_has_been_archived'))
+    end
+  end
+
+  # Review batch 1, F3. CanCan never looks at a `cannot :create` rule when the
+  # question asked is `authorize!(:manage, thing)` — the actions have to match
+  # — so every door shaped that way walked straight through the read-only
+  # layer: rotating the API token, the testing-share toggle, uploading a logo,
+  # renaming or deleting the account, and buying a seat with the card that had
+  # just failed.
+  #
+  # The sweep is written off the ROUTE TABLE rather than off a list somebody
+  # remembered to update: every write route under /settings has to be
+  # classified here, so a new one fails this spec until a person has decided
+  # which side of the line it is on.
+  describe 'every write door of a suspended account' do
+    # The doors that stay OPEN, and why. Nothing goes on this list without a
+    # reason that survives being read aloud.
+    let(:allowed_while_suspended) do
+      {
+        'billing_settings#checkout' => 'the page that settles the payment',
+        'billing_settings#portal' => 'the page that settles the payment',
+        'profile#update_contact' => 'their own name and email are theirs',
+        'profile#update_password' => 'their own password is theirs',
+        'mfa_setup#create' => 'their own two-factor enrolment; a security door, not an account write',
+        'mfa_setup#destroy' => 'their own two-factor enrolment',
+        'reveal_access_token#create' => 'shows an existing token after a password check; changes nothing',
+        'user_configs#create' => 'a personal UI preference (UserConfig is outside the layer by design)',
+        'encrypted_user_configs#destroy' => 'their own stored signature material',
+        'user_signatures#update' => 'their own saved signature',
+        'user_signatures#destroy' => 'their own saved signature',
+        'user_initials#update' => 'their own saved initials',
+        'user_initials#destroy' => 'their own saved initials'
+      }
+    end
+
+    # Doors no customer administrator can reach AT ALL: the operator gate is
+    # in front of them, so the suspension layer is not what stands in the way.
+    let(:operator_only) do
+      {
+        'search_entries_reindex#create' => 'require_operator_access!',
+        'timestamp_server#create' => 'require_operator_access!',
+        'esign_settings#create' => 'require_operator_access!',
+        'esign_settings#update' => 'require_operator_access!',
+        'esign_settings#destroy' => 'require_operator_access!'
+      }
+    end
+
+    # Everything else: a write on the account, refused while it is frozen.
+    let(:refused_while_suspended) do
+      %w[
+        accounts#update accounts#destroy
+        account_configs#create account_configs#destroy account_custom_fields#create
+        account_invites#create account_invites#destroy account_invites#resend
+        api_settings#create
+        email_smtp_settings#create email_smtp_settings#destroy
+        mcp_settings#create mcp_settings#destroy
+        notifications_settings#create
+        personalization_settings#create personalization_logo#create personalization_logo#destroy
+        submissions#create submissions#destroy submissions_resend_email#create submissions_unarchive#create
+        submitters#update submitters_resubmit#update submitters_send_email#create
+        template_documents#create template_folders#update template_folders#destroy
+        template_sharings_testing#create
+        templates#create templates#update templates#destroy
+        templates_clone#create templates_clone_and_replace#create templates_detect_fields#create
+        templates_folders#update templates_preferences#create templates_preferences#destroy
+        templates_prefillable_fields#create templates_recipients#create templates_restore#create
+        templates_share_link#create templates_uploads#create templates_versions#create
+        testing_accounts#create testing_accounts#destroy
+        users#create users#update users#destroy
+        users_read_only#create users_read_only#destroy users_send_reset_password#update
+        webhook_events#refresh webhook_events#resend
+        webhook_preferences#update webhook_secret#update
+        webhook_settings#create webhook_settings#update webhook_settings#destroy webhook_settings#resend
+      ]
+    end
+
+    # The signer's own doors, the public pages, the sign-in machinery and the
+    # machine APIs. None of them is an account administrator writing to their
+    # own account: the signer doors are asserted in the groups above and the
+    # token doors in spec/golden/token_account_state_spec.rb.
+    let(:not_the_authenticated_app) do
+      %w[start_form start_form_email_2fa_send submit_form submit_form_decline submit_form_delegate
+         submit_form_invite submit_form_email_2fas send_submission_email verify reports
+         sessions registrations passwords confirmations omniauth_callbacks invitations
+         stripe_webhooks invites mcp setup embed_template_builder
+         active_storage/direct_uploads active_storage/disk]
+    end
+
+    def write_actions
+      Rails.application.routes.routes.filter_map do |route|
+        controller = route.defaults[:controller].to_s
+
+        next if controller.blank?
+        next unless route.verb.to_s.match?(/POST|PUT|PATCH|DELETE/)
+        next if controller.start_with?('api/')
+        next if not_the_authenticated_app.include?(controller)
+
+        "#{controller}##{route.defaults[:action]}"
+      end.uniq
+    end
+
+    it 'classifies every write route of the authenticated app, so a new one has to be decided about' do
+      expect(write_actions).to match_array(
+        allowed_while_suspended.keys + operator_only.keys + refused_while_suspended
+      )
+    end
+
+    # Driven for real: every account-level and seat-level door, which is where
+    # this session's changes live. The document doors (templates, submissions,
+    # submitters, folders) share one CanCan rule and are asserted by the
+    # examples at the top of this file.
+    it 'refuses every account and seat door that is not on the allowed list' do
+      webhook = create(:webhook_url, account:)
+      config = create(:encrypted_config, account:, key: EncryptedConfig::ESIGN_CERTS_KEY, value: { 'cert' => 'x' })
+      create(:account_config, account:, key: AccountConfig::ENABLE_MCP_KEY, value: true)
+      token = admin.mcp_tokens.create!(name: 'Before')
+      member = create(:user, account:, role: User::EDITOR_ROLE)
+      invite = create(:account_invite, account:)
+      signed_submitter = send_one.submitters.first
+      event = WebhookEvent.create!(account:, webhook_url: webhook, uuid: SecureRandom.uuid,
+                                   event_type: 'form.completed', record_type: 'Submitter',
+                                   record_id: signed_submitter.id, status: 'error')
+
+      suspend!
+      act_as(admin)
+
+      refused = {
+        [:patch, '/settings/account'] => { account: { name: 'Renamed while suspended' } },
+        [:delete, '/settings/account'] => {},
+        [:post, '/account_configs'] => {
+          account_config: { key: AccountConfig::ALLOW_TO_DECLINE_KEY, value: 'true' }
+        },
+        [:post, '/account_custom_fields'] => { name: 'While suspended' },
+        [:post, '/settings/api'] => {},
+        [:post, '/settings/email'] => { encrypted_config: { value: { 'host' => 'smtp.example.com' } } },
+        [:post, '/settings/mcp'] => { mcp_token: { name: 'While suspended' } },
+        [:delete, "/settings/mcp/#{token.id}"] => {},
+        [:post, '/settings/notifications'] => {
+          account_config: { key: AccountConfig::BCC_EMAILS, value: 'a@example.com' }
+        },
+        [:post, '/settings/personalization'] => {
+          account_config: { key: AccountConfig::FORM_COMPLETED_MESSAGE_KEY, value: { 'body' => 'While suspended' } }
+        },
+        [:post, '/settings/personalization_logo'] => {},
+        [:delete, '/settings/personalization_logo'] => {},
+        [:post, '/settings/webhooks'] => { webhook_url: { url: 'https://example.com/new' } },
+        [:patch, "/settings/webhooks/#{webhook.id}"] => { webhook_url: { url: 'https://example.com/changed' } },
+        [:delete, "/settings/webhooks/#{webhook.id}"] => {},
+        [:post, "/settings/webhooks/#{webhook.id}/resend"] => {},
+        [:post, "/settings/webhooks/#{webhook.id}/events/#{event.id}/resend"] => {},
+        [:post, "/settings/webhooks/#{webhook.id}/events/#{event.id}/refresh"] => {},
+        [:put, "/webhook_secret/#{webhook.id}"] => {
+          webhook_url: { secret: { 'X-Token' => 'while-suspended' } }
+        },
+        [:put, "/webhook_preferences/#{webhook.id}"] => { webhook_url: { events: %w[form.completed] } },
+        [:post, '/users'] => { user: { email: 'while-suspended@example.com', role: 'admin' } },
+        [:put, "/users/#{member.id}"] => { user: { first_name: 'Changed' } },
+        [:delete, "/users/#{member.id}"] => {},
+        [:post, "/users/#{member.id}/read_only"] => {},
+        [:delete, "/users/#{member.id}/read_only"] => {},
+        [:put, "/users/#{member.id}/send_reset_password"] => {},
+        [:post, '/account_invites'] => { offer: 'anything' },
+        [:post, "/account_invites/#{invite.id}/resend"] => {},
+        [:delete, "/account_invites/#{invite.id}"] => {},
+        [:post, '/testing_account'] => {},
+        [:delete, '/testing_account'] => {},
+        [:post, '/template_sharings_testing'] => { template_id: template.id, value: '1' },
+        # Both of these are the ACCOUNT writing, not a signer: one re-sends
+        # the invitation email, the other reopens a completed submitter.
+        [:post, "/submitters/#{signed_submitter.id}/send_email"] => {},
+        [:put, "/submitters_resubmit/#{signed_submitter.id}"] => {}
+      }
+
+      refused.each do |(verb, path), params|
+        public_send(verb, path, params:)
+
+        expect(response).to have_http_status(:redirect), "#{verb.upcase} #{path} was not refused"
+        expect(flash[:alert]).to be_present, "#{verb.upcase} #{path} was refused without saying why"
+      end
+
+      # Nothing moved.
+      expect(account.reload.name).not_to eq('Renamed while suspended')
+      expect(account.archived_at).to be_nil
+      expect(webhook.reload.url).not_to eq('https://example.com/changed')
+      expect(WebhookUrl.where(account:).count).to eq(1)
+      expect(config.reload.value).to eq('cert' => 'x')
+      expect(McpToken.where(user: admin).count).to eq(1)
+      expect(member.reload.first_name).not_to eq('Changed')
+      expect(member.archived_at).to be_nil
+      expect(member.read_only_at).to be_nil
+      expect(User.find_by(email: 'while-suspended@example.com')).to be_nil
+      expect(AccountInvite.where(account:).count).to eq(1)
+      expect(invite.reload.revoked_at).to be_nil
+      expect(account.testing_accounts).to be_empty
+      expect(TemplateSharing.count).to eq(0)
+    end
+
+    # The two doors this account still needs, and the one thing it may still
+    # change about itself.
+    it 'leaves the billing doors and their own profile open' do
+      suspend!
+      act_as(admin)
+
+      get '/settings/billing'
+
+      expect(response).to have_http_status(:ok)
+
+      patch '/settings/profile/update_contact', params: { user: { first_name: 'Still', last_name: 'Here' } }
+
+      expect(admin.reload.first_name).to eq('Still')
+
+      # And the pages that only LOOK at the account stay readable.
+      get '/settings/users'
+
+      expect(response).to have_http_status(:ok)
+
+      get '/settings/account'
+
+      expect(response).to have_http_status(:ok)
+    end
+  end
+
+  # Review batch 1 loop 2, G1: "read-only" is two different situations wearing
+  # one layer, and the account row is where they part company.
+  #
+  #   * an account frozen for a failed payment puts EVERY member in the layer,
+  #     its viewers and editors included — and `:billing` in their hands is the
+  #     Customer Portal, where anybody could cancel the company's subscription;
+  #   * a member parked read-only by a downgrade is in the same layer on a
+  #     perfectly healthy PAYING account, and must not reach the money either.
+  #
+  # So the account abilities come back for an administrator who still holds a
+  # seat, and for nobody else.
+  describe 'who may reach the money and the people page' do
+    include_context 'with a Stripe test account'
+
+    let(:paid_account) { create(:account, :paid, seats: 3) }
+    let(:paid_admin) { create(:user, account: paid_account) }
+
+    # The Customer Portal is the door this whole group is about: it is where a
+    # subscription gets cancelled, and it is one POST away from anybody who
+    # holds `:billing`.
+    def stub_portal_session
+      stub_request(:post, 'https://api.stripe.com/v1/billing_portal/sessions')
+        .to_return(status: 200,
+                   body: { id: 'bps_test', object: 'billing_portal.session',
+                           url: 'https://billing.stripe.com/session/test' }.to_json,
+                   headers: { 'Content-Type' => 'application/json' })
+    end
+
+    def expect_refused(&)
+      yield
+
+      expect(response).to have_http_status(:redirect)
+      expect(response).to redirect_to(root_path)
+    end
+
+    def expect_no_account_doors(user)
+      act_as(user)
+
+      expect_refused { get '/settings/billing' }
+      expect_refused { post '/settings/billing/portal' }
+      expect_refused { post '/settings/billing/checkout' }
+      expect_refused { get '/settings/users' }
+      expect_refused { post "/users/#{user.id}/read_only" }
+      expect_refused { delete "/users/#{user.id}/read_only" }
+    end
+
+    it 'refuses the billing and people pages to a read-only viewer and editor of a suspended account' do
+      viewer = create(:user, account:, role: User::VIEWER_ROLE)
+      editor = create(:user, account:, role: User::EDITOR_ROLE)
+
+      suspend!
+
+      expect_no_account_doors(viewer.reload)
+      expect_no_account_doors(editor.reload)
+    end
+
+    # A parked member is read-only on an account that is paying perfectly
+    # well: nothing about the money is theirs to touch.
+    it 'refuses them to a member parked read-only on a healthy paid account' do
+      parked = create(:user, account: paid_account, read_only_at: Time.current)
+
+      expect_no_account_doors(parked)
+    end
+
+    it 'refuses them to an ADMIN parked read-only, however healthy the account' do
+      parked_admin = create(:user, account: paid_account, read_only_at: Time.current)
+
+      expect(parked_admin).to be_admin
+
+      expect_no_account_doors(parked_admin)
+    end
+
+    # The one person who must keep them: the administrator of an account
+    # frozen for a failed payment. They can see the money and the people —
+    # and they still cannot WRITE, including the seat button that would call
+    # Stripe.
+    it 'keeps them for a suspended administrator, who still writes nothing' do
+      member = create(:user, account:, role: User::EDITOR_ROLE)
+      account.account_subscription.update!(
+        access_state: 'past_due', status: 'past_due', stripe_status: 'past_due',
+        stripe_customer_id: customer_a, stripe_subscription_id: subscription_a
+      )
+      stub_portal_session
+
+      suspend!
+      act_as(admin)
+
+      get '/settings/billing'
+
+      expect(response).to have_http_status(:ok)
+
+      # The one door that fixes it: Stripe's own portal, where the card gets
+      # replaced. A suspended admin must be able to reach it.
+      post '/settings/billing/portal'
+
+      expect(response).to have_http_status(:see_other)
+      expect(response).to redirect_to('https://billing.stripe.com/session/test')
+
+      get '/settings/users'
+
+      expect(response).to have_http_status(:ok)
+
+      # No Stripe stub anywhere in this example: a seat release from here
+      # would be an unstubbed call and this would fail.
+      expect { post "/users/#{member.id}/read_only" }.not_to(change { member.reload.read_only_at })
+
+      expect(flash[:alert]).to eq(I18n.t('account_suspended_alert'))
+
+      expect { delete "/users/#{admin.id}/read_only" }.not_to(change { admin.reload.read_only_at })
+
+      expect(flash[:alert]).to eq(I18n.t('account_suspended_alert'))
+    end
+
+    it 'leaves a healthy paying administrator every door they had' do
+      act_as(paid_admin)
+
+      get '/settings/billing'
+
+      expect(response).to have_http_status(:ok)
+
+      get '/settings/users'
+
+      expect(response).to have_http_status(:ok)
+
+      member = create(:user, account: paid_account, role: User::EDITOR_ROLE)
+
+      expect { post "/users/#{member.id}/read_only" }.to(change { member.reload.read_only_at }.from(nil))
     end
   end
 
@@ -275,9 +639,21 @@ RSpec.describe 'Account suspension', type: :request do # rubocop:disable RSpec/M
       expect(ability.can?(:read, template)).to be(true)
       expect(ability.can?(:read, Submission.new(account:))).to be(true)
       expect(ability.can?(:update, admin)).to be(true)
-      # The billing page authorizes this, and it is the one page that can fix
-      # the suspension.
-      expect(ability.can?(:manage, account)).to be(true)
+
+      # Review batch 1, F3 changed this: `:manage` on the account used to be
+      # left in place so the billing page could authorize it, and it carried
+      # renaming the account, deleting it and uploading a logo along with it.
+      # The billing page now authorizes `:billing`, which is all it ever
+      # needed, and reading the settings pages is `:read`.
+      expect(ability.can?(:billing, account)).to be(true)
+      expect(ability.can?(:read, account)).to be(true)
+      expect(ability.can?(:manage, account)).to be(false)
+      expect(ability.can?(:update, account)).to be(false)
+      expect(ability.can?(:destroy, account)).to be(false)
+      expect(ability.can?(:create, AccountInvite.new(account:))).to be(false)
+      expect(ability.can?(:manage, TemplateSharing.new(template:))).to be(false)
+      expect(ability.can?(:read, TemplateSharing.new(template:))).to be(true)
+      expect(ability.can?(:resend, WebhookUrl.new(account:))).to be(false)
     end
 
     it 'leaves an active account\'s abilities exactly as they were' do
@@ -448,6 +824,135 @@ RSpec.describe 'Billing dunning', type: :request do
     # deadline is the original one, not a new one.
     expect(account.reload.suspended_at).to be_nil
     expect(BillingLifecycle.suspends_on(subscription)).to eq(started + 14.days)
+  end
+
+  # Review batch 1, F1: Stripe gives up on an unpaid subscription about a week
+  # after our own day-14 suspension and cancels it. Nothing lifted the
+  # suspension on that path, so the account became a FREE account that was
+  # frozen for writes forever — no payment left to make, and no door that
+  # could ever unfreeze it.
+  it 'lifts the suspension when the subscription finally ends, and says nothing about it', sidekiq: :inline do
+    apply!('subscription-past_due')
+    started = subscription.past_due_since
+
+    travel_to(started + 14.days + 1.hour) { BillingLifecycle.run_dunning! }
+
+    expect(account.reload.suspended_at).to be_present
+
+    deliveries.clear
+
+    apply!('subscription-canceled')
+
+    expect(subscription.access_state).to eq('cancelled')
+    expect(account.reload.suspended_at).to be_nil
+    expect(AccountStates.read_only?(account)).to be(false)
+    expect(Plans.key_for(account)).to eq(Plans::FREE)
+
+    # It is not a recovery: nobody paid, the subscription is simply over.
+    expect(mails_titled(recovered)).to be_empty
+  end
+
+  # F1, the other half: the state is what decides whether the account can work
+  # at all, so it moves FIRST and nothing after it can swallow it. The seat
+  # step used to run before it, and anything that threw in there — a mailer, a
+  # lock — took the whole state change down with it.
+  it 'moves the state before anything else, so a later step blowing up cannot swallow it', sidekiq: :inline do
+    create_list(:user, 2, account:)
+    apply!('subscription-past_due')
+    started = subscription.past_due_since
+
+    travel_to(started + 14.days + 1.hour) { BillingLifecycle.run_dunning! }
+
+    expect(account.reload.suspended_at).to be_present
+
+    # The subscription ends, which lifts the suspension AND leaves more people
+    # than the free plan holds — and the mail about that second half fails.
+    allow(BillingMailer).to receive(:seats_reduced).and_raise(StandardError, 'mail server on fire')
+
+    apply!('subscription-canceled')
+
+    expect(account.reload.suspended_at).to be_nil
+    expect(AccountStates.read_only?(account)).to be(false)
+    # The step that threw had already done its work, and it stands too.
+    expect(User.where(account:).read_only.count).to eq(2)
+  end
+
+  it 'suspends even when the suspension mail cannot be sent', sidekiq: :inline do
+    allow(BillingMailer).to receive(:suspended).and_raise(StandardError, 'mail server on fire')
+
+    apply!('subscription-past_due', status: 'unpaid')
+
+    expect(subscription.access_state).to eq('suspended')
+    expect(account.reload.suspended_at).to be_present
+  end
+
+  # F9: unpaid, back inside the grace window, then unpaid again is two honest
+  # suspensions on ONE dunning clock, and the customer heard about it twice.
+  it 'says the account is suspended once per clock, however Stripe wobbles', sidekiq: :inline do
+    apply!('subscription-past_due')
+    apply!('subscription-past_due', status: 'unpaid')
+
+    expect(account.reload.suspended_at).to be_present
+    expect(mails_titled(suspended_subject).size).to eq(1)
+
+    # Back inside the 14 days: the suspension lifts...
+    apply!('subscription-past_due')
+
+    expect(account.reload.suspended_at).to be_nil
+
+    # ...and straight back out again. Same clock, same suspension, one email.
+    apply!('subscription-past_due', status: 'unpaid')
+
+    expect(account.reload.suspended_at).to be_present
+    expect(mails_titled(suspended_subject).size).to eq(1)
+  end
+
+  # Review batch 1 loop 2, G4: `suspend!` answers false for three different
+  # reasons, and only one of them is "already said". Sending the billing
+  # suspension email when an OPERATOR's suspension is what is actually in
+  # place tells the customer their card failed when it did not — and spends
+  # the once-per-clock counter, so the real notice would never be sent.
+  it 'never announces a billing suspension that is really somebody else\'s', sidekiq: :inline do
+    AccountStates.suspend!(account, reason: 'operator')
+    deliveries.clear
+
+    apply!('subscription-past_due', status: 'unpaid')
+
+    expect(account.reload.suspension_reason).to eq('operator')
+    expect(mails_titled(suspended_subject)).to be_empty
+
+    # And the counter was not spent on it: once the operator lifts theirs, the
+    # billing suspension still gets to say what it is.
+    AccountStates.lift_suspension!(account, reason: 'operator')
+
+    apply!('subscription-past_due', status: 'unpaid')
+
+    expect(account.reload.suspension_reason).to eq('billing')
+    expect(mails_titled(suspended_subject).size).to eq(1)
+  end
+
+  # H2: `suspend!` can fail part-way and leave the object in hand carrying
+  # values that were never written. Announcing a suspension that does not
+  # exist is worse than saying nothing — and spending the once-per-clock
+  # counter on it would silence the real notice for good.
+  it 'says nothing, and spends nothing, when the suspension could not be written', sidekiq: :inline do
+    apply!('subscription-past_due')
+    deliveries.clear
+
+    allow_any_instance_of(Account).to receive(:update!).and_raise(ActiveRecord::StatementInvalid, 'no write')
+
+    apply!('subscription-past_due', status: 'unpaid')
+
+    expect(account.reload.suspended_at).to be_nil
+    expect(mails_titled(suspended_subject)).to be_empty
+
+    # The counter was not spent: once the write works, the notice goes out.
+    allow_any_instance_of(Account).to receive(:update!).and_call_original
+
+    apply!('subscription-past_due', status: 'unpaid')
+
+    expect(account.reload.suspended_at).to be_present
+    expect(mails_titled(suspended_subject).size).to eq(1)
   end
 
   it 'never lets a payment undo an operator suspension', sidekiq: :inline do

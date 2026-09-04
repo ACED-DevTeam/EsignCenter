@@ -1,6 +1,9 @@
 <p>Hello,</p>
 <p>Your EsignCenter plan now includes <%= @seats %> <%= 'seat'.pluralize(@seats) %>, and this account has more people than that.</p>
 <p>Nothing has been deleted and nobody has been removed. <strong><%= @kept_name %></strong> keeps full access; everyone else is now read-only — they can still sign in, read, download and export every document, and they cannot create or change anything.</p>
+<% if @revoked.positive? %>
+  <p><%= @revoked %> pending <%= 'invitation'.pluralize(@revoked) %> <%= @revoked == 1 ? 'was' : 'were' %> cancelled at the same time: there is no seat left for them to take. Invite those people again when you have a seat free.</p>
+<% end %>
 <p>You choose who keeps full access: open Settings → Users and use <strong>Give full access</strong> or <strong>Make read-only</strong> on each person, up to the number of seats your plan includes.</p>
 <p><%= link_to 'Manage who has access', @users_url %></p>
 <p>Questions? Write to <%= mail_to @support_email %>.</p>

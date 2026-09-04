@@ -29,6 +29,7 @@ class InvitesController < ApplicationController
 
   def show
     return render :unavailable, status: :gone unless @invite
+    return unavailable(I18n.t('invite_account_frozen')) if frozen_team?
     return redirect_to_sign_in if @invite.collision? && current_user.nil?
 
     # Signed in, but as somebody else: the page still explains the offer, and
@@ -42,11 +43,31 @@ class InvitesController < ApplicationController
 
   def create
     return render :unavailable, status: :gone unless @invite
+    return unavailable(I18n.t('invite_account_frozen')) if frozen_team?
 
     @invite.collision? ? accept_move : accept_new_user
+  rescue AccountInvites::NoLongerOpen => e
+    # Something changed between the page and the button: cancelled, lapsed,
+    # or the seat is gone. The reason is the sentence, and 410 is the honest
+    # status for a link that no longer leads anywhere.
+    unavailable(e.message)
   end
 
   private
+
+  # A team that cannot write cannot take on people either: an account frozen
+  # for a failed payment (or archived) would otherwise gain a member — or a
+  # whole other account's documents — while nobody in it can act.
+  def frozen_team?
+    @invite.present? && AccountStates.read_only?(@account)
+  end
+
+  # A dead link deserves a sentence saying which way it died.
+  def unavailable(reason)
+    @unavailable_reason = reason
+
+    render :unavailable, status: :gone
+  end
 
   # Only a live invitation is ever loaded: expired, cancelled and already
   # accepted are all the same answer to whoever is holding the link.

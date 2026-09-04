@@ -122,7 +122,7 @@ class ApplicationController < ActionController::Base
   # parent's billing page, so the call-to-action sends them to usage instead.
   def billing_available?
     return false unless Docuseal.billing_enabled? && current_account
-    return false unless can?(:manage, current_account)
+    return false unless can?(:billing, current_account)
 
     billing = Plans.billing_account(current_account)
 

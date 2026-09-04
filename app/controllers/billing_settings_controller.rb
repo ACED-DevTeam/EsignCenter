@@ -139,7 +139,10 @@ class BillingSettingsController < ApplicationController
 
     return head :not_found unless @billing.customer?
 
-    authorize!(:manage, current_account)
+    # `:billing`, not `:manage`: a suspended account has lost every other
+    # door on its own account row and must keep this one — it is the page
+    # that settles the payment (lib/ability.rb).
+    authorize!(:billing, current_account)
   end
 
   # Reading somebody else's billing page is allowed (a child is told who

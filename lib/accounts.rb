@@ -77,10 +77,13 @@ module Accounts
   #
   # Asked about the user's OWN account, not the billing account: every account
   # needs an administrator of its own.
-  def last_admin?(user)
+  # `account_id` is which account is being asked about — the user's own by
+  # default, and the account they are LEAVING when a request is moving them
+  # somewhere else (UsersController#update).
+  def last_admin?(user, account_id: user&.account_id)
     return false if user.nil? || !user.admin? || user.archived_at? || user.read_only?
 
-    !User.where(account_id: user.account_id).where.not(id: user.id)
+    !User.where(account_id:).where.not(id: user.id)
          .admins.active.full_access.exists?
   end
 
