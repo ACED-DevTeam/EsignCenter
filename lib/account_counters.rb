@@ -23,6 +23,21 @@ module AccountCounters
     result.rows.first.first
   end
 
+  # A counter that is a SNAPSHOT rather than a tally: the new value replaces
+  # whatever was there instead of being added to it. Used for the downgrade
+  # send offset (Quotas::DOWNGRADE_SENDS_OFFSET_KEY), where a second
+  # downgrade in the same month must move the mark forward, not double it.
+  def set!(account_id, key, value, period: month_period)
+    result = AccountCounter.upsert(
+      { account_id:, key:, period:, value: },
+      unique_by: %i[account_id key period],
+      on_duplicate: Arel.sql('value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP'),
+      returning: [:value]
+    )
+
+    result.rows.first.first
+  end
+
   def value(account_id, key, period: month_period)
     AccountCounter.find_by(account_id:, key:, period:)&.value || 0
   end

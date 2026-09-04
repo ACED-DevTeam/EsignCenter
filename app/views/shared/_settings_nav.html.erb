@@ -86,17 +86,12 @@
     </ul>
   </menu-active>
   <div id="support_channels" class="mx-4 border-t border-base-300 hidden md:block">
+      <%# Support is an email address, not a public issue tracker: this is a
+          paid product and the customer writes to us directly. %>
       <div class="text-sm mt-3">
-        <%= t('need_help_ask_a_question_') %>
+        <%= t('need_help_email_us') %>
       </div>
-      <div class="flex mt-3 space-x-3">
-        <div class="tooltip" data-tip="GitHub">
-          <a href="<%= Docuseal::GITHUB_URL %>" target="_blank" class="btn btn-circle btn-primary btn-md">
-            <%= svg_icon('brand_github', class: 'w-8 h-8') %>
-          </a>
-        </div>
-      </div>
-      <a href="mailto:<%= Docuseal::SUPPORT_EMAIL %>" target="_blank" class="w-full block mt-4 underline text-center">
+      <a href="mailto:<%= Docuseal::SUPPORT_EMAIL %>" class="w-full block mt-2 underline text-center">
         <%= Docuseal::SUPPORT_EMAIL %>
       </a>
       <%# The running version is platform information: operator-only. %>

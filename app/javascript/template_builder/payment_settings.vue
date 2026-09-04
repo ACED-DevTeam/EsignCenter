@@ -119,82 +119,15 @@
           >{{ t('payment_link') }}</a>
         </div>
       </div>
-      <div
-        v-if="!isConnected || isOauthSuccess"
-        class="field-settings-stripe-connect py-1.5 px-1 relative"
-        @click.stop
-      >
-        <div
-          v-if="isConnected && isOauthSuccess"
-          class="text-sm text-center"
-        >
-          <IconCircleCheck
-            class="inline text-green-600 w-4 h-4"
-          />
-          Stripe Connected
-        </div>
-        <form
-          v-if="!isConnected"
-          data-turbo="false"
-          action="/auth/stripe_connect"
-          accept-charset="UTF-8"
-          target="_blank"
-          method="post"
-        >
-          <input
-            type="hidden"
-            name="oauth_data"
-            :value="oauthData"
-            autocomplete="off"
-          >
-          <input
-            type="hidden"
-            name="redirect_uri"
-            :value="redirectUri"
-            autocomplete="off"
-          >
-          <input
-            type="hidden"
-            name="scope"
-            value="read_write"
-            autocomplete="off"
-          >
-          <input
-            type="hidden"
-            name="authenticity_token"
-            :value="authenticityToken"
-            autocomplete="off"
-          >
-          <button
-            type="submit"
-            :disabled="isLoading"
-            class="btn bg-[#7B73FF] hover:bg-[#0A2540] btn-sm text-white w-full"
-          >
-            <span
-              v-if="isLoading"
-              class="flex items-center space-x-1"
-            >
-              <IconInnerShadowTop
-                class="w-4 h-4 animate-spin inline"
-              />
-              <span>
-                Connect Stripe
-              </span>
-            </span>
-            <span
-              v-else
-              class="flex items-center space-x-1"
-            >
-              <IconBrandStripe
-                class="w-4 h-4 inline"
-              />
-              <span>
-                Connect Stripe
-              </span>
-            </span>
-          </button>
-        </form>
-      </div>
+      <!--
+        The upstream "Connect Stripe" block lived here. It posted to
+        /auth/stripe_connect and polled /api/stripe_connect, neither of which
+        is a route in this fork — Stripe Connect (collecting payments on a
+        signer's behalf) is not a product we sell, and payment fields are off
+        everywhere (`withPayment` is false in both builder views). It was
+        removed rather than gated so that a builder opened with a payment
+        field can never fire a request at a route that does not exist.
+      -->
       <li
         v-if="withFormula"
         class="field-settings-formula mb-1"
@@ -266,7 +199,7 @@
 </template>
 
 <script>
-import { IconMathFunction, IconSettings, IconCircleCheck, IconInfoCircle, IconBrandStripe, IconInnerShadowTop, IconRouteAltLeft, IconForms } from '@tabler/icons-vue'
+import { IconMathFunction, IconSettings, IconInfoCircle, IconRouteAltLeft, IconForms } from '@tabler/icons-vue'
 import { ref } from 'vue'
 
 const isConnected = ref(false)
@@ -275,13 +208,10 @@ export default {
   name: 'PaymentSettings',
   components: {
     IconSettings,
-    IconCircleCheck,
     IconRouteAltLeft,
     IconInfoCircle,
     IconForms,
-    IconMathFunction,
-    IconInnerShadowTop,
-    IconBrandStripe
+    IconMathFunction
   },
   inject: ['backgroundColor', 'save', 'currencies', 't', 'isPaymentConnected', 'withFormula'],
   props: {
@@ -313,27 +243,11 @@ export default {
   },
   computed: {
     isConnected: () => isConnected.value,
-    isOauthSuccess () {
-      return document.location.search?.includes('stripe_connect_success')
-    },
-    redirectUri () {
-      return document.location.origin + '/auth/stripe_connect/callback'
-    },
     defaultCurrencies () {
       return ['USD', 'EUR', 'GBP', 'CAD', 'AUD']
     },
     currenciesList () {
       return this.currencies.length ? this.currencies : this.defaultCurrencies
-    },
-    authenticityToken () {
-      return document.querySelector('meta[name="csrf-token"]')?.content
-    },
-    oauthData () {
-      const params = new URLSearchParams('')
-
-      params.set('redir', document.location.href)
-
-      return params.toString()
     },
     defaultCurrency () {
       const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone
@@ -357,26 +271,11 @@ export default {
   mounted () {
     this.field.preferences.currency ||= this.defaultCurrency
 
+    // No status poll: /api/stripe_connect is not a route in this fork. The
+    // only source of truth is the value the server rendered on the builder.
     isConnected.value ||= this.isPaymentConnected
-
-    if (!this.isConnected) {
-      this.checkStatus()
-    }
   },
   methods: {
-    checkStatus () {
-      this.isLoading = true
-
-      fetch('/api/stripe_connect').then(async (resp) => {
-        const { status } = await resp.json()
-
-        if (status === 'connected') {
-          isConnected.value = true
-        }
-      }).finally(() => {
-        this.isLoading = false
-      })
-    },
     closeDropdown () {
       document.activeElement.blur()
     }

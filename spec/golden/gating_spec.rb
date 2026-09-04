@@ -826,6 +826,9 @@ RSpec.describe 'Feature gating', type: :request do
   end
 
   describe 'custom email templates' do
+    let(:reminder_subject) { 'A gentle reminder to sign' }
+    let(:reminder_body) { 'Your document is still waiting for you. {{submitter.link}}' }
+
     def save_invitation_email(account)
       act_as(account)
       post '/settings/personalization', params: { account_config: { key: AccountConfig::SUBMITTER_INVITATION_EMAIL_KEY,
@@ -896,6 +899,111 @@ RSpec.describe 'Feature gating', type: :request do
       expect(flash[:alert]).to be_nil
       expect(internal_template.reload.preferences).to include('request_email_subject' => 'Dialog subject',
                                                               'request_email_body' => 'Dialog body')
+    end
+
+    # The reminder wording is part of this row too. Reviewer E (finding E1)
+    # found it written by two doors and read by nobody: every reminder went
+    # out with the invitation copy. Both halves are pinned here — the paid
+    # account's reminder really carries its own words, and the same rows sat
+    # in front of a free account are ignored (D43: a downgrade makes paid
+    # copy inert, it never deletes it).
+    def save_reminder_email_copy(account, template)
+      act_as(account)
+      post "/templates/#{template.id}/preferences",
+           params: { template: { preferences: { invitation_reminder_email_subject: reminder_subject,
+                                                invitation_reminder_email_body: reminder_body } } }
+
+      template.reload
+    end
+
+    def mail_body(mail)
+      (mail.html_part || mail).body.decoded
+    end
+
+    it 'sends a reminder with the reminder copy on a paid account, and with the default copy on a free one ' \
+       'carrying the same rows' do
+      paid_template = save_reminder_email_copy(paid_account, template_for(paid_account))
+
+      expect(response).to have_http_status(:ok)
+      expect(paid_template.preferences['invitation_reminder_email_subject']).to eq(reminder_subject)
+
+      paid_submitter = sent_submitter_for(paid_account, template: paid_template)
+
+      # The real send path: the scheduled job, not the mailer by hand.
+      SendSubmitterInvitationReminderEmailJob.new.perform('submitter_id' => paid_submitter.id,
+                                                          'reminder_index' => 1)
+
+      paid_mail = ActionMailer::Base.deliveries.last
+
+      expect(paid_mail.subject).to eq(reminder_subject)
+      expect(mail_body(paid_mail)).to include('Your document is still waiting for you')
+
+      # A free account never reaches the job at all (reminders are paid-only,
+      # asserted above), so the copy itself is what is proven inert here.
+      free_template = template_for(free_account)
+      free_template.update!(preferences: free_template.preferences.merge(
+        'invitation_reminder_email_subject' => reminder_subject,
+        'invitation_reminder_email_body' => reminder_body
+      ))
+
+      free_mail = SubmitterMailer.invitation_email(sent_submitter_for(free_account, template: free_template),
+                                                   reminder: true)
+
+      expect(free_mail.subject).to eq(I18n.t('you_are_invited_to_sign_a_document'))
+      expect(mail_body(free_mail)).not_to include('Your document is still waiting for you')
+    end
+
+    # Reviewer Q (finding Q1): the account-wide reminder box on the
+    # Personalization page is worth nothing if a template's own
+    # SIGNATURE-REQUEST wording outranks it — and customising that per
+    # template is the common case. The order a reminder reads, most specific
+    # first: this template's reminder copy, the account's reminder copy, then
+    # the ordinary invitation copies (this template's, then the account's).
+    def save_account_reminder_email(account, subject:, body:)
+      act_as(account)
+      post '/settings/personalization',
+           params: { account_config: { key: AccountConfig::SUBMITTER_INVITATION_REMINDER_EMAIL_KEY,
+                                       value: { subject:, body: } } }
+    end
+
+    it 'sends the account-wide reminder copy even for a template that has its own signature-request wording, ' \
+       'and lets the template\'s own reminder copy beat it' do
+      template = save_template_email_copy(paid_account)
+
+      expect(template.preferences['request_email_subject']).to eq('Custom subject')
+
+      expect do
+        save_account_reminder_email(paid_account, subject: 'Account reminder subject',
+                                                  body: 'Account reminder body. {{submitter.link}}')
+      end.to change(AccountConfig, :count).by(1)
+      expect(flash[:alert]).to be_nil
+
+      submitter = sent_submitter_for(paid_account, template:)
+
+      SendSubmitterInvitationReminderEmailJob.new.perform('submitter_id' => submitter.id, 'reminder_index' => 1)
+
+      account_copy_mail = ActionMailer::Base.deliveries.last
+
+      expect(account_copy_mail.subject).to eq('Account reminder subject')
+      expect(mail_body(account_copy_mail)).to include('Account reminder body')
+      expect(account_copy_mail.subject).not_to eq('Custom subject')
+
+      # The same send with per-template reminder copy added on top: the most
+      # specific wording wins, and the account row goes back to being the
+      # fallback it is.
+      save_reminder_email_copy(paid_account, template)
+
+      expect(response).to have_http_status(:ok)
+
+      SendSubmitterInvitationReminderEmailJob.new.perform(
+        'submitter_id' => sent_submitter_for(paid_account, template:).id, 'reminder_index' => 1
+      )
+
+      template_copy_mail = ActionMailer::Base.deliveries.last
+
+      expect(template_copy_mail.subject).to eq(reminder_subject)
+      expect(mail_body(template_copy_mail)).to include('Your document is still waiting for you')
+      expect(mail_body(template_copy_mail)).not_to include('Account reminder body')
     end
   end
 

@@ -211,6 +211,125 @@ RSpec.describe 'Account suspension', type: :request do # rubocop:disable RSpec/M
     end
   end
 
+  # Reviewer findings E3 and B2: what a frozen page must NOT show. A banner
+  # saying "nothing new can be created" above an upload dropzone is a page
+  # arguing with itself; a banner that names a payment problem is wrong when
+  # the account was suspended by us and right only when it was the card; and a
+  # person whose SEAT went in a downgrade was told nothing at all, then met
+  # CanCan's own untranslated "You are not authorized to access this page."
+  describe 'the read-only surfaces' do
+    def dashboard_doc
+      get '/templates'
+
+      expect(response).to have_http_status(:ok)
+
+      Nokogiri::HTML(response.body)
+    end
+
+    it 'invites a suspended account to upload nothing: no dropzone, no Upload, no Create' do
+      template
+      suspend!
+      act_as(admin)
+
+      doc = dashboard_doc
+
+      expect(doc.at('[data-account-suspended-banner]')).to be_present
+      expect(doc.at('file-dropzone')).to be_nil
+      expect(doc.at('#dashboard_dropzone_input')).to be_nil
+      expect(doc.at('#upload_template')).to be_nil
+      expect(doc.at("a[href='/templates/new']")).to be_nil
+      expect(doc.text).not_to include(I18n.t('upload_a_new_document'))
+    end
+
+    it 'sends an operator suspension to support instead of to a payment form' do
+      template
+      suspend!(reason: 'operator')
+      act_as(admin)
+
+      doc = dashboard_doc
+      banner = doc.at('[data-account-suspended-banner]')
+
+      expect(banner.text).to include(I18n.t('account_suspended_banner_operator'))
+      expect(banner.text).to include(I18n.t('account_suspended_banner_operator_hint'))
+      expect(banner.text).not_to include(I18n.t('account_suspended_banner'))
+      expect(doc.at('[data-account-suspended-link]')['href']).to eq("mailto:#{Docuseal::SUPPORT_EMAIL}")
+    end
+
+    it 'tells a member parked read-only by a downgrade why, and offers them no upload either' do
+      template
+      parked = create(:user, account:, role: User::EDITOR_ROLE, read_only_at: Time.current)
+
+      act_as(parked)
+
+      doc = dashboard_doc
+      banner = doc.at('[data-seat-read-only-banner]')
+
+      expect(doc.at('[data-account-suspended-banner]')).to be_nil
+      expect(banner.text).to include(I18n.t('seat_read_only_banner'))
+      expect(banner.text).to include(I18n.t('seat_read_only_banner_hint'))
+      expect(doc.at('file-dropzone')).to be_nil
+      expect(doc.at('#dashboard_dropzone_input')).to be_nil
+      expect(doc.at('#upload_template')).to be_nil
+      expect(doc.text).not_to include(I18n.t('upload_a_new_document'))
+    end
+
+    # Reviewer Q (finding Q2): taking the dropzone away left the CARDS still
+    # registered as drop targets, so a read-only reader who dropped a file on
+    # one got a greyed-out card with a spinner that never stopped and a
+    # JavaScript exception, where before they at least got a sentence back
+    # from the server. The card only carries the drop target when the person
+    # could create the template the drop would make.
+    it 'leaves no drop target on the cards a read-only reader can see' do
+      template
+      folder = create(:template_folder, :with_templates, account:, author: admin)
+
+      # An account with documents in it is not five minutes old; kept out of
+      # the first-fortnight app tour so the healthy leg renders the plain
+      # dashboard the comparison is about.
+      admin.update!(created_at: 3.weeks.ago)
+
+      act_as(admin)
+
+      doc = dashboard_doc
+
+      expect(doc.css('[data-targets~="dashboard-dropzone.templateCards"]')).not_to be_empty
+      expect(doc.css('[data-targets~="dashboard-dropzone.folderCards"]')).not_to be_empty
+      expect(doc.text).to include(folder.name)
+
+      parked = create(:user, account:, role: User::EDITOR_ROLE, read_only_at: Time.current)
+
+      act_as(parked)
+
+      doc = dashboard_doc
+
+      expect(doc.text).to include(template.name)
+      expect(doc.text).to include(folder.name)
+      expect(doc.css('[data-targets~="dashboard-dropzone.templateCards"]')).to be_empty
+      expect(doc.css('[data-targets~="dashboard-dropzone.folderCards"]')).to be_empty
+
+      suspend!
+      act_as(admin)
+
+      doc = dashboard_doc
+
+      expect(doc.css('[data-targets~="dashboard-dropzone.templateCards"]')).to be_empty
+      expect(doc.css('[data-targets~="dashboard-dropzone.folderCards"]')).to be_empty
+    end
+
+    it 'answers a refused write with a plain translated sentence, not CanCan\'s own' do
+      parked = create(:user, account:, role: User::EDITOR_ROLE, read_only_at: Time.current)
+
+      act_as(parked)
+
+      expect { post '/templates', params: { template: { name: 'While parked' } } }
+        .not_to change(Template, :count)
+
+      expect(response).to redirect_to(root_path)
+      expect(flash[:alert]).to eq(I18n.t('access_denied_alert'))
+      expect(flash[:alert]).not_to include('not authorized to access this page')
+    end
+  end
+
   # Archived is the OTHER policy, and until Session 7 the signer write paths
   # did not check it at all: the locked page was rendered by `show` while the
   # PUT behind it still went through (Session 2 handoff). Archived means the
@@ -802,6 +921,47 @@ RSpec.describe 'Billing dunning', type: :request do
     expect(AccountStates.read_only?(account)).to be(true)
   end
 
+  # Review 7, A4. The dedupe counter used to be spent BEFORE the mail was
+  # handed over, so a queue that was down for one hourly tick ate that day's
+  # reminder for good. On day 13 — the last word before the account is frozen
+  # — that is the difference between a suspension somebody saw coming and one
+  # that arrives out of nowhere.
+  it 'does not spend the last warning on a delivery that failed', sidekiq: :inline do
+    apply!('subscription-past_due')
+    started = subscription.past_due_since
+
+    travel_to(started + 7.days + 1.hour) { BillingLifecycle.run_dunning! }
+
+    expect(mails_titled(reminder).size).to eq(2)
+
+    # The queue is down on the day-13 tick, and only on that tick.
+    broken = instance_double(ActionMailer::MessageDelivery)
+    allow(broken).to receive(:deliver_later!).and_raise('the mail queue is down')
+    allow(BillingMailer).to receive(:payment_failed).and_wrap_original do |original, *args, **kwargs|
+      kwargs[:day] == 13 ? broken : original.call(*args, **kwargs)
+    end
+
+    travel_to(started + 13.days + 1.hour) { BillingLifecycle.run_dunning! }
+
+    expect(mails_titled(last_warning)).to be_empty
+    expect(AccountCounters.value(account.id, "dunning:#{started.to_i}:day13",
+                                 period: BillingLifecycle::COUNTER_PERIOD)).to eq(0)
+
+    # The queue comes back and the very next tick sends it, because the day
+    # was never marked done.
+    allow(BillingMailer).to receive(:payment_failed).and_call_original
+
+    travel_to(started + 13.days + 2.hours) { BillingLifecycle.run_dunning! }
+
+    expect(mails_titled(last_warning).size).to eq(1)
+
+    # And still exactly once, however many ticks follow.
+    travel_to(started + 13.days + 3.hours) { 2.times { BillingLifecycle.run_dunning! } }
+
+    expect(mails_titled(last_warning).size).to eq(1)
+    expect(account.reload.suspended_at).to be_nil
+  end
+
   it 'lifts the suspension and says so once when the payment goes through', sidekiq: :inline do
     apply!('subscription-past_due')
     started = subscription.past_due_since
@@ -817,10 +977,43 @@ RSpec.describe 'Billing dunning', type: :request do
     expect(account.reload.suspended_at).to be_nil
     expect(account.suspension_reason).to be_nil
     expect(mails_titled(recovered).size).to eq(1)
+    expect(body_of(mails_titled(recovered).sole)).to include('The freeze on your account has been lifted')
 
     apply!('subscription-active-recovered')
 
     expect(mails_titled(recovered).size).to eq(1)
+  end
+
+  # Checkpoint 7, Q3. The same letter goes out when the payment is caught
+  # before day 14, and it used to say "Nothing on the account was ever frozen"
+  # — which is a claim about the whole history of the account and is simply
+  # false for anybody we suspended in an earlier cycle. The letter now says
+  # only what this recovery knows: it was not frozen THIS time.
+  it 'tells a customer who paid in time that nothing was frozen this time, not ever', sidekiq: :inline do
+    # An earlier cycle really did freeze this account, and it was paid off.
+    apply!('subscription-past_due')
+    started = subscription.past_due_since
+
+    travel_to(started + 14.days + 1.hour) { BillingLifecycle.run_dunning! }
+
+    expect(account.reload.suspended_at).to be_present
+
+    apply!('subscription-active-recovered')
+    deliveries.clear
+
+    # A later cycle: the card fails again and is paid before the fortnight is
+    # up, so there is no freeze to lift this time.
+    apply!('subscription-past_due')
+
+    expect(account.reload.suspended_at).to be_nil
+
+    apply!('subscription-active-recovered')
+
+    body = body_of(mails_titled(recovered).sole)
+
+    expect(body).to include('Your account was not frozen this time')
+    expect(body).not_to include('ever frozen')
+    expect(body).not_to include('has been lifted')
   end
 
   # Stripe says `unpaid` when it gives up on the card. There is no grace left

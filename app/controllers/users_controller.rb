@@ -36,8 +36,14 @@ class UsersController < ApplicationController
     @users = @users.preload(account: :account_accesses).where(account: current_account).order(id: :desc)
 
     # Seats held for people who have not arrived yet. They belong on this page
-    # because they are the other half of "who is in this account".
-    @pending_invites = current_account.account_invites.pending.order(id: :desc) if params[:status].blank?
+    # because they are the other half of "who is in this account" — and so do
+    # PARKED purchases (checkpoint 7, P5): a seat whose card step was never
+    # finished holds nothing and was mailed to nobody, but an admin has to be
+    # able to see it and cancel it rather than wait out Stripe's deadline.
+    if params[:status].blank?
+      invites = current_account.account_invites
+      @pending_invites = invites.pending.or(invites.payment_pending).order(id: :desc)
+    end
 
     respond_to do |format|
       format.html do

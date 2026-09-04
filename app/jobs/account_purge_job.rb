@@ -118,14 +118,28 @@ class AccountPurgeJob < ApplicationJob
 
   # The short lock. Returns whether this job may go on to destroy the account.
   #
-  # An account that is ALREADY claimed goes ahead without re-deciding: that is
-  # a resumed run, and the questions were answered when the claim was made.
-  # Re-deciding would be worse than pointless — a half-emptied account no
-  # longer looks eligible (its users may be gone), so the retry would refuse
-  # to finish what it started and leave it half-emptied for ever.
+  # An account that is ALREADY claimed goes ahead without re-deciding, BUT
+  # only when this run is a retry of the job that made the claim (checkpoint
+  # 7, C7). A resumed run must not re-decide — a half-emptied account no
+  # longer looks eligible (its users may be gone), so re-deciding would refuse
+  # to finish what it started and leave it half-emptied for ever. A FIRST
+  # attempt that finds a claim, on the other hand, did not make it: another
+  # purge is walking that family right now, or is between retries, and a
+  # second walk over one family is exactly what the claim exists to stop.
+  #
+  # `executions` is ActiveJob's own count of attempts: 1 on the first, 2 and
+  # up on every retry. A hand-driven `AccountPurgeJob.new.perform(id)` — the
+  # console, and specs — never enters that accounting and reads 0, which is
+  # somebody saying "finish this one" in as many words.
   def claim(account)
     account.with_lock do
-      next true if account.purge_started_at.present?
+      if account.purge_started_at.present?
+        next true unless first_attempt?
+
+        ErrorReport.info('account purge skipped: already claimed by another run', account_id: account.id)
+
+        next false
+      end
 
       unless Accounts::Retention.purge_eligible?(account, now: Time.current)
         ErrorReport.info('account purge skipped: no longer eligible', account_id: account.id)
@@ -137,5 +151,9 @@ class AccountPurgeJob < ApplicationJob
 
       true
     end
+  end
+
+  def first_attempt?
+    executions == 1
   end
 end

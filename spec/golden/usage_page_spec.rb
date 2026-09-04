@@ -79,6 +79,9 @@ RSpec.describe 'Usage page', type: :request do
     expect(card(doc, 'seats').at('[data-all-seats-in-use]').text).to eq(I18n.t('all_seats_in_use'))
     expect(card(doc, 'seats').at('progress')['class']).not_to include('progress-error')
     expect(card(doc, 'completions').at('progress')['value']).to eq('20')
+    # D74's sentence, on the meter it is about: correcting a signed document
+    # never uses a second completion. It is shown on every plan.
+    expect(card(doc, 'completions').text).to include(I18n.t('usage_resend_note'))
 
     reset = doc.at('[data-usage-reset]').text
     local = Quotas.resets_at.in_time_zone(free_account.timezone)
@@ -96,6 +99,52 @@ RSpec.describe 'Usage page', type: :request do
     expect(doc.at('[data-usage-upgrade]').text).to include('$10 per user per month')
     expect(doc.at('[data-sending-paused-banner]')).to be_nil
     expect(doc.at('#account_settings_menu a[href="/settings/usage"]').text).to eq(I18n.t('usage'))
+  end
+
+  # D43: a downgrade's counters apply PROSPECTIVELY, and the usage page is
+  # where the customer finds that out. The paid month's documents are not
+  # charged to the free month that starts at the cancellation, so the page
+  # reads 0 of 5 — and the reset date is still the 1st, because the free
+  # month still ENDS with the calendar month.
+  it 'shows 0 of 5 straight after a downgrade, with the reset date unchanged', sidekiq: :inline do
+    template = fast_template_for(paid_account)
+
+    # Stripe stamps the end of a subscription to the whole second, so the
+    # paid month's work is put a clear minute before it: this example is
+    # about which SIDE of the cancellation a document falls on, not about
+    # sub-second ordering.
+    travel_to(1.minute.ago) do
+      sent = Array.new(4) { send_one(paid_account, template:) }
+      sent.first(3).each { |submission| complete!(submission.submitters.first) }
+    end
+
+    expect(Quotas.completions_this_month(paid_account)).to eq(3)
+    expect(Quotas.sends_this_month(paid_account)).to eq(4)
+
+    # The one Stripe mapping every Stripe door shares, fed a real CLI capture
+    # stamped with the moment the subscription ended.
+    capture = JSON.parse(Rails.root.join('spec/fixtures/stripe/subscription-canceled.json').read)
+                  .merge('ended_at' => Time.current.to_i, 'canceled_at' => Time.current.to_i)
+    StripeBilling::SubscriptionSync.apply!(paid_account.account_subscription, capture)
+
+    expect(Plans.key_for(paid_account.reload)).to eq(Plans::FREE)
+
+    act_as(paid_account)
+
+    doc = page
+
+    expect(doc.at('[data-usage-plan]')['data-usage-plan']).to eq('free')
+    expect(card(doc, 'completions').text).to include(of(0, 5))
+    expect(card(doc, 'sends').text).to include(of(0, 15))
+    # The one document still out for signature is NOT prospective: it is open
+    # right now and it says so.
+    expect(card(doc, 'in_flight').text).to include(of(1, 10))
+    expect(doc.css('[data-limit-reached]')).to be_empty
+
+    I18n.with_locale(paid_account.locale) do
+      expect(doc.at('[data-usage-reset]').text)
+        .to include(I18n.t('limits_reset_on_utc', date: I18n.l(Quotas.resets_at.to_date, format: :long)))
+    end
   end
 
   it 'shows the reset moment in the account timezone, not only UTC' do
@@ -142,6 +191,7 @@ RSpec.describe 'Usage page', type: :request do
     expect(doc.at('[data-usage-plan]')['data-usage-plan']).to eq('paid')
     expect(doc.at('[data-usage-plan]').text).to include(I18n.t('usage_plan_paid'), I18n.t('seats_label', count: 2))
     expect(card(doc, 'completions').text).to include(I18n.t('fair_use_per_seat', count: 500))
+    expect(card(doc, 'completions').text).to include(I18n.t('usage_resend_note'))
     expect(card(doc, 'completions').text).not_to include(' of ')
     expect(card(doc, 'completions').at('progress')).to be_nil
     expect(card(doc, 'storage').text).to include(of(ActiveSupport::NumberHelper.number_to_human_size(0), '20 GB'))

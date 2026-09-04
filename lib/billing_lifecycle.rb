@@ -126,10 +126,34 @@ module BillingLifecycle
     transition = guarded(row) { apply_state_transition!(row, account) }
 
     guarded(row) { enforce_free_seat_limit!(row, account) }
+    # BEFORE the hand-back, and that order is the whole of checkpoint 7's B1:
+    # a seat that arrives late because the customer finished a card step is
+    # not drift, it is the purchase they made. Promoting the parked
+    # invitation makes it occupancy, and the hand-back below then sees a seat
+    # that is occupied and leaves it alone.
+    guarded(row) { promote_parked_invites!(row, account) }
     guarded(row) { schedule_seat_reconciliation(row) }
     guarded(row) { send_state_mail!(row, account, transition) }
 
     nil
+  end
+
+  # Stripe has just said what the subscription bills. Was anybody waiting for
+  # exactly that? A seat purchase Stripe parked for a card step (3-D Secure)
+  # left a PARKED invitation behind, holding no seat and mailed to nobody; the
+  # subscription now billing for the quantity it was bought at is the proof
+  # that the customer finished the step and the money moved. So the invitation
+  # they paid for is written properly and sent — instead of the seat being
+  # handed straight back with no credit and no explanation (checkpoint 7, B1).
+  #
+  # A purchase in flight on THIS thread is a different thing entirely: the
+  # invitation for it is written by the buyer a few lines later, under the
+  # same lock, and there is nothing parked to promote.
+  def promote_parked_invites!(row, account)
+    return if changing_seats?
+    return if account.nil?
+
+    AccountInvites.promote_parked!(account, quantity: row.quantity)
   end
 
   # Stripe has just said what the subscription bills. If that is more than the
@@ -230,11 +254,40 @@ module BillingLifecycle
     (deadline = suspends_on(row)).present? && deadline > Time.current
   end
 
+  # One reminder per day per dunning clock — and never a day spent on a mail
+  # that did not actually go (review 7, A4).
+  #
+  # The counter is claimed first, because two ticks overlapping on one account
+  # must not both send. But it used to be spent and then forgotten about: an
+  # enqueue that raised (a Redis wobble is the ordinary way) left the key
+  # consumed with nothing sent, and nothing ever sends that day again. On day
+  # 13 that is the last word before the account is suspended, so the customer
+  # would go silent from day 7 straight to a frozen account.
+  #
+  # So a failed hand-off RELEASES the claim, and the next hourly tick offers
+  # the same day again (`dunning_step_for` re-offers every day whose deadline
+  # has passed). Reset to zero rather than decremented, for the same reason
+  # the dormancy warnings do it (Accounts::Retention#claim): a decrement is
+  # only right if this claim was the only one. The error is reported and
+  # swallowed — one account's mail server must not stop the sweep for
+  # everybody else.
   def send_dunning!(row, account, day)
-    return unless AccountCounters.increment!(account.id, dunning_key(row, "day#{day}"),
-                                             period: COUNTER_PERIOD) == 1
+    key = dunning_key(row, "day#{day}")
 
-    BillingMailer.payment_failed(account, day:, suspends_on: suspends_on(row)).deliver_later!
+    return unless AccountCounters.increment!(account.id, key, period: COUNTER_PERIOD) == 1
+
+    begin
+      BillingMailer.payment_failed(account, day:, suspends_on: suspends_on(row)).deliver_later!
+    rescue StandardError => e
+      release_counter(account, key)
+      ErrorReport.error(e, account_id: account.id)
+    end
+
+    nil
+  end
+
+  def release_counter(account, key)
+    AccountCounter.where(account_id: account.id, key:, period: COUNTER_PERIOD).update_all(value: 0)
   end
 
   # The hourly sweep's own suspension: move the state, then say so.
@@ -298,7 +351,7 @@ module BillingLifecycle
     return if !lifted && AccountCounters.increment!(account.id, "dunning:#{clock.to_i}:recovered",
                                                     period: COUNTER_PERIOD) != 1
 
-    BillingMailer.payment_recovered(account).deliver_later!
+    BillingMailer.payment_recovered(account, lifted: lifted.present?).deliver_later!
   end
 
   def lift_billing_suspension!(account)
@@ -387,6 +440,18 @@ module BillingLifecycle
   # bought, however healthy the answer looked.
   def pending_update?(stripe_subscription)
     StripeBilling::SubscriptionSync.field(stripe_subscription, :pending_update).present?
+  end
+
+  # How long Stripe will hold that parked change open. It is the deadline the
+  # customer has to finish their card step, and therefore the life of the
+  # parked invitation waiting on it (checkpoint 7, B1). Stripe always sends
+  # one; the day's grace below is only so a missing field can never write a
+  # row with no clock on it at all.
+  def pending_update_expires_at(stripe_subscription, default: 1.day.from_now)
+    parked = StripeBilling::SubscriptionSync.field(stripe_subscription, :pending_update)
+    expires = StripeBilling::SubscriptionSync.field(parked, :expires_at) if parked.present?
+
+    expires.present? ? Time.zone.at(expires.to_i) : default
   end
 
   # Can this row be charged for another seat at all? A rake-granted row, a
@@ -507,9 +572,25 @@ module BillingLifecycle
 
   # Every invitation that has stopped holding its seat and has not been
   # settled with Stripe yet: lapsed ones and cancelled ones alike.
+  # A PARKED purchase is deliberately not in here (checkpoint 7, B1): it never
+  # took a seat off Stripe, so there is nothing to hand back and asking would
+  # be a call about a quantity nobody changed. Those rows are dropped by
+  # `discard_parked_invites!` instead, and a parked row that was PROMOTED has
+  # no pending marker left on it, so it settles here like any other.
   def unreleased_invites(now = Time.current)
     AccountInvite.where(released_at: nil, accepted_at: nil)
+                 .where(payment_pending_until: nil)
                  .where('account_invites.revoked_at IS NOT NULL OR account_invites.expires_at <= ?', now)
+  end
+
+  # Parked seat purchases Stripe has given up on (checkpoint 7, B1). The
+  # customer never finished the card step, the pending update has expired, and
+  # the subscription was never changed — so the row is simply dropped. No
+  # Stripe call, no quantity touched, nothing to refund.
+  def discard_parked_invites!(now: Time.current)
+    AccountInvites.discard_parked!(now:)
+
+    nil
   end
 
   def release_invites_for!(account_id, now: Time.current)

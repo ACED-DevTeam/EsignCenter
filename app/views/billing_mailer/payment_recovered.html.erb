@@ -1,5 +1,9 @@
 <p>Hello,</p>
 <p>Your EsignCenter payment went through — thank you. Your subscription is active again and every part of the account is back to normal.</p>
-<p>If the account was suspended, that has been lifted: you can create and change documents, templates and people again, and the API, MCP and embedded signing doors are open.</p>
+<% if @lifted %>
+  <p>The freeze on your account has been lifted: you can create and change documents, templates and people again, and the API, MCP and embedded signing doors are open.</p>
+<% else %>
+  <p>Your account was not frozen this time, so there is nothing else for you to do.</p>
+<% end %>
 <p><%= link_to 'See your billing page', @billing_url %></p>
 <p>Thanks,<br>EsignCenter</p>

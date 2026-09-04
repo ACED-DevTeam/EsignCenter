@@ -60,8 +60,24 @@ module StripeBilling
 
       report_barrier(account_subscription, stripe_subscription) if live_on_a_dead_account
 
+      # Read BEFORE the new state is assigned: a paid → free transition is the
+      # only moment a free month can start part-way through a calendar month.
+      was_paid = paid_row?(account_subscription)
+
       account_subscription.assign_attributes(attributes_for(account_subscription, stripe_subscription))
-      account_subscription.save!
+
+      ApplicationRecord.transaction do
+        account_subscription.save!
+
+        # D43, prospective counters: the free month starts where the paid one
+        # stopped, so the send counter's value at this instant is written down
+        # and every free cap from here on is measured against what is sent
+        # AFTER it. The counter itself is never touched — deleting a document
+        # still never gives a send back. Same transaction as the row that
+        # caused it, so the two can never disagree.
+        Quotas.record_downgrade!(account_subscription.account) if was_paid && !paid_row?(account_subscription) &&
+                                                                  account_subscription.account
+      end
 
       # Everything that happens TO the account because of what Stripe just
       # said — dunning mail, suspension at the end of the grace period,
@@ -254,7 +270,7 @@ module StripeBilling
         current_period_end: period_end,
         # When the subscription actually ended — not the same as the end of
         # the period it was paid up to.
-        ended_at: ended_at_for(stripe_subscription),
+        ended_at: ended_at_for(account_subscription, stripe_subscription),
         trial_end:,
         # One trial per account, ever: the stamp is set the first time a
         # subscription with a trial is seen and never cleared afterwards.
@@ -281,8 +297,42 @@ module StripeBilling
       account_subscription.past_due_since || Time.current
     end
 
-    def ended_at_for(stripe_subscription)
-      timestamp(field(stripe_subscription, :ended_at)) || timestamp(field(stripe_subscription, :canceled_at))
+    # Is THIS ROW, as it stands right now, one the app counts as paid?
+    def paid_row?(account_subscription)
+      Plans::PAID_ACCESS_STATES.include?(account_subscription.access_state)
+    end
+
+    # When the paid access actually ended. Stripe names the moment for an
+    # ordinary cancellation; it names nothing at all for the states that end
+    # paid access without cancelling the subscription (`unpaid` and `paused`,
+    # which become `suspended` here). The free month has to start somewhere
+    # (D43, prospective counters), so on a row that WAS paid the moment is
+    # stamped the first time this is seen and never moved afterwards —
+    # otherwise every later webhook and every nightly reconciliation would
+    # push the free month's start forward and hand the account its caps back.
+    #
+    # An account that was never paid is never stamped: a Checkout that never
+    # completed (`incomplete` → cancelled) must not be a way to restart a free
+    # month.
+    def ended_at_for(account_subscription, stripe_subscription)
+      # Still paid at Stripe: nothing has ended, and a stamp left by an
+      # earlier subscription is cleared — this account is paying again. Asked
+      # FIRST, so a subscription set to cancel at period end (Stripe already
+      # names `canceled_at`, the moment the customer clicked) is not recorded
+      # as having ended while it is still being paid for.
+      return nil if paid_state?(stripe_subscription)
+
+      # Already stamped, so it stays: "never moved afterwards" has to mean
+      # that for Stripe's own dates too (checkpoint 7, P4). A row suspended
+      # on the 10th and finally cancelled by Stripe on the 20th ended its
+      # paid access on the 10th; letting `canceled_at` overwrite the stamp
+      # moved the free month's start with it and forgave ten days of
+      # completions that the sends counter had already charged for.
+      return account_subscription.ended_at if account_subscription.ended_at
+
+      timestamp(field(stripe_subscription, :ended_at)) ||
+        timestamp(field(stripe_subscription, :canceled_at)) ||
+        (paid_row?(account_subscription) ? Time.current : nil)
     end
 
     # Seats: the quantity on the items that sit on OUR price, and nothing

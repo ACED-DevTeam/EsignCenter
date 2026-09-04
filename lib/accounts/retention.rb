@@ -72,7 +72,20 @@ module Accounts
     def explicit_candidates(now: Time.current)
       # A NULL date is never <= now in SQL, so "nobody asked" is excluded by
       # the comparison itself.
-      purgeable.where(purge_scheduled_for: ..now).to_a
+      unclaimed(purgeable).where(purge_scheduled_for: ..now).to_a
+    end
+
+    # An account a purge has ALREADY claimed is nobody else's to start
+    # (checkpoint 7, C7). The claim means a purge is either running or in its
+    # retry back-off, and the sweep offering it again — every night, for as
+    # long as the claim stands — is how two walks over one family happen: the
+    # second one's exhausted-retry release un-archives the account while the
+    # first is still deleting, and both page the operator about the same
+    # thing. The job that made the claim resumes it on its own retries, and
+    # `rake accounts:release_purge_claim[id]` is the door for a claim that is
+    # genuinely stuck.
+    def unclaimed(scope)
+      scope.where(purge_started_at: nil)
     end
 
     # THE question, asked again by AccountPurgeJob under the account's row lock
@@ -146,8 +159,9 @@ module Accounts
     end
 
     def dormant_scope(now: Time.current, horizon: DORMANT_AFTER)
-      purgeable.where(created_at: ...(now - horizon))
-               .where.not(id: AccountSubscription.where(access_state: Plans::PAID_ACCESS_STATES).select(:account_id))
+      unclaimed(purgeable).where(created_at: ...(now - horizon))
+                          .where.not(id: AccountSubscription.where(access_state: Plans::PAID_ACCESS_STATES)
+                                                            .select(:account_id))
     end
 
     # Customer accounts that are not already gone and are not somebody else's
@@ -250,6 +264,16 @@ module Accounts
       longest = DORMANT_WARNING_DAYS.max
 
       dormant_scope(now:, horizon: DORMANT_AFTER - longest.days).each do |account|
+        # BEFORE the paid-retention skip, not after it (checkpoint 7, C4). A
+        # warning that predates the last thing that happened on the account
+        # belongs to a dormancy that ended, and it is evidence of nothing
+        # about this one; leaving it on a row we are not going to warn meant
+        # it sat there for the whole retention year. Clearing it is safe for
+        # such an account precisely because it is not purgeable: the account
+        # is protected by the paid year, and if it ever does go dormant the
+        # sweep warns it again from the beginning.
+        clear_stale_warning!(account)
+
         next if Plans.paid_subscription?(account) || within_paid_retention?(account, now:)
 
         purge_at = scheduled_dormant_purge_at(account, now:)

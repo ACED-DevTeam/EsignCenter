@@ -27,6 +27,15 @@
         </div>
       <% end %>
 
+      <% if @pending_deletion %>
+        <%# The deletion is scheduled, so neither door to Stripe is open: this
+            sentence stands where the buy and Manage billing buttons were. %>
+        <div class="alert items-start bg-base-100 border border-base-300 mb-5" data-billing-banner="pending_deletion">
+          <%= svg_icon('info_circle', class: 'stroke-current shrink-0 h-6 w-6 mt-0.5') %>
+          <p dir="auto" class="text-sm"><%= t('billing_refused_pending_deletion') %></p>
+        </div>
+      <% end %>
+
       <% if @view_state == 'past_due' %>
         <div class="alert items-start bg-base-100 border border-amber-500 text-amber-600 mb-5" data-billing-banner="past_due">
           <%= svg_icon('alert_circle', class: 'stroke-current shrink-0 h-6 w-6 mt-0.5') %>

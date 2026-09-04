@@ -1367,11 +1367,9 @@ export default {
     window.addEventListener('resize', this.onWindowResize)
     window.addEventListener('dragleave', this.onWindowDragLeave)
 
-    this.$nextTick(() => {
-      if (document.location.search?.includes('stripe_connect_success')) {
-        document.querySelector('form[action="/auth/stripe_connect"]')?.closest('.dropdown')?.querySelector('label')?.focus()
-      }
-    })
+    // The upstream Stripe Connect return handler lived here (focus the payment
+    // field's settings dropdown after ?stripe_connect_success). Both the route
+    // it came back from and the form it looked for are gone from this fork.
 
     this.template.schema.forEach((item) => {
       if (item.pending_fields) {

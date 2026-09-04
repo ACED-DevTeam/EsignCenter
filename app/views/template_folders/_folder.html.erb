@@ -1,5 +1,7 @@
 <% is_long = folder.name.size > 32 %>
-<a href="<%= folder_path(folder) %>" class="flex h-full flex-col justify-between rounded-2xl py-5 px-6 w-full bg-base-200 before:border-2 before:border-base-300 before:border-dashed before:absolute before:left-0 before:right-0 before:top-0 before:bottom-0 before:hidden before:rounded-2xl relative" data-targets="dashboard-dropzone.folderCards" data-full-name="<%= folder.full_name %>">
+<%# Same question as the template card: a drop on a folder either uploads a new document into it or moves a template into it, and both are writes. A read-only reader gets a plain folder card with no drop target. %>
+<% folder_card_drop_target = 'dashboard-dropzone.folderCards' if can?(:create, ::Template) %>
+<%= tag.a href: folder_path(folder), class: 'flex h-full flex-col justify-between rounded-2xl py-5 px-6 w-full bg-base-200 before:border-2 before:border-base-300 before:border-dashed before:absolute before:left-0 before:right-0 before:top-0 before:bottom-0 before:hidden before:rounded-2xl relative', data: { targets: folder_card_drop_target, full_name: folder.full_name } do %>
   <% if !is_long %>
     <%= svg_icon('folder', class: 'w-6 h-6') %>
   <% end %>
@@ -9,4 +11,4 @@
     <% end %>
     <%= folder.name %>
   </div>
-</a>
+<% end %>

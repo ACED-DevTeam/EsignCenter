@@ -6,7 +6,33 @@ class SubmitterMailer < ApplicationMailer
 
   NO_REPLY_REGEXP = /no-?reply@/i
 
-  def invitation_email(submitter)
+  # `reminder: true` is the nudge sent days later by
+  # SendSubmitterInvitationReminderEmailJob. It is the same email in the same
+  # layout; only the copy can differ, and only if the customer wrote reminder
+  # copy of their own.
+  #
+  # The order for a reminder, most specific first, and each of subject and
+  # body falls through it on its own:
+  #
+  #   1. this template's reminder copy   (Preferences → Signature request reminder email)
+  #   2. the account's reminder copy     (Personalization → Signature Request Reminder Email)
+  #   3. the invitation copy of this send — the ad-hoc message typed into the
+  #      send dialog, then the per-signer copy, then this template's
+  #   4. the account's invitation copy
+  #   5. the stock default
+  #
+  # Steps 3-5 are the ordinary invitation chain untouched, so an account that
+  # never wrote reminder copy sends exactly the mail it sends today. The
+  # account-wide reminder wording sits ABOVE the invitation copies on purpose
+  # (Q1): a customer who writes one sentence for every reminder on the
+  # Personalization page expects to see it even on the templates that carry
+  # their own signature-request wording, which is most of them.
+  #
+  # Reminder copy is part of the paid "custom email templates" row, and it is
+  # read through the same `custom_email_*` helpers as every other custom
+  # wording — so a paid account that downgrades goes quietly back to the
+  # default copy with its rows left where they are (D43: inert, not purged).
+  def invitation_email(submitter, reminder: false)
     @current_account = submitter.submission.account
     mail_account(@current_account)
     @submitter = submitter
@@ -17,17 +43,23 @@ class SubmitterMailer < ApplicationMailer
 
     template_submitters_index = @email_message.blank? ? build_submitter_preferences_index(@submitter) : {}
     template_preferences = @submitter.template&.preferences
+    reminder_preferences = template_preferences if reminder
 
-    @body = @email_message&.body.presence ||
-            custom_email_copy(template_submitters_index[@submitter.uuid], 'request_email_body') ||
-            custom_email_copy(template_preferences, 'request_email_body')
+    sources = {
+      reminder_preferences:,
+      reminder_config: reminder ? custom_email_config(AccountConfig::SUBMITTER_INVITATION_REMINDER_EMAIL_KEY) : nil,
+      signer_preferences: template_submitters_index[@submitter.uuid],
+      template_preferences:,
+      invitation_config: custom_email_config(AccountConfig::SUBMITTER_INVITATION_EMAIL_KEY)
+    }
 
-    @subject = @email_message&.subject.presence ||
-               custom_email_copy(template_submitters_index[@submitter.uuid], 'request_email_subject') ||
-               custom_email_copy(template_preferences, 'request_email_subject')
+    @body = invitation_email_copy('body', sources)
+    @subject = invitation_email_copy('subject', sources)
 
-    @email_config = custom_email_config(AccountConfig::SUBMITTER_INVITATION_EMAIL_KEY)
-    @body ||= fetch_config_email_body(@email_config, @submitter)
+    # Still needed below for the reply-to address and as build_invite_subject's
+    # last resort; the reminder row wins it when there is one, exactly as the
+    # copy chain above does.
+    @email_config = sources[:reminder_config] || sources[:invitation_config]
 
     assign_message_metadata('submitter_invitation', @submitter)
 
@@ -271,7 +303,24 @@ class SubmitterMailer < ApplicationMailer
     end
   end
 
+  # One walk of the reminder/invitation fallback order documented on
+  # #invitation_email, for one field ('subject' or 'body'). Subject and body
+  # walk it separately, so a reminder row that carries only a subject leaves
+  # the body to the wording below it rather than blanking it.
+  def invitation_email_copy(field, sources)
+    custom_email_copy(sources[:reminder_preferences], "invitation_reminder_email_#{field}") ||
+      fetch_config_email_value(sources[:reminder_config], field) ||
+      @email_message&.public_send(field).presence ||
+      custom_email_copy(sources[:signer_preferences], "request_email_#{field}") ||
+      custom_email_copy(sources[:template_preferences], "request_email_#{field}") ||
+      fetch_config_email_value(sources[:invitation_config], field)
+  end
+
+  def fetch_config_email_value(email_config, field)
+    email_config ? email_config.value[field].presence : nil
+  end
+
   def fetch_config_email_body(email_config, _submitter = nil)
-    email_config ? email_config.value['body'].presence : nil
+    fetch_config_email_value(email_config, 'body')
   end
 end

@@ -17,6 +17,22 @@ module StripeBilling
     # subscription that can still charge somebody, so it counts as live.
     DEAD_STRIPE_STATUSES = %w[canceled incomplete_expired].freeze
 
+    # The metadata key our own Checkout stamps on the subscription it creates
+    # (and on the Stripe customer it creates for the account), so a
+    # subscription this app sold is still recognised as ours after somebody
+    # swaps its price in the dashboard.
+    #
+    # NAMESPACED on purpose (review 7, A1). It used to be the bare
+    # `account_id`, which is the name any other product on the same Stripe
+    # account would plausibly give its own tenant id — and a collision with
+    # one of our numeric account ids would have made a stranger's
+    # subscription "ours": adopted (paid access for a purchase that was not
+    # ours) and, when the account already held a live one, cancelled at
+    # Stripe and refunded. The bare key is no longer read at all: only our
+    # own Checkout ever wrote it, and everything it wrote also carries an
+    # item on our price, which is the other half of this test.
+    ACCOUNT_TAG_KEY = :esigncenter_account_id
+
     module_function
 
     def live?(stripe_subscription)
@@ -45,10 +61,10 @@ module StripeBilling
       StripeBilling.price_id.present? && SubscriptionSync.price_item(stripe_subscription).present?
     end
 
-    # The account id our Checkout writes into `subscription_data.metadata`;
-    # blank on anything we did not create.
+    # The account id our Checkout writes into `subscription_data.metadata`
+    # under our own namespaced key; blank on anything we did not create.
     def tagged_account_id(stripe_subscription)
-      SubscriptionSync.field(SubscriptionSync.field(stripe_subscription, :metadata), :account_id).to_s
+      SubscriptionSync.field(SubscriptionSync.field(stripe_subscription, :metadata), ACCOUNT_TAG_KEY).to_s
     end
 
     # How well a live subscription is actually collecting. Age alone is not

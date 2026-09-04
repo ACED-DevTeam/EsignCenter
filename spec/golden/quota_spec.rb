@@ -574,6 +574,26 @@ RSpec.describe 'Quotas', type: :request do # rubocop:disable RSpec/MultipleDescr
       expect(response).to redirect_to("/s/#{never_signed.slug}")
       expect(flash[:alert]).to eq(completions_alert)
     end
+
+    # The same rule at the SIGNER's own door: the "Resubmit" button on the
+    # completed page (`PUT /resubmit_form?resubmit=<slug>`), used by whoever
+    # holds the signing link rather than by the account. An anonymous visitor
+    # is never told which limit closed the form.
+    it 'is refused at the signer-side resubmit door too, with 422 and nothing persisted', sidekiq: :inline do
+      template = text_template_for(free_account)
+      never_signed = send_one(free_account, template:).submitters.first
+
+      cap_completions!(free_account, template:)
+      anonymous!
+
+      expect(Quotas.completions_this_month(free_account)).to eq(5)
+
+      refusing { put '/resubmit_form', params: { resubmit: never_signed.slug } }
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.body).to include(signer_page)
+      expect(response.body).not_to include(completions_alert)
+    end
   end
 
   describe 'the seven creation paths on a free account at 5 completions' do
@@ -703,6 +723,33 @@ RSpec.describe 'Quotas', type: :request do # rubocop:disable RSpec/MultipleDescr
 
       expect(response).to redirect_to("/s/#{copy.slug}")
       expect(flash[:alert]).to be_blank
+      expect(copy.submission.lineage_root_id).to eq(original.submission_id)
+      expect(Quotas.sends_this_month(free_account)).to eq(sends_before + 1)
+
+      # And it really cannot add a completion: signing the copy leaves the
+      # month's count exactly where it was.
+      complete!(copy)
+
+      expect(Quotas.completions_this_month(free_account)).to eq(5)
+    end
+
+    # The other Resubmit door, the SIGNER's own: the button on the completed
+    # page (`PUT /resubmit_form?resubmit=<slug>`), pressed by whoever holds
+    # the signing link rather than by the account. D74 has to hold here too —
+    # this is the door a signer actually uses to correct a mistake.
+    it 'path 5b: the signer-side resubmit of a signed document is allowed at the cap and still costs a send',
+       sidekiq: :inline do
+      original = capped.last
+      anonymous!
+
+      expect(Quotas.completions_this_month(free_account)).to eq(5)
+      sends_before = Quotas.sends_this_month(free_account)
+
+      put '/resubmit_form', params: { resubmit: original.slug }
+
+      copy = Submitter.order(:id).last
+
+      expect(response).to redirect_to("/s/#{copy.slug}")
       expect(copy.submission.lineage_root_id).to eq(original.submission_id)
       expect(Quotas.sends_this_month(free_account)).to eq(sends_before + 1)
 
@@ -933,6 +980,40 @@ RSpec.describe 'Quotas', type: :request do # rubocop:disable RSpec/MultipleDescr
   end
 
   describe 'paid accounts are never blocked' do
+    # What makes an account paid is its access state, and there are four of
+    # them: a trial, a live subscription, one cancelling at period end, and
+    # one whose renewal is late but still inside the grace period. Every one
+    # of them has to be unblocked at a number that would stop a free account
+    # dead — five completions is the free month's whole allowance.
+    it 'creates in every paid access state at 5 completions, with no alert', sidekiq: :inline do
+      template = text_template_for(paid_account, attachment_count: 0,
+                                                 preferences: { 'completed_notification_email_enabled' => false,
+                                                                'documents_copy_email_enabled' => false })
+      template.update!(fields: [{ 'uuid' => SecureRandom.uuid, 'submitter_uuid' => template.submitters.first['uuid'],
+                                  'name' => 'Name', 'type' => 'text', 'required' => true, 'areas' => [] }])
+      row = paid_account.account_subscription
+
+      Array.new(Quotas::Limits::FREE_COMPLETIONS_PER_MONTH) { complete_one!(paid_account, template:) }
+
+      expect(Quotas.completions_this_month(paid_account)).to eq(Quotas::Limits::FREE_COMPLETIONS_PER_MONTH)
+      expect(Plans::PAID_ACCESS_STATES).to contain_exactly('trialing', 'active', 'canceling', 'past_due')
+
+      act_as(paid_account)
+
+      Plans::PAID_ACCESS_STATES.each do |access_state|
+        row.update!(access_state:)
+
+        expect(Plans.key_for(paid_account.reload)).to eq(Plans::PAID)
+        expect(Quotas.limits_for(paid_account).completions_per_month).to be_nil
+
+        expect { post_recipients(template, emails: unique_email, send_email: '1') }
+          .to change(Submission, :count).by(1)
+
+        expect(response).to have_http_status(:redirect)
+        expect(flash[:alert]).to be_blank
+      end
+    end
+
     it 'creates the 501st document on a 1-seat paid account, warns once at 400 and flags fair-use review once',
        sidekiq: :inline do
       # 501 real completions through the real controller and job. The
@@ -1347,6 +1428,41 @@ end
 RSpec.describe 'Quota creation lock', type: :request do
   self.use_transactional_tests = false
 
+  # A meeting point both racers must reach before either may leave it.
+  #
+  # Releasing two threads from a Queue is not enough to prove a lock: under
+  # MRI's GVL thread A usually finishes its whole create before B reads the
+  # counter, so B is honestly refused and the example passes with the lock
+  # deleted (checkpoint 7, reviewer D — the sends race stayed green in three
+  # of four mutated runs). Wrapping the CHECK in this latch removes that
+  # luck: with no lock, neither thread can leave the check until both have
+  # passed it, so both must create and the example is red every time.
+  #
+  # With the lock in place the second thread never arrives — it is parked on
+  # pg_advisory_xact_lock until the first has committed — so the waiter times
+  # out and carries on. A timeout is therefore the PASS condition, not a
+  # failure: the meeting only ever happens when nothing is serialising the
+  # two.
+  def race_latch(expected, timeout: 3)
+    mutex = Mutex.new
+    condition = ConditionVariable.new
+    arrived = 0
+
+    lambda do
+      mutex.synchronize do
+        arrived += 1
+
+        next condition.broadcast if arrived >= expected
+
+        deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
+
+        while arrived < expected && (remaining = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)).positive?
+          condition.wait(mutex, remaining)
+        end
+      end
+    end
+  end
+
   # Two sibling copies of one document finishing at the same moment: without
   # the family lock both read "nobody has finished this family yet" and both
   # count, because the partial unique index is per submission and these are
@@ -1369,10 +1485,15 @@ RSpec.describe 'Quota creation lock', type: :request do
                                     email: "copy-#{i}@example.com", completed_at: Time.current)
     end
 
-    # A wider window than the real one, so the race is decided by the lock
-    # rather than by how fast Postgres commits.
+    # Neither worker may leave the "has this family been counted yet?" read
+    # until both have made it, so without the family lock both provably see
+    # "nobody has finished this family" and both insert an is_first row. With
+    # the lock the second worker never reaches the latch and the first times
+    # out of it (see race_latch).
+    latch = race_latch(2)
+
     allow(Submissions::Lineage).to receive(:first_completion_exists?).and_wrap_original do |original, *args|
-      original.call(*args).tap { sleep 0.3 }
+      original.call(*args).tap { latch.call }
     end
 
     barrier = Queue.new
@@ -1417,6 +1538,17 @@ RSpec.describe 'Quota creation lock', type: :request do
 
     expect(Quotas.sends_this_month(account)).to eq(14)
     expect(Quotas.in_flight(account)).to eq(9)
+
+    # Neither creator may leave the quota check until both have passed it, so
+    # without the creation lock both provably read "14 of 15" and both create
+    # (see race_latch). With the lock the second is parked on
+    # pg_advisory_xact_lock and never arrives, so the first times out and
+    # carries on — which is what the lock working looks like.
+    latch = race_latch(2)
+
+    allow(Quotas).to receive(:assert_can_create_submissions!).and_wrap_original do |original, *args, **kwargs|
+      original.call(*args, **kwargs).tap { latch.call }
+    end
 
     barrier = Queue.new
     results = Array.new(2) do |i|

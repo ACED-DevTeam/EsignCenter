@@ -7,6 +7,7 @@
     <% if can?(:use, :custom_email_templates) %>
       <div class="space-y-4">
         <%= render 'signature_request_email_form' %>
+        <%= render 'signature_request_reminder_email_form' %>
         <%= render 'documents_copy_email_form' %>
         <%= render 'submitter_completed_email_form' %>
       </div>

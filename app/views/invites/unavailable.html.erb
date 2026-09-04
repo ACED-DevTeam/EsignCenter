@@ -1,10 +1,10 @@
 <% content_for(:html_title, "#{t('invite_unavailable_title')} | EsignCenter") %>
 <main class="max-w-xl mx-auto px-4 mt-10 md:mt-16 mb-8">
-  <div class="text-center space-y-3">
-    <div class="mx-auto w-16 h-16 rounded-full bg-base-200 flex items-center justify-center">
+  <div class="text-center">
+    <div class="mx-auto w-16 h-16 rounded-full bg-base-200 flex items-center justify-center mb-3">
       <%= svg_icon('info_circle', class: 'w-9 h-9') %>
     </div>
-    <h1 dir="auto" class="text-3xl md:text-4xl font-bold"><%= t('invite_unavailable_title') %></h1>
+    <h1 dir="auto" class="text-3xl md:text-4xl font-bold mb-3"><%= t('invite_unavailable_title') %></h1>
     <p dir="auto" class="text-base-content/80 leading-relaxed"><%= @unavailable_reason.presence || t('invite_unavailable_hint') %></p>
   </div>
 </main>

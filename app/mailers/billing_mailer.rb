@@ -27,8 +27,20 @@ class BillingMailer < ApplicationMailer
     mail(to: @recipients, subject: 'Your EsignCenter account is suspended')
   end
 
-  def payment_recovered(account)
+  # `lifted` is whether THIS recovery actually unfroze the account, and the
+  # letter says which of the two happened rather than hedging with "if the
+  # account was suspended" (checkpoint 7, B5). The caller knows the answer —
+  # it is the transition `AccountStates.lift_suspension!` just returned — so
+  # there is no reason to make the customer work it out.
+  #
+  # It is a fact about THIS recovery and nothing else (checkpoint 7, Q3). An
+  # account that was frozen for a missed payment three months ago and paid on
+  # time today must not be told "nothing was ever frozen": the letter says
+  # only that it was not frozen this time.
+  def payment_recovered(account, lifted: false)
     return if prepare(account).blank?
+
+    @lifted = lifted
 
     mail(to: @recipients, subject: 'Your EsignCenter payment went through')
   end

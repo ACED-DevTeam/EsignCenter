@@ -77,11 +77,7 @@ class ProcessStripeEventJob
   def perform(inbox_id)
     inbox = StripeEventInbox.find_by(id: inbox_id)
 
-    # A row that already reached a verdict is never re-decided; a `failed` one
-    # is, which is what makes a retry (or a hand re-run) work.
-    return if inbox.nil? || inbox.terminal?
-
-    inbox.update!(status: StripeEventInbox::PROCESSING, attempts: inbox.attempts + 1)
+    return if inbox.nil? || !claim!(inbox)
 
     dispatch(inbox)
   rescue StandardError => e
@@ -91,6 +87,32 @@ class ProcessStripeEventJob
   end
 
   private
+
+  # Who works this event is decided by ONE statement, not by a read followed
+  # by a write (review 7, A2). `pending` and `failed` are the two statuses a
+  # job may pick up: a row that already reached a verdict is never re-decided,
+  # and one another worker is holding right now (`processing`) is not ours to
+  # touch. Two jobs for the same inbox id do happen — Stripe's retry landing
+  # in the enqueue-to-start window, or the 06:00 stuck-row sweep racing
+  # Sidekiq's own retry chain — and with a plain `terminal?` check both passed
+  # it and both dispatched: two of the event's five attempts spent on one
+  # event, and the duplicate/refund alert sent to the operator twice. The
+  # money was never at risk (both serialise on the account row lock and every
+  # write re-reads Stripe), but the noise was real. The database now hands the
+  # row to exactly one of them; the other returns having done nothing.
+  def claim!(inbox)
+    claimed = StripeEventInbox
+              .where(id: inbox.id, status: [StripeEventInbox::PENDING, StripeEventInbox::FAILED])
+              .update_all(['status = ?, attempts = attempts + 1, updated_at = ?',
+                           StripeEventInbox::PROCESSING, Time.current])
+
+    return false unless claimed == 1
+
+    # The claim was made in SQL, so the copy in hand still says `pending`.
+    inbox.reload
+
+    true
+  end
 
   def dispatch(inbox)
     case inbox.event_type

@@ -1,0 +1,46 @@
+<div id="<%= AccountConfig::SUBMITTER_INVITATION_REMINDER_EMAIL_KEY %>_form">
+  <%# The wording a reminder goes out with today when this template has none of its own (SubmitterMailer#invitation_email with reminder: true): the account's reminder copy if somebody wrote one, otherwise this template's signature-request copy, otherwise the account's signature-request copy. Prefilling with that rather than with the stock default keeps the box showing what recipients actually receive. Subject and body are each inherited on their own, the way the mailer reads them. %>
+  <% account_reminder_values = AccountConfigs.find_for_account(current_account, AccountConfig::SUBMITTER_INVITATION_REMINDER_EMAIL_KEY)&.value || {} %>
+  <% account_invitation_values = AccountConfigs.find_or_initialize_for_key(current_account, AccountConfig::SUBMITTER_INVITATION_EMAIL_KEY).value %>
+  <% inherited_subject = account_reminder_values['subject'].presence || @template.preferences['request_email_subject'].presence || account_invitation_values['subject'] %>
+  <% inherited_body = account_reminder_values['body'].presence || @template.preferences['request_email_body'].presence || account_invitation_values['body'] %>
+  <% template_email_preferences_values = @template.preferences.values_at('invitation_reminder_email_subject', 'invitation_reminder_email_body').compact_blank.presence %>
+  <% is_custom_template_email = template_email_preferences_values.present? %>
+  <% if is_custom_template_email %>
+    <%= button_to nil, template_preferences_path(@template), id: 'submitter_invitation_reminder_email_reset_link', method: :delete, class: 'hidden', params: { config_key: AccountConfig::SUBMITTER_INVITATION_REMINDER_EMAIL_KEY }, data: { turbo_confirm: t('are_you_sure_') }, form: { data: { close_on_submit: false } } %>
+  <% end %>
+  <% can_edit_copy = can?(:use, :custom_email_templates) %>
+  <% unless can_edit_copy %>
+    <%= render 'custom_email_copy_cta', feature: t('signature_request_reminder_email'), reset_link_id: 'submitter_invitation_reminder_email_reset_link', show_reset: is_custom_template_email %>
+  <% end %>
+  <% if can_edit_copy %>
+    <%= form_for @template, url: template_preferences_path(@template), method: :post, html: { autocomplete: 'off', class: 'mt-1', id: 'submitter_invitation_reminder_email_template_form' }, data: { close_on_submit: false } do |f| %>
+      <toggle-on-submit data-element-id="email_saved_alert4"></toggle-on-submit>
+      <%= f.fields_for :preferences, Struct.new(:invitation_reminder_email_subject, :invitation_reminder_email_body).new(@template.preferences['invitation_reminder_email_subject'].presence || inherited_subject, @template.preferences['invitation_reminder_email_body'].presence || inherited_body) do |ff| %>
+        <div class="form-control">
+          <div class="flex justify-between">
+            <%= ff.label :invitation_reminder_email_subject, t('email_subject'), class: 'label' %>
+            <% if is_custom_template_email %>
+              <label for="submitter_invitation_reminder_email_reset_link" class="label underline">
+                <%= t('reset_default') %>
+              </label>
+            <% end %>
+          </div>
+          <%= ff.text_field :invitation_reminder_email_subject, required: true, class: 'base-input', dir: 'auto' %>
+        </div>
+        <div class="form-control">
+          <%= ff.label :invitation_reminder_email_body, t('email_body'), class: 'label' %>
+          <%= render 'personalization_settings/markdown_editor', name: ff.field_name(:invitation_reminder_email_body), value: ff.object.invitation_reminder_email_body, variables: AccountConfig::EMAIL_VARIABLES[AccountConfig::SUBMITTER_INVITATION_REMINDER_EMAIL_KEY] %>
+        </div>
+      <% end %>
+    <% end %>
+  <% end %>
+  <div class="form-control pt-2">
+    <% if can_edit_copy %>
+      <%= button_tag button_title(title: t('save'), disabled_with: t('saving')), form: 'submitter_invitation_reminder_email_template_form', class: 'base-button' %>
+    <% end %>
+    <div class="flex justify-center">
+      <span id="email_saved_alert4" class="text-sm invisible font-normal mt-0.5"><%= t('changes_have_been_saved') %></span>
+    </div>
+  </div>
+</div>

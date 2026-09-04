@@ -63,4 +63,46 @@ RSpec.describe 'Dashboard Page' do
       expect(page).to have_content(submitter.name)
     end
   end
+
+  # Reviewer Q (finding Q2). Taking the upload form away from a read-only
+  # dashboard left the cards themselves registered as drop targets, so a real
+  # drop threw "Cannot set properties of undefined (setting 'action')" and
+  # left the card greyed out under a spinner that never stopped. This is the
+  # browser proof: a genuine drop event carrying a genuine File, dispatched at
+  # the card, in Chromium.
+  context 'when the reader may not create templates' do
+    let!(:template) { create(:template, account:, author: user) }
+
+    before do
+      user.update!(read_only_at: Time.current)
+
+      visit root_path
+    end
+
+    def drop_a_file_on_the_template_card
+      page.execute_script(<<~JS)
+        window.dashboardDropErrors = []
+        window.addEventListener('error', (event) => window.dashboardDropErrors.push(event.message))
+
+        const card = document.querySelector('a[href="/templates/#{template.id}"]')
+        const transfer = new DataTransfer()
+
+        transfer.items.add(new File(['a document'], 'dropped.pdf', { type: 'application/pdf' }))
+
+        card.dispatchEvent(new DragEvent('drop', { dataTransfer: transfer, bubbles: true, cancelable: true }))
+      JS
+    end
+
+    it 'ignores a file dropped on a template card: no spinner, no exception, no upload' do
+      expect(page).to have_content(template.name)
+      expect(page).to have_no_css('#dashboard_dropzone_input', visible: :all)
+
+      expect { drop_a_file_on_the_template_card }.not_to change(Template, :count)
+
+      expect(page).to have_no_css('.animate-spin')
+      expect(page).to have_no_css('.opacity-50')
+      expect(page.evaluate_script('window.dashboardDropErrors')).to eq([])
+      expect(page).to have_content(template.name)
+    end
+  end
 end

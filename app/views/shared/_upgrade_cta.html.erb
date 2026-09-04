@@ -1,4 +1,4 @@
-<%# Upgrade call-to-action: rendered wherever a PAID-ONLY surface is shown to an account whose plan lacks it (the server refuses the matching POST regardless — this is the friendly face of that refusal). Locals: feature (display name, required); body (optional sentence overriding the default copy); title (optional heading for a non-feature context such as the usage page, default "This feature requires a paid plan"); compact (optional, true renders a one-line banner for the SECOND gated surface on a page so two full cards never stack). [data-upgrade-cta] points at the billing page whenever billing is switched on and the signed-in user could actually buy (a customer account, admin); otherwise it points at the usage page, so the link is never dead. %>
+<%# Upgrade call-to-action: rendered wherever a PAID-ONLY surface is shown to an account whose plan lacks it (the server refuses the matching POST regardless — this is the friendly face of that refusal). Locals: feature (display name, required); body (optional sentence overriding the default copy); title (optional heading for a non-feature context such as the usage page or a full seat count, default "This feature requires a paid plan" — honoured by both variants); compact (optional, true renders a one-line banner for the SECOND gated surface on a page so two full cards never stack). [data-upgrade-cta] points at the billing page whenever billing is switched on and the signed-in user could actually buy (a customer account, admin); otherwise it points at the usage page, so the link is never dead. %>
 <% feature = local_assigns.fetch(:feature) %>
 <% upgrade_path = upgrade_cta_path %>
 <% if local_assigns[:compact] %>
@@ -8,7 +8,7 @@
         <%= svg_icon('sparkles', class: 'w-4 h-4') %>
       </div>
       <p class="text-sm min-w-0" dir="auto">
-        <span class="font-semibold"><%= t('this_feature_requires_a_paid_plan') %>.</span>
+        <span class="font-semibold"><%= local_assigns[:title] || t('this_feature_requires_a_paid_plan') %>.</span>
         <span class="text-base-content/70"><%= local_assigns[:body] || t('feature_is_available_on_the_paid_plan', feature:) %></span>
       </p>
     </div>

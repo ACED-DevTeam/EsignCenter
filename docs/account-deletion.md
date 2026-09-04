@@ -55,9 +55,16 @@ count.
 The deletion date is not stored anywhere: it is computed every night from the
 last thing that happened — the last time somebody used the account, the most
 recent sign-in, the account's own creation, or the day its subscription ended —
-so one visit moves it a year into the future by itself. Work done in the
-**testing sandbox** counts as use of the account it belongs to, because the
-sandbox is deleted with its parent and never on its own.
+so one visit moves it a year into the future by itself. The clock also reads
+the **testing sandbox's** own "last used" date into its parent's, because a
+sandbox is deleted with its parent and never on its own. In practice that
+changes nothing today: the sandbox is **not available to customer accounts**
+at all, and customer accounts are the only ones that are ever deleted for
+being unused. If the sandbox is ever opened up to customers, work done inside
+it will have to start counting for real — which means the "last used" stamp
+must learn to tell *somebody working in their own sandbox* apart from *a
+support agent looking at an account*, because today both arrive as one person
+signed in as another, and neither is stamped.
 
 **The warning email's instruction works.** It links to your templates page: if
 your browser is still signed in, opening that link is all it takes, and if it
@@ -78,7 +85,12 @@ what anybody was told, so the 7-day letter leaves a mark on the row
 least a week old and the date it named has arrived. An account that was already
 a year idle when this shipped — or that crossed its deadline while the
 scheduler was down — therefore gets its final warning first and goes a week
-later, rather than disappearing on the first sweep.
+later, rather than disappearing on the first sweep. **A warning belongs to one
+dormancy**: if the account is used after the letter goes out, the mark is
+cleared on the next nightly sweep and the whole 60/30/7 sequence starts again
+from scratch the next time it goes quiet — and it is cleared even for an
+account that is inside its paid-retention year and is therefore not being
+warned about anything.
 
 Two rules protect data that is not really abandoned:
 
@@ -96,7 +108,7 @@ you can create next.
 | --- | --- |
 | `verified_documents` — the public /verify records | They hold a SHA-256 fingerprint, a date and a signer count. They name nobody, so they are not personal data — and if they went, every document the account ever signed would stop verifying for the people who hold it. Untouched, `account_id` included. |
 | `account_subscriptions` — the money history | Stripe ids and states. No documents, no people. |
-| `stripe_event_inboxes` — what Stripe told us and when | Kept, with `account_id` set to NULL **and the customer scrubbed out of the stored event**. What stays is the audit: the Stripe event id, its type, when Stripe sent it, what we did with it, and every id, amount, currency, price and status inside it. What goes is the person: email addresses, names, business names, phone numbers, street addresses, cities, postal codes, tax ids and free-typed descriptions are replaced with `[redacted]` wherever they appear in the event, however deeply nested. The event keeps its shape, so it still reads as an event — it just no longer says who it was about. |
+| `stripe_event_inboxes` — what Stripe told us and when | Kept, with `account_id` set to NULL **and the customer scrubbed out of the stored event**. What stays is the audit: the Stripe event id, its type, when Stripe sent it, what we did with it, and every id, amount, currency, price and status inside it. What goes is the person: email addresses, names, business names, phone numbers, street addresses, cities, postal codes, tax ids and free-typed descriptions are replaced with `[redacted]` wherever they appear in the event, however deeply nested — **and so are the links Stripe puts in every invoice and charge event** (`hosted_invoice_url`, `invoice_pdf`, `receipt_url`) and the **card** details beside them. Those links are unguessable but permanent addresses of a page Stripe renders *with the customer's name, address and email on it*, so keeping them would have left a working door to everything else on this list. The event keeps its shape, so it still reads as an event — it just no longer says who it was about. **Events that arrive after the purge are scrubbed the moment we work out which account they belong to**: Stripe keeps talking about a cancelled subscription for a while, and a late event still resolves to the tombstone. A webhook arrives naming a Stripe customer, not an account — the background job is what matches it to an account a moment later — so the redaction happens there, on the same write that attributes the event, and nothing about the customer is ever left sitting in a stored event for a purged account. |
 | The `accounts` row itself | Renamed **"Deleted account"**, `archived_at` and `purged_at` stamped, uuid kept. Everything that still points at it (a verified document, a Stripe inbox row) points at *something* rather than nowhere. |
 
 ## The inventory
@@ -192,7 +204,12 @@ so from the moment of the claim the account is committed to deletion —
   deleted and can no longer be restored") rather than reporting a success;
 * a run that **fails leaves the claim in place**, so the retry resumes rather
   than re-deciding — a half-emptied account no longer looks eligible, and
-  re-deciding would leave it half-emptied for ever;
+  re-deciding would leave it half-emptied for ever. **Only that job's own
+  retries resume it**: the nightly sweep stops offering a claimed account
+  altogether, and a fresh job that finds a claim it did not make stands down.
+  Two walks over one family are otherwise possible — and the second one's
+  "give up and release the claim" would un-archive the account, letting people
+  sign back into it, while the first was still deleting;
 * the purge **re-asserts its own refusals on entry**, so a Stripe webhook that
   puts the account back on a paid plan between the claim and the purge is still
   caught;
@@ -265,9 +282,16 @@ longer outlive its event at all: the in-flight insert either lands before the
 delete (and is swept, or stops the tombstone) or it fails outright, and
 deleting an event always takes its attempts with it. The count above stays as
 the belt to that key's braces — it is what still catches a whole delivery,
-event and attempt together, that arrives mid-walk. `completed_documents` is still
-counted through its submitters, which the walk has already deleted by then; a
-row written there mid-purge is not caught yet (recorded for Session 10).
+event and attempt together, that arrives mid-walk.
+
+**`completed_documents` is counted the same way, and it is the last table that
+needed it.** It is the one table in the inventory with no foreign key that used
+to be counted *through* its submitters — and the walk deletes the submitters
+first, so by the time the count ran there was nothing left to ask and the
+answer was always zero. A document fingerprint written by a generation that
+finished mid-purge was therefore entombed in silence. The purge now writes down
+the family's submitter ids before the walk, sweeps by them on the second pass,
+and counts against them: the straggler is either taken or the purge refuses.
 
 ## Operator commands
 
@@ -276,6 +300,11 @@ row written there mid-purge is not caught yet (recorded for Session 10).
 # Claims the barrier first (exactly as the nightly job does), releases it
 # again if the purge refuses, and prints the orphan counts afterwards.
 rake accounts:purge[123]
+
+# The same command for an account that is NOT due to be purged. It prints the
+# account's name and every table it is about to empty, and then refuses unless
+# the name is typed back exactly.
+FORCE=1 CONFIRM="Acme Corp" rake accounts:purge[123]
 
 # Call off a scheduled deletion on the customer's behalf. Refuses out loud if
 # the purge has already claimed the account — there is nothing whole left to
@@ -287,6 +316,23 @@ rake accounts:cancel_deletion[123]
 # check before handing it back to the customer.
 rake accounts:release_purge_claim[123]
 ```
+
+**`purge` refuses an account that is not due to be destroyed.** It used to
+destroy any customer account you typed, whether or not anybody had asked: one
+mistyped id and a working customer's documents were gone. It now asks the same
+question the nightly job asks — has the 90-day window run out, or is this a
+dormant account that has had its final warning? — and refuses anything else,
+changing nothing. `FORCE=1` is the door for the account that genuinely has to
+go now (an abuse case, a support request): it prints the account's name and a
+count of every table it is about to empty, and then still refuses unless
+`CONFIRM` is set to that name exactly.
+
+**`purge` also refuses an account another purge has already claimed**, and so
+does the nightly sweep — a claimed account is no longer offered to anybody. A
+claim means a purge is running or is between retries, and only the job that
+made the claim resumes it. If a claim is genuinely stuck, release it with
+`rake accounts:release_purge_claim[123]` first and look at why it failed; the
+account is then purgeable again by the ordinary rules (or with `FORCE=1`).
 
 `cancel_deletion` does **not** bring the subscription back — a Stripe
 cancellation is not reversible from here. The account lands on the free plan

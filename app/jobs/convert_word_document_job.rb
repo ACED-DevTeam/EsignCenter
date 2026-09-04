@@ -183,11 +183,28 @@ class ConvertWordDocumentJob
     attachment.save!
   end
 
+  # A conversion that is over for good. The Word blob is purged here for the
+  # same reason `finish_conversion` purges it on success: once `store_pdf` has
+  # swapped the PDF in, the Word blob is attached to nothing, and this is the
+  # last code that knows its id. Without this, every conversion that stored
+  # its PDF and then ran out of Sidekiq retries left the uploaded Word file
+  # (up to 20 MB) in storage forever, invisible to the account's usage and to
+  # the account purge's inventory, which walks attachments.
+  #
+  # The failures that happen BEFORE the swap leave no orphan: the attachment
+  # is still the Word blob itself, and the failed card's Remove button
+  # destroys it. `word_blob_id` is absent in that case and nothing is purged.
   def fail_conversion(template, attachment, error)
+    word_blob_id = attachment.metadata['word_blob_id']
+
     attachment.metadata.delete('converting')
     attachment.metadata.delete('conversion_started_at')
+    attachment.metadata.delete('conversion_stage')
+    attachment.metadata.delete('word_blob_id')
     attachment.metadata['conversion_failed'] = true
     attachment.save!
+
+    ActiveStorage::Blob.find_by(id: word_blob_id)&.purge_later if word_blob_id
 
     update_schema_item(template, attachment.uuid) do |item|
       item.delete('converting')
