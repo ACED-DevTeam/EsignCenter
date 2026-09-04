@@ -354,8 +354,8 @@ module BillingLifecycle
       item_id: row.stripe_item_id }
   end
 
-  # Money as a person reads it, the same way a refund notice writes it
-  # (StripeBilling::Linker::Refund#formatted_amount).
+  # Money as a person reads it. The one formatter — a refund notice writes it
+  # through here too (StripeBilling::Linker::Refund#formatted_amount).
   def format_amount(cents, currency)
     dollars = format('%.2f', cents.to_i / 100.0)
 
@@ -563,8 +563,7 @@ module BillingLifecycle
   # without asking; a tie (nobody has ever signed in) goes to the oldest row,
   # the person who most likely created it.
   def admins_to_keep(account)
-    candidates = User.where(account_id: Accounts.seat_account_ids(account))
-                     .where.not(role: :integration).active.full_access
+    candidates = Accounts.seat_holders(Accounts.seat_account_ids(account))
 
     candidates.group_by(&:account_id).filter_map do |_account_id, people|
       people.select(&:admin?).min_by { |user| [-user.current_sign_in_at.to_i, user.id] } ||
@@ -573,9 +572,7 @@ module BillingLifecycle
   end
 
   def demote_members!(account, kept)
-    scope = User.where(account_id: Accounts.seat_account_ids(account))
-                .where.not(role: :integration).active.full_access
-                .where.not(id: kept.map(&:id))
+    scope = Accounts.seat_holders(Accounts.seat_account_ids(account)).where.not(id: kept.map(&:id))
 
     # Belt and braces on top of keeping one admin per account: whatever the
     # seat arithmetic says, the last person who can administer an account is

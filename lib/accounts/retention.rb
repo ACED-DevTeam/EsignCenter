@@ -155,7 +155,7 @@ module Accounts
     end
 
     def dormant?(account, now: Time.current)
-      return false if paid_access?(account)
+      return false if Plans.paid_subscription?(account)
       return false if within_paid_retention?(account, now:)
 
       dormant_purge_at(account) <= now
@@ -178,10 +178,6 @@ module Accounts
        User.where(account_id: account.id).maximum(:current_sign_in_at),
        User.where(account_id: account.id).maximum(:last_sign_in_at),
        subscription_ended_at(account)].compact.max
-    end
-
-    def paid_access?(account)
-      Plans::PAID_ACCESS_STATES.include?(account.account_subscription&.access_state)
     end
 
     # When the money stopped. `ended_at` is what Stripe said; `updated_at` is
@@ -224,7 +220,7 @@ module Accounts
       longest = DORMANT_WARNING_DAYS.max
 
       dormant_scope(now:, horizon: DORMANT_AFTER - longest.days).each do |account|
-        next if paid_access?(account) || within_paid_retention?(account, now:)
+        next if Plans.paid_subscription?(account) || within_paid_retention?(account, now:)
 
         purge_at = scheduled_dormant_purge_at(account, now:)
         days = due_warning_days(purge_at, now)

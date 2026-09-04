@@ -119,10 +119,10 @@ module StripeBilling
 
     Refund = Struct.new(:id, :amount, :currency) do
       # "$30.00" — the price is in dollars and so is every refund of it.
+      # One formatter for the whole app: a refund notice and a seat quote must
+      # never write the same number two different ways.
       def formatted_amount
-        dollars = format('%.2f', amount.to_i / 100.0)
-
-        currency.to_s.casecmp('usd').zero? ? "$#{dollars}" : "#{dollars} #{currency.to_s.upcase}"
+        BillingLifecycle.format_amount(amount, currency)
       end
     end
 

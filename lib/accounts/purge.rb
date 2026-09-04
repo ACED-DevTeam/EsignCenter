@@ -192,7 +192,8 @@ module Accounts
       refuse!(account, 'it is not a customer account (internal and operator accounts are the platform itself)') \
         unless account.customer?
 
-      refuse!(account, 'it still holds a live paid subscription — cancel it at Stripe first') if paid_access?(account)
+      refuse!(account, 'it still holds a live paid subscription — cancel it at Stripe first') \
+        if Plans.paid_subscription?(account)
 
       true
     end
@@ -226,16 +227,12 @@ module Accounts
                         "(#{links.size} link(s) found)")
       end
 
-      if paid_access?(child)
+      if Plans.paid_subscription?(child)
         refuse!(parent, "its testing child #{child.id} still holds a live paid subscription — " \
                         'cancel it at Stripe first')
       end
 
       true
-    end
-
-    def paid_access?(account)
-      Plans::PAID_ACCESS_STATES.include?(account.account_subscription&.access_state)
     end
 
     def refuse!(account, why)

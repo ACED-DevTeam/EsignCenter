@@ -51,8 +51,15 @@ module Accounts
   def seat_occupancy(account)
     ids = seat_account_ids(account)
 
-    User.where(account_id: ids).where.not(role: :integration).active.full_access.count +
-      AccountInvite.pending.where(account_id: ids).count
+    seat_holders(ids).count + AccountInvite.pending.where(account_id: ids).count
+  end
+
+  # The people who take a seat, as a scope: one definition of "seat-holding
+  # member" for every question that asks it (occupancy, who a downgrade keeps,
+  # who a downgrade parks). Takes account ids so a caller that has already
+  # resolved the family does not resolve it twice.
+  def seat_holders(account_ids)
+    User.where(account_id: account_ids).where.not(role: :integration).active.full_access
   end
 
   # The old name, kept because half the app (and the quota engine) asks the
