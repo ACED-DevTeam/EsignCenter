@@ -330,7 +330,11 @@ RSpec.describe 'Stripe billing', type: :request do # rubocop:disable RSpec/Multi
     expect(response.parsed_body.dig('result', 'tools')).to be_present
   end
 
-  def expect_free_plan(for_account = account, as_user: user)
+  # `token_status` is 403 (the plan does not include the API) everywhere
+  # except on an account Session 7 also SUSPENDED: a suspended account's
+  # tokens are refused by the state guard first, which answers 401 and never
+  # says why (lib/account_states.rb).
+  def expect_free_plan(for_account = account, as_user: user, token_status: :forbidden)
     branding_asked_for!(for_account.reload)
 
     expect(Plans.key_for(for_account)).to eq(Plans::FREE)
@@ -339,11 +343,11 @@ RSpec.describe 'Stripe billing', type: :request do # rubocop:disable RSpec/Multi
 
     get '/api/templates', headers: { 'x-auth-token': as_user.access_token.token }
 
-    expect(response).to have_http_status(:forbidden)
+    expect(response).to have_http_status(token_status)
 
     post_mcp_tools_list(for_account, as_user)
 
-    expect(response).to have_http_status(:forbidden)
+    expect(response).to have_http_status(token_status)
   end
 
   shared_examples 'an account with paid access' do
@@ -2351,9 +2355,17 @@ RSpec.describe 'Stripe billing', type: :request do # rubocop:disable RSpec/Multi
       expect(Plans.key_for(account)).to eq(Plans::FREE)
       expect(Accounts.branding_removed?(account)).to be(false)
 
+      # Changed by Session 7 (D43/D57): Stripe giving up on the card also
+      # SUSPENDS the account, with no grace left to give — so the token is
+      # refused by the account-state guard (401, and it never says why)
+      # before the entitlement guard could answer 403.
+      expect(account.reload.suspended_at).to be_present
+      expect(account.suspension_reason).to eq('billing')
+
       get '/api/templates', headers: api_headers
 
-      expect(response).to have_http_status(:forbidden)
+      expect(response).to have_http_status(:unauthorized)
+      expect(response.parsed_body).to eq('error' => 'Account is not active')
     end
   end
 
@@ -2405,8 +2417,12 @@ RSpec.describe 'Stripe billing', type: :request do # rubocop:disable RSpec/Multi
       described_class.apply!(row, fixture_json('subscription-active').merge('status' => 'paused'))
 
       expect(row.reload.access_state).to eq('suspended')
+      # Changed by Session 7 (D43/D57): a paused subscription suspends the
+      # account too, so its tokens meet the state guard's 401 rather than the
+      # entitlement guard's 403.
+      expect(account.reload.suspended_at).to be_present
 
-      expect_free_plan
+      expect_free_plan(token_status: :unauthorized)
     end
 
     it 'never grants paid access on a status it does not recognise' do

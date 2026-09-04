@@ -2,6 +2,12 @@
     when the next thing happens to it, what it costs, and the one door to
     Stripe that can change any of it. %>
 <% ends_on = @subscription&.current_period_end %>
+<%# Review-6 S3: a subscription set to cancel at period end still ENDS on that
+    date even when its state is the payment problem rather than `canceling`
+    (Stripe reports a past_due subscription with the flag on, and the state
+    card has to say the more useful of the two). Driven off the flag itself,
+    never off access_state. %>
+<% cancels_on = @subscription&.cancel_at_period_end && ends_on %>
 <div class="card bg-base-100 border border-base-300" data-billing-card="<%= @view_state %>">
   <div class="card-body p-5 md:p-6 gap-4">
     <div class="flex items-start gap-4">
@@ -15,13 +21,13 @@
           <% when 'trialing' %>
             <%= @subscription&.trial_end ? t('billing_trial_ends_on', date: billing_date(@subscription.trial_end)) : t('billing_trial_running') %>
           <% when 'canceling' %>
-            <%= ends_on ? t('billing_cancels_on', date: billing_date(ends_on)) : t('billing_cancels_at_period_end') %>
+            <%= cancels_on ? t('billing_cancels_on', date: billing_date(cancels_on)) : t('billing_cancels_at_period_end') %>
           <% when 'incomplete' %>
             <%= t('billing_incomplete_headline') %>
           <% when 'past_due' %>
-            <%= t('billing_past_due_headline') %>
+            <%= cancels_on ? t('billing_cancels_on', date: billing_date(cancels_on)) : t('billing_past_due_headline') %>
           <% when 'suspended' %>
-            <%= t('billing_suspended_headline') %>
+            <%= cancels_on ? t('billing_cancels_on', date: billing_date(cancels_on)) : t('billing_suspended_headline') %>
           <% else %>
             <%= ends_on ? t('billing_renews_on', date: billing_date(ends_on)) : t('billing_renews_monthly') %>
           <% end %>

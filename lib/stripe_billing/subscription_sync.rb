@@ -59,6 +59,13 @@ module StripeBilling
       account_subscription.assign_attributes(attributes_for(account_subscription, stripe_subscription))
       account_subscription.save!
 
+      # Everything that happens TO the account because of what Stripe just
+      # said — dunning mail, suspension at the end of the grace period,
+      # lifting one when the card goes through — hangs off this one call, so
+      # the webhook, the Checkout return and the nightly sweep all react
+      # identically (BillingLifecycle). It never raises.
+      BillingLifecycle.after_apply!(account_subscription)
+
       account_subscription
     end
 
@@ -118,7 +125,13 @@ module StripeBilling
     # than from the kind of event that triggered the refresh: a stale
     # `invoice.paid` delivered after a newer failure must not stop a clock
     # that is still running, and a recovered account must not keep one.
+    # Review-6 C7: `suspended` (Stripe `unpaid` / `paused`) is what a
+    # past_due subscription becomes when the retries run out, so it KEEPS the
+    # clock rather than resetting it — otherwise a past_due → unpaid →
+    # past_due wobble would hand the customer a fresh 14 days every time.
+    # Only a healthy state (or one that is over) clears it.
     def past_due_since_for(account_subscription, access_state)
+      return account_subscription.past_due_since if access_state == 'suspended'
       return nil unless access_state == 'past_due'
 
       account_subscription.past_due_since || Time.current

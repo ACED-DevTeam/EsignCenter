@@ -74,7 +74,7 @@ class SubmitFormController < ApplicationController
       return render json: { error: I18n.t('form_has_been_completed_already') }, status: :unprocessable_content
     end
 
-    if @submitter.submission.template&.archived_at? || @submitter.submission.archived_at?
+    if locked_for_writing?
       return render json: { error: I18n.t('form_has_been_archived') }, status: :unprocessable_content
     end
 
@@ -121,6 +121,17 @@ class SubmitFormController < ApplicationController
   end
 
   private
+
+  # Archived means the account (or the document, or its template) is GONE, so
+  # its signer writes stop too — the locked page `show` already renders says
+  # exactly that, and until Session 7 the write behind it did not check
+  # (Session 2 handoff). SUSPENDED is deliberately not here: a suspended
+  # account cannot start anything new, but a signer already part-way through
+  # a document always gets to finish it.
+  def locked_for_writing?
+    @submitter.submission.template&.archived_at? || @submitter.submission.archived_at? ||
+      @submitter.account.archived_at?
+  end
 
   def maybe_require_link_2fa
     return if Submitters::AuthorizedForForm.pass_link_2fa?(@submitter, current_user, request)

@@ -12,10 +12,36 @@ class Ability
     return if user.blank?
 
     role_abilities(user)
+    read_only_abilities(user) if AccountStates.read_only?(user.account)
     plan_abilities(user)
   end
 
   private
+
+  # A suspended account is frozen for writes and nothing else (Session 7): a
+  # customer whose card kept failing keeps every door that lets them read,
+  # download, export and pay, and loses every door that creates or changes
+  # something. One layer, declared AFTER the role grants so it takes away
+  # what a role gave, and BEFORE the plan flags so those still decide which
+  # features are visible.
+  #
+  # Deliberately NOT listed: Account (the billing page authorizes
+  # `:manage, current_account`, and taking that away would lock the admin out
+  # of the one page that can fix this) and the personal UserConfig rows.
+  # `:read` is never touched anywhere, and the download/export controllers
+  # authorize a read.
+  def read_only_abilities(user)
+    cannot %i[create update destroy], [Template, TemplateFolder, TemplateSharing, Submission, Submitter,
+                                       User, EncryptedConfig, AccountConfig, WebhookUrl, AccessToken, McpToken]
+
+    # The MCP door needs `:manage, :mcp` on top of `:use, :mcp`; taking the
+    # first away closes it without touching the plan's feature flags.
+    cannot :manage, :mcp
+
+    # Their own profile stays theirs: changing a password or a name is not
+    # something a failed payment should stop.
+    can :manage, User, id: user.id
+  end
 
   # Available to every signed-in user regardless of role.
   def personal_abilities(user)

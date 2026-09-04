@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_03_020100) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_03_030000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gin"
   enable_extension "pg_catalog.plpgsql"
@@ -129,10 +129,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_03_020100) do
     t.string "name", null: false
     t.string "sending_pause_reason"
     t.datetime "sending_paused_at"
+    t.datetime "suspended_at"
+    t.string "suspension_reason"
     t.string "timezone", null: false
     t.datetime "updated_at", null: false
     t.string "uuid", null: false
     t.index ["account_kind"], name: "index_accounts_on_account_kind"
+    t.index ["suspended_at"], name: "index_accounts_on_suspended_at", where: "(suspended_at IS NOT NULL)"
     t.index ["uuid"], name: "index_accounts_on_uuid", unique: true
   end
 

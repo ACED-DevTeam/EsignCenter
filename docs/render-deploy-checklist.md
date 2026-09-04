@@ -32,10 +32,22 @@ Whether to move to managed Redis before launch is decided at launch-gate 3
 from the analysis in `docs/operations.md` section 5.
 
 **Launch gate on staging:** confirm `/verify` is rate-limited per visitor
-behind Render's proxy. Send two POSTs from two different networks and inspect
-Redis; they must create distinct `rate_limit:verify-minute-*` keys. The app
-uses `request.remote_ip`, so this proves Render's forwarded headers do not put
-all visitors into one shared bucket.
+behind Cloudflare and Render. On the first network, measure the public IP with
+`curl -s https://api.ipify.org`, POST to `/verify`, and inspect Redis. The
+`rate_limit:verify-minute-<ip>` key must contain that measured IP. Repeat from
+a second network; it must create a second key containing that network's own
+measured public IP.
+
+Then try spoofed headers. POST with `-H 'X-Forwarded-For: 9.9.9.9'`, then with
+`-H 'Forwarded: for=9.9.9.9'`, and again with
+`-H 'Forwarded: for=8.8.8.8'`. No `rate_limit:verify-minute-9.9.9.9` or
+`rate_limit:verify-minute-8.8.8.8` key may ever appear. A POST with
+`-H 'Client-Ip: 9.9.9.9'` must return 200 or 429, never 500. Finally, send 11
+POSTs inside one minute from the first network: the first ten must return 200
+and the eleventh 429, while a POST from the second network still returns 200.
+
+The limiter fails open when Redis is unavailable. If a POST returns 200 but
+no rate-limit keys appear at all, Redis is down; that is not a passing test.
 
 ## 2. Environment variables on the web service
 

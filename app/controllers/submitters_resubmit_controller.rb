@@ -55,7 +55,12 @@ class SubmittersResubmitController < ApplicationController
   # account's velocity signals recorded there too.
   def save_under_creation_lock!(submission)
     Quotas.with_creation_lock(@submitter.account) do
-      Quotas.assert_can_create_submissions!(@submitter.account)
+      # D74: this IS the correction of @submitter.submission, so if that
+      # family has already been counted the copy cannot add a completion and
+      # the monthly completions cap is not what should stop it. Every other
+      # rule — the sending pause, a suspension, the sends and in-flight caps
+      # — still applies.
+      Quotas.assert_can_create_submissions!(@submitter.account, correction_of: @submitter.submission)
 
       submission.save!
 
