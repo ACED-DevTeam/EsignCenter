@@ -46,7 +46,7 @@ class SubmitFormDocumentController < ApplicationController
     RateLimit.call("esign-consent-document-#{@submitter.slug}", limit: REQUESTS_PER_SLUG_PER_HOUR, ttl: 1.hour)
 
     submission = @submitter.submission
-    attachments = Submissions::OriginalDocumentPdf.attachments_for(submission)
+    attachments = Submissions::OriginalDocumentPdf.attachments_for(submission, submitter: @submitter)
 
     return head :not_found if attachments.blank?
 

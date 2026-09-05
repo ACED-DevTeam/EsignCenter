@@ -21,10 +21,22 @@ module Submissions
     # them: the submission's schema with its conditions applied, so a document
     # excluded by a condition is missing from the PDF too, and a reordered
     # schema reorders the pages.
-    def attachments_for(submission)
+    #
+    # `submitter` is the person the link is being answered for, and it has to
+    # be passed whenever there is one. The signing page filters the schema
+    # with `include_submitter_uuid` (show.html.erb), which reads a condition
+    # on that signer's OWN field as satisfied — it is the field they are about
+    # to fill in, so the document is on screen in front of them. Evaluating
+    # the same condition without it answers a narrower set than the page
+    # shows, and the door 404s on a document the signer is looking at. The
+    # merged submitter values the page passes are what
+    # `filtered_conditions_schema` computes for itself when none are given
+    # (submissions.rb), so only the uuid has to travel.
+    def attachments_for(submission, submitter: nil)
       index = submission.schema_documents.preload(:blob).index_by { |a| a.metadata['original_uuid'] || a.uuid }
 
-      Submissions.filtered_conditions_schema(submission).filter_map { |item| index[item['attachment_uuid']] }
+      Submissions.filtered_conditions_schema(submission, include_submitter_uuid: submitter&.uuid)
+                 .filter_map { |item| index[item['attachment_uuid']] }
     end
 
     # The same, for a template being previewed — no submission exists yet, so
@@ -40,7 +52,7 @@ module Submissions
     # the signing page asks so the link can say "the first document" when the
     # cap is going to truncate.
     def form_attachments(submitter, dry_run: false)
-      return attachments_for(submitter.submission) unless dry_run
+      return attachments_for(submitter.submission, submitter:) unless dry_run
 
       template = submitter.submission.template
 

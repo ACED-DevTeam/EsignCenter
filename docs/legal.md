@@ -40,12 +40,21 @@ translated into fourteen languages; these two documents are not.
 
 ## 2. The version rule
 
-Each document carries a version (a date string) and an effective date, in
-`LegalDocuments::DOCUMENTS`.
+Each document carries a version (a date string), an effective date, **the
+digest of the text that version publishes**, and the digest of every
+superseded text still in the archive — all four in `LegalDocuments::DOCUMENTS`.
 
 **Any wording change bumps both.** Not just a substantive one: the digest is
 taken over the rendered bytes, so a corrected typo is a different document as
 far as the record is concerned.
+
+**And you cannot forget.** `spec/golden/legal_spec.rb` compares each live
+render against the `sha256` written down beside its version, so the moment
+anybody edits a word the suite goes red and stays red until the whole
+procedure below has been carried out. The version is a date, so a **second
+bump on the same day takes the next date** (a document bumped twice on
+2026-09-05 becomes 2026-09-06, then 2026-09-07) — two different texts can
+never share a version.
 
 ### How to bump one
 
@@ -58,13 +67,30 @@ far as the record is concerned.
      'File.write(LegalDocuments::ARCHIVE_DIR.join("terms-#{LegalDocuments.version(:terms)}.html"), LegalDocuments.html(:terms))'
    ```
 
-   (Create `config/legal/archive/` if it does not exist yet — it is empty
-   until the first bump.)
+   Then print that file's digest and record it in the document's `archived`
+   hash in `lib/legal_documents.rb`, keyed by the version you just archived:
+
+   ```
+   shasum -a 256 config/legal/archive/privacy-2026-09-05.html
+   ```
+
+   Nothing is served out of the archive that does not still match the digest
+   recorded here: `LegalDocuments.html` raises `ArchiveMismatchError` rather
+   than hand back a text somebody may have edited since. An archive nobody
+   checks is not a record, it is a file.
 2. **Edit the template** (`config/legal/terms.html.erb` or
    `privacy.html.erb`).
 3. **Bump `version` and `effective_on`** for that document in
-   `lib/legal_documents.rb`. The version is a date in `YYYY-MM-DD` form;
-   anything else is refused when the archive is read back.
+   `lib/legal_documents.rb`, and **record the new `sha256`** — the digest of
+   the text you have just written. Print it with:
+
+   ```
+   docker compose -f docker-compose.dev.yml exec -T app \
+     bundle exec rails runner 'puts LegalDocuments.sha256(:privacy)'
+   ```
+
+   The version is a date in `YYYY-MM-DD` form; anything else is refused when
+   the archive is read back.
 4. **Email the administrators of every account — by hand, before the
    effective date.** This is a manual step. Nothing in the application sends
    it, there is no job and no scheduler entry; if you skip it, the Terms
@@ -72,16 +98,30 @@ far as the record is concerned.
    did not. Send it from the platform address, say what changed in one
    paragraph, link `/terms` and `/privacy`, and give the effective date.
    Keep a copy of what you sent with the archived text.
-5. Run `spec/golden/legal_spec.rb`. It proves the archived text reads back and
-   that its digest still matches what old acceptance rows hold.
+5. Run `spec/golden/legal_spec.rb`. It proves the live text hashes to the
+   `sha256` you recorded, that every file in the real
+   `config/legal/archive/` reads back at the digest recorded beside it, and
+   therefore that an old acceptance row can still be resolved to the exact
+   words behind it. If you skipped a step above, this is where it turns red.
 6. Restart the application. The templates are read from disk and memoised per
    version (`LegalDocuments.render`), so a running process keeps serving the
    old text until it is restarted — which is also why the dev server needs a
    restart after any wording edit.
 
-`LegalDocuments.html(:terms, version: '2026-09-05')` answers with the archived
-text for a superseded version, the live text for the current one, and `nil`
-for a version that was never published.
+`LegalDocuments.html(:privacy, version: '2026-09-05')` answers with the
+archived text for a superseded version, the live text for the current one,
+`nil` for a version that was never published, and raises
+`LegalDocuments::ArchiveMismatchError` for an archived file that no longer
+matches its recorded digest.
+
+The Privacy Policy has been through this once already: `2026-09-05` is
+archived, `2026-09-06` is live. The change corrected two statements the code
+did not support — what is kept when an account holder signs in (the IP
+address of the current and previous sign-in, and nothing about the browser;
+no separate record at all for a password change or a two-factor enrollment),
+and what an audit trail says about a signer's email (the open and click
+events stay off-plan, but the trail records on every plan that the address
+was verified, because a click on the emailed link is what verifies it).
 
 ## 3. What is recorded when somebody agrees
 
@@ -172,8 +212,9 @@ Before launch, a lawyer needs to settle at least these:
    brackets either text is allowed to contain — `spec/golden/legal_spec.rb`
    fails on a third — so neither can be shipped by accident. The postal
    address is not decoration: US commercial email law wants a physical mailing
-   address on the notices we send. Fill both in, bump the version, archive the
-   old text.
+   address on the notices we send. Filling them in is a wording change like
+   any other: archive the old text and record its digest, edit, bump the
+   version and the effective date, record the new digest.
 2. **Governing law and venue.** Currently the State of Missouri, USA
    (`LegalDocuments::GOVERNING_LAW_STATE`, Terms §20). Confirm the state, and
    decide whether an arbitration clause and a class-action waiver belong here.
