@@ -36,18 +36,46 @@ module Submissions
       template.schema.filter_map { |item| index[item['attachment_uuid']] }
     end
 
-    def call(attachments)
+    # What the "View this document as a PDF" link will serve for this form —
+    # the signing page asks so the link can say "the first document" when the
+    # cap is going to truncate.
+    def form_attachments(submitter, dry_run: false)
+      return attachments_for(submitter.submission) unless dry_run
+
+      template = submitter.submission.template
+
+      template ? template_attachments(template) : []
+    end
+
+    # The one document a caller can serve straight from storage, without
+    # reading it into the app at all: a single PDF, either because that is the
+    # whole form or because the merge cap left only the first one. nil when
+    # the pages have to be built (images, or several documents to merge).
+    def single_pdf(attachments)
+      attachments = servable(attachments)
+
+      attachments.first if attachments.one? && !attachments.first.image?
+    end
+
+    # Did the cap leave documents out of what the link will serve?
+    def truncated?(attachments)
       attachments = Array.wrap(attachments)
 
-      # The common case by far, and the cheap one: hand back the stored bytes
-      # without opening a PDF library at all.
-      return attachments.first.download if attachments.one? && !attachments.first.image?
+      attachments.size > 1 && over_cap?(attachments)
+    end
 
-      attachments = attachments.first(1) if attachments.sum(&:byte_size) > MERGE_SIZE_LIMIT
+    def call(attachments)
+      merge(servable(attachments))
+    end
 
-      return attachments.first.download if attachments.one? && !attachments.first.image?
+    def servable(attachments)
+      attachments = Array.wrap(attachments)
 
-      merge(attachments)
+      over_cap?(attachments) ? attachments.first(1) : attachments
+    end
+
+    def over_cap?(attachments)
+      attachments.sum(&:byte_size) > MERGE_SIZE_LIMIT
     end
 
     def merge(attachments)

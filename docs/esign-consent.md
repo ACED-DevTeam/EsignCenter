@@ -38,12 +38,20 @@ time they open a document they have not yet agreed on:
   terms — archived account, archived template or submission, expired, declined,
   or an enforced signing order that has not reached this signer yet. Page and
   door read one predicate (`Submitters::FormOpen`) so they cannot drift apart.
-  It serves only what the page shows: the submission's schema with its
-  conditions applied, in schema order, so a document a condition excludes is
-  missing from the PDF too. One slug may ask 20 times an hour; beyond that it
-  answers 429 with a readable line. Documents totalling more than 40 MB are not
-  merged — the first one is served, which is the page the form opens on and
-  enough to answer "can this device show a PDF?". In the builder's form preview
+  A signer who has already completed is refused too, the way the page
+  redirects one. It serves only what the page shows: the submission's schema
+  with its conditions applied, in schema order, so a document a condition
+  excludes is missing from the PDF too. A form with a single PDF is handed
+  over as a short-lived signed storage link, so the file never passes through
+  the app; several documents are merged on the way out. One slug may ask 20
+  times an hour; beyond that it answers 429 with a readable line. (Like every
+  rate limit here, that one fails **open** if Redis is unreachable — the limit
+  stops applying until Redis is back and the failure is reported; see
+  `RateLimit`.) Documents totalling more than 40 MB are not merged — the first
+  one is served, which is the page the form opens on and enough to answer "can
+  this device show a PDF?" — and when that happens the link on the form reads
+  "View the first document as a PDF" instead, so the signer is not promised
+  something they will not get. In the builder's form preview
   the same link answers off the template
   (`GET /templates/:id/form_document.pdf`), because the preview's signer
   record is never saved.
@@ -106,15 +114,27 @@ delegation, one more for the person the form was handed to — stamped with:
   product name,
 - `sender_email` — the address the disclosure told the signer to write to
   (withdrawing consent, asking for paper). It is where a reply to that
-  signer's invitation email lands. One resolver answers for both
-  (`Submitters::ReplyTo`, which `SubmitterMailer` reads for the Reply-To
-  header), so the address the disclosure gives can never be a mailbox the
-  invitation did not use: the reply-to set on the signer, then the account's
-  custom invitation-email reply-to, then the person who sent the document
-  (skipped when that person is the signer, because replying to yourself
-  reaches nobody), then the account's first active administrator — skipping
-  any no-reply address at every step, and platform support only if an account
-  has nothing reachable at all. Both fields are read off the server's own records, never sent by
+  signer's invitation email lands. One module answers for both —
+  `Submitters::ReplyTo`, whose `header` half `SubmitterMailer` reads for the
+  Reply-To header and whose `disclosure` half this field reads — so the
+  address the disclosure gives can never be a mailbox the invitation did not
+  use: the reply-to set on the signer, then the account's custom
+  invitation-email reply-to, then the person who sent the document (skipped
+  when that person is the signer, because replying to yourself reaches
+  nobody), then the account's first active administrator, and platform
+  support only if an account has nothing reachable at all.
+
+  **The one case where the two halves differ.** A mail header is published to
+  whoever receives it, so it stays conservative: a configured no-reply address
+  or a self-signed document means **no Reply-To header at all**, and an
+  account's own administrator mailbox is never put on an outgoing mail nobody
+  asked to publish. The disclosure cannot stop there — a signer has to be able
+  to withdraw consent and ask for paper — so in exactly those cases it keeps
+  going and names the administrator. Wherever a reachable address is
+  configured, which is the normal case, the two agree exactly; the header
+  keeps the display name, the disclosure prints the bare address.
+
+  Both fields are read off the server's own records, never sent by
   the browser. The form does send back one thing about them: a SHA-256 of the
   name and address **as it rendered them** (`esign_consent_sender_digest`).
   The server recomputes that fingerprint and refuses the consent as stale if
@@ -163,12 +183,19 @@ delegation.
 - **Audit trail PDF** — each signer's block shows
   "Consented to electronic signatures (v2, fr): <date and time>" — the
   version and the language the signer read the disclosure in — followed by
-  "Document opened as a PDF" when the page reported that the signer used the
-  PDF link (nothing when it did not, the same way the verification lines above
-  it print only what happened). The event log lists "**Consented to electronic
+  "The signer's browser reported opening the PDF", or "The signer did not open
+  the PDF before agreeing". The event log lists "**Consented to electronic
   signatures (v2)** by <signer>". The audit trail itself is written in the
   language of the last signer's `metadata.lang` when the sender set one,
   otherwise in the account's language.
+
+  A signer may have read the disclosure in a different language from the one
+  the trail is written in, so the appendix below is set in the language that
+  signer actually saw. Right-to-left is decided by that language, never by
+  "does this string contain a Hebrew or Arabic character": an English
+  disclosure that names an Arabic company is still an English sentence, so it
+  is drawn as one, with only the interpolated names reordered — the same way
+  the signer blocks have always handled a name.
 - **The disclosure itself, at the end of the audit trail.** After the event
   log the trail carries one block per consent: "Electronic Records and
   Signatures Disclosure — Version v2 (fr), shown to <signer>", then the whole

@@ -21,6 +21,9 @@ module Submissions
     TESTING_FOOTER = GenerateResultAttachments::TESTING_FOOTER
 
     RTL_REGEXP = TextUtils::RTL_REGEXP
+    # Languages written right to left. Direction is a property of the LANGUAGE
+    # a text is written in, not of the characters that happen to appear in it.
+    RTL_LOCALES = %w[he ar].freeze
     MAX_IMAGE_HEIGHT = 100
 
     CHECKSUM_LIMIT = 30
@@ -313,7 +316,10 @@ module Submissions
                 },
                 # An attestation, not a fact: the wording says whose claim it
                 # is. Both answers print, because "did not open it" is
-                # evidence too — silence would read as "not recorded".
+                # evidence too — silence would read as "not recorded". Drawn in
+                # logical order like every other label in this block ("Email
+                # verification", "Session ID"); the appendix at the end of the
+                # trail is the part that is bidi-reordered.
                 consent_event && {
                   text: "#{I18n.t(consent_pdf_line_key(consent_event))}\n"
                 },
@@ -561,8 +567,9 @@ module Submissions
 
       composer.draw_box(divider)
 
-      composer.text(TextUtils.maybe_rtl_reverse(I18n.t('consented_to_electronic_signatures')),
-                    font_size: 12, padding: [10, 0, 15, 0])
+      # The section title is written in the trail's own language.
+      add_consent_text(composer, I18n.t('consented_to_electronic_signatures'),
+                       rtl: rtl_locale?(I18n.locale), font_size: 12, padding: [10, 0, 15, 0])
 
       consent_events.each do |event|
         text = EsignConsent.disclosure_text(version: event.data['version'], locale: event.data['locale'])
@@ -574,8 +581,13 @@ module Submissions
     end
 
     def add_consent_disclosure(composer, submission, event, text, versions_index)
-      add_consent_text(composer, consent_appendix_heading(submission, event, versions_index),
-                       font: [FONT_NAME, { variant: :bold }])
+      # The heading is written in the trail's language; the disclosure below it
+      # is in the language THAT SIGNER read, which can be a different one.
+      heading_rtl = rtl_locale?(I18n.locale)
+      body_rtl = rtl_locale?(event.data['locale'])
+
+      add_consent_text(composer, consent_appendix_heading(submission, event, versions_index, rtl: heading_rtl),
+                       rtl: heading_rtl, font: [FONT_NAME, { variant: :bold }])
 
       sender_name = event.data['sender_name']
       sender_email = event.data['sender_email']
@@ -592,28 +604,46 @@ module Submissions
         sender_email = sender_email.presence ||
                        (submitter && EsignConsent.sender_email(submitter)) || Docuseal::SUPPORT_EMAIL
 
-        add_consent_text(composer, I18n.t('esign_consent_sender_not_recorded'))
+        add_consent_text(composer, I18n.t('esign_consent_sender_not_recorded'), rtl: heading_rtl)
       end
 
-      EsignConsent.disclosure_paragraphs(text, sender_name:, sender_email:).each do |paragraph|
-        add_consent_text(composer, paragraph, line_spacing: 1.3)
-      end
+      paragraphs = EsignConsent.disclosure_paragraphs(text, sender_name: bidi_fragment(sender_name, rtl: body_rtl),
+                                                            sender_email:)
+
+      paragraphs.each { |paragraph| add_consent_text(composer, paragraph, rtl: body_rtl, line_spacing: 1.3) }
     end
 
-    # Every translated string the trail draws goes through maybe_rtl_reverse
-    # (HexaPDF lays glyphs out in logical order and does no bidi of its own),
-    # and RTL text is set flush right — the same handling the signer blocks and
-    # field values above already get.
-    def add_consent_text(composer, text, **style)
-      composer.text(TextUtils.maybe_rtl_reverse(text), padding: [0, 0, 6, 0],
-                                                       text_align: text.match?(RTL_REGEXP) ? :right : :left,
-                                                       **style)
+    # HexaPDF draws glyphs in logical order and does no bidi of its own, so
+    # right-to-left text has to be reordered on the way in. What decides that
+    # is the language the text is WRITTEN in, never "does this string contain a
+    # right-to-left character": an English disclosure that names an Arabic
+    # company is still an English sentence, and mirroring it would make the
+    # evidence unreadable.
+    #
+    # So: a Hebrew or Arabic text is reordered whole (TwitterCldr's bidi
+    # handles the Latin runs inside it) and set flush right; an English text is
+    # left exactly as it is, and only the names interpolated into it are
+    # reordered — which is what the signer blocks and the field values above
+    # have always done with a name.
+    def add_consent_text(composer, text, rtl:, **style)
+      composer.text(rtl ? TextUtils.maybe_rtl_reverse(text) : text,
+                    padding: [0, 0, 6, 0], text_align: rtl ? :right : :left, **style)
+    end
+
+    # A name dropped into a line of the opposite direction: reordered on its
+    # own when the line around it will not be reordered for it.
+    def bidi_fragment(value, rtl:)
+      rtl ? value : TextUtils.maybe_rtl_reverse(value.to_s)
+    end
+
+    def rtl_locale?(locale)
+      locale.to_s.split('-').first.in?(RTL_LOCALES)
     end
 
     # An orphaned consent event — its submitter row gone from the submission —
     # must not take the whole evidence job down with it: the disclosure it
     # points at is still worth printing, just without a name on it.
-    def consent_appendix_heading(submission, event, versions_index)
+    def consent_appendix_heading(submission, event, versions_index, rtl:)
       submitter = submission.submitters.find { |e| e.id == event.submitter_id } || event.submitter
       versions = (submitter && versions_index[submitter.id]) || []
       active_version = versions.find { |v| v.created_at > event.event_timestamp }
@@ -626,7 +656,7 @@ module Submissions
 
       return heading if submitter_name.blank?
 
-      "#{heading}, #{I18n.t('esign_consent_shown_to', submitter_name:)}"
+      "#{heading}, #{I18n.t('esign_consent_shown_to', submitter_name: bidi_fragment(submitter_name, rtl:))}"
     end
 
     def sign_reason

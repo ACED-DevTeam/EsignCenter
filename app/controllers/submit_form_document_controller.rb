@@ -28,6 +28,10 @@ class SubmitFormDocumentController < ApplicationController
   # hour is generous for a person and cheap to refuse for a script.
   REQUESTS_PER_SLUG_PER_HOUR = 20
 
+  # How long the signed storage link a single-PDF form redirects to stays
+  # good: long enough to open the tab, short enough not to outlive the visit.
+  LINK_TTL = 5.minutes
+
   rescue_from RateLimit::LimitApproached do
     render plain: I18n.t('esign_consent_document_too_many_requests'), status: :too_many_requests
   end
@@ -45,6 +49,15 @@ class SubmitFormDocumentController < ApplicationController
     attachments = Submissions::OriginalDocumentPdf.attachments_for(submission)
 
     return head :not_found if attachments.blank?
+
+    # One PDF and nothing to merge — much the commonest case — is handed
+    # straight off storage on a short-lived signed link, so the file never
+    # passes through this process at all.
+    if (blob = Submissions::OriginalDocumentPdf.single_pdf(attachments)&.blob)
+      return redirect_to blobs_proxy_path(signed_uuid: blob.signed_uuid(expires_at: LINK_TTL.from_now.to_i),
+                                          filename: blob.filename, disposition: 'inline'),
+                         allow_other_host: false
+    end
 
     send_data Submissions::OriginalDocumentPdf.call(attachments),
               filename: "#{submission.name || submission.template&.name || I18n.t('document')}.pdf",

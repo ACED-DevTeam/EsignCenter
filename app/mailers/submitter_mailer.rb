@@ -216,17 +216,17 @@ class SubmitterMailer < ApplicationMailer
     custom_email_copy(submitter.template&.preferences, 'documents_copy_email_reply_to')
   end
 
-  # The one resolver this mailer and the ESIGN disclosure share, so the address
-  # the disclosure tells a signer to write to about withdrawing consent or
-  # asking for paper is the address a reply to their invitation actually
-  # reaches (Submitters::ReplyTo). It answers with a bare address and carries
-  # the chain one step further than this method used to: where a self-signed
-  # document or a no-reply custom address previously left the header off
-  # altogether, the account's first active administrator now gets the reply.
+  # The header half of the resolver the ESIGN disclosure also reads
+  # (Submitters::ReplyTo). Header semantics are unchanged from before it was
+  # extracted: the configured address with its display name, no header at all
+  # for a no-reply address or a self-signed document, and never this account's
+  # own administrator mailbox published on an outgoing mail. The disclosure
+  # asks the other half, which keeps looking until it finds somewhere a signer
+  # can write to — docs/esign-consent.md §2 says where the two differ.
   def build_submitter_reply_to(submitter, email_config: nil, documents_copy_email: nil)
-    Submitters::ReplyTo.call(
+    Submitters::ReplyTo.header(
       submitter,
-      email_config: email_config || Submitters::ReplyTo::INVITATION,
+      email_config:,
       documents_copy_reply_to: documents_copy_email ? template_documents_copy_reply_to(submitter) : nil
     )
   end

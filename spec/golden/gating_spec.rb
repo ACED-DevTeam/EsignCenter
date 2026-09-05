@@ -777,16 +777,23 @@ RSpec.describe 'Feature gating', type: :request do
       expect(response.body).to include("href=\"#{Docuseal::DOCUSEAL_URL}/start\"")
     end
 
-    # The mail LAYOUT has the same two audiences the branding flag does (D78,
-    # review batch 2). A PLATFORM notice is written by us to the person who
-    # runs the account — a login invitation, a dunning letter — and keeps the
-    # wordmark and the support address whatever the flag says, because the
-    # reader has to recognise who is writing and where to reply. A SIGNER mail
-    # is the customer's own correspondence with their counterparty and loses
-    # both. The "Sent using" line is a third thing, decided only by the flag,
-    # and neither rule touches it.
-    it 'keeps the wordmark and support line on a platform notice under branding removal, and drops both ' \
-       'on signer mail' do
+    # Three signatures in the mail layout, each answering a different question
+    # (D78, review batch 2).
+    #
+    # The SUPPORT address answers "where do I write?" and rides on PLATFORM
+    # notices only — the mail we send the person who runs an account. It is off
+    # signer mail even for a free account, because a signer's question is about
+    # the document and belongs to whoever sent it; our address at the bottom of
+    # somebody else's correspondence only misdirects them.
+    #
+    # The WORDMARK answers "who runs this?", which a signer does have a reason
+    # to ask, so it stays on signer mail until the account pays for branding
+    # removal — and stays on a platform notice whatever the flag says.
+    #
+    # The "Sent using" line is the third, decided only by the flag; neither
+    # rule above touches it.
+    it 'puts the support line on platform notices only, and keeps the wordmark on signer mail ' \
+       'until branding removal' do
       create(:account_config, account: paid_account, key: AccountConfig::REMOVE_BRANDING_KEY, value: true)
 
       expect(Accounts.branding_removed?(paid_account)).to be(true)
@@ -799,21 +806,24 @@ RSpec.describe 'Feature gating', type: :request do
       # The flag still does its own job on the same mail.
       expect(notice.text).not_to include('Sent using')
 
+      # A free account's signer mail: it says who runs the platform, and it
+      # does NOT hand the signer our support address.
+      _free_submitter, free_html = invitation_html(free_account)
+      free = Nokogiri::HTML(free_html)
+
+      expect(free.at('[data-mail-wordmark]')).to be_present
+      expect(free.at('[data-mail-support]')).to be_nil
+      expect(free.text).not_to include(Docuseal::SUPPORT_EMAIL)
+      expect(free.text).to include('Sent using')
+
+      # And with branding removal on top of that, the signer mail carries none
+      # of the three.
       _submitter, signer_html = invitation_html(paid_account)
       signer = Nokogiri::HTML(signer_html)
 
       expect(signer.at('[data-mail-wordmark]')).to be_nil
       expect(signer.at('[data-mail-support]')).to be_nil
       expect(signer.text).not_to include('Sent using')
-
-      # And nothing is vacuous: an account without the flag carries all three
-      # on its signer mail.
-      _free_submitter, free_html = invitation_html(free_account)
-      free = Nokogiri::HTML(free_html)
-
-      expect(free.at('[data-mail-wordmark]')).to be_present
-      expect(free.at('[data-mail-support]')).to be_present
-      expect(free.text).to include('Sent using')
     end
 
     it 'honours the flag in every mailer and page: the verification-code email and the embedded builder page' do

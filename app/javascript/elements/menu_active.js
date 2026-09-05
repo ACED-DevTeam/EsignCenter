@@ -6,7 +6,7 @@ export default class extends HTMLElement {
       // Whatever a previous render left behind: exactly one link may claim it.
       link.removeAttribute('aria-current')
 
-      if (link.getAttribute('href').startsWith('http')) return
+      if ((link.getAttribute('href') || '').startsWith('http')) return
       if (!document.location.pathname.startsWith(link.pathname)) return
 
       link.classList.add('bg-base-300')

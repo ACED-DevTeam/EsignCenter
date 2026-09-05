@@ -27,8 +27,14 @@ module Submitters
       !locked?(submitter) && !awaiting_turn?(submitter, form_configs:)
     end
 
+    # `completed_at?` is here for the door's sake: the page redirects a signer
+    # who has already finished to their completed page, so the form is no
+    # longer open to them and neither is the document link beside its
+    # checkbox. The page reaches that state by its own redirect, before
+    # `maybe_render_locked_page` runs.
     def locked?(submitter)
-      archived?(submitter) || submitter.submission.expired? || submitter.declined_at?
+      archived?(submitter) || submitter.submission.expired? ||
+        submitter.declined_at? || submitter.completed_at?
     end
 
     # An archived template, submission or account: the document is gone as far
