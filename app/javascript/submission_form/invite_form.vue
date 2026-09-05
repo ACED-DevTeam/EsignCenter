@@ -32,6 +32,12 @@
     <input
       v-if="esignConsent"
       type="hidden"
+      name="esign_consent_locale_token"
+      :value="esignConsentLocaleToken"
+    >
+    <input
+      v-if="esignConsent && esignConsentPdfUrl"
+      type="hidden"
       name="esign_consent_pdf_opened"
       :value="esignConsentPdfOpened"
     >
@@ -149,12 +155,27 @@ export default {
       required: false,
       default: ''
     },
+    // The server's signature over that locale: it is what binds the recorded
+    // language to the page that rendered it (sent with the consent).
+    esignConsentLocaleToken: {
+      type: String,
+      required: false,
+      default: ''
+    },
     // Whether the signer opened the document as a PDF before agreeing (sent
     // with the consent; the browser's own claim, stored as such).
     esignConsentPdfOpened: {
       type: Boolean,
       required: false,
       default: false
+    },
+    // The "View this document as a PDF" link the signing page offered, if any.
+    // With no link there is no question to answer, so the claim above is not
+    // sent at all and the record says it was never taken.
+    esignConsentPdfUrl: {
+      type: String,
+      required: false,
+      default: ''
     },
     // Fingerprint of the sender name and address the disclosure showed; the
     // server refuses the consent if they have changed since (sent with it).

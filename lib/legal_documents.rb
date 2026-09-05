@@ -27,11 +27,31 @@ require 'erb'
 # template, so the same version always produces the same bytes and therefore
 # the same digest, whenever and wherever it is rendered.
 module LegalDocuments
-  # The live version of each document. Bump BOTH fields on any wording change,
-  # and archive the old rendered HTML first — see docs/legal.md.
+  # The live version of each document, the digest of the text that version
+  # publishes, and the digest of every superseded text still in the archive.
+  #
+  # `sha256` is the whole point of writing the version down: it is checked
+  # against the live render in spec/golden/legal_spec.rb, so ANY wording edit
+  # — a corrected typo included — turns the suite red until the author bumps
+  # the version, archives the old text and records the new digest here. The
+  # procedure in docs/legal.md is therefore enforced rather than remembered.
+  #
+  # `archived` is the same promise for the past: `html(doc, version:)` reads a
+  # superseded text back out of config/legal/archive and refuses it unless it
+  # still hashes to the digest recorded on the day it was published.
   DOCUMENTS = {
-    terms: { version: '2026-09-05', effective_on: Date.new(2026, 9, 5) },
-    privacy: { version: '2026-09-05', effective_on: Date.new(2026, 9, 5) }
+    terms: {
+      version: '2026-09-05',
+      effective_on: Date.new(2026, 9, 5),
+      sha256: '0373405efc70654fa0f0fed41caf7281ea925402406d091bf68a93153b78d3de',
+      archived: {}.freeze
+    }.freeze,
+    privacy: {
+      version: '2026-09-06',
+      effective_on: Date.new(2026, 9, 6),
+      sha256: 'c8ea3037ba549f7e97b495e3290253ab799ceead6648606faa374ffad7d2c42c',
+      archived: { '2026-09-05' => '1be7833ba2a2ff38d2b7a5018e45146510a304ddd59f5d3f826488086d52243e' }.freeze
+    }.freeze
   }.freeze
 
   TEMPLATE_DIR = Rails.root.join('config/legal')
@@ -54,6 +74,12 @@ module LegalDocuments
   # the rule EsignConsent applies to a signer's disclosure
   # (EsignConsent::StaleVersionError), for exactly the same reason.
   StaleVersionError = Class.new(StandardError)
+
+  # An archived text is on disk but no longer hashes to the digest recorded
+  # beside its version. Either the file was edited or the digest was, and
+  # there is no honest way to tell which — so the text is refused loudly
+  # rather than served as the words somebody agreed to.
+  ArchiveMismatchError = Class.new(StandardError)
 
   # The public site the documents talk about themselves in. Not derived from
   # the request: the words must read the same in an archived copy as they did
@@ -218,6 +244,10 @@ module LegalDocuments
     ERB.new(template, trim_mode: '-').result_with_hash(assigns(doc)).freeze
   end
 
+  # A superseded text, read back at the digest recorded beside its version.
+  # nil for a version that was never published; ArchiveMismatchError for one
+  # that was, but no longer matches — an archive nobody checks is not a record,
+  # it is a file.
   def archived(doc, version)
     version = version.to_s
 
@@ -225,7 +255,16 @@ module LegalDocuments
 
     path = ARCHIVE_DIR.join("#{doc}-#{version}.html")
 
-    path.file? ? path.read : nil
+    return nil unless path.file?
+
+    text = path.read
+    expected = DOCUMENTS.dig(doc, :archived, version)
+
+    if expected.blank? || Digest::SHA256.hexdigest(text) != expected
+      raise ArchiveMismatchError, "#{doc} #{version} does not match its recorded digest"
+    end
+
+    text
   end
 
   # Everything a template may say. All of it constant: the digest of a

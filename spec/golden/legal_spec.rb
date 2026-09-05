@@ -228,6 +228,33 @@ RSpec.describe 'Legal documents', type: :request do
       expect(prose(privacy_html)).to include('under their own terms')
     end
 
+    # A3 (independent review). The tracking EVENTS really are off-plan, but one
+    # fact drawn from them is not: `click_email_event` alone prints "Email
+    # verification: Verified" in the per-signer facts block of every audit
+    # trail, on every plan (lib/submissions/generate_audit_trail.rb). The
+    # document used to deny that in as many words.
+    it 'admits the audit trail records that the address was verified, on every plan' do
+      expect(prose(privacy_html)).to include('records that your email address was verified, on every plan')
+      expect(prose(privacy_html))
+        .not_to include("not shown to them, in the document's event list, in the audit trail")
+    end
+
+    # S9-05 (independent review). Devise trackable keeps two sign-in IP
+    # addresses and no user agent at all; nothing anywhere records a password
+    # change or a two-factor enrollment. The agreements in this spec's own
+    # `legal_acceptances` rows are the only place both are kept, so those are
+    # the only places the document may claim them.
+    it 'claims only the sign-in and agreement records the schema actually holds' do
+      expect(User.column_names).to include('current_sign_in_ip', 'last_sign_in_ip')
+      expect(User.column_names).not_to include('user_agent')
+      expect(LegalAcceptance.column_names).to include('ip', 'user_agent')
+
+      expect(prose(privacy_html)).to include('we do not record which browser you signed in with')
+      expect(prose(privacy_html)).to include('creates no record of its own')
+      expect(prose(privacy_html)).to include('the IP address and browser user agent your browser sent with it')
+      expect(prose(privacy_html)).not_to include('password change, two-factor enrollment')
+    end
+
     it 'describes the archive, permanent verification records and provider backups honestly' do
       expect(prose(privacy_html)).to include('Delete permanently')
       expect(prose(privacy_html)).to include('Verification records are kept permanently.')
@@ -255,6 +282,57 @@ RSpec.describe 'Legal documents', type: :request do
       end
     end
 
+    # A1 (independent review). Every other check in this file compares the
+    # render to itself and so cannot notice a wording edit. This one compares
+    # it to a digest written down by hand beside the version, which means any
+    # edit at all — a corrected typo included — goes red until its author has
+    # followed the bump procedure in docs/legal.md: archive the old text, bump
+    # the version and the effective date, record the new digest. It is the one
+    # guard that makes a stored (version, sha256) pair mean anything.
+    it 'renders each document at exactly the digest pinned beside its version' do
+      LegalDocuments.documents.each do |document|
+        expect(LegalDocuments.sha256(document)).to eq(LegalDocuments::DOCUMENTS[document][:sha256])
+      end
+    end
+
+    # The real config/legal/archive, not a tmpdir: every superseded text we
+    # actually ship still reads back at the digest recorded on the day it was
+    # published, so an acceptance row naming that version resolves to the
+    # exact words behind it.
+    it 'reads every text in the real archive back at its recorded digest' do
+      archived = LegalDocuments::ARCHIVE_DIR.glob('*.html')
+
+      expect(archived).not_to be_empty
+
+      archived.each do |path|
+        document, version = path.basename('.html').to_s.split('-', 2)
+        recorded = LegalDocuments::DOCUMENTS.dig(document.to_sym, :archived, version)
+
+        expect(LegalDocuments.documents.map(&:to_s)).to include(document)
+        expect(recorded).to be_present
+        expect(LegalDocuments.html(document, version:)).to eq(path.read)
+        expect(LegalDocuments.sha256(document, version:)).to eq(recorded)
+        expect(version).not_to eq(LegalDocuments.version(document))
+      end
+    end
+
+    it 'refuses an archived text that no longer hashes to its recorded digest' do
+      Dir.mktmpdir do |archive|
+        File.write(File.join(archive, 'terms-2026-01-01.html'), "#{terms_html}<!-- edited -->")
+
+        stub_const('LegalDocuments::ARCHIVE_DIR', Pathname.new(archive))
+        stub_const('LegalDocuments::DOCUMENTS',
+                   LegalDocuments::DOCUMENTS.merge(
+                     terms: LegalDocuments::DOCUMENTS[:terms].merge(
+                       archived: { '2026-01-01' => Digest::SHA256.hexdigest(terms_html) }
+                     )
+                   ))
+
+        expect { LegalDocuments.html(:terms, version: '2026-01-01') }
+          .to raise_error(LegalDocuments::ArchiveMismatchError)
+      end
+    end
+
     it 'answers nil for a document it does not publish and for a version nobody ever saw' do
       expect(LegalDocuments.html(:cookies)).to be_nil
       expect(LegalDocuments.sha256(:cookies)).to be_nil
@@ -275,7 +353,9 @@ RSpec.describe 'Legal documents', type: :request do
         stub_const('LegalDocuments::ARCHIVE_DIR', Pathname.new(archive))
         stub_const('LegalDocuments::DOCUMENTS',
                    LegalDocuments::DOCUMENTS.merge(
-                     terms: { version: '2027-03-01', effective_on: Date.new(2027, 3, 1) }
+                     terms: { version: '2027-03-01', effective_on: Date.new(2027, 3, 1),
+                              sha256: LegalDocuments::DOCUMENTS[:terms][:sha256],
+                              archived: { old_version => old_sha } }
                    ))
 
         expect(LegalDocuments.version(:terms)).to eq('2027-03-01')

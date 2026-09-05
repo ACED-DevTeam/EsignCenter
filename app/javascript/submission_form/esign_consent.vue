@@ -29,6 +29,12 @@
       >
       <input
         type="hidden"
+        name="esign_consent_locale_token"
+        :value="config.locale_token"
+      >
+      <input
+        v-if="config.pdf_url"
+        type="hidden"
         name="esign_consent_pdf_opened"
         :value="pdfOpened"
       >
@@ -93,20 +99,26 @@
 export default {
   name: 'EsignConsent',
   props: {
-    // { version, locale, label, link_text, required_message, stale_message,
-    // modal_id, pdf_url, view_pdf_text, open_pdf_first, sender_digest } —
-    // strings come from the Rails partial so config/locales/i18n.yml stays the
-    // single source. `version`, `locale` and `sender_digest` are sent back with
-    // the consent: the server refuses a consent given on an outdated disclosure
-    // or one that named a different sender, and records which language the
-    // signer read it in.
+    // { version, locale, locale_token, label, link_text, required_message,
+    // stale_message, modal_id, pdf_url, view_pdf_text, open_pdf_first,
+    // sender_digest } — strings come from the Rails partial so
+    // config/locales/i18n.yml stays the single source. `version`, `locale`,
+    // `locale_token` and `sender_digest` are sent back with the consent: the
+    // server refuses a consent given on an outdated disclosure or one that
+    // named a different sender, and records which language the signer read it
+    // in — the language named by `locale_token`, the server's own signature
+    // over what this page rendered, not by the completion request's headers.
     config: {
       type: Object,
       required: true
     },
     // The signer followed the "View this document as a PDF" link at least
     // once. It lives in the parent form so the invite request can send it too,
-    // and it travels with the consent as `esign_consent_pdf_opened`.
+    // and it travels with the consent as `esign_consent_pdf_opened` — but only
+    // when there IS a link (`config.pdf_url`). With nothing to serve no link is
+    // drawn, so there is no question to answer and nothing is posted: the
+    // record then says the answer was not taken, never that the signer
+    // declined to open a link they were never shown.
     pdfOpened: {
       type: Boolean,
       required: false,

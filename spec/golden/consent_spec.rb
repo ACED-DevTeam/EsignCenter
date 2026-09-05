@@ -28,7 +28,7 @@ module ConsentSpecSupport
                     esign_consent_disclosure_body_html esign_consent_version_label esign_consent_required
                     esign_consent_version_stale esign_consent_view_pdf esign_consent_open_pdf_first
                     esign_consent_shown_to esign_consent_sender_not_recorded esign_consent_pdf_opened
-                    esign_consent_pdf_not_opened esign_consent_the_sender
+                    esign_consent_pdf_not_opened esign_consent_pdf_not_recorded esign_consent_the_sender
                     esign_consent_document_too_many_requests esign_consent_view_first_pdf
                     consented_to_electronic_signatures close
                     submission_event_names.esign_consent_by_html].freeze
@@ -86,10 +86,12 @@ RSpec.describe 'ESIGN consent', type: :request do
   end
 
   # The consent always travels with the version the form displayed, the locale
-  # it was displayed in, and a fingerprint of the sender it named
-  # (consent_version_spec proves each of the three is binding).
+  # it was displayed in AND the server's signed token for that locale, and a
+  # fingerprint of the sender it named (consent_version_spec proves each of
+  # the four is binding).
   def consent_params(submitter = nil, locale: 'en', pdf_opened: 'true')
     { esign_consent: 'true', esign_consent_version: EsignConsent::VERSION, esign_consent_locale: locale,
+      esign_consent_locale_token: submitter && locale && EsignConsent.locale_token(submitter, locale),
       esign_consent_pdf_opened: pdf_opened,
       esign_consent_sender_digest: submitter && EsignConsent.sender_digest(submitter) }.compact
   end
@@ -473,7 +475,11 @@ RSpec.describe 'ESIGN consent', type: :request do
       submitter = emailed_submitter_for(account)
 
       # A French page on an English account: the event names the French text.
-      put "/s/#{submitter.slug}", params: completion_params(submitter).merge(consent_params(submitter, locale: 'fr'))
+      # The locale on the record is the one the SERVER signed a token for when
+      # it rendered the page (B3), so only a page that really was French can
+      # get the French digest filed (consent_version_spec proves the binding).
+      put "/s/#{submitter.slug}", headers: { 'HTTP_ACCEPT_LANGUAGE' => 'fr-FR,fr;q=0.9' },
+                                  params: completion_params(submitter).merge(consent_params(submitter, locale: 'fr'))
       expect_completed_with_consent(submitter, locale: 'fr')
 
       data = consent_events(submitter).sole.data
@@ -486,16 +492,36 @@ RSpec.describe 'ESIGN consent', type: :request do
         .to eq(I18n.t('esign_consent_disclosure_body_html', locale: :fr))
     end
 
-    it 'falls back to the request locale when the page sends none or one this product does not speak' do
-      [[nil, 'en'], %w[xx en], %w[fr-FR fr]].each do |sent, recorded|
-        submitter = emailed_submitter_for(account)
+    it 'falls back to the request locale when the page sends none, and refuses one it cannot vouch for' do
+      submitter = emailed_submitter_for(account)
 
-        put "/s/#{submitter.slug}",
-            params: completion_params(submitter).merge(consent_params(submitter, locale: sent).compact)
-        expect_completed_with_consent(submitter, locale: recorded)
+      put "/s/#{submitter.slug}",
+          params: completion_params(submitter).merge(consent_params(submitter, locale: nil).compact)
+      expect_completed_with_consent(submitter, locale: 'en')
 
-        Sidekiq::Worker.clear_all
-      end
+      Sidekiq::Worker.clear_all
+
+      # A locale this product does not speak has no disclosure and so no
+      # token: nothing vouches for it, and the consent is refused rather than
+      # quietly filed against a text the page cannot have shown.
+      submitter = emailed_submitter_for(account)
+
+      put "/s/#{submitter.slug}",
+          params: completion_params(submitter).merge(consent_params(submitter, locale: 'xx').compact)
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body).to eq('error' => 'esign_consent_version_stale')
+      expect(consent_events(submitter)).not_to exist
+      expect(submitter.reload.completed_at).to be_nil
+
+      # A regional variant names the same base locale, so a French page told
+      # `fr-FR` is agreed with, not refused, and files `fr`.
+      submitter = emailed_submitter_for(account)
+
+      put "/s/#{submitter.slug}", headers: { 'HTTP_ACCEPT_LANGUAGE' => 'fr-FR,fr;q=0.9' },
+                                  params: completion_params(submitter).merge(consent_params(submitter,
+                                                                                            locale: 'fr-FR'))
+      expect_completed_with_consent(submitter, locale: 'fr')
     end
 
     # The fallback is the browser locale the signing page rendered under
@@ -634,6 +660,72 @@ RSpec.describe 'ESIGN consent', type: :request do
       text = pdf_text(submitter.submission.reload.audit_trail.download)
 
       expect(text).to match(pdf_phrase(I18n.t('esign_consent_pdf_not_opened')))
+      expect(text).not_to match(pdf_phrase(I18n.t('esign_consent_pdf_opened')))
+      expect(text).not_to match(pdf_phrase(I18n.t('esign_consent_pdf_not_recorded')))
+    end
+
+    # A consent recorded before this product asked the question carries no
+    # `pdf_opened` key at all. Absent is not "no": the trail says the answer
+    # was never recorded rather than asserting, in a signed PDF, that the
+    # signer did not open it.
+    it 'prints the not-recorded line for a consent that never carried the answer', sidekiq: :inline do
+      platform_certificate!
+      submitter = emailed_submitter_for(account)
+
+      put "/s/#{submitter.slug}", params: completion_params(submitter, esign_consent: 'true')
+
+      expect(response).to have_http_status(:ok)
+
+      event = consent_events(submitter).sole
+      event.update!(data: event.data.except('pdf_opened'))
+
+      submission = submitter.submission.reload
+      submission.audit_trail_attachment.destroy!
+      Submissions::GenerateAuditTrail.call(submission)
+
+      text = pdf_text(submission.reload.audit_trail.download)
+
+      expect(text).to match(pdf_phrase(I18n.t('esign_consent_pdf_not_recorded')))
+      expect(text).not_to match(pdf_phrase(I18n.t('esign_consent_pdf_not_opened')))
+      expect(text).not_to match(pdf_phrase(I18n.t('esign_consent_pdf_opened')))
+    end
+
+    # N1: with nothing to serve the page draws no "View this document as a PDF"
+    # link, so it never asks the question and its form posts no answer. The
+    # record must leave the key off rather than file `false` — a signed PDF
+    # saying the signer declined to open a link they were never shown is the
+    # same invented statement the not-recorded line exists to prevent.
+    it 'records no PDF claim, and says so in the trail, when no link was offered', sidekiq: :inline do
+      platform_certificate!
+      template = create(:template, account:, author: admin_for(account), submitter_count: 2,
+                                   only_field_types: %w[text])
+      submission = create(:submission, :with_submitters, template:, created_by_user: admin_for(account))
+      first, second = submission.submitters.order(:id).to_a
+      [first, second].each { |s| s.update!(sent_at: Time.current) }
+
+      schema = submission.template_schema.presence || submission.template.schema
+      condition = { 'field_uuid' => text_field(second)['uuid'], 'action' => 'not_empty' }
+
+      submission.update!(template_schema: schema.map { |item| item.merge('conditions' => [condition]) })
+
+      get "/s/#{first.slug}"
+
+      expect(response).to have_http_status(:ok)
+      expect(esign_consent_contract['pdf_url']).to be_nil
+
+      # Exactly what that page's form sends: it carries no pdf_opened field.
+      [first, second].each do |signer|
+        put "/s/#{signer.slug}",
+            params: completion_params(signer).merge(consent_params(signer).except(:esign_consent_pdf_opened))
+
+        expect(response).to have_http_status(:ok), signer.slug
+        expect(consent_events(signer).sole.data).not_to have_key('pdf_opened')
+      end
+
+      text = pdf_text(submission.reload.audit_trail.download)
+
+      expect(text).to match(pdf_phrase(I18n.t('esign_consent_pdf_not_recorded')))
+      expect(text).not_to match(pdf_phrase(I18n.t('esign_consent_pdf_not_opened')))
       expect(text).not_to match(pdf_phrase(I18n.t('esign_consent_pdf_opened')))
     end
   end
@@ -947,26 +1039,95 @@ RSpec.describe 'ESIGN consent', type: :request do
       end
     end
 
-    # Only what the page shows: a document a condition excludes is not in the
-    # PDF, and the rest come out in schema order.
-    it 'serves the conditional schema, in schema order' do
+    # Only what the page shows: the door's documents are the SIGNING PAGE's
+    # filtered schema, uuid for uuid and in its order — asserted against the
+    # page's own expression (values merged across the submitters, the signer's
+    # uuid included), never against the door's own body.
+    it 'serves exactly the schema the signing page filters, in its order' do
       submitter = emailed_submitter_for(account)
       submission = submitter.submission
-      attachments = Submissions::OriginalDocumentPdf.attachments_for(submission)
+      values = submission.submitters.reduce({}) { |acc, sub| acc.merge(sub.values) }
+      page_schema = Submissions.filtered_conditions_schema(submission, values:,
+                                                                       include_submitter_uuid: submitter.uuid)
 
-      expect(attachments.map(&:uuid))
-        .to eq(Submissions.filtered_conditions_schema(submission).pluck('attachment_uuid'))
+      expect(page_schema.pluck('attachment_uuid')).to be_present
+      expect(Submissions::OriginalDocumentPdf.attachments_for(submission, submitter:).map(&:uuid))
+        .to eq(page_schema.pluck('attachment_uuid'))
+    end
 
+    # The condition the signer's own empty field puts on the document they are
+    # looking at. The page treats it as satisfied — the field is the one they
+    # are about to fill in — so the door must too: filtering the schema without
+    # the signer's uuid 404s the document on screen in front of them, with the
+    # consent checkbox still holding them behind the link.
+    it 'agrees with the page on a document conditional on the signer\'s own field' do
+      submitter = emailed_submitter_for(account)
+      submission = submitter.submission
       schema = submission.template_schema.presence || submission.template.schema
-      # "Only while that field has a value", on a field nobody has filled in.
       condition = { 'field_uuid' => text_field(submitter)['uuid'], 'action' => 'not_empty' }
+
       submission.update!(template_schema: schema.map { |item| item.merge('conditions' => [condition]) })
 
-      expect(Submissions::OriginalDocumentPdf.attachments_for(submission.reload)).to be_empty
+      # What the page renders: the form's own data-schema attribute.
+      get "/s/#{submitter.slug}"
+
+      rendered = JSON.parse(Nokogiri::HTML(response.body).at_css('submission-form')['data-schema'])
+
+      expect(rendered.pluck('attachment_uuid')).to eq(schema.pluck('attachment_uuid'))
+
+      # ...and what the door serves, for the same signer.
+      expect(Submissions::OriginalDocumentPdf.attachments_for(submission.reload, submitter:).map(&:uuid))
+        .to eq(rendered.pluck('attachment_uuid'))
 
       get "/s/#{submitter.slug}/document.pdf"
 
+      expect(response).to have_http_status(:found)
+    end
+
+    # The other half of the same rule: a condition on somebody ELSE's empty
+    # field really does exclude the document, from the page and from the door
+    # alike, and with nothing left to serve the door 404s.
+    it 'excludes a document the page excludes, and then has nothing to serve' do
+      template = create(:template, account:, author: admin_for(account), submitter_count: 2,
+                                   only_field_types: %w[text])
+      submission = create(:submission, :with_submitters, template:, created_by_user: admin_for(account))
+      first, second = submission.submitters.order(:id).to_a
+      first.update!(sent_at: Time.current, email: 'signer@example.com')
+
+      schema = submission.template_schema.presence || submission.template.schema
+      condition = { 'field_uuid' => text_field(second)['uuid'], 'action' => 'not_empty' }
+
+      submission.update!(template_schema: schema.map { |item| item.merge('conditions' => [condition]) })
+
+      get "/s/#{first.slug}"
+
+      expect(JSON.parse(Nokogiri::HTML(response.body).at_css('submission-form')['data-schema'])).to be_empty
+      expect(Submissions::OriginalDocumentPdf.attachments_for(submission.reload, submitter: first)).to be_empty
+
+      get "/s/#{first.slug}/document.pdf"
+
       expect(response).to have_http_status(:not_found)
+    end
+
+    # Nothing to serve means no link at all: the gate is
+    # `!!config.pdf_url && !pdfOpened`, so a signer is never held behind a
+    # "View this document as a PDF" link that can only 404.
+    it 'offers no PDF link, and no gate, when there is nothing to serve' do
+      template = create(:template, account:, author: admin_for(account), submitter_count: 2,
+                                   only_field_types: %w[text])
+      submission = create(:submission, :with_submitters, template:, created_by_user: admin_for(account))
+      first, second = submission.submitters.order(:id).to_a
+      first.update!(sent_at: Time.current, email: 'signer@example.com')
+
+      schema = submission.template_schema.presence || submission.template.schema
+      condition = { 'field_uuid' => text_field(second)['uuid'], 'action' => 'not_empty' }
+
+      submission.update!(template_schema: schema.map { |item| item.merge('conditions' => [condition]) })
+
+      get "/s/#{first.slug}"
+
+      expect(response).to have_http_status(:ok)
+      expect(esign_consent_contract['pdf_url']).to be_nil
     end
 
     it 'refuses a slug that asks too often, with a readable message' do
@@ -1039,7 +1200,7 @@ RSpec.describe 'ESIGN consent', type: :request do
       english = %w[esign_consent_checkbox_label esign_consent_disclosure_body_html
                    esign_consent_version_stale esign_consent_view_pdf
                    esign_consent_open_pdf_first esign_consent_pdf_opened
-                   esign_consent_pdf_not_opened esign_consent_the_sender
+                   esign_consent_pdf_not_opened esign_consent_pdf_not_recorded esign_consent_the_sender
                    esign_consent_document_too_many_requests esign_consent_view_first_pdf
                    esign_consent_shown_to esign_consent_sender_not_recorded].index_with do |key|
         I18n.t(key, locale: :en)
@@ -1118,7 +1279,8 @@ RSpec.describe 'ESIGN consent', type: :request do
         account.update!(locale:, name: 'Acme Ltd')
         submitter = emailed_submitter_for(account)
 
-        put "/s/#{submitter.slug}", params: completion_params(submitter).merge(consent_params(submitter, locale:))
+        put "/s/#{submitter.slug}", headers: { 'HTTP_ACCEPT_LANGUAGE' => locale },
+                                    params: completion_params(submitter).merge(consent_params(submitter, locale:))
 
         expect(response).to have_http_status(:ok), locale
 
@@ -1194,7 +1356,8 @@ RSpec.describe 'ESIGN consent', type: :request do
         account.update!(locale:)
         submitter = emailed_submitter_for(account)
 
-        put "/s/#{submitter.slug}", params: completion_params(submitter).merge(consent_params(submitter, locale:))
+        put "/s/#{submitter.slug}", headers: { 'HTTP_ACCEPT_LANGUAGE' => locale },
+                                    params: completion_params(submitter).merge(consent_params(submitter, locale:))
 
         expect(response).to have_http_status(:ok), locale
         expect(submitter.reload.completed_at).to be_present, locale

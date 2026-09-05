@@ -9,6 +9,12 @@ class SubmitFormInviteController < ApplicationController
     render json: { error: 'esign_consent_version_stale' }, status: :unprocessable_content
   end
 
+  # The invite request carries the same consent the form step does, so it has
+  # to resolve the same locale the signing page rendered the disclosure under
+  # (SubmitFormController does this for show/update) — otherwise the server's
+  # answer and the page's would differ and EsignConsent.record! would refuse a
+  # perfectly honest consent from a non-English signer.
+  around_action :with_browser_locale, only: :create
   skip_before_action :authenticate_user!
   skip_authorization_check
 
@@ -54,7 +60,8 @@ class SubmitFormInviteController < ApplicationController
   # it carries the signer's ESIGN consent the same way a form step does.
   def complete_submitter!(submitter)
     consent_params = params.permit(:esign_consent, :esign_consent_version, :esign_consent_locale,
-                                   :esign_consent_pdf_opened, :esign_consent_sender_digest).to_h
+                                   :esign_consent_locale_token, :esign_consent_pdf_opened,
+                                   :esign_consent_sender_digest).to_h
 
     Submitters::SubmitValues.call(submitter,
                                   ActionController::Parameters.new(completed: 'true', **consent_params),

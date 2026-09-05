@@ -681,7 +681,9 @@
         :esign-consent="esignConsentChecked"
         :esign-consent-version="esignConsent.version"
         :esign-consent-locale="esignConsent.locale"
+        :esign-consent-locale-token="esignConsent.locale_token"
         :esign-consent-pdf-opened="esignConsentPdfOpened"
+        :esign-consent-pdf-url="esignConsent.pdf_url || ''"
         :esign-consent-sender-digest="esignConsent.sender_digest"
         :style="{ maxWidth: isBreakpointMd ? '582px' : '' }"
         @success="[isInvite = false, performComplete($event)]"
@@ -988,9 +990,10 @@ export default {
       required: false,
       default: true
     },
-    // { version, locale, consented, label, link_text, required_message,
-    // stale_message, modal_id, pdf_url, view_pdf_text, open_pdf_first } from
-    // the Rails partial; `consented: true` means no checkbox is shown.
+    // { version, locale, locale_token, consented, label, link_text,
+    // required_message, stale_message, modal_id, pdf_url, view_pdf_text,
+    // open_pdf_first, sender_digest } from the Rails partial;
+    // `consented: true` means no checkbox is shown.
     esignConsent: {
       type: Object,
       required: false,
