@@ -141,7 +141,8 @@
     <div id="not-claimed" class="lg:col-span-8 space-y-4 text-base-content/80 leading-relaxed">
       <p>We hold no certifications and do not claim any: no SOC 2 report, no HIPAA assessment, and we do not offer a data processing agreement. If your work needs those, EsignCenter is not the right tool yet, and we would rather say so here than in a sales call.</p>
       <p>Nothing on this site is legal advice. Whether an electronically signed document is enforceable depends on the document, the law that applies to it and the people involved; what we can promise is the evidence above, kept accurately, for every document you sign here.</p>
-      <p>Found a security problem? Email <%= mail_to Docuseal::SUPPORT_EMAIL, Docuseal::SUPPORT_EMAIL, class: 'link font-medium' %>. A real person reads it.</p>
+      <%# Both doors on purpose: the support form routes it and gets a receipt, and the raw address stays visible because a security report must not depend on a form, a CAPTCHA or JavaScript working. %>
+      <p>Found a security problem? <%= link_to 'Tell us on the support form', support_path, class: 'link font-medium' %> (choose "Security report"), or email <%= mail_to Docuseal::SUPPORT_EMAIL, Docuseal::SUPPORT_EMAIL, class: 'link font-medium' %> directly. A real person reads it.</p>
     </div>
   </div>
 </section>

@@ -1,0 +1,80 @@
+<p>
+  There is one paid plan: $<%= StripeBilling::PRICE_PER_SEAT_USD %> per user
+  per month, with a <%= StripeBilling::TRIAL_PERIOD_DAYS %>-day free trial and
+  no per-document fee. Everything to do with money lives on
+  <strong>Settings &rarr; Billing</strong>.
+</p>
+
+<h2>Starting the trial</h2>
+
+<ol>
+  <li>Open <strong>Settings &rarr; Billing</strong> and choose <strong>Start <%= StripeBilling::TRIAL_PERIOD_DAYS %>-day free trial</strong>.</li>
+  <li>Enter your card on Stripe's own secure page. Card details never touch EsignCenter.</li>
+  <li>You come straight back and the paid features are on. The billing page shows the day the trial ends and what it will cost after that.</li>
+</ol>
+
+<p>
+  We ask for a card at the start because the trial turns into a subscription
+  when it ends. Cancel before that day and you are not charged at all. There is
+  one trial per account, ever.
+</p>
+
+<h2>Managing your subscription</h2>
+
+<p>
+  <strong>Manage billing</strong> opens the Stripe Customer Portal, where you
+  can update the card, download every invoice and receipt, correct your invoice
+  details, and cancel. Seats are not editable there because your seat count is
+  simply the number of people in your account &mdash; see
+  <%= link_to 'Teams and seats', help_article_path('teams-and-seats') %>.
+</p>
+
+<h2>Cancelling and refunds</h2>
+
+<p>
+  You can cancel at any time. Your paid access continues to the end of the
+  period you have already paid for, and then the account moves to the free
+  plan. Nothing is deleted: every document, template and export stays readable,
+  downloadable and exportable. Cancelling during the trial costs nothing. After
+  the trial there are no prorated refunds for a period you have started &mdash;
+  the exact wording is in the <%= link_to 'Terms', terms_path %>.
+</p>
+
+<aside class="help-callout">
+  <p>
+    <strong>Good to know:</strong> if our systems ever charge you twice for the
+    same subscription, we refund the duplicate &mdash; automatically where we
+    can and by hand where we cannot. That is not a goodwill gesture we may
+    decline; it is written into the Terms as what we do.
+  </p>
+</aside>
+
+<h2>If a payment fails</h2>
+
+<p>
+  A failed renewal does not take the product away on day one. Stripe keeps
+  retrying the card and you get
+  <%= BillingLifecycle::PAST_DUE_GRACE_DAYS %> days of grace, during which
+  everything works exactly as before, paid features included. We email your
+  administrators four times in that window, each message naming the date the
+  account would be suspended and linking straight to the billing page.
+</p>
+
+<p>
+  On day <%= BillingLifecycle::PAST_DUE_GRACE_DAYS %> the account becomes
+  read-only, and nothing more than that: everybody can still sign in, read,
+  download and export; a signer already holding one of your documents can still
+  finish it; nothing new can be created. Paying lifts it automatically, within
+  seconds &mdash; no support ticket, no manual step.
+</p>
+
+<h2>Going back to free</h2>
+
+<p>
+  When a paid plan ends, your free-plan month starts at that moment: you begin
+  at 0 of <%= Quotas::Limits::FREE_COMPLETIONS_PER_MONTH %> completions and 0
+  of <%= Quotas::Limits::FREE_SENDS_PER_MONTH %> sends, whatever you did
+  earlier in the calendar month. The free month still ends with the calendar
+  month. See <%= link_to 'Free plan limits', help_article_path('free-plan-limits') %>
+  and the <%= link_to 'pricing page', pricing_path %>.
+</p>

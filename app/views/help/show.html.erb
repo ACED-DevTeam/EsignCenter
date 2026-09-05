@@ -1,0 +1,56 @@
+<% content_for(:html_title, "#{@article.title} — EsignCenter help") %>
+<% content_for(:html_description, @article.summary) %>
+<% content_for(:canonical_url, help_article_url(@article.slug)) %>
+<% content_for(:indexable, 'true') %>
+<%# The prose is the writer's partial, rendered inside `.help-article`, which carries the whole typography (app/javascript/application.scss) — the partials themselves are plain semantic HTML with no classes, exactly like the legal documents, so they stay readable to somebody who is not a front-end developer. %>
+
+<div class="max-w-3xl mx-auto px-4 md:px-2 pt-8 md:pt-12 pb-14 md:pb-20">
+  <nav aria-label="Breadcrumb" class="text-sm">
+    <ol class="flex flex-wrap items-center gap-2 text-base-content/60">
+      <li><%= link_to 'Help centre', help_path, class: 'link link-hover' %></li>
+      <li aria-hidden="true">/</li>
+      <li class="text-base-content/80"><%= @article.section %></li>
+    </ol>
+  </nav>
+
+  <header class="mt-5 pb-8 border-b border-base-content/10">
+    <h1 class="text-3xl md:text-4xl font-bold tracking-tight"><%= @article.title %></h1>
+    <p class="mt-3 text-lg text-base-content/70"><%= @article.summary %></p>
+    <p class="mt-4 text-sm text-base-content/60">
+      Updated <time datetime="<%= @article.updated_on.iso8601 %>"><%= @article.updated_on.strftime('%-d %B %Y') %></time>
+      <span aria-hidden="true">&middot;</span>
+      <%= pluralize(@article.reading_minutes, 'minute') %> to read
+    </p>
+  </header>
+
+  <article class="help-article mt-8">
+    <%= render template: @article.template %>
+  </article>
+
+  <div class="mt-12 rounded-2xl bg-base-200/60 border border-base-content/10 p-6 text-center">
+    <p class="font-semibold">Was this helpful?</p>
+    <p class="mt-1 text-base-content/70">If it did not answer your question, tell us — we would rather fix the page than let you guess.</p>
+    <%= link_to 'Email us about this page', support_path, class: 'btn btn-outline bg-white border-2 mt-4 px-8' %>
+  </div>
+
+  <nav aria-label="More articles" class="mt-10 grid gap-4 sm:grid-cols-2">
+    <% if @previous_article %>
+      <%= link_to help_article_path(@previous_article.slug), rel: 'prev', class: 'group rounded-2xl border border-base-content/10 bg-white p-5 hover:border-indigo-300 hover:shadow-sm transition' do %>
+        <span class="text-xs font-semibold uppercase tracking-wider text-base-content/50">Previous</span>
+        <span class="mt-1 block font-semibold group-hover:text-indigo-700"><%= @previous_article.title %></span>
+      <% end %>
+    <% else %>
+      <span class="hidden sm:block" aria-hidden="true"></span>
+    <% end %>
+    <% if @next_article %>
+      <%= link_to help_article_path(@next_article.slug), rel: 'next', class: 'group rounded-2xl border border-base-content/10 bg-white p-5 hover:border-indigo-300 hover:shadow-sm transition sm:text-right' do %>
+        <span class="text-xs font-semibold uppercase tracking-wider text-base-content/50">Next</span>
+        <span class="mt-1 block font-semibold group-hover:text-indigo-700"><%= @next_article.title %></span>
+      <% end %>
+    <% end %>
+  </nav>
+
+  <p class="mt-8 text-center">
+    <%= link_to 'All help articles', help_path, class: 'link link-hover font-medium' %>
+  </p>
+</div>

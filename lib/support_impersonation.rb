@@ -237,6 +237,9 @@ module SupportImpersonation
     'verify' => :anonymous,     # the public PDF checker
     'marketing' => :anonymous,  # public pricing + trust pages (Session 9)
     'legal' => :anonymous,      # public Terms + Privacy pages (Session 9)
+    'help' => :anonymous,       # the public help centre (Session 10)
+    'support_requests' => :anonymous, # the public support form (Session 10)
+    'api_reference' => :anonymous,    # the public API reference (Session 10)
     'reports' => :anonymous,    # the public abuse-report form
     'stripe_webhooks' => :anonymous,
     'postmark_webhooks' => :anonymous,

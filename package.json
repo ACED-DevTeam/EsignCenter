@@ -12,6 +12,7 @@
     "@github/catalyst": "^2.0.0-beta",
     "@hotwired/turbo": "https://github.com/docusealco/turbo#main",
     "@hotwired/turbo-rails": "^7.3.0",
+    "@scalar/api-reference": "^1.67.0",
     "@specious/htmlflow": "^1.1.0",
     "@tabler/icons-vue": "^2.47.0",
     "@tiptap/core": "^3.19.0",

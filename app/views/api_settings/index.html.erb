@@ -133,7 +133,8 @@
     </div>
     <% end %>
     <div class="text-center">
-      <%= link_to t('open_full_api_reference'), "#{Docuseal::GITHUB_URL}/tree/master/docs/api", class: 'btn btn-outline text-base mt-4 px-8', target: '_blank', rel: 'noopener' %>
+      <%# The reference this instance actually serves (/docs/api), in the same tab: it is our page, it describes THIS instance's base URL, and it is always in step with the code. The prose guides in the GitHub tree are linked from it. %>
+      <%= link_to t('open_full_api_reference'), api_reference_path, class: 'btn btn-outline text-base mt-4 px-8', data: { turbo: false } %>
     </div>
   </div>
 </div>

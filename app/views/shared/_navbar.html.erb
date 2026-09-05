@@ -54,6 +54,29 @@
               </label>
             <% end %>
           <% end %>
+          <%# The three public pages the app itself should point at: they open in
+              the marketing layout, so a full page load rather than a Turbo
+              visit, and they sit above sign-out with a divider so the last
+              item in the menu stays the one people reach for. %>
+          <li>
+            <%= link_to help_path, class: 'flex items-center', data: { turbo: false } do %>
+              <%= svg_icon('circle_question', class: 'w-5 h-5 flex-shrink-0 stroke-2') %>
+              <span class="mr-1 whitespace-nowrap"><%= t('nav_help_centre') %></span>
+            <% end %>
+          </li>
+          <li>
+            <%= link_to support_path, class: 'flex items-center', data: { turbo: false } do %>
+              <%= svg_icon('mail', class: 'w-5 h-5 flex-shrink-0 stroke-2') %>
+              <span class="mr-1 whitespace-nowrap"><%= t('nav_contact_support') %></span>
+            <% end %>
+          </li>
+          <li>
+            <%= link_to api_reference_path, class: 'flex items-center', data: { turbo: false } do %>
+              <%= svg_icon('code', class: 'w-5 h-5 flex-shrink-0 stroke-2') %>
+              <span class="mr-1 whitespace-nowrap"><%= t('nav_api_reference') %></span>
+            <% end %>
+          </li>
+          <li class="border-t border-base-300 -mx-2 my-1" aria-hidden="true"></li>
           <li>
             <%= button_to destroy_user_session_path, method: :delete, data: { turbo: false }, class: 'flex items-center' do %>
               <%= svg_icon('logout', class: 'w-5 h-5 flex-shrink-0 stroke-2 mr-2 inline') %>

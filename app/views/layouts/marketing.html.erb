@@ -34,6 +34,7 @@
           <nav id="marketing-nav" data-panel aria-label="Main" class="mk-menu-panel absolute md:static inset-x-0 top-full md:top-auto flex-col md:flex-row md:items-center gap-1 md:gap-2 p-3 md:p-0 bg-base-100 md:bg-transparent border-b md:border-0 border-base-content/10 shadow-xl md:shadow-none text-base font-medium">
             <%= link_to 'Pricing', pricing_path, class: 'px-3 py-2.5 rounded-lg hover:bg-base-200 md:hover:bg-transparent md:hover:text-indigo-700' %>
             <%= link_to 'Trust', trust_path, class: 'px-3 py-2.5 rounded-lg hover:bg-base-200 md:hover:bg-transparent md:hover:text-indigo-700' %>
+            <%= link_to 'Help', help_path, class: 'px-3 py-2.5 rounded-lg hover:bg-base-200 md:hover:bg-transparent md:hover:text-indigo-700' %>
             <% if signed_in? %>
               <%= link_to 'Dashboard', root_path, class: 'btn btn-neutral btn-sm text-white md:ml-2 mt-1 md:mt-0' %>
             <% else %>
@@ -68,13 +69,16 @@
             <span><%= Docuseal.product_name %></span>
           </a>
           <p class="text-base-content/70 max-w-xs">Send it. Get it signed. Prove it. Document signing for freelancers, small businesses and everyday agreements.</p>
-          <p class="text-base-content/70">Questions or a security report: <%= mail_to Docuseal::SUPPORT_EMAIL, Docuseal::SUPPORT_EMAIL, class: 'link link-hover font-medium' %></p>
+          <p class="text-base-content/70">Questions or a security report: <%= link_to 'contact support', support_path, class: 'link link-hover font-medium' %>, or email <%= mail_to Docuseal::SUPPORT_EMAIL, Docuseal::SUPPORT_EMAIL, class: 'link link-hover font-medium' %>.</p>
         </div>
         <nav aria-label="Product" class="md:col-span-2 space-y-2">
           <h2 class="font-semibold text-base-content">Product</h2>
           <ul class="space-y-2 text-base-content/70">
             <li><%= link_to 'Pricing', pricing_path, class: 'link link-hover' %></li>
             <li><%= link_to 'Verify a document', verify_path, class: 'link link-hover' %></li>
+            <li><%= link_to 'Help centre', help_path, class: 'link link-hover' %></li>
+            <li><%= link_to 'Contact support', support_path, class: 'link link-hover' %></li>
+            <li><%= link_to 'API reference', api_reference_path, class: 'link link-hover' %></li>
             <% if signed_in? %>
               <li><%= link_to 'Dashboard', root_path, class: 'link link-hover' %></li>
             <% else %>

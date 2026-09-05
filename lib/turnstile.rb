@@ -18,6 +18,22 @@ module Turnstile
     ENV['TURNSTILE_SECRET_KEY'].present?
   end
 
+  # Whether a page may DRAW the widget: the site key alone, because that is all
+  # the browser needs. A widget with an empty site key throws in the browser,
+  # so a page without one renders neither the widget nor Cloudflare's script,
+  # and its security policy is not widened for a script it will not load.
+  def widget?
+    ENV['TURNSTILE_SITE_KEY'].present?
+  end
+
+  # Whether a form may ENFORCE the check: BOTH keys. The browser needs the site
+  # key to draw the widget and the server needs the secret to check its answer;
+  # enforcing with only the secret would refuse everybody, because there was no
+  # widget to produce a token.
+  def configured?
+    enabled? && widget?
+  end
+
   def verify!(token, remote_ip)
     raise VerificationFailed, 'missing-input-response' if token.blank?
     raise VerificationFailed, 'turnstile-not-configured' unless enabled?
