@@ -1,0 +1,129 @@
+<% content_for(:html_title, 'Pricing — EsignCenter') %>
+<% content_for(:html_description, "Free for #{PricingMatrix.free_completions} completed documents a month. Paid is $#{PricingMatrix.price_per_seat} per user per month for everything, with a #{PricingMatrix.trial_days}-day trial. No per-document fees.") %>
+<% content_for(:canonical_url, pricing_url) %>
+<% content_for(:indexable, 'true') %>
+<%# Rendered from lib/pricing_matrix.rb: every number and every tick comes from the constants that enforce it, never typed here. %>
+<% registration = Docuseal.registration_enabled? %>
+<% start_path = registration ? new_registration_path : new_user_session_path %>
+<% start_data = registration ? { turbo: false } : {} %>
+<% price = PricingMatrix.price_per_seat %>
+<% trial = PricingMatrix.trial_days %>
+
+<section class="mk-ground">
+  <div class="max-w-6xl mx-auto px-4 md:px-2 pt-14 pb-10 md:pt-20 md:pb-14 text-center">
+    <h1 class="text-4xl md:text-5xl font-bold tracking-tight">Simple pricing. One plan to grow into.</h1>
+    <p class="mt-4 text-lg md:text-xl text-base-content/70 max-w-2xl mx-auto">Start free. Pay $<%= price %> per user per month when you need more. No per-document fees, ever.</p>
+  </div>
+  <div class="max-w-4xl mx-auto px-4 md:px-2 pb-16 grid gap-5 md:grid-cols-2 md:items-stretch">
+    <div class="rounded-3xl bg-white border border-base-content/10 p-8 shadow-sm flex flex-col">
+      <h2 class="text-xl font-semibold">Free</h2>
+      <p class="mt-1 text-base-content/70">For the occasional document.</p>
+      <p class="mt-6 text-5xl font-bold tracking-tight">$0</p>
+      <ul class="mt-6 space-y-3 text-base-content/80 flex-1">
+        <% [
+             "#{PricingMatrix.free_completions} completed documents a month",
+             "#{PricingMatrix.free_sends} documents sent a month",
+             "#{PricingMatrix.free_seats} user, #{PricingMatrix.free_storage} storage",
+             'Full signing, audit trail and verification',
+             'Templates, folders and Word uploads'
+           ].each do |line| %>
+          <li class="flex gap-3"><span class="text-indigo-600 mt-0.5" aria-hidden="true"><%= svg_icon('check', class: 'w-5 h-5 stroke-2') %></span><span><%= line %></span></li>
+        <% end %>
+      </ul>
+      <%= link_to registration ? 'Start free' : t('sign_in'), start_path, class: 'mt-8 btn btn-outline bg-white border-2 text-base', data: start_data %>
+    </div>
+    <div class="rounded-3xl bg-neutral text-white p-8 shadow-xl flex flex-col relative overflow-hidden">
+      <span class="absolute top-5 right-5 text-xs font-semibold uppercase tracking-wider bg-indigo-500/30 text-indigo-100 rounded-full px-3 py-1">Everything</span>
+      <h2 class="text-xl font-semibold">Paid</h2>
+      <p class="mt-1 text-white/70">For people and teams who sign every week.</p>
+      <p class="mt-6 text-5xl font-bold tracking-tight">$<%= price %><span class="text-lg font-medium text-white/70"> per user / month</span></p>
+      <ul class="mt-6 space-y-3 text-white/85 flex-1">
+        <% [
+             'Unlimited completed documents and sends*',
+             "#{PricingMatrix.paid_storage_per_seat} storage per seat",
+             'API, webhooks, embedded signing and reminders',
+             'Your branding, your email domain',
+             "#{trial}-day free trial, cancel any time"
+           ].each do |line| %>
+          <li class="flex gap-3"><span class="text-indigo-300 mt-0.5" aria-hidden="true"><%= svg_icon('check', class: 'w-5 h-5 stroke-2') %></span><span><%= line %></span></li>
+        <% end %>
+      </ul>
+      <%= link_to registration ? "Start your #{trial}-day trial" : t('sign_in'), start_path, class: 'mt-8 btn bg-white text-neutral hover:bg-indigo-50 border-0 text-base', data: start_data %>
+      <p class="mt-3 text-xs text-white/60 text-center">Card required for the trial. Nothing is charged until it ends.</p>
+      <p class="mt-2 text-xs text-white/60 text-center">* Fair use applies. See the <%= link_to 'Terms', terms_path, class: 'link' %>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="max-w-6xl mx-auto px-4 md:px-2 py-16 md:py-20" aria-labelledby="compare-heading">
+  <h2 id="compare-heading" class="text-3xl md:text-4xl font-bold tracking-tight">Compare the plans</h2>
+  <p class="mt-3 text-base-content/70 max-w-2xl">Every row below is read from the same rules the product enforces, so the table cannot promise something the app refuses.</p>
+  <div class="mt-8 overflow-x-auto rounded-2xl border border-base-content/10 bg-white">
+    <table class="w-full text-left text-base">
+      <caption class="sr-only">Feature comparison between the Free and Paid plans</caption>
+      <thead class="bg-base-200/70 text-sm uppercase tracking-wider text-base-content/70">
+        <tr>
+          <th scope="col" class="px-4 md:px-6 py-3 font-semibold">Feature</th>
+          <th scope="col" class="px-3 md:px-6 py-3 font-semibold text-center w-24 md:w-40">Free</th>
+          <th scope="col" class="px-3 md:px-6 py-3 font-semibold text-center w-24 md:w-40 text-indigo-700">Paid</th>
+        </tr>
+      </thead>
+      <% PricingMatrix.groups.each do |group| %>
+        <tbody>
+          <tr class="border-t border-base-content/10">
+            <th scope="rowgroup" colspan="3" class="px-4 md:px-6 pt-5 pb-2 text-sm font-semibold text-indigo-700"><%= t("pricing_group_#{group}") %></th>
+          </tr>
+          <% PricingMatrix.rows_for(group).each do |row| %>
+            <tr class="border-t border-base-content/5" data-pricing-row="<%= row[:key] %>">
+              <th scope="row" class="px-4 md:px-6 py-3 font-normal"><%= t(row[:label_key]) %></th>
+              <% [row[:free], row[:paid]].each_with_index do |value, index| %>
+                <td class="px-3 md:px-6 py-3 text-center <%= index == 1 ? 'bg-indigo-50/40' : '' %>">
+                  <% if value == true %>
+                    <span class="inline-flex text-indigo-600"><%= svg_icon('check', class: 'w-5 h-5 stroke-2') %></span><span class="sr-only">Included</span>
+                  <% elsif value == false %>
+                    <span class="text-base-content/40" aria-hidden="true">&mdash;</span><span class="sr-only">Not included</span>
+                  <% else %>
+                    <span class="font-medium"><%= value %></span><% if row[:fair_use] && index == 1 %><a href="#fair-use" class="ml-0.5 text-indigo-700 align-super text-xs" aria-label="Subject to fair use, see the notes">*</a><% end %>
+                  <% end %>
+                </td>
+              <% end %>
+            </tr>
+          <% end %>
+        </tbody>
+      <% end %>
+    </table>
+  </div>
+  <div id="fair-use" class="mt-6 text-sm text-base-content/70 space-y-1.5 max-w-3xl">
+    <p>* Unlimited is subject to the fair-use rule in the <%= link_to 'Terms', terms_path, class: 'link' %>: paid accounts are never blocked by a document quota (the storage cap only pauses new uploads); unusual volume (above <%= PricingMatrix.fair_use_completions_per_seat %> completions per seat a month) is reviewed by a person.</p>
+    <p>Every active user is a seat, viewers included. Prices in US dollars; taxes added where required. One <%= trial %>-day trial per account, card required, cancel any time. Correcting a signed document and sending it again never uses a second completion.</p>
+  </div>
+</section>
+
+<section class="bg-base-200/50 border-y border-base-content/5" aria-labelledby="faq-heading">
+  <div class="max-w-6xl mx-auto px-4 md:px-2 py-16 md:py-20">
+    <h2 id="faq-heading" class="text-3xl md:text-4xl font-bold tracking-tight">Questions people ask</h2>
+    <dl class="mt-10 grid gap-8 md:grid-cols-2">
+      <% faqs = [
+           ['What counts as a completed document?',
+            "A document counts the first time any signer completes it. A two-signer document counts once, when the first of them finishes. A document that is declined or expires with nobody signing counts nothing. Free accounts get #{PricingMatrix.free_completions} a calendar month (UTC)."],
+           ['What happens when I reach the free limit?',
+            'New documents cannot be sent until the month resets. Anything already out for signature can still be signed, and everything you have stays where it is. Upgrade at any time from Settings and the limit lifts immediately.'],
+           ['Do corrections cost a second completion?',
+            'No. Fixing a signed document and sending it out again never uses another completion, even when you are at the monthly limit. It does count as a send.'],
+           ['How do seats and viewers work?',
+            "Every active person in your account is a seat, including people who only view: $#{price} per seat per month. The free plan is one person. Add or remove seats whenever you like; adding one mid-month is prorated."],
+           ['Can I cancel? Do you refund?',
+            'Cancel any time from Settings → Billing. You keep the paid features until the end of the period you have paid for and are not charged again. Refunds follow the Terms.'],
+           ['Is there a per-document fee?',
+            'No. Free is free; Paid is a flat price per seat with unlimited documents, subject to fair use. There is nothing else to pay.']
+         ] %>
+      <% faqs.each do |question, answer| %>
+        <div>
+          <dt class="text-lg font-semibold"><%= question %></dt>
+          <dd class="mt-2 text-base-content/70 leading-relaxed"><%= answer %></dd>
+        </div>
+      <% end %>
+    </dl>
+    <p class="mt-10 text-base-content/70">The full rules, including refunds and fair use, are in the <%= link_to 'Terms', terms_path, class: 'link font-medium' %>. Anything else: <%= mail_to Docuseal::SUPPORT_EMAIL, Docuseal::SUPPORT_EMAIL, class: 'link font-medium' %>.</p>
+  </div>
+</section>

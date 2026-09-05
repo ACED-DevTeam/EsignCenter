@@ -37,7 +37,11 @@ RSpec.describe 'Self-serve registration', type: :request do
 
   def signup_params(email: 'ada@example.com', name: 'Ada Lovelace', password: 'a-long-password',
                     token: 'turnstile-token', timezone: 'Europe/Paris')
-    { user: { name:, email:, password:, timezone: }, 'cf-turnstile-response' => token }
+    # A real browser always sends back the versions of the Terms and the
+    # Privacy Policy the form was displaying; a body without them is refused
+    # as stale (spec/golden/legal_spec.rb).
+    { user: { name:, email:, password:, timezone: }, 'cf-turnstile-response' => token,
+      **LegalDocuments.version_fields }
   end
 
   def sign_up(**)
@@ -53,8 +57,11 @@ RSpec.describe 'Self-serve registration', type: :request do
 
   # The real flow: the POST-only authorize endpoint (OmniAuth's request
   # phase) redirects to the callback, which is where the controller runs.
+  # The Google button carries the displayed legal versions on its query string
+  # the same way it carries the timezone, and the callback refuses without
+  # them (spec/golden/legal_spec.rb).
   def sign_in_with_google!(**query)
-    post user_google_oauth2_omniauth_authorize_path(query)
+    post user_google_oauth2_omniauth_authorize_path(LegalDocuments.version_fields.merge(query))
 
     expect(response).to have_http_status(:redirect)
     expect(response.location).to include(user_google_oauth2_omniauth_callback_path)
@@ -69,7 +76,7 @@ RSpec.describe 'Self-serve registration', type: :request do
   def start_google_flow!
     OmniAuth.config.test_mode = false
 
-    post user_google_oauth2_omniauth_authorize_path
+    post user_google_oauth2_omniauth_authorize_path(LegalDocuments.version_fields)
 
     expect(response).to have_http_status(:redirect)
 

@@ -53,14 +53,29 @@ module Registrations
     ValidEmail2::Address.new(email.to_s).disposable_domain?
   end
 
-  # Saving a sign-up: the DB transaction is the user save (belongs_to
+  # Saving a sign-up: the user save is what writes everything (belongs_to
   # autosaves the new account first), so a validation failure — taken email,
   # short password, disposable address — writes nothing. Two sign-ups for one
   # address at the same moment: the loser hits the unique index instead of
   # the validation, and is told the same thing instead of a 500. Both sign-up
   # doors save through here.
-  def save_signup(user)
-    user.save(context: :registration)
+  # `source` names which door this is (LegalAcceptance::SOURCES) and is what
+  # turns on the legal acceptance: the Terms and Privacy rows are written in
+  # the SAME transaction as the user, so a sign-up that fails afterwards can
+  # never leave an agreement behind for a person who does not exist — and,
+  # just as important, a person can never exist without one. A failure to
+  # record the agreement is therefore a failure to sign up, and is raised
+  # rather than swallowed.
+  def save_signup(user, request: nil, source: nil, versions: nil)
+    saved = false
+
+    User.transaction do
+      saved = user.save(context: :registration)
+
+      LegalDocuments.record_acceptance!(user, request:, source:, versions:) if saved && source
+    end
+
+    saved
   rescue ActiveRecord::RecordNotUnique
     user.errors.add(:email, :taken)
 

@@ -78,13 +78,28 @@ class OmniauthCallbacksController < Devise::OmniauthCallbacksController
   # authorize request's query string (devise/shared/_google_button), which
   # OmniAuth hands back here as omniauth.params.
   def register(email, auth)
+    # The versions the button was displaying ride on the authorize request's
+    # query string, exactly as the browser timezone does, and OmniAuth hands
+    # that query back here as `omniauth.params`. A button drawn before a
+    # wording change therefore cannot record an agreement to the new text: the
+    # person is sent back to sign in and asked to read it.
+    #
+    # Asked BEFORE the per-network sign-up budget, which is only ever spent on
+    # a sign-up that really happened (lib/registrations.rb): a refusal that
+    # writes nothing must not use up an allowance an honest visitor behind the
+    # same address is going to need.
+    versions = LegalDocuments.submitted_versions(request.env['omniauth.params'])
+
+    return refuse(I18n.t('legal_documents_updated_please_review')) unless LegalDocuments.current_versions?(versions)
+
     Registrations.assert_ip_allowed!(request.remote_ip)
 
     user = Registrations.build_signup(name: auth.info.name, email:, password: Devise.friendly_token,
                                       timezone: request.env.dig('omniauth.params', 'timezone'))
     user.skip_confirmation!
 
-    return user if Registrations.save_signup(user)
+    return user if Registrations.save_signup(user, request:, source: LegalAcceptance::SIGNUP_GOOGLE,
+                                                   versions:)
 
     refuse(refusal_message(user))
   rescue RateLimit::LimitApproached

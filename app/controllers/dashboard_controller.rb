@@ -32,6 +32,8 @@ class DashboardController < ApplicationController
   def maybe_render_landing
     return if signed_in?
 
-    render 'pages/landing'
+    # The public landing page (Session 9), in the marketing layout the
+    # pricing, trust and legal pages share, and in English like them.
+    with_english { render 'marketing/landing', layout: 'marketing' }
   end
 end

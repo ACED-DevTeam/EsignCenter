@@ -5,7 +5,8 @@
 # routed. Every create runs the abuse guards in order — the per-IP attempt
 # ceiling, then Turnstile, then the form's own checks (the disposable-address
 # blocklist among them), then the per-IP sign-up budget — before anything is
-# written, saves the account and its admin in one transaction, and never
+# written, saves the account, its admin and the person's agreement to the
+# Terms and the Privacy Policy in one transaction, and never
 # signs the user in: Devise mails a confirmation link and the person signs in
 # after opening it. The two per-IP limits are different things and the order
 # is the point of both: the budget counts sign-ups and is spent only once the
@@ -43,11 +44,13 @@ class RegistrationsController < Devise::RegistrationsController
     return refuse(:too_many_requests) unless ip_attempt_allowed?
     return refuse(:unprocessable_content) unless turnstile_verified?
     return refuse(:unprocessable_content) unless @user.valid?(:registration)
+    return refuse(:unprocessable_content) unless legal_versions_current?
     return refuse(:too_many_requests) unless ip_allowed?
 
     # The confirmation mail goes out from Devise's after_commit, through the
     # platform mail server (devise_mail override).
-    if Registrations.save_signup(@user)
+    if Registrations.save_signup(@user, request:, source: LegalAcceptance::SIGNUP_EMAIL,
+                                        versions: legal_versions)
       session[:signup_email] = @user.email
 
       redirect_to after_inactive_sign_up_path_for(@user), status: :see_other
@@ -108,6 +111,24 @@ class RegistrationsController < Devise::RegistrationsController
   # business, not theirs.
   def over_limit
     @user.errors.add(:base, I18n.t('too_many_sign_ups_from_this_network'))
+  end
+
+  # The version of each legal document the form was DISPLAYING, sent back in a
+  # hidden field. Checked before anything is written, so somebody who had the
+  # page open across a wording change is asked to read the new one rather than
+  # being recorded as having agreed to it (LegalDocuments::StaleVersionError).
+  # A body with no versions in it at all is stale too: an old client must not
+  # be able to skip the check by staying silent.
+  def legal_versions
+    LegalDocuments.submitted_versions(params)
+  end
+
+  def legal_versions_current?
+    return true if LegalDocuments.current_versions?(legal_versions)
+
+    @user.errors.add(:base, I18n.t('legal_documents_updated_please_review'))
+
+    false
   end
 
   def turnstile_verified?

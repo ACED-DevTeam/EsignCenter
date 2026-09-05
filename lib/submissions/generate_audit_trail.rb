@@ -311,6 +311,11 @@ module Submissions
                                   format: with_timestamp_seconds ? :detailed : :long, locale: account.locale)} " \
                         "#{TimeUtils.timezone_abbr(timezone, consent_event.event_timestamp)}\n"
                 },
+                # Printed only when the signer did open the PDF, the same way
+                # the verification lines above print only what was passed.
+                consent_event&.data&.dig('pdf_opened') && {
+                  text: "#{I18n.t('esign_consent_pdf_opened')}\n"
+                },
                 completed_event.data['ip'] && { text: "IP: #{completed_event.data['ip']}\n" },
                 completed_event.data['sid'] && { text: "#{I18n.t('session_id')}: #{completed_event.data['sid']}\n" },
                 completed_event.data['ua'] && { text: "User agent: #{completed_event.data['ua']}\n" },
@@ -534,7 +539,68 @@ module Submissions
 
       composer.table(events_data, cell_style: { padding: [0, 0, 12, 0], border: { width: 0 } }) if events_data.present?
 
+      add_consent_appendix(composer, submission, divider, submitter_versions_index)
+
       composer.document
+    end
+
+    # The ESIGN disclosure each signer agreed to, reproduced word for word at
+    # the end of the trail. The audit trail is the evidence a court or a
+    # counterparty reads years later, and "they consented to v2" means nothing
+    # on its own — so the text itself travels with the proof, in the language
+    # the signer read it in, with the sender's details as they were shown.
+    def add_consent_appendix(composer, submission, divider, versions_index)
+      consent_events = submission.submission_events.select(&:esign_consent?).sort_by(&:event_timestamp)
+
+      return if consent_events.blank?
+
+      composer.draw_box(divider)
+
+      composer.text(I18n.t('consented_to_electronic_signatures'), font_size: 12, padding: [10, 0, 15, 0])
+
+      consent_events.each do |event|
+        text = EsignConsent.disclosure_text(version: event.data['version'], locale: event.data['locale'])
+
+        next if text.blank?
+
+        add_consent_disclosure(composer, submission, event, text, versions_index)
+      end
+    end
+
+    def add_consent_disclosure(composer, submission, event, text, versions_index)
+      composer.text(consent_appendix_heading(submission, event, versions_index),
+                    font: [FONT_NAME, { variant: :bold }], padding: [0, 0, 6, 0],
+                    text_align: I18n.locale.to_s.in?(%w[he ar]) ? :right : :left)
+
+      sender_name = event.data['sender_name']
+      sender_email = event.data['sender_email']
+
+      # Events written before the disclosure named the sender have nothing to
+      # fill the placeholders with: the template is printed as it stands, and
+      # the note says why it still reads "%{sender_name}".
+      if sender_name.present? && sender_email.present?
+        text = EsignConsent.interpolate(text, sender_name:, sender_email:)
+      else
+        composer.text(I18n.t('esign_consent_sender_not_recorded'), padding: [0, 0, 6, 0])
+      end
+
+      EsignConsent.plain_paragraphs(text).each do |paragraph|
+        composer.text(paragraph, line_spacing: 1.3, padding: [0, 0, 6, 0],
+                                 text_align: paragraph.match?(RTL_REGEXP) ? :right : :left)
+      end
+    end
+
+    def consent_appendix_heading(submission, event, versions_index)
+      submitter = submission.submitters.find { |e| e.id == event.submitter_id }
+      versions = versions_index[submitter.id] || []
+      active_version = versions.find { |v| v.created_at > event.event_timestamp }
+      submitter_name = active_version&.name || active_version&.email || active_version&.phone ||
+                       submitter.name || submitter.email || submitter.phone
+
+      "#{I18n.t('esign_consent_disclosure_title')} — " \
+        "#{I18n.t('esign_consent_version_label', version: event.data['version'])} " \
+        "(#{event.data['locale']}), " \
+        "#{I18n.t('esign_consent_shown_to', submitter_name: TextUtils.maybe_rtl_reverse(submitter_name.to_s))}"
     end
 
     def sign_reason

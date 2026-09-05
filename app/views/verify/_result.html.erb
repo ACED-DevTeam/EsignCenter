@@ -16,7 +16,7 @@
         <p>
           <%= t('verify_result_verified',
                 date: l(result[:signed_on], format: :long),
-                signers: t(result[:signers_count] == 1 ? 'verify_signers_one' : 'verify_signers_other', count: result[:signers_count])) %>
+                signers: t('verify_signers', count: result[:signers_count])) %>
         </p>
       <% elsif state == 'not_on_record' %>
         <p class="font-semibold text-lg"><%= t('verify_result_not_on_record_title') %></p>

@@ -129,13 +129,23 @@ class InvitesController < ApplicationController
   def accept_new_user
     user = AccountInvites.accept!(@invite, first_name: params[:first_name].to_s.strip,
                                            last_name: params[:last_name].to_s.strip,
-                                           password: params[:password].to_s)
+                                           password: params[:password].to_s,
+                                           request:,
+                                           versions: LegalDocuments.submitted_versions(params))
 
     sign_in(:user, user)
 
     redirect_to root_path, notice: I18n.t('invite_welcome_to_team', team: @account.name)
   rescue ActiveRecord::RecordInvalid => e
     @error = e.record.errors.full_messages.to_sentence
+
+    render :show, status: :unprocessable_content
+  rescue LegalDocuments::StaleVersionError
+    # The Terms or the Privacy Policy were rewritten between this page being
+    # drawn and the button being pressed — an invitation link is good for a
+    # week, which is long enough. Nothing was created; the page redraws with
+    # the new text behind the same two links.
+    @error = I18n.t('legal_documents_updated_please_review')
 
     render :show, status: :unprocessable_content
   end

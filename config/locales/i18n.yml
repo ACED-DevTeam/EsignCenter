@@ -1,4 +1,32 @@
 en: &en
+  skip_to_content: "Skip to content"
+  pricing_group_signing: "Signing"
+  pricing_group_limits: "Limits"
+  pricing_group_automation: "Automation and integrations"
+  pricing_group_branding: "Branding and email"
+  pricing_row_send_and_sign: "Send documents and collect signatures"
+  pricing_row_templates_folders: "Templates and folders, unlimited"
+  pricing_row_audit_trail: "Audit trail on every completed document"
+  pricing_row_signing_flow: "Signing order, decline or delegate, in-person signing"
+  pricing_row_signer_2fa: "Email verification for signers"
+  pricing_row_word_uploads: "Word (.docx) and PDF uploads"
+  pricing_row_exports: "CSV/XLSX and full account export"
+  pricing_row_completions: "Documents completed per month"
+  pricing_row_sends: "Documents sent per month"
+  pricing_row_in_flight: "Documents out for signature at once"
+  pricing_row_storage: "Storage"
+  pricing_row_seats: "Team members (seats)"
+  pricing_row_api: "REST API, webhooks, MCP and embedded signing"
+  pricing_row_conditional_logic: "Conditional logic in forms"
+  pricing_row_reminders: "Automatic reminders"
+  pricing_row_embed: "Embed forms in your website"
+  pricing_row_delivery_tracking: "Delivery tracking (sent, bounced, opened)"
+  pricing_row_logo_upload: "Your logo on documents and emails"
+  pricing_row_branding_removal: "Remove EsignCenter branding from emails and pages"
+  pricing_row_custom_email_templates: "Custom email templates"
+  pricing_row_account_smtp: "Send from your own domain (SMTP)"
+  pricing_row_bcc: "BCC / document-copy address"
+  pricing_row_download_links: "Download link expiry and sign-in settings"
   form_not_accepting_responses: "This form is not accepting new responses right now."
   form_not_accepting_responses_hint: "Please contact the person who shared this form with you."
   completed_documents_are_private: "Completed documents are private"
@@ -273,6 +301,11 @@ en: &en
   esign_consent_version_label: "Version %{version}"
   esign_consent_required: "Please agree to use electronic records and signatures to continue."
   esign_consent_version_stale: "The signing disclosure was updated. Please reload the page and agree again."
+  esign_consent_view_pdf: "View this document as a PDF"
+  esign_consent_open_pdf_first: "Open the document as a PDF before you agree."
+  esign_consent_pdf_opened: "Document opened as a PDF"
+  esign_consent_shown_to: "shown to %{submitter_name}"
+  esign_consent_sender_not_recorded: "The sender's name and email address were not recorded with this consent."
   consented_to_electronic_signatures: "Consented to electronic signatures"
   verify_page_title: "Verify a signed document"
   verify_page_intro: "Upload a PDF that was signed through EsignCenter. We check its digital signature and compare the file with our records of completed documents. The result shows only the date it was completed and how many people signed — never who signed, their email addresses, or anything written in the document."
@@ -280,8 +313,9 @@ en: &en
   verify_pdf_only_limit: "One PDF file, up to %{limit_mb} MB"
   verify_result_verified_title: "Verified"
   verify_result_verified: "This document was completed through EsignCenter on %{date} by %{signers}."
-  verify_signers_one: "%{count} signer"
-  verify_signers_other: "%{count} signers"
+  verify_signers:
+    one: "%{count} signer"
+    other: "%{count} signers"
   verify_result_not_on_record_title: "Not on record"
   verify_result_not_on_record: "This file carries an EsignCenter signature, but its contents do not match any completed document in our records. It may have been changed since it was signed, or it may predate our verification records."
   verify_result_not_verified_title: "Not verified"
@@ -302,11 +336,15 @@ en: &en
   timestamp_server_operator_only_hint: "Affects the operator account only. Customer accounts use the TIMESERVER_URL environment variable."
   open_verify_page: "Open verification page"
   esign_consent_disclosure_body_html: |-
-    <p>By checking the box, you agree to use electronic records and electronic signatures for this document instead of paper and ink. You agree that your electronic signature has the same legal effect as your handwritten signature. A copy of the completed document will be available to you electronically, and the sender can also provide one on request.</p>
-    <p><strong>What you need.</strong> A current web browser, an internet connection and software that can open PDF files. If you can read this page, your device meets these requirements.</p>
-    <p><strong>Withdrawing consent.</strong> You may withdraw your consent at any time before you complete the document by not signing it and letting the sender know. Withdrawing consent does not affect documents you have already signed.</p>
-    <p><strong>Paper copies.</strong> You may request a paper copy of this document at any time by contacting the sender.</p>
-    <p><strong>What we record.</strong> Your agreement is recorded together with the date, time and internet (IP) address from which you gave it, and it appears in the document's audit trail.</p>
+    <p>By checking the box, you agree to use electronic records and electronic signatures for this document only, instead of paper and ink. You agree that your electronic signature has the same legal effect as your handwritten signature. If %{sender_name} sends you another document later, you will be asked to agree again.</p>
+    <p><strong>Who sent this.</strong> This document was sent by %{sender_name}. You can reach them at %{sender_email}.</p>
+    <p><strong>Your copy.</strong> A copy of the completed document will be available to you electronically, and %{sender_name} can also provide one on request.</p>
+    <p><strong>What you need.</strong> A current web browser, an internet connection and software that can open PDF files. Before you agree, open the document as a PDF using the link next to the checkbox to confirm your device can display it.</p>
+    <p><strong>Keeping a copy.</strong> To keep this document, download the PDF when you finish and save or print it. You will need free PDF software such as Adobe Acrobat Reader and free space on your device or email account.</p>
+    <p><strong>Withdrawing consent.</strong> You may withdraw your consent at any time before you complete the document by not signing it and telling %{sender_name} at %{sender_email}. There is no charge for withdrawing. If you withdraw, this document cannot be signed electronically, and %{sender_name} will need to arrange a paper copy, which may delay or end the transaction. Withdrawing consent does not affect documents you have already signed.</p>
+    <p><strong>Paper copies.</strong> You may request a paper copy of this document at any time from %{sender_name} at %{sender_email}. %{product_name} does not charge for copies. Ask %{sender_name} whether they charge for printing and posting one.</p>
+    <p><strong>Your contact details.</strong> Documents are sent only to the email address %{sender_name} gave us. To change it, tell %{sender_name}; you do not have an account with us to update.</p>
+    <p><strong>What we record.</strong> Your agreement is recorded together with the date, time and internet (IP) address from which you gave it, the version of this disclosure and whether you opened the PDF, and it appears in the document's audit trail.</p>
   webhook_url: Webhook URL
   webhook_url_must_use_https: must use https
   webhook_url_must_not_point_at_a_private_address: must not point at localhost or a private/metadata address
@@ -518,6 +556,7 @@ en: &en
   or_sign_up_with_email: "or sign up with email"
   creating_account: "Creating account"
   by_creating_an_account_you_agree_to_html: "By creating an account you agree to the %{terms} and the %{privacy}."
+  legal_documents_updated_please_review: "Our terms were updated while you were reading. Please review them and try again."
   terms_of_service: "Terms of Service"
   check_your_email: "Check your email"
   we_sent_a_confirmation_link_to_html: "We sent a confirmation link to %{email}. Open it to activate your account."
@@ -1898,6 +1937,34 @@ en: &en
 
 
 es: &es
+  skip_to_content: "Saltar al contenido"
+  pricing_group_signing: "Firma"
+  pricing_group_limits: "Límites"
+  pricing_group_automation: "Automatización e integraciones"
+  pricing_group_branding: "Marca y correo"
+  pricing_row_send_and_sign: "Enviar documentos y recoger firmas"
+  pricing_row_templates_folders: "Plantillas y carpetas, ilimitadas"
+  pricing_row_audit_trail: "Registro de auditoría en cada documento completado"
+  pricing_row_signing_flow: "Orden de firma, rechazar o delegar, firma presencial"
+  pricing_row_signer_2fa: "Verificación por correo para los firmantes"
+  pricing_row_word_uploads: "Subida de archivos Word (.docx) y PDF"
+  pricing_row_exports: "Exportación CSV/XLSX y de toda la cuenta"
+  pricing_row_completions: "Documentos completados al mes"
+  pricing_row_sends: "Documentos enviados al mes"
+  pricing_row_in_flight: "Documentos pendientes de firma a la vez"
+  pricing_row_storage: "Almacenamiento"
+  pricing_row_seats: "Miembros del equipo (puestos)"
+  pricing_row_api: "API REST, webhooks, MCP y firma integrada"
+  pricing_row_conditional_logic: "Lógica condicional en los formularios"
+  pricing_row_reminders: "Recordatorios automáticos"
+  pricing_row_embed: "Insertar formularios en tu sitio web"
+  pricing_row_delivery_tracking: "Seguimiento de entrega (enviado, rebotado, abierto)"
+  pricing_row_logo_upload: "Tu logotipo en documentos y correos"
+  pricing_row_branding_removal: "Quitar la marca EsignCenter de correos y páginas"
+  pricing_row_custom_email_templates: "Plantillas de correo personalizadas"
+  pricing_row_account_smtp: "Enviar desde tu propio dominio (SMTP)"
+  pricing_row_bcc: "Dirección CCO / copia del documento"
+  pricing_row_download_links: "Caducidad y acceso de los enlaces de descarga"
   form_not_accepting_responses: "Este formulario no acepta nuevas respuestas en este momento."
   form_not_accepting_responses_hint: "Ponte en contacto con la persona que compartió este formulario contigo."
   quota_reached_completions: "Has usado los %{limit} documentos completados de este mes. El envío se reanuda el %{date} (UTC)."
@@ -2098,6 +2165,11 @@ es: &es
   esign_consent_version_label: "Versión %{version}"
   esign_consent_required: "Para continuar, acepte usar registros y firmas electrónicos."
   esign_consent_version_stale: "La divulgación sobre firma electrónica se ha actualizado. Recargue la página y acepte de nuevo."
+  esign_consent_view_pdf: "Ver este documento en PDF"
+  esign_consent_open_pdf_first: "Abra el documento en PDF antes de aceptar."
+  esign_consent_pdf_opened: "Documento abierto en PDF"
+  esign_consent_shown_to: "mostrada a %{submitter_name}"
+  esign_consent_sender_not_recorded: "El nombre y el correo electrónico del remitente no se registraron con este consentimiento."
   consented_to_electronic_signatures: "Consintió el uso de firmas electrónicas"
   verify_page_title: "Verificar un documento firmado"
   verify_page_intro: "Sube un PDF firmado a través de EsignCenter. Comprobamos su firma digital y comparamos el archivo con nuestros registros de documentos completados. El resultado muestra solo la fecha de finalización y cuántas personas firmaron; nunca quién firmó, sus correos electrónicos ni el contenido del documento."
@@ -2105,8 +2177,9 @@ es: &es
   verify_pdf_only_limit: "Un archivo PDF, hasta %{limit_mb} MB"
   verify_result_verified_title: "Verificado"
   verify_result_verified: "Este documento se completó a través de EsignCenter el %{date} por %{signers}."
-  verify_signers_one: "%{count} firmante"
-  verify_signers_other: "%{count} firmantes"
+  verify_signers:
+    one: "%{count} firmante"
+    other: "%{count} firmantes"
   verify_result_not_on_record_title: "Sin registro"
   verify_result_not_on_record: "Este archivo lleva una firma de EsignCenter, pero su contenido no coincide con ningún documento completado en nuestros registros. Puede haber sido modificado después de firmarse o ser anterior a nuestros registros de verificación."
   verify_result_not_verified_title: "No verificado"
@@ -2127,11 +2200,15 @@ es: &es
   timestamp_server_operator_only_hint: "Afecta solo a la cuenta del operador. Las cuentas de cliente usan la variable de entorno TIMESERVER_URL."
   open_verify_page: "Abrir la página de verificación"
   esign_consent_disclosure_body_html: |-
-    <p>Al marcar la casilla, acepta usar registros y firmas electrónicos para este documento en lugar de papel y tinta. Acepta que su firma electrónica tiene el mismo efecto legal que su firma manuscrita. Una copia del documento completado estará disponible para usted por medios electrónicos, y el remitente también puede facilitarle una si la solicita.</p>
-    <p><strong>Lo que necesita.</strong> Un navegador web actual, conexión a internet y un programa que pueda abrir archivos PDF. Si puede leer esta página, su dispositivo cumple estos requisitos.</p>
-    <p><strong>Retirar el consentimiento.</strong> Puede retirar su consentimiento en cualquier momento antes de completar el documento: basta con no firmarlo e informar al remitente. Retirar el consentimiento no afecta a los documentos que ya haya firmado.</p>
-    <p><strong>Copias en papel.</strong> Puede solicitar una copia en papel de este documento en cualquier momento poniéndose en contacto con el remitente.</p>
-    <p><strong>Lo que registramos.</strong> Su aceptación se registra junto con la fecha, la hora y la dirección de internet (IP) desde la que la otorgó, y aparece en el registro de auditoría del documento.</p>
+    <p>Al marcar la casilla, acepta usar registros y firmas electrónicos únicamente para este documento, en lugar de papel y tinta. Acepta que su firma electrónica tiene el mismo efecto legal que su firma manuscrita. Si %{sender_name} le envía otro documento más adelante, se le pedirá que acepte de nuevo.</p>
+    <p><strong>Quién lo envió.</strong> Este documento lo envió %{sender_name}. Puede ponerse en contacto en %{sender_email}.</p>
+    <p><strong>Su copia.</strong> Una copia del documento completado estará disponible para usted por medios electrónicos, y %{sender_name} también puede facilitarle una si la solicita.</p>
+    <p><strong>Lo que necesita.</strong> Un navegador web actual, conexión a internet y un programa que pueda abrir archivos PDF. Antes de aceptar, abra el documento en PDF con el enlace que hay junto a la casilla para comprobar que su dispositivo puede mostrarlo.</p>
+    <p><strong>Conservar una copia.</strong> Para conservar este documento, descargue el PDF cuando termine y guárdelo o imprímalo. Necesitará un programa gratuito de PDF, como Adobe Acrobat Reader, y espacio libre en su dispositivo o en su cuenta de correo.</p>
+    <p><strong>Retirar el consentimiento.</strong> Puede retirar su consentimiento en cualquier momento antes de completar el documento: basta con no firmarlo y comunicárselo a %{sender_name} en %{sender_email}. Retirarlo no tiene ningún coste. Si lo retira, este documento no podrá firmarse electrónicamente y %{sender_name} tendrá que organizar una copia en papel, lo que puede retrasar o cancelar la operación. Retirar el consentimiento no afecta a los documentos que ya haya firmado.</p>
+    <p><strong>Copias en papel.</strong> Puede solicitar una copia en papel de este documento en cualquier momento a %{sender_name} en %{sender_email}. %{product_name} no cobra por las copias. Pregunte a %{sender_name} si cobra por imprimirla y enviarla por correo postal.</p>
+    <p><strong>Sus datos de contacto.</strong> Los documentos se envían únicamente a la dirección de correo electrónico que %{sender_name} nos facilitó. Para cambiarla, comuníqueselo a %{sender_name}; usted no tiene una cuenta con nosotros que pueda actualizar.</p>
+    <p><strong>Lo que registramos.</strong> Su aceptación se registra junto con la fecha, la hora y la dirección de internet (IP) desde la que la otorgó, la versión de esta divulgación y si abrió el PDF, y aparece en el registro de auditoría del documento.</p>
   webhook_url: URL del webhook
   webhook_url_must_use_https: debe usar https
   webhook_url_must_not_point_at_a_private_address: no debe apuntar a localhost ni a una dirección privada o de metadatos
@@ -2325,6 +2402,7 @@ es: &es
   or_sign_up_with_email: "o regístrate con tu correo electrónico"
   creating_account: "Creando cuenta"
   by_creating_an_account_you_agree_to_html: "Al crear una cuenta aceptas los %{terms} y la %{privacy}."
+  legal_documents_updated_please_review: "Nuestros términos se actualizaron mientras leías. Revísalos e inténtalo de nuevo."
   terms_of_service: "Términos del servicio"
   check_your_email: "Revisa tu correo electrónico"
   we_sent_a_confirmation_link_to_html: "Hemos enviado un enlace de confirmación a %{email}. Ábrelo para activar tu cuenta."
@@ -3216,6 +3294,34 @@ es: &es
       detailed: "%-d de %B de %Y %H:%M:%S"
 
 it: &it
+  skip_to_content: "Vai al contenuto"
+  pricing_group_signing: "Firma"
+  pricing_group_limits: "Limiti"
+  pricing_group_automation: "Automazione e integrazioni"
+  pricing_group_branding: "Brand ed email"
+  pricing_row_send_and_sign: "Invia documenti e raccogli firme"
+  pricing_row_templates_folders: "Modelli e cartelle, illimitati"
+  pricing_row_audit_trail: "Registro di audit per ogni documento completato"
+  pricing_row_signing_flow: "Ordine di firma, rifiuto o delega, firma di persona"
+  pricing_row_signer_2fa: "Verifica via email per i firmatari"
+  pricing_row_word_uploads: "Caricamento di file Word (.docx) e PDF"
+  pricing_row_exports: "Esportazione CSV/XLSX e dell'intero account"
+  pricing_row_completions: "Documenti completati al mese"
+  pricing_row_sends: "Documenti inviati al mese"
+  pricing_row_in_flight: "Documenti in attesa di firma contemporaneamente"
+  pricing_row_storage: "Spazio di archiviazione"
+  pricing_row_seats: "Membri del team (postazioni)"
+  pricing_row_api: "API REST, webhook, MCP e firma integrata"
+  pricing_row_conditional_logic: "Logica condizionale nei moduli"
+  pricing_row_reminders: "Promemoria automatici"
+  pricing_row_embed: "Incorpora i moduli nel tuo sito"
+  pricing_row_delivery_tracking: "Tracciamento della consegna (inviato, respinto, aperto)"
+  pricing_row_logo_upload: "Il tuo logo su documenti ed email"
+  pricing_row_branding_removal: "Rimuovi il marchio EsignCenter da email e pagine"
+  pricing_row_custom_email_templates: "Modelli email personalizzati"
+  pricing_row_account_smtp: "Invia dal tuo dominio (SMTP)"
+  pricing_row_bcc: "Indirizzo CCN / copia del documento"
+  pricing_row_download_links: "Scadenza e accesso dei link di download"
   form_not_accepting_responses: "Questo modulo al momento non accetta nuove risposte."
   form_not_accepting_responses_hint: "Contatta la persona che ha condiviso questo modulo con te."
   quota_reached_completions: "Hai usato tutti i %{limit} documenti completati di questo mese. L'invio riprende il %{date} (UTC)."
@@ -3416,6 +3522,11 @@ it: &it
   esign_consent_version_label: "Versione %{version}"
   esign_consent_required: "Per continuare, accetta di utilizzare documenti e firme elettronici."
   esign_consent_version_stale: "L'informativa sulla firma elettronica è stata aggiornata. Ricarica la pagina e accetta di nuovo."
+  esign_consent_view_pdf: "Visualizza questo documento in PDF"
+  esign_consent_open_pdf_first: "Apri il documento in PDF prima di accettare."
+  esign_consent_pdf_opened: "Documento aperto in PDF"
+  esign_consent_shown_to: "mostrata a %{submitter_name}"
+  esign_consent_sender_not_recorded: "Il nome e l'indirizzo e-mail del mittente non sono stati registrati con questo consenso."
   consented_to_electronic_signatures: "Ha acconsentito alle firme elettroniche"
   verify_page_title: "Verifica un documento firmato"
   verify_page_intro: "Carica un PDF firmato tramite EsignCenter. Controlliamo la firma digitale e confrontiamo il file con i nostri registri dei documenti completati. Il risultato mostra solo la data di completamento e quante persone hanno firmato; mai chi ha firmato, i loro indirizzi email o il contenuto del documento."
@@ -3423,8 +3534,9 @@ it: &it
   verify_pdf_only_limit: "Un file PDF, fino a %{limit_mb} MB"
   verify_result_verified_title: "Verificato"
   verify_result_verified: "Questo documento è stato completato tramite EsignCenter il %{date} da %{signers}."
-  verify_signers_one: "%{count} firmatario"
-  verify_signers_other: "%{count} firmatari"
+  verify_signers:
+    one: "%{count} firmatario"
+    other: "%{count} firmatari"
   verify_result_not_on_record_title: "Non registrato"
   verify_result_not_on_record: "Questo file contiene una firma EsignCenter, ma il suo contenuto non corrisponde a nessun documento completato nei nostri registri. Potrebbe essere stato modificato dopo la firma o essere precedente ai nostri registri di verifica."
   verify_result_not_verified_title: "Non verificato"
@@ -3445,11 +3557,15 @@ it: &it
   timestamp_server_operator_only_hint: "Riguarda solo l'account operatore. Gli account cliente usano la variabile d'ambiente TIMESERVER_URL."
   open_verify_page: "Apri la pagina di verifica"
   esign_consent_disclosure_body_html: |-
-    <p>Selezionando la casella, accetti di utilizzare documenti e firme elettronici per questo documento al posto di carta e inchiostro. Accetti che la tua firma elettronica abbia lo stesso effetto legale della tua firma autografa. Una copia del documento completato sarà disponibile per te in formato elettronico e il mittente può fornirtene una anche su richiesta.</p>
-    <p><strong>Cosa ti serve.</strong> Un browser web aggiornato, una connessione a internet e un programma in grado di aprire file PDF. Se riesci a leggere questa pagina, il tuo dispositivo soddisfa questi requisiti.</p>
-    <p><strong>Revoca del consenso.</strong> Puoi revocare il consenso in qualsiasi momento prima di completare il documento, semplicemente non firmandolo e informando il mittente. La revoca non riguarda i documenti che hai già firmato.</p>
-    <p><strong>Copie cartacee.</strong> Puoi richiedere in qualsiasi momento una copia cartacea di questo documento contattando il mittente.</p>
-    <p><strong>Cosa registriamo.</strong> Il tuo consenso viene registrato insieme a data, ora e indirizzo internet (IP) da cui è stato prestato, e compare nel registro di audit del documento.</p>
+    <p>Selezionando la casella, accetti di utilizzare documenti e firme elettronici soltanto per questo documento, al posto di carta e penna. Accetti che la tua firma elettronica abbia lo stesso valore legale della tua firma autografa. Se in futuro %{sender_name} ti invierà un altro documento, ti verrà chiesto di accettare di nuovo.</p>
+    <p><strong>Chi lo ha inviato.</strong> Questo documento è stato inviato da %{sender_name}. Puoi contattarlo all'indirizzo %{sender_email}.</p>
+    <p><strong>La tua copia.</strong> Una copia del documento completato sarà disponibile per te in formato elettronico e %{sender_name} può fornirtene una su richiesta.</p>
+    <p><strong>Cosa ti serve.</strong> Un browser web aggiornato, una connessione a internet e un programma in grado di aprire i file PDF. Prima di accettare, apri il documento in PDF usando il link accanto alla casella per verificare che il tuo dispositivo riesca a visualizzarlo.</p>
+    <p><strong>Conservare una copia.</strong> Per conservare questo documento, al termine scarica il PDF e salvalo o stampalo. Ti serviranno un programma PDF gratuito come Adobe Acrobat Reader e spazio libero sul tuo dispositivo o nella tua casella di posta.</p>
+    <p><strong>Revoca del consenso.</strong> Puoi revocare il consenso in qualsiasi momento prima di completare il documento, semplicemente non firmandolo e comunicandolo a %{sender_name} all'indirizzo %{sender_email}. La revoca non comporta alcun costo. Se revochi il consenso, questo documento non potrà essere firmato elettronicamente e %{sender_name} dovrà predisporre una copia cartacea, il che può ritardare o interrompere l'operazione. La revoca non riguarda i documenti che hai già firmato.</p>
+    <p><strong>Copie cartacee.</strong> Puoi richiedere una copia cartacea di questo documento in qualsiasi momento a %{sender_name} all'indirizzo %{sender_email}. %{product_name} non addebita alcun costo per le copie. Chiedi a %{sender_name} se addebita costi per la stampa e la spedizione.</p>
+    <p><strong>I tuoi recapiti.</strong> I documenti vengono inviati soltanto all'indirizzo e-mail che %{sender_name} ci ha comunicato. Per cambiarlo, comunicalo a %{sender_name}: non hai un account presso di noi da aggiornare.</p>
+    <p><strong>Cosa registriamo.</strong> Il tuo consenso viene registrato insieme alla data, all'ora e all'indirizzo internet (IP) da cui è stato dato, alla versione di questa informativa e all'eventuale apertura del PDF, e compare nel registro di controllo del documento.</p>
   webhook_url: URL del webhook
   webhook_url_must_use_https: deve usare https
   webhook_url_must_not_point_at_a_private_address: non deve puntare a localhost o a un indirizzo privato/di metadati
@@ -3643,6 +3759,7 @@ it: &it
   or_sign_up_with_email: "oppure registrati con l'email"
   creating_account: "Creazione account in corso"
   by_creating_an_account_you_agree_to_html: "Creando un account accetti i %{terms} e l'%{privacy}."
+  legal_documents_updated_please_review: "I nostri termini sono stati aggiornati mentre leggevi. Rileggili e riprova."
   terms_of_service: "Termini di servizio"
   check_your_email: "Controlla la tua email"
   we_sent_a_confirmation_link_to_html: "Abbiamo inviato un link di conferma a %{email}. Aprilo per attivare il tuo account."
@@ -4534,6 +4651,34 @@ it: &it
       detailed: "%d %B %Y %H:%M:%S"
 
 fr: &fr
+  skip_to_content: "Aller au contenu"
+  pricing_group_signing: "Signature"
+  pricing_group_limits: "Limites"
+  pricing_group_automation: "Automatisation et intégrations"
+  pricing_group_branding: "Image de marque et e-mail"
+  pricing_row_send_and_sign: "Envoyer des documents et recueillir des signatures"
+  pricing_row_templates_folders: "Modèles et dossiers, illimités"
+  pricing_row_audit_trail: "Piste d'audit sur chaque document complété"
+  pricing_row_signing_flow: "Ordre de signature, refus ou délégation, signature en personne"
+  pricing_row_signer_2fa: "Vérification par e-mail des signataires"
+  pricing_row_word_uploads: "Import de fichiers Word (.docx) et PDF"
+  pricing_row_exports: "Export CSV/XLSX et export complet du compte"
+  pricing_row_completions: "Documents complétés par mois"
+  pricing_row_sends: "Documents envoyés par mois"
+  pricing_row_in_flight: "Documents en attente de signature simultanément"
+  pricing_row_storage: "Stockage"
+  pricing_row_seats: "Membres de l'équipe (sièges)"
+  pricing_row_api: "API REST, webhooks, MCP et signature intégrée"
+  pricing_row_conditional_logic: "Logique conditionnelle dans les formulaires"
+  pricing_row_reminders: "Rappels automatiques"
+  pricing_row_embed: "Intégrer les formulaires sur votre site"
+  pricing_row_delivery_tracking: "Suivi de livraison (envoyé, rejeté, ouvert)"
+  pricing_row_logo_upload: "Votre logo sur les documents et e-mails"
+  pricing_row_branding_removal: "Retirer la marque EsignCenter des e-mails et des pages"
+  pricing_row_custom_email_templates: "Modèles d'e-mail personnalisés"
+  pricing_row_account_smtp: "Envoyer depuis votre propre domaine (SMTP)"
+  pricing_row_bcc: "Adresse Cci / copie du document"
+  pricing_row_download_links: "Expiration et connexion des liens de téléchargement"
   form_not_accepting_responses: "Ce formulaire n'accepte pas de nouvelles réponses pour le moment."
   form_not_accepting_responses_hint: "Veuillez contacter la personne qui a partagé ce formulaire avec vous."
   quota_reached_completions: "Vous avez utilisé les %{limit} documents complétés de ce mois. L'envoi reprend le %{date} (UTC)."
@@ -4734,6 +4879,11 @@ fr: &fr
   esign_consent_version_label: "Version %{version}"
   esign_consent_required: "Pour continuer, veuillez accepter d'utiliser des documents et des signatures électroniques."
   esign_consent_version_stale: "L'information sur la signature électronique a été mise à jour. Veuillez recharger la page et accepter à nouveau."
+  esign_consent_view_pdf: "Voir ce document en PDF"
+  esign_consent_open_pdf_first: "Ouvrez le document en PDF avant d'accepter."
+  esign_consent_pdf_opened: "Document ouvert en PDF"
+  esign_consent_shown_to: "présentée à %{submitter_name}"
+  esign_consent_sender_not_recorded: "Le nom et l'adresse e-mail de l'expéditeur n'ont pas été enregistrés avec ce consentement."
   consented_to_electronic_signatures: "A consenti aux signatures électroniques"
   verify_page_title: "Vérifier un document signé"
   verify_page_intro: "Téléversez un PDF signé via EsignCenter. Nous vérifions sa signature numérique et comparons le fichier avec nos registres de documents complétés. Le résultat indique uniquement la date de finalisation et le nombre de signataires — jamais qui a signé, leurs adresses e-mail ni le contenu du document."
@@ -4741,8 +4891,9 @@ fr: &fr
   verify_pdf_only_limit: "Un fichier PDF, jusqu’à %{limit_mb} Mo"
   verify_result_verified_title: "Vérifié"
   verify_result_verified: "Ce document a été complété via EsignCenter le %{date} par %{signers}."
-  verify_signers_one: "%{count} signataire"
-  verify_signers_other: "%{count} signataires"
+  verify_signers:
+    one: "%{count} signataire"
+    other: "%{count} signataires"
   verify_result_not_on_record_title: "Absent de nos registres"
   verify_result_not_on_record: "Ce fichier porte une signature EsignCenter, mais son contenu ne correspond à aucun document complété dans nos registres. Il a peut-être été modifié après sa signature, ou il est antérieur à nos registres de vérification."
   verify_result_not_verified_title: "Non vérifié"
@@ -4763,11 +4914,15 @@ fr: &fr
   timestamp_server_operator_only_hint: "Concerne uniquement le compte opérateur. Les comptes clients utilisent la variable d'environnement TIMESERVER_URL."
   open_verify_page: "Ouvrir la page de vérification"
   esign_consent_disclosure_body_html: |-
-    <p>En cochant la case, vous acceptez d'utiliser des documents et des signatures électroniques pour ce document, à la place du papier et de l'encre. Vous acceptez que votre signature électronique ait le même effet juridique que votre signature manuscrite. Une copie du document finalisé sera à votre disposition par voie électronique, et l'expéditeur peut également vous en fournir une sur demande.</p>
-    <p><strong>Ce dont vous avez besoin.</strong> Un navigateur web récent, une connexion internet et un logiciel capable d'ouvrir les fichiers PDF. Si vous pouvez lire cette page, votre appareil répond à ces exigences.</p>
-    <p><strong>Retrait du consentement.</strong> Vous pouvez retirer votre consentement à tout moment avant de finaliser le document, en ne le signant pas et en prévenant l'expéditeur. Le retrait n'affecte pas les documents que vous avez déjà signés.</p>
-    <p><strong>Copies papier.</strong> Vous pouvez demander à tout moment une copie papier de ce document en contactant l'expéditeur.</p>
-    <p><strong>Ce que nous enregistrons.</strong> Votre accord est enregistré avec la date, l'heure et l'adresse internet (IP) depuis laquelle vous l'avez donné, et il figure dans la piste d'audit du document.</p>
+    <p>En cochant la case, vous acceptez d'utiliser des documents et des signatures électroniques pour ce document uniquement, au lieu du papier et de l'encre. Vous acceptez que votre signature électronique ait la même valeur juridique que votre signature manuscrite. Si %{sender_name} vous envoie un autre document plus tard, il vous sera demandé d'accepter à nouveau.</p>
+    <p><strong>Qui l'a envoyé.</strong> Ce document a été envoyé par %{sender_name}. Vous pouvez le joindre à l'adresse %{sender_email}.</p>
+    <p><strong>Votre exemplaire.</strong> Une copie du document complété sera mise à votre disposition par voie électronique, et %{sender_name} peut également vous en fournir une sur demande.</p>
+    <p><strong>Ce dont vous avez besoin.</strong> Un navigateur web récent, une connexion internet et un logiciel capable d'ouvrir les fichiers PDF. Avant d'accepter, ouvrez le document en PDF à l'aide du lien situé à côté de la case afin de vérifier que votre appareil peut l'afficher.</p>
+    <p><strong>Conserver une copie.</strong> Pour conserver ce document, téléchargez le PDF une fois terminé, puis enregistrez-le ou imprimez-le. Vous aurez besoin d'un logiciel PDF gratuit tel qu'Adobe Acrobat Reader et d'espace libre sur votre appareil ou dans votre messagerie.</p>
+    <p><strong>Retrait du consentement.</strong> Vous pouvez retirer votre consentement à tout moment avant de terminer le document, en ne le signant pas et en prévenant %{sender_name} à l'adresse %{sender_email}. Le retrait est gratuit. Si vous le retirez, ce document ne pourra pas être signé électroniquement et %{sender_name} devra organiser l'envoi d'une copie papier, ce qui peut retarder ou interrompre l'opération. Le retrait du consentement n'affecte pas les documents que vous avez déjà signés.</p>
+    <p><strong>Copies papier.</strong> Vous pouvez demander une copie papier de ce document à tout moment à %{sender_name} à l'adresse %{sender_email}. %{product_name} ne facture pas les copies. Demandez à %{sender_name} s'il facture l'impression et l'envoi postal.</p>
+    <p><strong>Vos coordonnées.</strong> Les documents sont envoyés uniquement à l'adresse e-mail que %{sender_name} nous a communiquée. Pour la modifier, prévenez %{sender_name} ; vous n'avez pas de compte chez nous à mettre à jour.</p>
+    <p><strong>Ce que nous enregistrons.</strong> Votre accord est enregistré avec la date, l'heure et l'adresse internet (IP) depuis laquelle vous l'avez donné, la version de cette information et le fait que vous ayez ouvert ou non le PDF, et il figure dans le journal d'audit du document.</p>
   webhook_url: URL du webhook
   webhook_url_must_use_https: doit utiliser https
   webhook_url_must_not_point_at_a_private_address: ne doit pas pointer vers localhost ni vers une adresse privée ou de métadonnées
@@ -4961,6 +5116,7 @@ fr: &fr
   or_sign_up_with_email: "ou inscrivez-vous par e-mail"
   creating_account: "Création du compte"
   by_creating_an_account_you_agree_to_html: "En créant un compte, vous acceptez les %{terms} et la %{privacy}."
+  legal_documents_updated_please_review: "Nos conditions ont été mises à jour pendant votre lecture. Veuillez les relire et réessayer."
   terms_of_service: "Conditions d'utilisation"
   check_your_email: "Vérifiez votre boîte mail"
   we_sent_a_confirmation_link_to_html: "Nous avons envoyé un lien de confirmation à %{email}. Ouvrez-le pour activer votre compte."
@@ -5852,6 +6008,34 @@ fr: &fr
       detailed: "%A %d %B %Y %Hh%Mm%Ss"
 
 pt: &pt
+  skip_to_content: "Saltar para o conteúdo"
+  pricing_group_signing: "Assinatura"
+  pricing_group_limits: "Limites"
+  pricing_group_automation: "Automação e integrações"
+  pricing_group_branding: "Marca e e-mail"
+  pricing_row_send_and_sign: "Enviar documentos e recolher assinaturas"
+  pricing_row_templates_folders: "Modelos e pastas, ilimitados"
+  pricing_row_audit_trail: "Registo de auditoria em cada documento concluído"
+  pricing_row_signing_flow: "Ordem de assinatura, recusar ou delegar, assinatura presencial"
+  pricing_row_signer_2fa: "Verificação por e-mail dos signatários"
+  pricing_row_word_uploads: "Carregamento de ficheiros Word (.docx) e PDF"
+  pricing_row_exports: "Exportação CSV/XLSX e de toda a conta"
+  pricing_row_completions: "Documentos concluídos por mês"
+  pricing_row_sends: "Documentos enviados por mês"
+  pricing_row_in_flight: "Documentos à espera de assinatura em simultâneo"
+  pricing_row_storage: "Armazenamento"
+  pricing_row_seats: "Membros da equipa (lugares)"
+  pricing_row_api: "API REST, webhooks, MCP e assinatura incorporada"
+  pricing_row_conditional_logic: "Lógica condicional nos formulários"
+  pricing_row_reminders: "Lembretes automáticos"
+  pricing_row_embed: "Incorporar formulários no seu site"
+  pricing_row_delivery_tracking: "Acompanhamento de entrega (enviado, devolvido, aberto)"
+  pricing_row_logo_upload: "O seu logótipo em documentos e e-mails"
+  pricing_row_branding_removal: "Remover a marca EsignCenter de e-mails e páginas"
+  pricing_row_custom_email_templates: "Modelos de e-mail personalizados"
+  pricing_row_account_smtp: "Enviar a partir do seu próprio domínio (SMTP)"
+  pricing_row_bcc: "Endereço BCC / cópia do documento"
+  pricing_row_download_links: "Expiração e início de sessão das ligações de descarga"
   form_not_accepting_responses: "Este formulário não está a aceitar novas respostas neste momento."
   form_not_accepting_responses_hint: "Contacte a pessoa que partilhou este formulário consigo."
   quota_reached_completions: "Já usou os %{limit} documentos concluídos deste mês. O envio é retomado em %{date} (UTC)."
@@ -6052,6 +6236,11 @@ pt: &pt
   esign_consent_version_label: "Versão %{version}"
   esign_consent_required: "Para continuar, concorde em utilizar registos e assinaturas eletrónicos."
   esign_consent_version_stale: "A divulgação sobre assinatura eletrónica foi atualizada. Recarregue a página e aceite novamente."
+  esign_consent_view_pdf: "Ver este documento em PDF"
+  esign_consent_open_pdf_first: "Abra o documento em PDF antes de concordar."
+  esign_consent_pdf_opened: "Documento aberto em PDF"
+  esign_consent_shown_to: "apresentada a %{submitter_name}"
+  esign_consent_sender_not_recorded: "O nome e o e-mail do remetente não foram registados com este consentimento."
   consented_to_electronic_signatures: "Consentiu assinaturas eletrónicas"
   verify_page_title: "Verificar um documento assinado"
   verify_page_intro: "Carregue um PDF assinado através do EsignCenter. Verificamos a sua assinatura digital e comparamos o ficheiro com os nossos registos de documentos concluídos. O resultado mostra apenas a data de conclusão e quantas pessoas assinaram — nunca quem assinou, os seus endereços de e-mail ou o conteúdo do documento."
@@ -6059,8 +6248,9 @@ pt: &pt
   verify_pdf_only_limit: "Um ficheiro PDF, até %{limit_mb} MB"
   verify_result_verified_title: "Verificado"
   verify_result_verified: "Este documento foi concluído através do EsignCenter em %{date} por %{signers}."
-  verify_signers_one: "%{count} signatário"
-  verify_signers_other: "%{count} signatários"
+  verify_signers:
+    one: "%{count} signatário"
+    other: "%{count} signatários"
   verify_result_not_on_record_title: "Sem registo"
   verify_result_not_on_record: "Este ficheiro tem uma assinatura EsignCenter, mas o seu conteúdo não corresponde a nenhum documento concluído nos nossos registos. Pode ter sido alterado depois de assinado ou ser anterior aos nossos registos de verificação."
   verify_result_not_verified_title: "Não verificado"
@@ -6081,11 +6271,15 @@ pt: &pt
   timestamp_server_operator_only_hint: "Afeta apenas a conta do operador. As contas de cliente usam a variável de ambiente TIMESERVER_URL."
   open_verify_page: "Abrir a página de verificação"
   esign_consent_disclosure_body_html: |-
-    <p>Ao marcar a caixa, concorda em utilizar registos e assinaturas eletrónicos para este documento, em vez de papel e tinta. Concorda que a sua assinatura eletrónica tem o mesmo efeito legal que a sua assinatura manuscrita. Uma cópia do documento concluído ficará disponível para si por via eletrónica, e o remetente também pode fornecer-lhe uma a pedido.</p>
-    <p><strong>O que precisa.</strong> Um navegador web atual, uma ligação à internet e um programa capaz de abrir ficheiros PDF. Se consegue ler esta página, o seu dispositivo cumpre estes requisitos.</p>
-    <p><strong>Retirar o consentimento.</strong> Pode retirar o seu consentimento a qualquer momento antes de concluir o documento, bastando não o assinar e informar o remetente. A retirada não afeta os documentos que já assinou.</p>
-    <p><strong>Cópias em papel.</strong> Pode solicitar a qualquer momento uma cópia em papel deste documento contactando o remetente.</p>
-    <p><strong>O que registamos.</strong> O seu consentimento é registado juntamente com a data, a hora e o endereço de internet (IP) a partir do qual foi dado, e consta do registo de auditoria do documento.</p>
+    <p>Ao marcar a caixa, concorda em utilizar registos e assinaturas eletrónicos apenas para este documento, em vez de papel e caneta. Concorda que a sua assinatura eletrónica tem o mesmo efeito legal que a sua assinatura manuscrita. Se %{sender_name} lhe enviar outro documento mais tarde, ser-lhe-á pedido que concorde novamente.</p>
+    <p><strong>Quem o enviou.</strong> Este documento foi enviado por %{sender_name}. Pode contactá-lo através de %{sender_email}.</p>
+    <p><strong>A sua cópia.</strong> Uma cópia do documento concluído ficará disponível para si por via eletrónica, e %{sender_name} também lhe pode fornecer uma a pedido.</p>
+    <p><strong>O que precisa.</strong> Um navegador web atual, uma ligação à internet e software que consiga abrir ficheiros PDF. Antes de concordar, abra o documento em PDF através da ligação junto à caixa para confirmar que o seu dispositivo o consegue mostrar.</p>
+    <p><strong>Guardar uma cópia.</strong> Para guardar este documento, transfira o PDF quando terminar e guarde-o ou imprima-o. Vai precisar de software de PDF gratuito, como o Adobe Acrobat Reader, e de espaço livre no seu dispositivo ou na sua conta de e-mail.</p>
+    <p><strong>Retirar o consentimento.</strong> Pode retirar o seu consentimento a qualquer momento antes de concluir o documento, bastando não o assinar e informar %{sender_name} através de %{sender_email}. Retirar o consentimento não tem qualquer custo. Se o retirar, este documento não poderá ser assinado eletronicamente e %{sender_name} terá de providenciar uma cópia em papel, o que pode atrasar ou encerrar o negócio. Retirar o consentimento não afeta os documentos que já assinou.</p>
+    <p><strong>Cópias em papel.</strong> Pode pedir uma cópia em papel deste documento a qualquer momento a %{sender_name} através de %{sender_email}. A %{product_name} não cobra pelas cópias. Pergunte a %{sender_name} se cobra pela impressão e pelo envio postal.</p>
+    <p><strong>Os seus dados de contacto.</strong> Os documentos são enviados apenas para o endereço de e-mail que %{sender_name} nos indicou. Para o alterar, informe %{sender_name}; não tem connosco uma conta que possa atualizar.</p>
+    <p><strong>O que registamos.</strong> O seu consentimento é registado juntamente com a data, a hora e o endereço de internet (IP) a partir do qual o deu, a versão desta divulgação e se abriu o PDF, e consta do registo de auditoria do documento.</p>
   webhook_url: URL do webhook
   webhook_url_must_use_https: deve usar https
   webhook_url_must_not_point_at_a_private_address: não deve apontar para localhost nem para um endereço privado/de metadados
@@ -6279,6 +6473,7 @@ pt: &pt
   or_sign_up_with_email: "ou inscreva-se com o seu e-mail"
   creating_account: "A criar conta"
   by_creating_an_account_you_agree_to_html: "Ao criar uma conta, concorda com os %{terms} e a %{privacy}."
+  legal_documents_updated_please_review: "Os nossos termos foram atualizados enquanto lia. Reveja-os e tente novamente."
   terms_of_service: "Termos de Serviço"
   check_your_email: "Verifique o seu e-mail"
   we_sent_a_confirmation_link_to_html: "Enviámos um link de confirmação para %{email}. Abra-o para ativar a sua conta."
@@ -7170,6 +7365,34 @@ pt: &pt
       detailed: "%A, %d de %B de %Y, %H:%M:%Sh"
 
 de: &de
+  skip_to_content: "Zum Inhalt springen"
+  pricing_group_signing: "Signieren"
+  pricing_group_limits: "Limits"
+  pricing_group_automation: "Automatisierung und Integrationen"
+  pricing_group_branding: "Branding und E-Mail"
+  pricing_row_send_and_sign: "Dokumente senden und Unterschriften einholen"
+  pricing_row_templates_folders: "Vorlagen und Ordner, unbegrenzt"
+  pricing_row_audit_trail: "Prüfprotokoll für jedes abgeschlossene Dokument"
+  pricing_row_signing_flow: "Signierreihenfolge, Ablehnen oder Delegieren, Unterschrift vor Ort"
+  pricing_row_signer_2fa: "E-Mail-Verifizierung für Unterzeichner"
+  pricing_row_word_uploads: "Upload von Word- (.docx) und PDF-Dateien"
+  pricing_row_exports: "CSV/XLSX-Export und vollständiger Kontoexport"
+  pricing_row_completions: "Abgeschlossene Dokumente pro Monat"
+  pricing_row_sends: "Gesendete Dokumente pro Monat"
+  pricing_row_in_flight: "Gleichzeitig zur Unterschrift offene Dokumente"
+  pricing_row_storage: "Speicherplatz"
+  pricing_row_seats: "Teammitglieder (Plätze)"
+  pricing_row_api: "REST-API, Webhooks, MCP und eingebettetes Signieren"
+  pricing_row_conditional_logic: "Bedingte Logik in Formularen"
+  pricing_row_reminders: "Automatische Erinnerungen"
+  pricing_row_embed: "Formulare in Ihre Website einbetten"
+  pricing_row_delivery_tracking: "Zustellverfolgung (gesendet, unzustellbar, geöffnet)"
+  pricing_row_logo_upload: "Ihr Logo auf Dokumenten und E-Mails"
+  pricing_row_branding_removal: "EsignCenter-Branding aus E-Mails und Seiten entfernen"
+  pricing_row_custom_email_templates: "Eigene E-Mail-Vorlagen"
+  pricing_row_account_smtp: "Versand über Ihre eigene Domain (SMTP)"
+  pricing_row_bcc: "BCC- / Dokumentkopie-Adresse"
+  pricing_row_download_links: "Ablauf und Anmeldung für Download-Links"
   form_not_accepting_responses: "Dieses Formular nimmt derzeit keine neuen Antworten an."
   form_not_accepting_responses_hint: "Bitte wenden Sie sich an die Person, die dieses Formular mit Ihnen geteilt hat."
   quota_reached_completions: "Sie haben alle %{limit} abgeschlossenen Dokumente dieses Monats verbraucht. Der Versand wird am %{date} (UTC) fortgesetzt."
@@ -7370,6 +7593,11 @@ de: &de
   esign_consent_version_label: "Version %{version}"
   esign_consent_required: "Bitte stimmen Sie der Verwendung elektronischer Dokumente und Signaturen zu, um fortzufahren."
   esign_consent_version_stale: "Der Hinweis zur elektronischen Signatur wurde aktualisiert. Bitte laden Sie die Seite neu und stimmen Sie erneut zu."
+  esign_consent_view_pdf: "Dieses Dokument als PDF ansehen"
+  esign_consent_open_pdf_first: "Öffnen Sie das Dokument als PDF, bevor Sie zustimmen."
+  esign_consent_pdf_opened: "Dokument als PDF geöffnet"
+  esign_consent_shown_to: "angezeigt für %{submitter_name}"
+  esign_consent_sender_not_recorded: "Name und E-Mail-Adresse des Absenders wurden mit dieser Zustimmung nicht aufgezeichnet."
   consented_to_electronic_signatures: "Elektronischen Signaturen zugestimmt"
   verify_page_title: "Ein signiertes Dokument prüfen"
   verify_page_intro: "Laden Sie ein PDF hoch, das über EsignCenter signiert wurde. Wir prüfen die digitale Signatur und vergleichen die Datei mit unseren Aufzeichnungen abgeschlossener Dokumente. Das Ergebnis zeigt nur das Abschlussdatum und die Anzahl der Unterzeichner – niemals wer unterschrieben hat, deren E-Mail-Adressen oder den Inhalt des Dokuments."
@@ -7377,8 +7605,9 @@ de: &de
   verify_pdf_only_limit: "Eine PDF-Datei, bis zu %{limit_mb} MB"
   verify_result_verified_title: "Verifiziert"
   verify_result_verified: "Dieses Dokument wurde am %{date} über EsignCenter von %{signers} abgeschlossen."
-  verify_signers_one: "%{count} Unterzeichner"
-  verify_signers_other: "%{count} Unterzeichnern"
+  verify_signers:
+    one: "%{count} Unterzeichner"
+    other: "%{count} Unterzeichnern"
   verify_result_not_on_record_title: "Nicht in unseren Aufzeichnungen"
   verify_result_not_on_record: "Diese Datei trägt eine EsignCenter-Signatur, aber ihr Inhalt stimmt mit keinem abgeschlossenen Dokument in unseren Aufzeichnungen überein. Sie wurde möglicherweise nach der Signatur verändert oder stammt aus der Zeit vor unseren Prüfaufzeichnungen."
   verify_result_not_verified_title: "Nicht verifiziert"
@@ -7399,11 +7628,15 @@ de: &de
   timestamp_server_operator_only_hint: "Betrifft nur das Operator-Konto. Kundenkonten verwenden die Umgebungsvariable TIMESERVER_URL."
   open_verify_page: "Prüfseite öffnen"
   esign_consent_disclosure_body_html: |-
-    <p>Mit dem Setzen des Häkchens stimmen Sie zu, für dieses Dokument elektronische Dokumente und elektronische Signaturen anstelle von Papier und Tinte zu verwenden. Sie stimmen zu, dass Ihre elektronische Signatur dieselbe rechtliche Wirkung hat wie Ihre handschriftliche Unterschrift. Eine Kopie des fertigen Dokuments steht Ihnen elektronisch zur Verfügung, und der Absender kann Ihnen auf Anfrage ebenfalls eine bereitstellen.</p>
-    <p><strong>Was Sie benötigen.</strong> Einen aktuellen Webbrowser, eine Internetverbindung und ein Programm, das PDF-Dateien öffnen kann. Wenn Sie diese Seite lesen können, erfüllt Ihr Gerät diese Anforderungen.</p>
-    <p><strong>Widerruf der Zustimmung.</strong> Sie können Ihre Zustimmung jederzeit vor dem Abschluss des Dokuments widerrufen, indem Sie es nicht unterschreiben und den Absender informieren. Der Widerruf betrifft keine Dokumente, die Sie bereits unterschrieben haben.</p>
-    <p><strong>Papierkopien.</strong> Sie können jederzeit eine Papierkopie dieses Dokuments anfordern, indem Sie sich an den Absender wenden.</p>
-    <p><strong>Was wir aufzeichnen.</strong> Ihre Zustimmung wird zusammen mit Datum, Uhrzeit und der Internetadresse (IP) aufgezeichnet, von der aus Sie sie erteilt haben, und erscheint im Prüfprotokoll des Dokuments.</p>
+    <p>Mit dem Setzen des Häkchens stimmen Sie zu, nur für dieses Dokument elektronische Dokumente und elektronische Signaturen anstelle von Papier und Tinte zu verwenden. Sie stimmen zu, dass Ihre elektronische Signatur dieselbe Rechtswirkung hat wie Ihre handschriftliche Unterschrift. Wenn %{sender_name} Ihnen später ein weiteres Dokument sendet, werden Sie erneut um Ihre Zustimmung gebeten.</p>
+    <p><strong>Wer es gesendet hat.</strong> Dieses Dokument wurde von %{sender_name} gesendet. Sie erreichen den Absender unter %{sender_email}.</p>
+    <p><strong>Ihre Kopie.</strong> Eine Kopie des abgeschlossenen Dokuments steht Ihnen elektronisch zur Verfügung, und %{sender_name} kann Ihnen auf Anfrage ebenfalls eine bereitstellen.</p>
+    <p><strong>Was Sie benötigen.</strong> Einen aktuellen Webbrowser, eine Internetverbindung und eine Software, die PDF-Dateien öffnen kann. Öffnen Sie das Dokument vor Ihrer Zustimmung über den Link neben dem Kontrollkästchen als PDF, um sicherzugehen, dass Ihr Gerät es anzeigen kann.</p>
+    <p><strong>Eine Kopie behalten.</strong> Um dieses Dokument zu behalten, laden Sie das PDF am Ende herunter und speichern oder drucken Sie es. Dafür benötigen Sie eine kostenlose PDF-Software wie Adobe Acrobat Reader und freien Speicherplatz auf Ihrem Gerät oder in Ihrem E-Mail-Postfach.</p>
+    <p><strong>Widerruf der Zustimmung.</strong> Sie können Ihre Zustimmung jederzeit widerrufen, solange Sie das Dokument noch nicht abgeschlossen haben: Unterschreiben Sie es einfach nicht und teilen Sie es %{sender_name} unter %{sender_email} mit. Der Widerruf ist kostenlos. Nach einem Widerruf kann dieses Dokument nicht elektronisch unterschrieben werden, und %{sender_name} muss eine Papierfassung bereitstellen, was den Vorgang verzögern oder beenden kann. Der Widerruf betrifft nicht die Dokumente, die Sie bereits unterschrieben haben.</p>
+    <p><strong>Papierkopien.</strong> Sie können jederzeit bei %{sender_name} unter %{sender_email} eine Papierkopie dieses Dokuments anfordern. %{product_name} berechnet für Kopien nichts. Fragen Sie %{sender_name}, ob für Druck und Versand Kosten anfallen.</p>
+    <p><strong>Ihre Kontaktdaten.</strong> Dokumente werden ausschließlich an die E-Mail-Adresse gesendet, die %{sender_name} uns genannt hat. Um sie zu ändern, wenden Sie sich an %{sender_name}; Sie haben bei uns kein Konto, das Sie aktualisieren könnten.</p>
+    <p><strong>Was wir aufzeichnen.</strong> Ihre Zustimmung wird zusammen mit Datum, Uhrzeit und der Internetadresse (IP), von der aus Sie sie erteilt haben, der Version dieses Hinweises und der Angabe, ob Sie das PDF geöffnet haben, aufgezeichnet und erscheint im Prüfprotokoll des Dokuments.</p>
   webhook_url: Webhook-URL
   webhook_url_must_use_https: muss https verwenden
   webhook_url_must_not_point_at_a_private_address: darf nicht auf localhost oder eine private/Metadaten-Adresse verweisen
@@ -7597,6 +7830,7 @@ de: &de
   or_sign_up_with_email: "oder mit E-Mail registrieren"
   creating_account: "Konto wird erstellt"
   by_creating_an_account_you_agree_to_html: "Mit dem Erstellen eines Kontos stimmen Sie den %{terms} und der %{privacy} zu."
+  legal_documents_updated_please_review: "Unsere Bedingungen wurden aktualisiert, während Sie gelesen haben. Bitte lesen Sie sie erneut und versuchen Sie es noch einmal."
   terms_of_service: "Nutzungsbedingungen"
   check_your_email: "Prüfen Sie Ihre E-Mails"
   we_sent_a_confirmation_link_to_html: "Wir haben einen Bestätigungslink an %{email} gesendet. Öffnen Sie ihn, um Ihr Konto zu aktivieren."
@@ -8488,6 +8722,34 @@ de: &de
       detailed: "%A, %d. %B %Y, %H:%M:%S Uhr"
 
 pl:
+  skip_to_content: "Przejdź do treści"
+  pricing_group_signing: "Podpisywanie"
+  pricing_group_limits: "Limity"
+  pricing_group_automation: "Automatyzacja i integracje"
+  pricing_group_branding: "Marka i e-mail"
+  pricing_row_send_and_sign: "Wysyłanie dokumentów i zbieranie podpisów"
+  pricing_row_templates_folders: "Szablony i foldery, bez limitu"
+  pricing_row_audit_trail: "Ścieżka audytu dla każdego ukończonego dokumentu"
+  pricing_row_signing_flow: "Kolejność podpisywania, odrzucenie lub delegowanie, podpis osobisty"
+  pricing_row_signer_2fa: "Weryfikacja e-mail dla podpisujących"
+  pricing_row_word_uploads: "Przesyłanie plików Word (.docx) i PDF"
+  pricing_row_exports: "Eksport CSV/XLSX i pełny eksport konta"
+  pricing_row_completions: "Ukończone dokumenty miesięcznie"
+  pricing_row_sends: "Wysłane dokumenty miesięcznie"
+  pricing_row_in_flight: "Dokumenty oczekujące na podpis jednocześnie"
+  pricing_row_storage: "Przestrzeń dyskowa"
+  pricing_row_seats: "Członkowie zespołu (miejsca)"
+  pricing_row_api: "REST API, webhooki, MCP i podpisywanie osadzone"
+  pricing_row_conditional_logic: "Logika warunkowa w formularzach"
+  pricing_row_reminders: "Automatyczne przypomnienia"
+  pricing_row_embed: "Osadzanie formularzy na Twojej stronie"
+  pricing_row_delivery_tracking: "Śledzenie dostarczenia (wysłano, odbito, otwarto)"
+  pricing_row_logo_upload: "Twoje logo na dokumentach i w e-mailach"
+  pricing_row_branding_removal: "Usunięcie marki EsignCenter z e-maili i stron"
+  pricing_row_custom_email_templates: "Własne szablony e-mail"
+  pricing_row_account_smtp: "Wysyłka z własnej domeny (SMTP)"
+  pricing_row_bcc: "Adres UDW / kopii dokumentu"
+  pricing_row_download_links: "Wygasanie i logowanie dla linków pobierania"
   form_not_accepting_responses: "Ten formularz nie przyjmuje obecnie nowych odpowiedzi."
   form_not_accepting_responses_hint: "Skontaktuj się z osobą, która udostępniła Ci ten formularz."
   quota_reached_completions: "Wykorzystano wszystkie %{limit} ukończone dokumenty w tym miesiącu. Wysyłanie zostanie wznowione %{date} (UTC)."
@@ -8689,6 +8951,11 @@ pl:
   esign_consent_version_label: "Wersja %{version}"
   esign_consent_required: "Aby kontynuować, wyraź zgodę na korzystanie z dokumentów i podpisów elektronicznych."
   esign_consent_version_stale: "Informacja o podpisie elektronicznym została zaktualizowana. Odśwież stronę i wyraź zgodę ponownie."
+  esign_consent_view_pdf: "Zobacz ten dokument w formacie PDF"
+  esign_consent_open_pdf_first: "Otwórz dokument w formacie PDF, zanim wyrazisz zgodę."
+  esign_consent_pdf_opened: "Dokument otwarty w formacie PDF"
+  esign_consent_shown_to: "pokazana: %{submitter_name}"
+  esign_consent_sender_not_recorded: "Imię i nazwisko oraz adres e-mail nadawcy nie zostały zapisane wraz z tą zgodą."
   consented_to_electronic_signatures: "Wyrażono zgodę na podpisy elektroniczne"
   verify_page_title: "Zweryfikuj podpisany dokument"
   verify_page_intro: "Prześlij plik PDF podpisany przez EsignCenter. Sprawdzamy jego podpis cyfrowy i porównujemy plik z naszymi rejestrami ukończonych dokumentów. Wynik pokazuje tylko datę ukończenia i liczbę osób, które podpisały — nigdy kto podpisał, ich adresy e-mail ani treść dokumentu."
@@ -8696,8 +8963,10 @@ pl:
   verify_pdf_only_limit: "Jeden plik PDF, maksymalnie %{limit_mb} MB"
   verify_result_verified_title: "Zweryfikowano"
   verify_result_verified: "Ten dokument został ukończony przez EsignCenter dnia %{date} przez %{signers}."
-  verify_signers_one: "%{count} podpisującego"
-  verify_signers_other: "%{count} podpisujących"
+  verify_signers:
+    one: "%{count} podpisującego"
+    few: "%{count} podpisujących"
+    many: "%{count} podpisujących"
   verify_result_not_on_record_title: "Brak w rejestrze"
   verify_result_not_on_record: "Ten plik zawiera podpis EsignCenter, ale jego treść nie odpowiada żadnemu ukończonemu dokumentowi w naszych rejestrach. Mógł zostać zmieniony po podpisaniu lub pochodzić sprzed naszych rejestrów weryfikacji."
   verify_result_not_verified_title: "Nie zweryfikowano"
@@ -8722,11 +8991,15 @@ pl:
   analyzing: "Analizowanie"
   close: "Zamknij"
   esign_consent_disclosure_body_html: |-
-    <p>Zaznaczając pole, zgadzasz się na korzystanie z dokumentów i podpisów elektronicznych w odniesieniu do tego dokumentu zamiast papieru i długopisu. Zgadzasz się, że Twój podpis elektroniczny ma taki sam skutek prawny jak Twój podpis odręczny. Kopia gotowego dokumentu będzie dla Ciebie dostępna drogą elektroniczną, a nadawca może również przekazać Ci ją na życzenie.</p>
-    <p><strong>Czego potrzebujesz.</strong> Aktualnej przeglądarki internetowej, połączenia z internetem oraz programu otwierającego pliki PDF. Jeśli możesz przeczytać tę stronę, Twoje urządzenie spełnia te wymagania.</p>
-    <p><strong>Wycofanie zgody.</strong> Możesz wycofać zgodę w dowolnym momencie przed ukończeniem dokumentu – wystarczy go nie podpisywać i poinformować nadawcę. Wycofanie zgody nie dotyczy dokumentów, które już zostały podpisane.</p>
-    <p><strong>Kopie papierowe.</strong> W każdej chwili możesz poprosić o papierową kopię tego dokumentu, kontaktując się z nadawcą.</p>
-    <p><strong>Co rejestrujemy.</strong> Twoja zgoda jest zapisywana wraz z datą, godziną i adresem internetowym (IP), z którego została udzielona, i pojawia się w dzienniku audytu dokumentu.</p>
+    <p>Zaznaczając pole, wyrażasz zgodę na korzystanie z dokumentów i podpisów elektronicznych wyłącznie w przypadku tego dokumentu, zamiast papieru i długopisu. Zgadzasz się, że Twój podpis elektroniczny ma taki sam skutek prawny jak podpis odręczny. Jeśli %{sender_name} prześle Ci później kolejny dokument, poprosimy Cię o zgodę ponownie.</p>
+    <p><strong>Kto go wysłał.</strong> Ten dokument wysłał(a) %{sender_name}. Możesz skontaktować się pod adresem %{sender_email}.</p>
+    <p><strong>Twoja kopia.</strong> Kopia ukończonego dokumentu będzie dostępna dla Ciebie w postaci elektronicznej, a %{sender_name} może również przekazać ją na życzenie.</p>
+    <p><strong>Czego potrzebujesz.</strong> Aktualnej przeglądarki internetowej, połączenia z internetem i programu, który otwiera pliki PDF. Zanim wyrazisz zgodę, otwórz dokument w formacie PDF za pomocą linku obok pola wyboru, aby sprawdzić, czy Twoje urządzenie potrafi go wyświetlić.</p>
+    <p><strong>Zachowanie kopii.</strong> Aby zachować ten dokument, po zakończeniu pobierz plik PDF i zapisz go lub wydrukuj. Potrzebne będą bezpłatny program do plików PDF, na przykład Adobe Acrobat Reader, oraz wolne miejsce na urządzeniu lub w skrzynce e-mail.</p>
+    <p><strong>Wycofanie zgody.</strong> Możesz wycofać zgodę w dowolnym momencie, zanim ukończysz dokument — wystarczy go nie podpisywać i powiadomić %{sender_name} pod adresem %{sender_email}. Wycofanie zgody jest bezpłatne. Po wycofaniu zgody tego dokumentu nie można podpisać elektronicznie, a %{sender_name} będzie musiał(a) przygotować wersję papierową, co może opóźnić lub zakończyć transakcję. Wycofanie zgody nie ma wpływu na dokumenty, które już podpisano.</p>
+    <p><strong>Kopie papierowe.</strong> W dowolnym momencie możesz poprosić o papierową kopię tego dokumentu — zwróć się do %{sender_name} pod adresem %{sender_email}. %{product_name} nie pobiera opłat za kopie. Zapytaj %{sender_name}, czy pobiera opłatę za wydruk i wysyłkę.</p>
+    <p><strong>Twoje dane kontaktowe.</strong> Dokumenty wysyłamy wyłącznie na adres e-mail, który podał(a) nam %{sender_name}. Aby go zmienić, powiadom %{sender_name}; nie masz u nas konta, które można zaktualizować.</p>
+    <p><strong>Co zapisujemy.</strong> Twoja zgoda jest zapisywana razem z datą, godziną i adresem internetowym (IP), z którego jej udzielono, wersją tej informacji oraz tym, czy plik PDF został otwarty, i pojawia się w rejestrze audytu dokumentu.</p>
   submission_event_names:
     esign_consent_by_html: "<b>Wyrażono zgodę na podpisy elektroniczne (%{version})</b> przez %{submitter_name}"
   webhook_url: Adres URL webhooka
@@ -8818,6 +9091,7 @@ pl:
   or_sign_up_with_email: "lub zarejestruj się przez e-mail"
   creating_account: "Tworzenie konta"
   by_creating_an_account_you_agree_to_html: "Tworząc konto, akceptujesz %{terms} oraz %{privacy}."
+  legal_documents_updated_please_review: "Nasze warunki zostały zaktualizowane, gdy je czytałeś. Zapoznaj się z nimi ponownie i spróbuj jeszcze raz."
   terms_of_service: "Regulamin"
   check_your_email: "Sprawdź swoją skrzynkę e-mail"
   we_sent_a_confirmation_link_to_html: "Wysłaliśmy link potwierdzający na adres %{email}. Otwórz go, aby aktywować konto."
@@ -8877,6 +9151,34 @@ pl:
   too_many_requests_try_again_later: Zbyt wiele żądań. Spróbuj ponownie później.
 
 uk:
+  skip_to_content: "Перейти до вмісту"
+  pricing_group_signing: "Підписання"
+  pricing_group_limits: "Ліміти"
+  pricing_group_automation: "Автоматизація та інтеграції"
+  pricing_group_branding: "Бренд і електронна пошта"
+  pricing_row_send_and_sign: "Надсилання документів і збір підписів"
+  pricing_row_templates_folders: "Шаблони та папки, без обмежень"
+  pricing_row_audit_trail: "Журнал аудиту для кожного завершеного документа"
+  pricing_row_signing_flow: "Порядок підписання, відмова або делегування, підписання особисто"
+  pricing_row_signer_2fa: "Підтвердження електронною поштою для підписантів"
+  pricing_row_word_uploads: "Завантаження файлів Word (.docx) і PDF"
+  pricing_row_exports: "Експорт CSV/XLSX і повний експорт облікового запису"
+  pricing_row_completions: "Завершених документів на місяць"
+  pricing_row_sends: "Надісланих документів на місяць"
+  pricing_row_in_flight: "Документів, що очікують підпису одночасно"
+  pricing_row_storage: "Сховище"
+  pricing_row_seats: "Учасники команди (місця)"
+  pricing_row_api: "REST API, вебхуки, MCP і вбудоване підписання"
+  pricing_row_conditional_logic: "Умовна логіка у формах"
+  pricing_row_reminders: "Автоматичні нагадування"
+  pricing_row_embed: "Вбудовування форм на ваш сайт"
+  pricing_row_delivery_tracking: "Відстеження доставки (надіслано, відхилено, відкрито)"
+  pricing_row_logo_upload: "Ваш логотип на документах і в листах"
+  pricing_row_branding_removal: "Прибрати бренд EsignCenter з листів і сторінок"
+  pricing_row_custom_email_templates: "Власні шаблони листів"
+  pricing_row_account_smtp: "Надсилання з власного домену (SMTP)"
+  pricing_row_bcc: "Адреса прихованої копії / копії документа"
+  pricing_row_download_links: "Термін дії та вхід для посилань на завантаження"
   form_not_accepting_responses: "Ця форма наразі не приймає нових відповідей."
   form_not_accepting_responses_hint: "Зверніться до людини, яка поділилася з вами цією формою."
   quota_reached_completions: "Ви використали всі %{limit} завершені документи цього місяця. Надсилання відновиться %{date} (UTC)."
@@ -9078,6 +9380,11 @@ uk:
   esign_consent_version_label: "Версія %{version}"
   esign_consent_required: "Щоб продовжити, погодьтеся використовувати електронні документи та підписи."
   esign_consent_version_stale: "Повідомлення про електронний підпис було оновлено. Перезавантажте сторінку та погодьтеся ще раз."
+  esign_consent_view_pdf: "Переглянути цей документ у форматі PDF"
+  esign_consent_open_pdf_first: "Відкрийте документ у форматі PDF, перш ніж погодитися."
+  esign_consent_pdf_opened: "Документ відкрито у форматі PDF"
+  esign_consent_shown_to: "показано: %{submitter_name}"
+  esign_consent_sender_not_recorded: "Ім’я та електронну адресу відправника не було записано разом із цією згодою."
   consented_to_electronic_signatures: "Надано згоду на електронні підписи"
   verify_page_title: "Перевірити підписаний документ"
   verify_page_intro: "Завантажте PDF, підписаний через EsignCenter. Ми перевіримо його цифровий підпис і порівняємо файл із нашими записами завершених документів. Результат показує лише дату завершення та кількість підписантів — ніколи хто підписав, їхні електронні адреси чи вміст документа."
@@ -9085,8 +9392,10 @@ uk:
   verify_pdf_only_limit: "Один файл PDF, до %{limit_mb} МБ"
   verify_result_verified_title: "Перевірено"
   verify_result_verified: "Цей документ було завершено через EsignCenter %{date}, підписантів: %{signers}."
-  verify_signers_one: "%{count} підписант"
-  verify_signers_other: "%{count} підписантів"
+  verify_signers:
+    one: "%{count} підписант"
+    few: "%{count} підписанти"
+    many: "%{count} підписантів"
   verify_result_not_on_record_title: "Немає в записах"
   verify_result_not_on_record: "Цей файл містить підпис EsignCenter, але його вміст не збігається з жодним завершеним документом у наших записах. Його могли змінити після підписання, або він створений до появи наших записів перевірки."
   verify_result_not_verified_title: "Не перевірено"
@@ -9111,11 +9420,15 @@ uk:
   analyzing: "Аналіз"
   close: "Закрити"
   esign_consent_disclosure_body_html: |-
-    <p>Установлюючи прапорець, ви погоджуєтеся використовувати для цього документа електронні документи та електронні підписи замість паперу й чорнила. Ви погоджуєтеся, що ваш електронний підпис має таку саму юридичну силу, як і ваш власноручний підпис. Копія завершеного документа буде доступна вам в електронному вигляді, а відправник також може надати її на ваш запит.</p>
-    <p><strong>Що вам потрібно.</strong> Сучасний веббраузер, підключення до інтернету та програма, яка відкриває файли PDF. Якщо ви можете прочитати цю сторінку, ваш пристрій відповідає цим вимогам.</p>
-    <p><strong>Відкликання згоди.</strong> Ви можете відкликати згоду в будь-який момент до завершення документа: просто не підписуйте його та повідомте відправника. Відкликання не стосується документів, які ви вже підписали.</p>
-    <p><strong>Паперові копії.</strong> Ви можете будь-коли запросити паперову копію цього документа, звернувшись до відправника.</p>
-    <p><strong>Що ми записуємо.</strong> Ваша згода фіксується разом із датою, часом та інтернет-адресою (IP), з якої її було надано, і відображається в журналі аудиту документа.</p>
+    <p>Позначивши це поле, ви погоджуєтеся використовувати електронні документи та електронні підписи лише для цього документа замість паперу й ручки. Ви погоджуєтеся, що ваш електронний підпис має таку саму юридичну силу, як і власноручний. Якщо %{sender_name} надішле вам інший документ пізніше, вас попросять погодитися знову.</p>
+    <p><strong>Хто його надіслав.</strong> Цей документ надіслав(ла) %{sender_name}. Зв’язатися можна за адресою %{sender_email}.</p>
+    <p><strong>Ваша копія.</strong> Копія завершеного документа буде доступна вам в електронному вигляді, а %{sender_name} також може надати її на запит.</p>
+    <p><strong>Що вам потрібно.</strong> Сучасний веббраузер, підключення до інтернету та програма, яка відкриває файли PDF. Перш ніж погодитися, відкрийте документ у форматі PDF за посиланням поруч із полем, щоб переконатися, що ваш пристрій може його показати.</p>
+    <p><strong>Як зберегти копію.</strong> Щоб зберегти цей документ, після завершення завантажте PDF і збережіть або роздрукуйте його. Вам знадобиться безкоштовна програма для PDF, наприклад Adobe Acrobat Reader, і вільне місце на пристрої чи в поштовій скриньці.</p>
+    <p><strong>Відкликання згоди.</strong> Ви можете відкликати згоду будь-коли, доки не завершили документ: просто не підписуйте його та повідомте %{sender_name} за адресою %{sender_email}. Відкликання безкоштовне. Після відкликання цей документ не можна підписати електронно, і %{sender_name} доведеться підготувати паперовий примірник, що може затримати або припинити операцію. Відкликання згоди не стосується документів, які ви вже підписали.</p>
+    <p><strong>Паперові копії.</strong> Ви можете будь-коли попросити паперову копію цього документа в %{sender_name} за адресою %{sender_email}. %{product_name} не бере плати за копії. Запитайте %{sender_name}, чи стягується плата за друк і поштове пересилання.</p>
+    <p><strong>Ваші контактні дані.</strong> Документи надсилаються лише на ту електронну адресу, яку нам надав(ла) %{sender_name}. Щоб змінити її, повідомте %{sender_name}; у вас немає облікового запису в нас, який можна було б оновити.</p>
+    <p><strong>Що ми записуємо.</strong> Вашу згоду записано разом із датою, часом та інтернет-адресою (IP), з якої її надано, версією цього повідомлення та відміткою про те, чи відкривали ви PDF; вона відображається в журналі аудиту документа.</p>
   submission_event_names:
     esign_consent_by_html: "<b>Надано згоду на електронні підписи (%{version})</b> користувачем %{submitter_name}"
   webhook_url: URL вебхука
@@ -9207,6 +9520,7 @@ uk:
   or_sign_up_with_email: "або зареєструйтеся через електронну пошту"
   creating_account: "Створення акаунта"
   by_creating_an_account_you_agree_to_html: "Створюючи акаунт, ви погоджуєтеся з %{terms} та %{privacy}."
+  legal_documents_updated_please_review: "Наші умови було оновлено, поки ви читали. Перегляньте їх і спробуйте ще раз."
   terms_of_service: "Умови використання"
   check_your_email: "Перевірте свою пошту"
   we_sent_a_confirmation_link_to_html: "Ми надіслали посилання для підтвердження на %{email}. Відкрийте його, щоб активувати акаунт."
@@ -9266,6 +9580,34 @@ uk:
   too_many_requests_try_again_later: Забагато запитів. Спробуйте пізніше.
 
 cs:
+  skip_to_content: "Přejít na obsah"
+  pricing_group_signing: "Podepisování"
+  pricing_group_limits: "Limity"
+  pricing_group_automation: "Automatizace a integrace"
+  pricing_group_branding: "Značka a e-mail"
+  pricing_row_send_and_sign: "Odesílání dokumentů a sběr podpisů"
+  pricing_row_templates_folders: "Šablony a složky, bez omezení"
+  pricing_row_audit_trail: "Auditní stopa u každého dokončeného dokumentu"
+  pricing_row_signing_flow: "Pořadí podepisování, odmítnutí nebo delegování, podpis osobně"
+  pricing_row_signer_2fa: "Ověření e-mailem pro podepisující"
+  pricing_row_word_uploads: "Nahrávání souborů Word (.docx) a PDF"
+  pricing_row_exports: "Export CSV/XLSX a úplný export účtu"
+  pricing_row_completions: "Dokončené dokumenty za měsíc"
+  pricing_row_sends: "Odeslané dokumenty za měsíc"
+  pricing_row_in_flight: "Dokumenty čekající na podpis současně"
+  pricing_row_storage: "Úložiště"
+  pricing_row_seats: "Členové týmu (místa)"
+  pricing_row_api: "REST API, webhooky, MCP a vestavěné podepisování"
+  pricing_row_conditional_logic: "Podmíněná logika ve formulářích"
+  pricing_row_reminders: "Automatické připomínky"
+  pricing_row_embed: "Vložení formulářů na váš web"
+  pricing_row_delivery_tracking: "Sledování doručení (odesláno, vráceno, otevřeno)"
+  pricing_row_logo_upload: "Vaše logo na dokumentech a v e-mailech"
+  pricing_row_branding_removal: "Odstranění značky EsignCenter z e-mailů a stránek"
+  pricing_row_custom_email_templates: "Vlastní e-mailové šablony"
+  pricing_row_account_smtp: "Odesílání z vlastní domény (SMTP)"
+  pricing_row_bcc: "Adresa skryté kopie / kopie dokumentu"
+  pricing_row_download_links: "Platnost a přihlášení u odkazů ke stažení"
   form_not_accepting_responses: "Tento formulář momentálně nepřijímá nové odpovědi."
   form_not_accepting_responses_hint: "Obraťte se na osobu, která s vámi tento formulář sdílela."
   quota_reached_completions: "Vyčerpali jste všech %{limit} dokončených dokumentů pro tento měsíc. Odesílání se obnoví %{date} (UTC)."
@@ -9467,6 +9809,11 @@ cs:
   esign_consent_version_label: "Verze %{version}"
   esign_consent_required: "Pro pokračování prosím souhlaste s používáním elektronických dokumentů a podpisů."
   esign_consent_version_stale: "Informace o elektronickém podpisu byly aktualizovány. Obnovte prosím stránku a znovu udělte souhlas."
+  esign_consent_view_pdf: "Zobrazit tento dokument v PDF"
+  esign_consent_open_pdf_first: "Než udělíte souhlas, otevřete dokument v PDF."
+  esign_consent_pdf_opened: "Dokument otevřen v PDF"
+  esign_consent_shown_to: "zobrazeno: %{submitter_name}"
+  esign_consent_sender_not_recorded: "Jméno a e-mailová adresa odesílatele nebyly s tímto souhlasem zaznamenány."
   consented_to_electronic_signatures: "Udělen souhlas s elektronickými podpisy"
   verify_page_title: "Ověřit podepsaný dokument"
   verify_page_intro: "Nahrajte PDF podepsané prostřednictvím EsignCenter. Zkontrolujeme jeho digitální podpis a porovnáme soubor s našimi záznamy dokončených dokumentů. Výsledek ukazuje pouze datum dokončení a počet podepisujících — nikdy kdo podepsal, jejich e-mailové adresy ani obsah dokumentu."
@@ -9474,8 +9821,10 @@ cs:
   verify_pdf_only_limit: "Jeden soubor PDF, nejvýše %{limit_mb} MB"
   verify_result_verified_title: "Ověřeno"
   verify_result_verified: "Tento dokument byl dokončen prostřednictvím EsignCenter dne %{date}, počet podepisujících: %{signers}."
-  verify_signers_one: "%{count} podepisující"
-  verify_signers_other: "%{count} podepisujících"
+  verify_signers:
+    one: "%{count} podepisující"
+    few: "%{count} podepisující"
+    other: "%{count} podepisujících"
   verify_result_not_on_record_title: "Není v záznamech"
   verify_result_not_on_record: "Tento soubor nese podpis EsignCenter, ale jeho obsah neodpovídá žádnému dokončenému dokumentu v našich záznamech. Mohl být po podpisu změněn, nebo vznikl před zavedením našich ověřovacích záznamů."
   verify_result_not_verified_title: "Neověřeno"
@@ -9500,11 +9849,15 @@ cs:
   analyzing: "Analyzuje se"
   close: "Zavřít"
   esign_consent_disclosure_body_html: |-
-    <p>Zaškrtnutím políčka souhlasíte s tím, že pro tento dokument budou místo papíru a inkoustu použity elektronické dokumenty a elektronické podpisy. Souhlasíte s tím, že váš elektronický podpis má stejné právní účinky jako váš vlastnoruční podpis. Kopie dokončeného dokumentu vám bude k dispozici elektronicky a odesílatel vám ji může na požádání rovněž poskytnout.</p>
-    <p><strong>Co potřebujete.</strong> Aktuální webový prohlížeč, připojení k internetu a program, který otevře soubory PDF. Pokud dokážete přečíst tuto stránku, vaše zařízení tyto požadavky splňuje.</p>
-    <p><strong>Odvolání souhlasu.</strong> Souhlas můžete kdykoli před dokončením dokumentu odvolat tak, že dokument nepodepíšete a informujete odesílatele. Odvolání se netýká dokumentů, které jste již podepsali.</p>
-    <p><strong>Papírové kopie.</strong> O papírovou kopii tohoto dokumentu můžete kdykoli požádat odesílatele.</p>
-    <p><strong>Co zaznamenáváme.</strong> Váš souhlas je zaznamenán spolu s datem, časem a internetovou adresou (IP), ze které byl udělen, a je uveden v auditní stopě dokumentu.</p>
+    <p>Zaškrtnutím políčka souhlasíte s tím, že pouze pro tento dokument použijete elektronické dokumenty a elektronické podpisy namísto papíru a pera. Souhlasíte s tím, že váš elektronický podpis má stejné právní účinky jako podpis vlastní rukou. Pokud vám %{sender_name} později pošle další dokument, budete o souhlas požádáni znovu.</p>
+    <p><strong>Kdo dokument poslal.</strong> Tento dokument poslal(a) %{sender_name}. Zastihnete jej na adrese %{sender_email}.</p>
+    <p><strong>Vaše kopie.</strong> Kopie dokončeného dokumentu vám bude k dispozici elektronicky a %{sender_name} vám ji na požádání může poskytnout také.</p>
+    <p><strong>Co potřebujete.</strong> Aktuální webový prohlížeč, připojení k internetu a program, který otevře soubory PDF. Než souhlas udělíte, otevřete dokument v PDF pomocí odkazu vedle políčka a ověřte si, že jej vaše zařízení zobrazí.</p>
+    <p><strong>Uchování kopie.</strong> Chcete-li si tento dokument ponechat, po dokončení si stáhněte PDF a uložte je nebo vytiskněte. Budete potřebovat bezplatný program pro PDF, například Adobe Acrobat Reader, a volné místo ve svém zařízení nebo e-mailové schránce.</p>
+    <p><strong>Odvolání souhlasu.</strong> Souhlas můžete kdykoli odvolat, dokud dokument nedokončíte: prostě jej nepodepisujte a dejte vědět %{sender_name} na adrese %{sender_email}. Odvolání je zdarma. Po odvolání nelze tento dokument podepsat elektronicky a %{sender_name} bude muset zajistit papírovou verzi, což může celou věc zdržet nebo ukončit. Odvolání souhlasu se netýká dokumentů, které jste již podepsali.</p>
+    <p><strong>Papírové kopie.</strong> O papírovou kopii tohoto dokumentu můžete kdykoli požádat %{sender_name} na adrese %{sender_email}. %{product_name} si za kopie nic neúčtuje. Zeptejte se %{sender_name}, zda si účtuje tisk a poštovné.</p>
+    <p><strong>Vaše kontaktní údaje.</strong> Dokumenty posíláme pouze na e-mailovou adresu, kterou nám %{sender_name} sdělil(a). Chcete-li ji změnit, dejte vědět %{sender_name}; u nás nemáte účet, který byste mohli upravit.</p>
+    <p><strong>Co zaznamenáváme.</strong> Váš souhlas zaznamenáváme spolu s datem, časem a internetovou (IP) adresou, ze které byl udělen, verzí tohoto poučení a údajem, zda jste otevřeli PDF; objeví se v záznamu auditu dokumentu.</p>
   submission_event_names:
     esign_consent_by_html: "<b>Souhlas s elektronickými podpisy udělen (%{version})</b> uživatelem %{submitter_name}"
   webhook_url: URL webhooku
@@ -9596,6 +9949,7 @@ cs:
   or_sign_up_with_email: "nebo se zaregistrujte e-mailem"
   creating_account: "Vytváření účtu"
   by_creating_an_account_you_agree_to_html: "Vytvořením účtu souhlasíte s %{terms} a %{privacy}."
+  legal_documents_updated_please_review: "Naše podmínky byly během čtení aktualizovány. Přečtěte si je prosím znovu a zkuste to ještě jednou."
   terms_of_service: "Podmínkami služby"
   check_your_email: "Zkontrolujte svůj e-mail"
   we_sent_a_confirmation_link_to_html: "Poslali jsme potvrzovací odkaz na %{email}. Otevřete jej a aktivujte svůj účet."
@@ -9655,6 +10009,34 @@ cs:
   too_many_requests_try_again_later: Příliš mnoho požadavků. Zkuste to později.
 
 he:
+  skip_to_content: "דלג לתוכן"
+  pricing_group_signing: "חתימה"
+  pricing_group_limits: "מגבלות"
+  pricing_group_automation: "אוטומציה ואינטגרציות"
+  pricing_group_branding: "מיתוג ודוא\"ל"
+  pricing_row_send_and_sign: "שליחת מסמכים ואיסוף חתימות"
+  pricing_row_templates_folders: "תבניות ותיקיות, ללא הגבלה"
+  pricing_row_audit_trail: "נתיב ביקורת לכל מסמך שהושלם"
+  pricing_row_signing_flow: "סדר חתימה, דחייה או האצלה, חתימה פנים אל פנים"
+  pricing_row_signer_2fa: "אימות בדוא\"ל לחותמים"
+  pricing_row_word_uploads: "העלאת קובצי Word (.docx) ו-PDF"
+  pricing_row_exports: "ייצוא CSV/XLSX וייצוא מלא של החשבון"
+  pricing_row_completions: "מסמכים שהושלמו בחודש"
+  pricing_row_sends: "מסמכים שנשלחו בחודש"
+  pricing_row_in_flight: "מסמכים הממתינים לחתימה בו-זמנית"
+  pricing_row_storage: "אחסון"
+  pricing_row_seats: "חברי צוות (מקומות)"
+  pricing_row_api: "REST API, webhooks, MCP וחתימה מוטמעת"
+  pricing_row_conditional_logic: "לוגיקה מותנית בטפסים"
+  pricing_row_reminders: "תזכורות אוטומטיות"
+  pricing_row_embed: "הטמעת טפסים באתר שלך"
+  pricing_row_delivery_tracking: "מעקב מסירה (נשלח, נדחה, נפתח)"
+  pricing_row_logo_upload: "הלוגו שלך על מסמכים ובדוא\"ל"
+  pricing_row_branding_removal: "הסרת המיתוג של EsignCenter מדוא\"ל ומדפים"
+  pricing_row_custom_email_templates: "תבניות דוא\"ל מותאמות אישית"
+  pricing_row_account_smtp: "שליחה מהדומיין שלך (SMTP)"
+  pricing_row_bcc: "כתובת עותק מוסתר / עותק מסמך"
+  pricing_row_download_links: "תפוגה וכניסה לקישורי הורדה"
   form_not_accepting_responses: "טופס זה אינו מקבל תשובות חדשות כרגע."
   form_not_accepting_responses_hint: "אנא פנו לאדם ששיתף אתכם בטופס זה."
   quota_reached_completions: "ניצלתם את כל %{limit} המסמכים שהושלמו לחודש זה. השליחה תתחדש ב-%{date} (UTC)."
@@ -9856,6 +10238,11 @@ he:
   esign_consent_version_label: "גרסה %{version}"
   esign_consent_required: "כדי להמשיך, יש להסכים להשתמש ברשומות ובחתימות אלקטרוניות."
   esign_consent_version_stale: "הגילוי בנוגע לחתימה האלקטרונית עודכן. יש לטעון מחדש את הדף ולאשר שוב."
+  esign_consent_view_pdf: "הצגת מסמך זה כקובץ PDF"
+  esign_consent_open_pdf_first: "יש לפתוח את המסמך כקובץ PDF לפני מתן ההסכמה."
+  esign_consent_pdf_opened: "המסמך נפתח כקובץ PDF"
+  esign_consent_shown_to: "הוצג בפני %{submitter_name}"
+  esign_consent_sender_not_recorded: "שם השולח וכתובת הדוא״ל שלו לא נרשמו עם הסכמה זו."
   consented_to_electronic_signatures: "ניתנה הסכמה לחתימות אלקטרוניות"
   verify_page_title: "אימות מסמך חתום"
   verify_page_intro: "העלו קובץ PDF שנחתם דרך EsignCenter. אנו בודקים את החתימה הדיגיטלית שלו ומשווים את הקובץ לרשומות המסמכים שהושלמו אצלנו. התוצאה מציגה רק את תאריך ההשלמה ואת מספר החותמים — לעולם לא מי חתם, כתובות הדוא\"ל שלהם או תוכן המסמך."
@@ -9863,8 +10250,9 @@ he:
   verify_pdf_only_limit: "קובץ PDF אחד, עד %{limit_mb} MB"
   verify_result_verified_title: "מאומת"
   verify_result_verified: "מסמך זה הושלם דרך EsignCenter בתאריך %{date} על ידי %{signers}."
-  verify_signers_one: "חותם %{count}"
-  verify_signers_other: "%{count} חותמים"
+  verify_signers:
+    one: "חותם %{count}"
+    other: "%{count} חותמים"
   verify_result_not_on_record_title: "לא ברשומות"
   verify_result_not_on_record: "קובץ זה נושא חתימת EsignCenter, אך תוכנו אינו תואם לאף מסמך שהושלם ברשומות שלנו. ייתכן שהוא שונה לאחר החתימה, או שהוא קודם לרשומות האימות שלנו."
   verify_result_not_verified_title: "לא מאומת"
@@ -9889,11 +10277,15 @@ he:
   analyzing: "מנתח"
   close: "סגור"
   esign_consent_disclosure_body_html: |-
-    <p>בסימון התיבה, את/ה מסכים/ה להשתמש במסמך זה ברשומות אלקטרוניות ובחתימות אלקטרוניות במקום נייר ועט. את/ה מסכים/ה שלחתימה האלקטרונית שלך יש אותו תוקף משפטי כמו לחתימה בכתב ידך. עותק של המסמך שהושלם יהיה זמין לך באופן אלקטרוני, והשולח יכול גם לספק לך עותק לפי בקשה.</p>
-    <p><strong>מה נדרש.</strong> דפדפן עדכני, חיבור לאינטרנט ותוכנה שיכולה לפתוח קובצי PDF. אם ניתן לקרוא דף זה, המכשיר שלך עומד בדרישות אלה.</p>
-    <p><strong>ביטול ההסכמה.</strong> ניתן לבטל את ההסכמה בכל עת לפני השלמת המסמך, על ידי אי-חתימה עליו ויידוע השולח. ביטול ההסכמה אינו משפיע על מסמכים שכבר נחתמו.</p>
-    <p><strong>עותקים מודפסים.</strong> ניתן לבקש עותק מודפס של מסמך זה בכל עת בפנייה לשולח.</p>
-    <p><strong>מה אנחנו מתעדים.</strong> ההסכמה שלך נרשמת יחד עם התאריך, השעה וכתובת האינטרנט (IP) שממנה ניתנה, ומופיעה ביומן הביקורת של המסמך.</p>
+    <p>בסימון התיבה, את/ה מסכים/ה להשתמש ברשומות אלקטרוניות ובחתימות אלקטרוניות עבור מסמך זה בלבד, במקום נייר ועט. את/ה מסכים/ה שלחתימה האלקטרונית שלך יש אותו תוקף משפטי כמו לחתימה בכתב ידך. אם %{sender_name} ישלח לך מסמך נוסף בהמשך, תתבקש/י לאשר שוב.</p>
+    <p><strong>מי שלח את המסמך.</strong> מסמך זה נשלח על ידי %{sender_name}. ניתן ליצור קשר בכתובת %{sender_email}.</p>
+    <p><strong>העותק שלך.</strong> עותק של המסמך שהושלם יהיה זמין לך באופן אלקטרוני, וגם %{sender_name} יכול לספק לך עותק לפי בקשה.</p>
+    <p><strong>מה נדרש.</strong> דפדפן עדכני, חיבור לאינטרנט ותוכנה שיכולה לפתוח קובצי PDF. לפני מתן ההסכמה, יש לפתוח את המסמך כקובץ PDF באמצעות הקישור שליד התיבה, כדי לוודא שהמכשיר שלך מציג אותו.</p>
+    <p><strong>שמירת עותק.</strong> כדי לשמור מסמך זה, יש להוריד את קובץ ה-PDF בסיום ולשמור או להדפיס אותו. נדרשת תוכנת PDF חינמית כגון Adobe Acrobat Reader ומקום פנוי במכשיר או בתיבת הדוא״ל שלך.</p>
+    <p><strong>ביטול ההסכמה.</strong> ניתן לבטל את ההסכמה בכל עת לפני השלמת המסמך, על ידי אי-חתימה עליו ויידוע %{sender_name} בכתובת %{sender_email}. הביטול אינו כרוך בתשלום. לאחר הביטול לא ניתן לחתום על מסמך זה באופן אלקטרוני, ו-%{sender_name} יידרש להסדיר עותק מודפס, דבר שעלול לעכב את העסקה או להפסיק אותה. ביטול ההסכמה אינו משפיע על מסמכים שכבר נחתמו.</p>
+    <p><strong>עותקים מודפסים.</strong> ניתן לבקש עותק מודפס של מסמך זה בכל עת מ-%{sender_name} בכתובת %{sender_email}. %{product_name} אינה גובה תשלום עבור עותקים. יש לברר עם %{sender_name} אם הוא גובה תשלום עבור הדפסה ומשלוח.</p>
+    <p><strong>פרטי הקשר שלך.</strong> מסמכים נשלחים רק לכתובת הדוא״ל ש-%{sender_name} מסר לנו. כדי לשנות אותה, יש להודיע ל-%{sender_name}; אין לך אצלנו חשבון שניתן לעדכן.</p>
+    <p><strong>מה אנחנו מתעדים.</strong> ההסכמה שלך נרשמת יחד עם התאריך, השעה וכתובת האינטרנט (IP) שממנה ניתנה, גרסת גילוי זה והאם נפתח קובץ ה-PDF, ומופיעה ביומן הביקורת של המסמך.</p>
   submission_event_names:
     esign_consent_by_html: "<b>ניתנה הסכמה לחתימות אלקטרוניות (%{version})</b> על ידי %{submitter_name}"
   webhook_url: כתובת ה-Webhook
@@ -9985,6 +10377,7 @@ he:
   or_sign_up_with_email: "או הירשמו באמצעות אימייל"
   creating_account: "יוצר חשבון"
   by_creating_an_account_you_agree_to_html: "ביצירת חשבון אתם מסכימים ל%{terms} ול%{privacy}."
+  legal_documents_updated_please_review: "התנאים שלנו עודכנו בזמן שקראת. אנא עיין בהם שוב ונסה שנית."
   terms_of_service: "תנאי השירות"
   check_your_email: "בדקו את האימייל שלכם"
   we_sent_a_confirmation_link_to_html: "שלחנו קישור אימות אל %{email}. פתחו אותו כדי להפעיל את החשבון."
@@ -10044,6 +10437,34 @@ he:
   too_many_requests_try_again_later: יותר מדי בקשות. נסה שוב מאוחר יותר.
 
 nl: &nl
+  skip_to_content: "Ga naar inhoud"
+  pricing_group_signing: "Ondertekenen"
+  pricing_group_limits: "Limieten"
+  pricing_group_automation: "Automatisering en integraties"
+  pricing_group_branding: "Huisstijl en e-mail"
+  pricing_row_send_and_sign: "Documenten versturen en handtekeningen verzamelen"
+  pricing_row_templates_folders: "Sjablonen en mappen, onbeperkt"
+  pricing_row_audit_trail: "Audittrail bij elk voltooid document"
+  pricing_row_signing_flow: "Ondertekenvolgorde, weigeren of delegeren, ondertekenen ter plaatse"
+  pricing_row_signer_2fa: "E-mailverificatie voor ondertekenaars"
+  pricing_row_word_uploads: "Upload van Word- (.docx) en PDF-bestanden"
+  pricing_row_exports: "CSV/XLSX-export en volledige accountexport"
+  pricing_row_completions: "Voltooide documenten per maand"
+  pricing_row_sends: "Verzonden documenten per maand"
+  pricing_row_in_flight: "Documenten die tegelijk op ondertekening wachten"
+  pricing_row_storage: "Opslag"
+  pricing_row_seats: "Teamleden (zetels)"
+  pricing_row_api: "REST API, webhooks, MCP en ingesloten ondertekenen"
+  pricing_row_conditional_logic: "Voorwaardelijke logica in formulieren"
+  pricing_row_reminders: "Automatische herinneringen"
+  pricing_row_embed: "Formulieren insluiten op uw website"
+  pricing_row_delivery_tracking: "Bezorgstatus (verzonden, gebounced, geopend)"
+  pricing_row_logo_upload: "Uw logo op documenten en e-mails"
+  pricing_row_branding_removal: "EsignCenter-branding verwijderen uit e-mails en pagina's"
+  pricing_row_custom_email_templates: "Eigen e-mailsjablonen"
+  pricing_row_account_smtp: "Verzenden vanaf uw eigen domein (SMTP)"
+  pricing_row_bcc: "BCC- / documentkopie-adres"
+  pricing_row_download_links: "Vervaldatum en aanmelding voor downloadlinks"
   form_not_accepting_responses: "Dit formulier accepteert op dit moment geen nieuwe antwoorden."
   form_not_accepting_responses_hint: "Neem contact op met de persoon die dit formulier met u heeft gedeeld."
   quota_reached_completions: "U hebt alle %{limit} voltooide documenten van deze maand gebruikt. Verzenden wordt hervat op %{date} (UTC)."
@@ -10244,6 +10665,11 @@ nl: &nl
   esign_consent_version_label: "Versie %{version}"
   esign_consent_required: "Ga akkoord met het gebruik van elektronische documenten en handtekeningen om verder te gaan."
   esign_consent_version_stale: "De verklaring over elektronisch ondertekenen is bijgewerkt. Laad de pagina opnieuw en ga nogmaals akkoord."
+  esign_consent_view_pdf: "Dit document als pdf bekijken"
+  esign_consent_open_pdf_first: "Open het document als pdf voordat u akkoord gaat."
+  esign_consent_pdf_opened: "Document als pdf geopend"
+  esign_consent_shown_to: "getoond aan %{submitter_name}"
+  esign_consent_sender_not_recorded: "De naam en het e-mailadres van de afzender zijn niet met dit akkoord vastgelegd."
   consented_to_electronic_signatures: "Akkoord gegaan met elektronische handtekeningen"
   verify_page_title: "Een ondertekend document verifiëren"
   verify_page_intro: "Upload een pdf die via EsignCenter is ondertekend. We controleren de digitale handtekening en vergelijken het bestand met onze registratie van voltooide documenten. Het resultaat toont alleen de datum van voltooiing en hoeveel mensen hebben ondertekend — nooit wie er tekende, hun e-mailadressen of de inhoud van het document."
@@ -10251,8 +10677,9 @@ nl: &nl
   verify_pdf_only_limit: "Eén pdf-bestand, maximaal %{limit_mb} MB"
   verify_result_verified_title: "Geverifieerd"
   verify_result_verified: "Dit document is op %{date} via EsignCenter voltooid door %{signers}."
-  verify_signers_one: "%{count} ondertekenaar"
-  verify_signers_other: "%{count} ondertekenaars"
+  verify_signers:
+    one: "%{count} ondertekenaar"
+    other: "%{count} ondertekenaars"
   verify_result_not_on_record_title: "Niet geregistreerd"
   verify_result_not_on_record: "Dit bestand draagt een EsignCenter-handtekening, maar de inhoud komt met geen enkel voltooid document in onze registratie overeen. Het is mogelijk na ondertekening gewijzigd, of het dateert van vóór onze verificatieregistratie."
   verify_result_not_verified_title: "Niet geverifieerd"
@@ -10273,11 +10700,15 @@ nl: &nl
   timestamp_server_operator_only_hint: "Geldt alleen voor het operatoraccount. Klantaccounts gebruiken de omgevingsvariabele TIMESERVER_URL."
   open_verify_page: "Verificatiepagina openen"
   esign_consent_disclosure_body_html: |-
-    <p>Door het vakje aan te vinken gaat u ermee akkoord om voor dit document elektronische documenten en elektronische handtekeningen te gebruiken in plaats van papier en pen. U gaat ermee akkoord dat uw elektronische handtekening dezelfde rechtsgeldigheid heeft als uw handgeschreven handtekening. Een kopie van het voltooide document is elektronisch voor u beschikbaar, en de afzender kan u er op verzoek ook een verstrekken.</p>
-    <p><strong>Wat u nodig heeft.</strong> Een actuele webbrowser, een internetverbinding en software waarmee u PDF-bestanden kunt openen. Als u deze pagina kunt lezen, voldoet uw apparaat aan deze eisen.</p>
-    <p><strong>Toestemming intrekken.</strong> U kunt uw toestemming op elk moment vóór het voltooien van het document intrekken door het niet te ondertekenen en de afzender hiervan op de hoogte te stellen. Intrekken heeft geen gevolgen voor documenten die u al heeft ondertekend.</p>
-    <p><strong>Papieren kopieën.</strong> U kunt op elk moment een papieren kopie van dit document aanvragen door contact op te nemen met de afzender.</p>
-    <p><strong>Wat wij vastleggen.</strong> Uw akkoord wordt vastgelegd samen met de datum, het tijdstip en het internetadres (IP) van waaruit u het heeft gegeven, en verschijnt in het audittrail van het document.</p>
+    <p>Door het vakje aan te vinken gaat u ermee akkoord om uitsluitend voor dit document elektronische documenten en elektronische handtekeningen te gebruiken in plaats van papier en pen. U gaat ermee akkoord dat uw elektronische handtekening dezelfde rechtsgevolgen heeft als uw handgeschreven handtekening. Stuurt %{sender_name} u later een ander document, dan wordt u opnieuw om akkoord gevraagd.</p>
+    <p><strong>Wie dit heeft verstuurd.</strong> Dit document is verstuurd door %{sender_name}. U kunt hen bereiken op %{sender_email}.</p>
+    <p><strong>Uw exemplaar.</strong> Een kopie van het voltooide document is elektronisch voor u beschikbaar, en %{sender_name} kan er op verzoek ook een verstrekken.</p>
+    <p><strong>Wat u nodig hebt.</strong> Een actuele webbrowser, een internetverbinding en software die pdf-bestanden kan openen. Open het document vóór uw akkoord als pdf via de link naast het vakje om te controleren of uw apparaat het kan weergeven.</p>
+    <p><strong>Een kopie bewaren.</strong> Wilt u dit document bewaren, download dan de pdf als u klaar bent en sla die op of druk die af. U hebt gratis pdf-software zoals Adobe Acrobat Reader nodig en vrije ruimte op uw apparaat of in uw e-mailaccount.</p>
+    <p><strong>Akkoord intrekken.</strong> U kunt uw akkoord op elk moment intrekken zolang u het document niet hebt voltooid: onderteken het niet en laat het %{sender_name} weten via %{sender_email}. Intrekken is gratis. Na intrekking kan dit document niet elektronisch worden ondertekend en moet %{sender_name} een papieren exemplaar regelen, wat de transactie kan vertragen of beëindigen. Het intrekken van uw akkoord heeft geen gevolgen voor documenten die u al hebt ondertekend.</p>
+    <p><strong>Papieren kopieën.</strong> U kunt op elk moment een papieren kopie van dit document aanvragen bij %{sender_name} via %{sender_email}. %{product_name} brengt geen kosten in rekening voor kopieën. Vraag %{sender_name} of er kosten zijn voor afdrukken en verzenden.</p>
+    <p><strong>Uw contactgegevens.</strong> Documenten worden alleen verstuurd naar het e-mailadres dat %{sender_name} ons heeft gegeven. Wilt u dat wijzigen, laat het dan %{sender_name} weten; u hebt bij ons geen account dat u kunt bijwerken.</p>
+    <p><strong>Wat wij vastleggen.</strong> Uw akkoord wordt vastgelegd samen met de datum, het tijdstip en het internetadres (IP) van waaruit u het hebt gegeven, de versie van deze toelichting en of u de pdf hebt geopend, en het verschijnt in het auditlogboek van het document.</p>
   webhook_url: Webhook-URL
   webhook_url_must_use_https: moet https gebruiken
   webhook_url_must_not_point_at_a_private_address: mag niet naar localhost of een privé-/metadata-adres verwijzen
@@ -10472,6 +10903,7 @@ nl: &nl
   or_sign_up_with_email: "of registreer met e-mail"
   creating_account: "Account wordt aangemaakt"
   by_creating_an_account_you_agree_to_html: "Door een account aan te maken ga je akkoord met de %{terms} en het %{privacy}."
+  legal_documents_updated_please_review: "Onze voorwaarden zijn bijgewerkt terwijl je las. Bekijk ze opnieuw en probeer het nog eens."
   terms_of_service: "Servicevoorwaarden"
   check_your_email: "Controleer je e-mail"
   we_sent_a_confirmation_link_to_html: "We hebben een bevestigingslink gestuurd naar %{email}. Open de link om je account te activeren."
@@ -11363,6 +11795,34 @@ nl: &nl
       detailed: "%d %B %Y %H:%M:%S"
 
 ar:
+  skip_to_content: "الانتقال إلى المحتوى"
+  pricing_group_signing: "التوقيع"
+  pricing_group_limits: "الحدود"
+  pricing_group_automation: "الأتمتة والتكاملات"
+  pricing_group_branding: "العلامة التجارية والبريد الإلكتروني"
+  pricing_row_send_and_sign: "إرسال المستندات وجمع التوقيعات"
+  pricing_row_templates_folders: "القوالب والمجلدات، بلا حدود"
+  pricing_row_audit_trail: "سجل تدقيق لكل مستند مكتمل"
+  pricing_row_signing_flow: "ترتيب التوقيع، الرفض أو التفويض، التوقيع الحضوري"
+  pricing_row_signer_2fa: "التحقق عبر البريد الإلكتروني للموقّعين"
+  pricing_row_word_uploads: "رفع ملفات Word (.docx) وPDF"
+  pricing_row_exports: "تصدير CSV/XLSX وتصدير كامل للحساب"
+  pricing_row_completions: "المستندات المكتملة شهريًا"
+  pricing_row_sends: "المستندات المرسلة شهريًا"
+  pricing_row_in_flight: "المستندات بانتظار التوقيع في الوقت نفسه"
+  pricing_row_storage: "مساحة التخزين"
+  pricing_row_seats: "أعضاء الفريق (المقاعد)"
+  pricing_row_api: "واجهة REST API وWebhooks وMCP والتوقيع المضمّن"
+  pricing_row_conditional_logic: "المنطق الشرطي في النماذج"
+  pricing_row_reminders: "تذكيرات تلقائية"
+  pricing_row_embed: "تضمين النماذج في موقعك"
+  pricing_row_delivery_tracking: "تتبع التسليم (أُرسل، ارتد، فُتح)"
+  pricing_row_logo_upload: "شعارك على المستندات والرسائل"
+  pricing_row_branding_removal: "إزالة علامة EsignCenter من الرسائل والصفحات"
+  pricing_row_custom_email_templates: "قوالب بريد إلكتروني مخصصة"
+  pricing_row_account_smtp: "الإرسال من نطاقك الخاص (SMTP)"
+  pricing_row_bcc: "عنوان نسخة مخفية / نسخة المستند"
+  pricing_row_download_links: "انتهاء صلاحية روابط التنزيل وتسجيل الدخول"
   form_not_accepting_responses: "هذا النموذج لا يقبل ردودًا جديدة في الوقت الحالي."
   form_not_accepting_responses_hint: "يرجى التواصل مع الشخص الذي شارك هذا النموذج معك."
   quota_reached_completions: "لقد استخدمت جميع المستندات المكتملة البالغ عددها %{limit} لهذا الشهر. يُستأنف الإرسال في %{date} (بالتوقيت العالمي UTC)."
@@ -11564,6 +12024,11 @@ ar:
   esign_consent_version_label: "الإصدار %{version}"
   esign_consent_required: "للمتابعة، يرجى الموافقة على استخدام السجلات والتوقيعات الإلكترونية."
   esign_consent_version_stale: "تم تحديث الإفصاح الخاص بالتوقيع الإلكتروني. يرجى إعادة تحميل الصفحة والموافقة مرة أخرى."
+  esign_consent_view_pdf: "عرض هذا المستند بصيغة PDF"
+  esign_consent_open_pdf_first: "افتح المستند بصيغة PDF قبل الموافقة."
+  esign_consent_pdf_opened: "تم فتح المستند بصيغة PDF"
+  esign_consent_shown_to: "عُرض على %{submitter_name}"
+  esign_consent_sender_not_recorded: "لم يُسجَّل اسم المرسل وعنوان بريده الإلكتروني مع هذه الموافقة."
   consented_to_electronic_signatures: "تمت الموافقة على التوقيعات الإلكترونية"
   verify_page_title: "التحقق من مستند موقّع"
   verify_page_intro: "ارفع ملف PDF تم توقيعه عبر EsignCenter. نتحقق من توقيعه الرقمي ونقارن الملف بسجلاتنا للمستندات المكتملة. تُظهر النتيجة فقط تاريخ الإكمال وعدد الموقّعين — ولا تكشف أبدًا عن هوية الموقّعين أو عناوين بريدهم الإلكتروني أو محتوى المستند."
@@ -11571,8 +12036,13 @@ ar:
   verify_pdf_only_limit: "ملف PDF واحد بحد أقصى %{limit_mb} ميغابايت"
   verify_result_verified_title: "تم التحقق"
   verify_result_verified: "اكتمل هذا المستند عبر EsignCenter بتاريخ %{date} بواسطة %{signers}."
-  verify_signers_one: "موقّع واحد (%{count})"
-  verify_signers_other: "%{count} موقّعين"
+  verify_signers:
+    zero: "%{count} موقّع"
+    one: "موقّع واحد"
+    two: "موقّعان"
+    few: "%{count} موقّعين"
+    many: "%{count} موقّعًا"
+    other: "%{count} موقّع"
   verify_result_not_on_record_title: "غير موجود في السجلات"
   verify_result_not_on_record: "يحمل هذا الملف توقيع EsignCenter، لكن محتواه لا يطابق أي مستند مكتمل في سجلاتنا. ربما تم تعديله بعد التوقيع، أو أنه يسبق سجلات التحقق لدينا."
   verify_result_not_verified_title: "لم يتم التحقق"
@@ -11597,11 +12067,15 @@ ar:
   analyzing: "جارٍ التحليل"
   close: "إغلاق"
   esign_consent_disclosure_body_html: |-
-    <p>بتحديد المربع، فإنك توافق على استخدام السجلات الإلكترونية والتوقيعات الإلكترونية لهذا المستند بدلاً من الورق والحبر. وتوافق على أن لتوقيعك الإلكتروني الأثر القانوني نفسه الذي لتوقيعك بخط اليد. ستكون نسخة من المستند المكتمل متاحة لك إلكترونيًا، ويمكن للمرسل أيضًا تزويدك بنسخة عند الطلب.</p>
-    <p><strong>ما تحتاج إليه.</strong> متصفح ويب حديث، واتصال بالإنترنت، وبرنامج يمكنه فتح ملفات PDF. إذا كان بإمكانك قراءة هذه الصفحة، فإن جهازك يستوفي هذه المتطلبات.</p>
-    <p><strong>سحب الموافقة.</strong> يمكنك سحب موافقتك في أي وقت قبل إكمال المستند بعدم توقيعه وإبلاغ المرسل. لا يؤثر سحب الموافقة على المستندات التي وقعتها بالفعل.</p>
-    <p><strong>النسخ الورقية.</strong> يمكنك طلب نسخة ورقية من هذا المستند في أي وقت عبر التواصل مع المرسل.</p>
-    <p><strong>ما نسجله.</strong> يتم تسجيل موافقتك مع التاريخ والوقت وعنوان الإنترنت (IP) الذي منحتها منه، وتظهر في سجل التدقيق الخاص بالمستند.</p>
+    <p>بتحديد المربع، فإنك توافق على استخدام السجلات الإلكترونية والتوقيعات الإلكترونية لهذا المستند فقط بدلاً من الورق والحبر. وتوافق على أن لتوقيعك الإلكتروني الأثر القانوني نفسه لتوقيعك بخط اليد. وإذا أرسل إليك %{sender_name} مستندًا آخر لاحقًا، فسيُطلب منك الموافقة من جديد.</p>
+    <p><strong>من أرسل هذا المستند.</strong> أرسل هذا المستند %{sender_name}. يمكنك التواصل معه على %{sender_email}.</p>
+    <p><strong>نسختك.</strong> ستتوفر لك نسخة من المستند المكتمل إلكترونيًا، ويمكن لـ %{sender_name} أيضًا تزويدك بنسخة عند الطلب.</p>
+    <p><strong>ما تحتاج إليه.</strong> متصفح ويب حديث واتصال بالإنترنت وبرنامج قادر على فتح ملفات PDF. قبل الموافقة، افتح المستند بصيغة PDF عبر الرابط المجاور للمربع للتأكد من أن جهازك يستطيع عرضه.</p>
+    <p><strong>الاحتفاظ بنسخة.</strong> للاحتفاظ بهذا المستند، نزّل ملف PDF عند الانتهاء ثم احفظه أو اطبعه. ستحتاج إلى برنامج PDF مجاني مثل Adobe Acrobat Reader وإلى مساحة خالية على جهازك أو في بريدك الإلكتروني.</p>
+    <p><strong>سحب الموافقة.</strong> يمكنك سحب موافقتك في أي وقت قبل إكمال المستند، وذلك بعدم توقيعه وإبلاغ %{sender_name} على %{sender_email}. ولا توجد رسوم على السحب. وإذا سحبت موافقتك، فلن يمكن توقيع هذا المستند إلكترونيًا، وسيتعين على %{sender_name} ترتيب نسخة ورقية، وقد يؤدي ذلك إلى تأخير المعاملة أو إنهائها. ولا يؤثر سحب الموافقة على المستندات التي وقّعتها بالفعل.</p>
+    <p><strong>النسخ الورقية.</strong> يمكنك طلب نسخة ورقية من هذا المستند في أي وقت من %{sender_name} على %{sender_email}. ولا تفرض %{product_name} رسومًا على النسخ. اسأل %{sender_name} عمّا إذا كان يفرض رسومًا على الطباعة والإرسال بالبريد.</p>
+    <p><strong>بيانات الاتصال الخاصة بك.</strong> تُرسل المستندات فقط إلى عنوان البريد الإلكتروني الذي زوّدنا به %{sender_name}. ولتغييره، أبلغ %{sender_name}؛ فليس لديك حساب لدينا يمكنك تحديثه.</p>
+    <p><strong>ما نسجله.</strong> تُسجَّل موافقتك مع التاريخ والوقت وعنوان الإنترنت (IP) الذي منحتها منه، وإصدار هذا الإفصاح، وما إذا كنت قد فتحت ملف PDF، وتظهر في سجل تدقيق المستند.</p>
   submission_event_names:
     esign_consent_by_html: "<b>تمت الموافقة على التوقيعات الإلكترونية (%{version})</b> بواسطة %{submitter_name}"
   webhook_url: عنوان URL للويب هوك
@@ -11693,6 +12167,7 @@ ar:
   or_sign_up_with_email: "أو سجّل باستخدام البريد الإلكتروني"
   creating_account: "جارٍ إنشاء الحساب"
   by_creating_an_account_you_agree_to_html: "بإنشاء حساب فإنك توافق على %{terms} و%{privacy}."
+  legal_documents_updated_please_review: "تم تحديث شروطنا أثناء قراءتك. يرجى مراجعتها والمحاولة مرة أخرى."
   terms_of_service: "شروط الخدمة"
   check_your_email: "تحقق من بريدك الإلكتروني"
   we_sent_a_confirmation_link_to_html: "أرسلنا رابط تأكيد إلى %{email}. افتحه لتفعيل حسابك."
@@ -11752,6 +12227,34 @@ ar:
   too_many_requests_try_again_later: طلبات كثيرة جدًا. حاول مرة أخرى لاحقًا.
 
 ko:
+  skip_to_content: "본문으로 건너뛰기"
+  pricing_group_signing: "서명"
+  pricing_group_limits: "한도"
+  pricing_group_automation: "자동화 및 연동"
+  pricing_group_branding: "브랜딩 및 이메일"
+  pricing_row_send_and_sign: "문서 전송 및 서명 수집"
+  pricing_row_templates_folders: "템플릿과 폴더, 무제한"
+  pricing_row_audit_trail: "완료된 모든 문서의 감사 추적"
+  pricing_row_signing_flow: "서명 순서, 거절 또는 위임, 대면 서명"
+  pricing_row_signer_2fa: "서명자 이메일 인증"
+  pricing_row_word_uploads: "Word(.docx) 및 PDF 업로드"
+  pricing_row_exports: "CSV/XLSX 내보내기 및 전체 계정 내보내기"
+  pricing_row_completions: "월별 완료 문서 수"
+  pricing_row_sends: "월별 전송 문서 수"
+  pricing_row_in_flight: "동시에 서명 대기 중인 문서 수"
+  pricing_row_storage: "저장 공간"
+  pricing_row_seats: "팀 구성원(좌석)"
+  pricing_row_api: "REST API, 웹훅, MCP 및 임베디드 서명"
+  pricing_row_conditional_logic: "양식의 조건부 로직"
+  pricing_row_reminders: "자동 알림"
+  pricing_row_embed: "웹사이트에 양식 삽입"
+  pricing_row_delivery_tracking: "전달 추적(전송됨, 반송됨, 열람됨)"
+  pricing_row_logo_upload: "문서와 이메일에 내 로고 표시"
+  pricing_row_branding_removal: "이메일과 페이지에서 EsignCenter 브랜딩 제거"
+  pricing_row_custom_email_templates: "사용자 지정 이메일 템플릿"
+  pricing_row_account_smtp: "내 도메인에서 전송(SMTP)"
+  pricing_row_bcc: "숨은 참조 / 문서 사본 주소"
+  pricing_row_download_links: "다운로드 링크 만료 및 로그인 설정"
   form_not_accepting_responses: "이 양식은 현재 새 응답을 받지 않습니다."
   form_not_accepting_responses_hint: "이 양식을 공유한 사람에게 문의하세요."
   quota_reached_completions: "이번 달 완료 문서 %{limit}건을 모두 사용했습니다. %{date}(UTC)에 발송이 재개됩니다."
@@ -11953,6 +12456,11 @@ ko:
   esign_consent_version_label: "버전 %{version}"
   esign_consent_required: "계속하려면 전자 기록 및 전자 서명 사용에 동의해 주세요."
   esign_consent_version_stale: "전자 서명 고지 내용이 업데이트되었습니다. 페이지를 새로고침한 후 다시 동의해 주세요."
+  esign_consent_view_pdf: "이 문서를 PDF로 보기"
+  esign_consent_open_pdf_first: "동의하기 전에 문서를 PDF로 열어 보세요."
+  esign_consent_pdf_opened: "문서를 PDF로 열어 봄"
+  esign_consent_shown_to: "%{submitter_name}에게 표시됨"
+  esign_consent_sender_not_recorded: "이 동의에는 보낸 사람의 이름과 이메일 주소가 기록되지 않았습니다."
   consented_to_electronic_signatures: "전자 서명에 동의함"
   verify_page_title: "서명된 문서 확인"
   verify_page_intro: "EsignCenter를 통해 서명된 PDF를 업로드하세요. 디지털 서명을 검사하고 완료된 문서 기록과 파일을 비교합니다. 결과에는 완료 날짜와 서명한 사람 수만 표시되며, 누가 서명했는지, 이메일 주소, 문서 내용은 절대 표시되지 않습니다."
@@ -11960,8 +12468,8 @@ ko:
   verify_pdf_only_limit: "PDF 파일 1개, 최대 %{limit_mb}MB"
   verify_result_verified_title: "확인됨"
   verify_result_verified: "이 문서는 %{date}에 EsignCenter를 통해 %{signers}에 의해 완료되었습니다."
-  verify_signers_one: "서명자 %{count}명"
-  verify_signers_other: "서명자 %{count}명"
+  verify_signers:
+    other: "서명자 %{count}명"
   verify_result_not_on_record_title: "기록 없음"
   verify_result_not_on_record: "이 파일에는 EsignCenter 서명이 있지만 내용이 기록된 완료 문서와 일치하지 않습니다. 서명 후 변경되었거나 확인 기록이 시작되기 전에 서명된 문서일 수 있습니다."
   verify_result_not_verified_title: "확인되지 않음"
@@ -11986,13 +12494,17 @@ ko:
   analyzing: "분석 중"
   close: "닫기"
   esign_consent_disclosure_body_html: |-
-    <p>확인란을 선택하면 이 문서에 종이와 잉크 대신 전자 기록과 전자 서명을 사용하는 데 동의하게 됩니다. 귀하는 귀하의 전자 서명이 자필 서명과 동일한 법적 효력을 가진다는 데 동의합니다. 완료된 문서의 사본은 전자적으로 확인하실 수 있으며, 요청하시면 발신자가 사본을 제공해 드릴 수도 있습니다.</p>
-    <p><strong>필요한 것.</strong> 최신 웹 브라우저, 인터넷 연결, PDF 파일을 열 수 있는 프로그램입니다. 이 페이지를 읽을 수 있다면 귀하의 기기는 이 요건을 충족합니다.</p>
-    <p><strong>동의 철회.</strong> 문서를 완료하기 전에는 언제든지 서명하지 않고 발신자에게 알리는 방법으로 동의를 철회할 수 있습니다. 동의 철회는 이미 서명한 문서에는 영향을 미치지 않습니다.</p>
-    <p><strong>종이 사본.</strong> 발신자에게 연락하여 언제든지 이 문서의 종이 사본을 요청할 수 있습니다.</p>
-    <p><strong>기록되는 내용.</strong> 귀하의 동의는 동의한 날짜, 시간, 인터넷(IP) 주소와 함께 기록되며 문서의 감사 추적에 표시됩니다.</p>
+    <p>확인란을 선택하면 이 문서에 한하여 종이와 펜 대신 전자 기록과 전자 서명을 사용하는 데 동의하게 됩니다. 귀하의 전자 서명은 자필 서명과 동일한 법적 효력을 가집니다. %{sender_name}이(가) 나중에 다른 문서를 보내면 그때 다시 동의를 요청합니다.</p>
+    <p><strong>보낸 사람.</strong> 이 문서는 %{sender_name}이(가) 보냈습니다. %{sender_email}(으)로 연락할 수 있습니다.</p>
+    <p><strong>사본 제공.</strong> 완료된 문서의 사본은 전자적으로 제공되며, 요청하시면 %{sender_name}이(가) 사본을 드릴 수도 있습니다.</p>
+    <p><strong>필요한 것.</strong> 최신 웹 브라우저, 인터넷 연결, PDF 파일을 열 수 있는 소프트웨어가 필요합니다. 동의하기 전에 확인란 옆의 링크로 문서를 PDF로 열어 기기에서 표시되는지 확인하세요.</p>
+    <p><strong>사본 보관.</strong> 이 문서를 보관하려면 완료 후 PDF를 내려받아 저장하거나 인쇄하세요. Adobe Acrobat Reader와 같은 무료 PDF 소프트웨어와 기기 또는 이메일 계정의 여유 공간이 필요합니다.</p>
+    <p><strong>동의 철회.</strong> 문서를 완료하기 전에는 언제든지 서명하지 않고 %{sender_email}(으)로 %{sender_name}에게 알려 동의를 철회할 수 있습니다. 철회에는 비용이 들지 않습니다. 철회하면 이 문서는 전자적으로 서명할 수 없으며, %{sender_name}이(가) 종이 문서를 준비해야 하므로 거래가 지연되거나 종료될 수 있습니다. 동의 철회는 이미 서명한 문서에는 영향을 주지 않습니다.</p>
+    <p><strong>종이 사본.</strong> 언제든지 %{sender_email}(으)로 %{sender_name}에게 이 문서의 종이 사본을 요청할 수 있습니다. %{product_name}은(는) 사본에 대해 요금을 청구하지 않습니다. 인쇄와 우편 발송에 요금이 있는지는 %{sender_name}에게 문의하세요.</p>
+    <p><strong>연락처 정보.</strong> 문서는 %{sender_name}이(가) 알려준 이메일 주소로만 발송됩니다. 주소를 바꾸려면 %{sender_name}에게 알려주세요. 저희 서비스에는 귀하가 직접 수정할 수 있는 계정이 없습니다.</p>
+    <p><strong>기록되는 내용.</strong> 귀하의 동의는 동의한 날짜와 시각, 동의한 인터넷(IP) 주소, 이 고지의 버전, PDF 열람 여부와 함께 기록되어 문서의 감사 추적에 표시됩니다.</p>
   submission_event_names:
-    esign_consent_by_html: "<b>전자 서명에 동의함 (%{version})</b> - %{submitter_name}"
+    esign_consent_by_html: "<b>전자 서명 동의 (%{version})</b> %{submitter_name} 님이 동의"
   webhook_url: 웹훅 URL
   webhook_url_must_use_https: https를 사용해야 합니다
   webhook_url_must_not_point_at_a_private_address: localhost 또는 사설/메타데이터 주소를 가리킬 수 없습니다
@@ -12082,6 +12594,7 @@ ko:
   or_sign_up_with_email: "또는 이메일로 가입"
   creating_account: "계정 생성 중"
   by_creating_an_account_you_agree_to_html: "계정을 만들면 %{terms} 및 %{privacy}에 동의하는 것입니다."
+  legal_documents_updated_please_review: "약관을 읽으시는 동안 내용이 업데이트되었습니다. 다시 확인하신 후 시도해 주세요."
   terms_of_service: "서비스 약관"
   check_your_email: "이메일을 확인하세요"
   we_sent_a_confirmation_link_to_html: "%{email}(으)로 확인 링크를 보냈습니다. 링크를 열어 계정을 활성화하세요."
@@ -12141,6 +12654,34 @@ ko:
   too_many_requests_try_again_later: 요청이 너무 많습니다. 나중에 다시 시도하세요.
 
 ja:
+  skip_to_content: "本文へスキップ"
+  pricing_group_signing: "署名"
+  pricing_group_limits: "上限"
+  pricing_group_automation: "自動化と連携"
+  pricing_group_branding: "ブランドとメール"
+  pricing_row_send_and_sign: "文書の送信と署名の収集"
+  pricing_row_templates_folders: "テンプレートとフォルダー、無制限"
+  pricing_row_audit_trail: "完了したすべての文書の監査証跡"
+  pricing_row_signing_flow: "署名順序、辞退または委任、対面署名"
+  pricing_row_signer_2fa: "署名者のメール認証"
+  pricing_row_word_uploads: "Word（.docx）と PDF のアップロード"
+  pricing_row_exports: "CSV/XLSX エクスポートとアカウント全体のエクスポート"
+  pricing_row_completions: "月あたりの完了文書数"
+  pricing_row_sends: "月あたりの送信文書数"
+  pricing_row_in_flight: "同時に署名待ちにできる文書数"
+  pricing_row_storage: "ストレージ"
+  pricing_row_seats: "チームメンバー（シート）"
+  pricing_row_api: "REST API、Webhook、MCP、埋め込み署名"
+  pricing_row_conditional_logic: "フォームの条件ロジック"
+  pricing_row_reminders: "自動リマインダー"
+  pricing_row_embed: "フォームを自社サイトに埋め込み"
+  pricing_row_delivery_tracking: "配信追跡（送信、バウンス、開封）"
+  pricing_row_logo_upload: "文書とメールに自社ロゴを表示"
+  pricing_row_branding_removal: "メールとページから EsignCenter ブランドを削除"
+  pricing_row_custom_email_templates: "カスタムメールテンプレート"
+  pricing_row_account_smtp: "自社ドメインから送信（SMTP）"
+  pricing_row_bcc: "BCC / 文書コピーの送付先"
+  pricing_row_download_links: "ダウンロードリンクの有効期限とサインイン設定"
   form_not_accepting_responses: "このフォームは現在、新しい回答を受け付けていません。"
   form_not_accepting_responses_hint: "このフォームを共有した方にお問い合わせください。"
   quota_reached_completions: "今月の完了ドキュメント %{limit} 件をすべて使い切りました。送信は %{date}（UTC）に再開されます。"
@@ -12342,6 +12883,11 @@ ja:
   esign_consent_version_label: "バージョン %{version}"
   esign_consent_required: "続行するには、電子記録および電子署名の使用に同意してください。"
   esign_consent_version_stale: "電子署名に関する開示内容が更新されました。ページを再読み込みして、もう一度同意してください。"
+  esign_consent_view_pdf: "この文書を PDF で表示"
+  esign_consent_open_pdf_first: "同意する前に、文書を PDF で開いてください。"
+  esign_consent_pdf_opened: "文書を PDF で表示済み"
+  esign_consent_shown_to: "%{submitter_name} に表示"
+  esign_consent_sender_not_recorded: "この同意には送信者の名前とメールアドレスが記録されていません。"
   consented_to_electronic_signatures: "電子署名に同意済み"
   verify_page_title: "署名済み文書を検証"
   verify_page_intro: "EsignCenter で署名された PDF をアップロードしてください。デジタル署名を検査し、完了済み文書の記録とファイルを照合します。結果には完了日と署名者の人数のみが表示され、誰が署名したか、メールアドレス、文書の内容は決して表示されません。"
@@ -12349,8 +12895,8 @@ ja:
   verify_pdf_only_limit: "PDF ファイル 1 件、最大 %{limit_mb} MB"
   verify_result_verified_title: "検証済み"
   verify_result_verified: "この文書は %{date} に EsignCenter を通じて %{signers}により完了しました。"
-  verify_signers_one: "署名者 %{count} 名"
-  verify_signers_other: "署名者 %{count} 名"
+  verify_signers:
+    other: "署名者 %{count} 名"
   verify_result_not_on_record_title: "記録なし"
   verify_result_not_on_record: "このファイルには EsignCenter の署名がありますが、内容が記録上のどの完了済み文書とも一致しません。署名後に変更されたか、検証記録の開始前に署名された可能性があります。"
   verify_result_not_verified_title: "未検証"
@@ -12375,13 +12921,17 @@ ja:
   analyzing: "解析中"
   close: "閉じる"
   esign_consent_disclosure_body_html: |-
-    <p>チェックボックスをオンにすると、この文書について紙とインクの代わりに電子記録および電子署名を使用することに同意したことになります。お客様は、お客様の電子署名が手書きの署名と同じ法的効力を持つことに同意します。完成した文書の写しは電子的にご利用いただけるほか、ご要望に応じて送信者から提供を受けることもできます。</p>
-    <p><strong>必要なもの。</strong> 最新のウェブブラウザ、インターネット接続、PDFファイルを開けるソフトウェアです。このページを読めていれば、お使いの端末はこれらの要件を満たしています。</p>
-    <p><strong>同意の撤回。</strong> 文書を完了する前であれば、署名せずに送信者に連絡することで、いつでも同意を撤回できます。同意の撤回は、すでに署名した文書には影響しません。</p>
-    <p><strong>紙のコピー。</strong> 送信者に連絡すれば、いつでもこの文書の紙のコピーを請求できます。</p>
-    <p><strong>記録される内容。</strong> お客様の同意は、同意した日時およびインターネット（IP）アドレスとともに記録され、文書の監査証跡に表示されます。</p>
+    <p>チェックボックスをオンにすると、この文書に限り、紙とインクの代わりに電子記録および電子署名を使用することに同意したことになります。お客様の電子署名は、手書きの署名と同じ法的効力を持ちます。%{sender_name} が後日別の文書を送付する場合は、あらためて同意を求めます。</p>
+    <p><strong>送信者。</strong> この文書は %{sender_name} が送信しました。連絡先は %{sender_email} です。</p>
+    <p><strong>お客様の控え。</strong> 完成した文書の写しは電子的にご利用いただけるほか、ご要望に応じて %{sender_name} から提供を受けることもできます。</p>
+    <p><strong>必要なもの。</strong> 最新のウェブブラウザ、インターネット接続、PDF ファイルを開けるソフトウェアです。同意される前に、チェックボックスの横のリンクから文書を PDF で開き、お使いの端末で表示できることをご確認ください。</p>
+    <p><strong>控えの保存。</strong> この文書を保存するには、完了後に PDF をダウンロードし、保存または印刷してください。Adobe Acrobat Reader などの無料の PDF ソフトウェアと、端末またはメールアカウントの空き容量が必要です。</p>
+    <p><strong>同意の撤回。</strong> 文書を完了する前であれば、署名せずに %{sender_email} 宛てに %{sender_name} へ連絡することで、いつでも同意を撤回できます。撤回に費用はかかりません。撤回された場合、この文書は電子的に署名できず、%{sender_name} が紙の文書を用意する必要があるため、お手続きが遅れたり中止になったりすることがあります。同意の撤回は、すでに署名した文書には影響しません。</p>
+    <p><strong>紙のコピー。</strong> %{sender_email} 宛てに %{sender_name} へ連絡すれば、いつでもこの文書の紙のコピーを請求できます。%{product_name} はコピーの費用を請求しません。印刷や郵送に費用がかかるかどうかは %{sender_name} にお問い合わせください。</p>
+    <p><strong>お客様の連絡先。</strong> 文書は、%{sender_name} が当社に伝えたメールアドレスにのみ送信されます。変更するには %{sender_name} にお知らせください。お客様が更新できるアカウントは当社にはありません。</p>
+    <p><strong>記録される内容。</strong> お客様の同意は、同意した日時、同意したインターネット（IP）アドレス、この開示のバージョン、PDF を開いたかどうかとともに記録され、文書の監査証跡に表示されます。</p>
   submission_event_names:
-    esign_consent_by_html: "<b>電子署名に同意 (%{version})</b> - %{submitter_name}"
+    esign_consent_by_html: "<b>電子署名への同意 (%{version})</b> %{submitter_name} が同意"
   webhook_url: Webhook URL
   webhook_url_must_use_https: は https を使用する必要があります
   webhook_url_must_not_point_at_a_private_address: は localhost やプライベート/メタデータのアドレスを指すことはできません
@@ -12471,6 +13021,7 @@ ja:
   or_sign_up_with_email: "またはメールアドレスで登録"
   creating_account: "アカウントを作成中"
   by_creating_an_account_you_agree_to_html: "アカウントを作成すると、%{terms}および%{privacy}に同意したものとみなされます。"
+  legal_documents_updated_please_review: "ご確認いただいている間に規約が更新されました。内容をご確認のうえ、もう一度お試しください。"
   terms_of_service: "利用規約"
   check_your_email: "メールをご確認ください"
   we_sent_a_confirmation_link_to_html: "%{email} 宛てに確認リンクを送信しました。リンクを開いてアカウントを有効にしてください。"

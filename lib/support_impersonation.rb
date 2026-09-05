@@ -125,6 +125,7 @@ module SupportImpersonation
     'templates_code_modal' => :read,
     'templates_dashboard' => :read,
     'templates_form_preview' => :read, # the safe preview, instead of /s/:slug
+    'templates_form_preview_document' => :read, # the preview's own PDF (consent View-as-PDF link)
     'templates_preview' => :read,
     'templates_share_link_qr' => :read,
     'template_folders_autocomplete' => :read,
@@ -187,6 +188,7 @@ module SupportImpersonation
     'submit_form_invite' => :signing,
     'submit_form_email2fas' => :signing,
     'submit_form_download' => :signing,
+    'submit_form_document' => :signing, # the unsigned PDF behind the consent View-as-PDF link
     'submit_form_completed_download' => :signing,
     'submit_form_draw_signature' => :signing,
     'submit_form_metadata' => :signing,
@@ -229,6 +231,8 @@ module SupportImpersonation
     'embed_scripts' => :anonymous,
     'turbo/native/navigation' => :anonymous,
     'verify' => :anonymous,     # the public PDF checker
+    'marketing' => :anonymous,  # public pricing + trust pages (Session 9)
+    'legal' => :anonymous,      # public Terms + Privacy pages (Session 9)
     'reports' => :anonymous,    # the public abuse-report form
     'stripe_webhooks' => :anonymous,
     'postmark_webhooks' => :anonymous,

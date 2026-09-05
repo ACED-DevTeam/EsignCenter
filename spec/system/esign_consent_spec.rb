@@ -19,14 +19,17 @@ RSpec.describe 'ESIGN consent in the signing form' do
       click_button 'Start'
 
       expect(page).to have_css('submission-form[data-esign-consent]', visible: :all)
-      expect(page).to have_unchecked_field('esign_consent')
+      expect(page).to have_unchecked_field('esign_consent', disabled: true)
       expect(page).to have_css('#submit_form_button[disabled]')
 
       click_button 'Electronic Signature Disclosure'
 
       within('dialog#esign_disclosure_modal[open]') do
         expect(page).to have_content('Electronic Records and Signatures Disclosure')
-        expect(page).to have_content('Version v1')
+        expect(page).to have_content("Version #{EsignConsent::VERSION}")
+        # D77 A: the sender is named, with an address, instead of "the sender".
+        expect(page).to have_content("This document was sent by #{account.name}")
+        expect(page).to have_content(author.email)
 
         click_button 'Close'
       end
@@ -34,6 +37,17 @@ RSpec.describe 'ESIGN consent in the signing form' do
       expect(page).not_to have_css('dialog#esign_disclosure_modal[open]')
 
       fill_first_name(template, 'Jane')
+
+      # §7001(c): the box is out of reach until the document has been opened
+      # as a PDF, and the hint says so.
+      expect(page).to have_content('Open the document as a PDF before you agree.')
+      expect(page).to have_css('#esign_consent[disabled]')
+
+      find_by_id('esign_consent_view_pdf').click
+
+      expect(page).to have_no_css('#esign_consent[disabled]')
+      expect(page).to have_no_content('Open the document as a PDF before you agree.')
+
       check 'esign_consent'
 
       expect(page).to have_css('#submit_form_button:not([disabled])')
@@ -46,7 +60,8 @@ RSpec.describe 'ESIGN consent in the signing form' do
       event = submitter.submission_events.find_by(event_type: 'esign_consent')
 
       expect(submitter.completed_at).to be_present
-      expect(event.data).to include('version' => 'v1')
+      expect(event.data).to include('version' => EsignConsent::VERSION, 'pdf_opened' => true,
+                                    'sender_name' => account.name, 'sender_email' => author.email)
       expect(event.data['ip']).to be_present
       expect(event.data['ua']).to be_present
     end
@@ -62,10 +77,11 @@ RSpec.describe 'ESIGN consent in the signing form' do
     it 'shows the checkbox once, then never again for that signer' do
       visit submit_form_path(slug: submitter.slug)
 
-      expect(page).to have_unchecked_field('esign_consent')
+      expect(page).to have_unchecked_field('esign_consent', disabled: true)
       expect(page).to have_css('#submit_form_button[disabled]')
 
       fill_first_name(template, 'Jane')
+      find_by_id('esign_consent_view_pdf').click
       check 'esign_consent'
       click_button 'next'
 
@@ -93,9 +109,13 @@ RSpec.describe 'ESIGN consent in the signing form' do
 
       find('#expand_form_button').click
 
-      expect(page).to have_unchecked_field('esign_consent')
+      expect(page).to have_unchecked_field('esign_consent', disabled: true)
       expect(page).to have_css('#submit_form_button[disabled]')
 
+      # The preview's link answers off the template (its signer is never saved).
+      expect(page).to have_css("#esign_consent_view_pdf[href='/templates/#{template.id}/form_document.pdf']")
+
+      find_by_id('esign_consent_view_pdf').click
       check 'esign_consent'
 
       expect(page).to have_css('#submit_form_button:not([disabled])')

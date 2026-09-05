@@ -15,6 +15,13 @@
       <%= render 'devise/shared/error_messages', resource: %>
       <set-timezone data-input-id="signup_timezone"></set-timezone>
       <%= hidden_field_tag 'user[timezone]', nil, id: 'signup_timezone' %>
+      <%# The versions of the Terms and the Privacy Policy this page is showing.
+          Sent back with the form so the agreement that is recorded is the text
+          the person actually had in front of them: a page opened before a
+          wording change cannot record the new one (LegalDocuments). %>
+      <% LegalDocuments.version_fields.each do |field, value| %>
+        <%= hidden_field_tag field, value %>
+      <% end %>
       <div class="form-control">
         <%= label_tag 'user_name', t('full_name'), class: 'label' %>
         <%= text_field_tag 'user[name]', @name, id: 'user_name', required: true, autofocus: true, autocomplete: 'name', class: 'base-input' %>

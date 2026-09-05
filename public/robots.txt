@@ -1,2 +1,28 @@
+# The public pages are welcome in search results; everything else belongs to
+# an account (or to a signer's private link) and must never be listed. The
+# app also sends <meta name="robots" content="noindex"> on every private page.
 User-agent: *
-Allow: /
+Allow: /$
+Allow: /pricing
+Allow: /trust
+Allow: /terms
+Allow: /privacy
+Allow: /verify
+Allow: /sign_in
+Allow: /sign_up
+Disallow: /api/
+Disallow: /settings/
+Disallow: /templates
+Disallow: /submissions
+Disallow: /submitters
+Disallow: /s/
+Disallow: /d/
+Disallow: /e/
+Disallow: /p/
+Disallow: /invites/
+Disallow: /operator/
+Disallow: /jobs
+Disallow: /mfa_setup
+Disallow: /users
+Disallow: /dashboard
+Disallow: /setup

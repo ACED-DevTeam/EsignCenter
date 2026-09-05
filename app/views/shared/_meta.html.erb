@@ -1,24 +1,27 @@
-<% if Docuseal.demo? || (request.path != '/' && !devise_controller?) %>
+<%# Search engines index the public pages only: the root, the sign-in pages and anything that declares itself indexable (the marketing and legal pages). Everything else in the app is private to an account and must never be listed. %>
+<% if Docuseal.demo? || (request.path != '/' && !devise_controller? && !content_for?(:indexable)) %>
   <meta name="robots" content="noindex">
 <% end %>
-<% title = content_for(:html_title) || (signed_in? ? 'EsignCenter' : 'EsignCenter | Open Source Document Signing') %>
-<% description = content_for(:html_description) || 'Open source, self-hosted tool to streamline document filling and signing. Create custom PDF forms to complete and sign with an easy to use online tool.' %>
+<% title = content_for(:html_title) || (signed_in? ? Docuseal.product_name : "#{Docuseal.product_name} — Send it. Get it signed. Prove it.") %>
+<% description = content_for(:html_description) || 'Send a PDF or Word file, get it signed on any device, and keep a sealed, timestamped copy with a full audit trail. Free for 5 documents a month.' %>
 <meta name="description" content="<%= description %>">
 <meta property="og:title" content="<%= title %>">
 <meta property="og:description" content="<%= description %>">
 <meta property="og:type" content="website">
-<meta property="og:url" content="<%= root_url %>">
-<meta property="og:site_name" content="EsignCenter">
+<meta property="og:url" content="<%= content_for(:canonical_url).presence || root_url %>">
+<meta property="og:site_name" content="<%= Docuseal.product_name %>">
 <% if content_for(:disable_image_preview) %>
   <meta property="og:image" content="">
   <meta name="twitter:image" content="">
+  <meta name="twitter:card" content="summary">
 <% else %>
-  <meta property="og:image" content="<%= content_for(:preview_image_url).presence || "#{root_url}preview.png" %>">
-  <meta property="og:image:width" content="800">
-  <meta property="og:image:height" content="800">
-  <meta name="twitter:image" content="<%= content_for(:preview_image_url).presence || "#{root_url}preview.png" %>">
+  <meta property="og:image" content="<%= content_for(:preview_image_url).presence || "#{root_url}og.png" %>">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="<%= Docuseal.product_name %> — Send it. Get it signed. Prove it.">
+  <meta name="twitter:image" content="<%= content_for(:preview_image_url).presence || "#{root_url}og.png" %>">
+  <meta name="twitter:card" content="summary_large_image">
 <% end %>
-<meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="<%= title %>">
 <meta name="twitter:description" content="<%= description %>">
 <link rel="apple-touch-icon" sizes="180x180" href="/apple-icon-180x180.png">

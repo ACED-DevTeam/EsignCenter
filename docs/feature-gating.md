@@ -85,7 +85,8 @@ every account so abuse protection works on every plan.
 
 Every signed-in user, whatever their role, gets `can :use, <feature>` for each
 paid-only feature their account's plan allows, and an explicit `cannot :use`
-for everything else (hidden features included). Views ask
+for everything else — including the hidden features, which no plan ever
+unlocks. Views ask
 `can?(:use, :embed)`, `can?(:use, :conditional_logic)` and so on. The MCP door
 keeps requiring the admin-level `:manage, :mcp` and additionally requires
 `:use, :mcp` — role says *who may administer*, plan says *whether the account

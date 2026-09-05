@@ -1105,6 +1105,8 @@ RSpec.describe 'Deleting an account', type: :request do
       admin.mcp_tokens.create!(name: 'Robot')
       create(:user_config, user: member, key: 'test', value: '1')
       EncryptedUserConfig.create!(user: member, key: UserConfig::SIGNATURE_KEY, value: 'x')
+      LegalDocuments.record_acceptance!(member, request: nil, source: LegalAcceptance::SIGNUP_EMAIL,
+                                                versions: LegalDocuments.current_versions)
 
       # The two tables whose foreign keys restrict on `users` (K7). The
       # Doorkeeper gem is not in this app, so the rows go in the same way the
@@ -1195,6 +1197,12 @@ RSpec.describe 'Deleting an account', type: :request do
         'mcp_tokens' => by_user.call(McpToken),
         'user_configs' => by_user.call(UserConfig),
         'encrypted_user_configs' => by_user.call(EncryptedUserConfig),
+        # By account AND by user, the way the purge takes them: a row records
+        # the account somebody was in when they agreed, which is not
+        # necessarily the account they are in now (Session 9 phase A).
+        'legal_acceptances' => lambda {
+          LegalAcceptance.where(account_id: accounts).or(LegalAcceptance.where(user_id: users)).count
+        },
         'oauth_access_grants' => by_user.call(Accounts::Purge::OauthAccessGrant, :resource_owner_id),
         'oauth_access_tokens' => by_user.call(Accounts::Purge::OauthAccessToken, :resource_owner_id),
         'users' => -> { User.where(account_id: accounts).count } }

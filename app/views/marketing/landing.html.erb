@@ -1,0 +1,201 @@
+<% content_for(:html_title, 'EsignCenter — Send it. Get it signed. Prove it.') %>
+<% content_for(:html_description, 'Send a PDF or Word file, get it signed on any device, and keep a sealed, timestamped copy with a full audit trail. Free for 5 documents a month.') %>
+<% content_for(:canonical_url, root_url) %>
+<% content_for(:indexable, 'true') %>
+<%# The public landing page (Session 9). Copy follows the positioning brief: only the earned proof points, no invented numbers, logos or testimonials. Every number is read from PricingMatrix. %>
+<% registration = Docuseal.registration_enabled? %>
+<% start_path = registration ? new_registration_path : new_user_session_path %>
+<% start_label = registration ? 'Start free' : t('sign_in') %>
+<% start_data = registration ? { turbo: false } : {} %>
+
+<section class="mk-ground">
+  <div class="max-w-6xl mx-auto px-4 md:px-2 pt-14 pb-16 md:pt-24 md:pb-24 grid gap-12 lg:grid-cols-12 lg:items-center">
+    <div class="lg:col-span-6">
+      <p class="inline-flex items-center gap-2 text-sm font-medium text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-full px-3 py-1 mb-6">
+        <span class="w-1.5 h-1.5 rounded-full bg-indigo-600" aria-hidden="true"></span>
+        Document signing without the enterprise price tag
+      </p>
+      <h1 class="text-4xl sm:text-5xl md:text-6xl font-bold tracking-tight leading-[1.05]">
+        Send it.<br>Get it signed.<br><span class="text-indigo-600">Prove it.</span>
+      </h1>
+      <p class="mt-6 text-lg md:text-xl text-base-content/70 max-w-xl leading-relaxed">
+        Upload a PDF or Word file, add who signs, and send. They sign on any device. You get a sealed, timestamped PDF with a full audit trail.
+      </p>
+      <div class="mt-8 flex flex-col sm:flex-row gap-3">
+        <%= link_to start_label, start_path, class: 'btn btn-neutral text-white btn-lg text-base px-8', data: start_data %>
+        <%= link_to 'See pricing', pricing_path, class: 'btn btn-outline btn-lg text-base px-8 bg-white border-2' %>
+      </div>
+      <p class="mt-5 text-sm text-base-content/70">
+        Free for <%= PricingMatrix.free_completions %> completed documents a month. No card to start.
+      </p>
+    </div>
+    <reveal-on-scroll class="mk-hero-wrap block lg:col-span-6 flex justify-center lg:justify-end">
+      <%= render 'marketing/hero_illustration' %>
+    </reveal-on-scroll>
+  </div>
+</section>
+
+<reveal-on-scroll class="block">
+  <section class="max-w-6xl mx-auto px-4 md:px-2 py-16 md:py-24" aria-labelledby="how-heading">
+    <div class="max-w-2xl">
+      <p class="text-sm font-semibold uppercase tracking-wider text-indigo-700">How it works</p>
+      <h2 id="how-heading" class="mt-2 text-3xl md:text-4xl font-bold tracking-tight">Four steps.</h2>
+    </div>
+    <ol class="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+      <% steps = [
+           ['file_upload', 'Upload or pick a template', 'Drop in a PDF or Word file, or reuse a template you saved. Drag the fields where they go.'],
+           ['users', 'Add who signs', 'Names and email addresses. Set the order if one person must sign before another.'],
+           ['send', 'Send', 'Each signer gets a link. They read, fill in and sign on a phone, tablet or computer.'],
+           ['rubber_stamp', 'Signed and sealed', 'When the last person finishes, the PDF is sealed, timestamped and sent to everyone, audit trail attached.']
+         ] %>
+      <% steps.each_with_index do |(icon, title, text), index| %>
+        <li class="relative bg-white rounded-2xl border border-base-content/10 p-6 shadow-sm">
+          <div class="flex items-center justify-between">
+            <span class="inline-flex items-center justify-center w-11 h-11 rounded-xl bg-indigo-50 text-indigo-700" aria-hidden="true">
+              <%= svg_icon(icon, class: 'w-6 h-6') %>
+            </span>
+            <span class="text-sm font-semibold text-base-content/70">Step <%= index + 1 %></span>
+          </div>
+          <h3 class="mt-4 text-lg font-semibold"><%= title %></h3>
+          <p class="mt-2 text-base-content/70 leading-relaxed"><%= text %></p>
+        </li>
+      <% end %>
+    </ol>
+  </section>
+</reveal-on-scroll>
+
+<reveal-on-scroll class="block">
+  <section class="bg-base-200/50 border-y border-base-content/5" aria-labelledby="proof-heading">
+    <div class="max-w-6xl mx-auto px-4 md:px-2 py-16 md:py-24">
+      <div class="max-w-2xl">
+        <p class="text-sm font-semibold uppercase tracking-wider text-indigo-700">What you can rely on</p>
+        <h2 id="proof-heading" class="mt-2 text-3xl md:text-4xl font-bold tracking-tight">Proof, built into every document</h2>
+        <p class="mt-4 text-lg text-base-content/70">Every claim here is backed by code you can read. The <%= link_to 'trust page', trust_path, class: 'link font-medium' %> lists the evidence for each one.</p>
+      </div>
+      <div class="mt-10 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+        <% proofs = [
+             ['writing_sign', 'Consent is recorded, not assumed', 'Everyone who signs on our signing pages must first agree to sign electronically. We record the date, time, IP address and the exact wording they agreed to.'],
+             ['certificate', 'Sealed and timestamped', 'Signed PDFs carry a digital signature and a trusted timestamp from DigiCert\'s public timestamp authority. Any later change breaks the seal.'],
+             ['zoom_check', 'Anyone can verify a signed PDF', 'Drop a file on our verify page and learn only that it was signed through EsignCenter, when, and by how many people. Names are never revealed.'],
+             ['logs', 'A full audit trail, attached', 'Sent, opened, signed, consent given, IP address and timestamps: the whole story travels with every completed document.'],
+             ['world', 'Your data stays in the United States', 'Stored in US regions. Export everything as one zip at any time, and delete your account yourself when you are done.'],
+             ['brand_github', 'Open source, top to bottom', 'EsignCenter is built on DocuSeal and its complete source is public under the AGPL. Nothing about how it works is a secret.'],
+             ['devices', 'Everything a signing day needs', 'Word and PDF uploads. Sign on any device. Email verification for signers, signing order, decline or delegate, in-person signing, templates and folders.']
+           ] %>
+        <% proofs.each do |icon, title, text| %>
+          <article class="bg-white rounded-2xl border border-base-content/10 p-6 shadow-sm">
+            <span class="inline-flex items-center justify-center w-11 h-11 rounded-xl bg-indigo-600 text-white" aria-hidden="true">
+              <%= svg_icon(icon, class: 'w-6 h-6') %>
+            </span>
+            <h3 class="mt-4 text-lg font-semibold"><%= title %></h3>
+            <p class="mt-2 text-base-content/70 leading-relaxed"><%= text %></p>
+          </article>
+        <% end %>
+        <div class="rounded-2xl border border-dashed border-indigo-200 bg-indigo-50/60 p-6 flex flex-col justify-center">
+          <h3 class="text-lg font-semibold text-indigo-900">Check a document right now</h3>
+          <p class="mt-2 text-indigo-900/70 leading-relaxed">No account needed. Upload any PDF and we will tell you whether it was completed through EsignCenter.</p>
+          <%= link_to 'Verify a document', verify_path, class: 'mt-4 btn btn-neutral btn-sm text-white self-start' %>
+        </div>
+      </div>
+    </div>
+  </section>
+</reveal-on-scroll>
+
+<reveal-on-scroll class="block">
+  <section class="max-w-6xl mx-auto px-4 md:px-2 py-16 md:py-24" aria-labelledby="for-heading">
+    <div class="max-w-2xl">
+      <p class="text-sm font-semibold uppercase tracking-wider text-indigo-700">Built for</p>
+      <h2 id="for-heading" class="mt-2 text-3xl md:text-4xl font-bold tracking-tight">People who need it signed today</h2>
+    </div>
+    <div class="mt-10 grid gap-5 md:grid-cols-3">
+      <% audiences = [
+           ['id', 'Freelancers', 'Contracts, statements of work and NDAs, sent from your phone between two jobs.'],
+           ['building', 'Small businesses', 'Hiring paperwork, client agreements and vendor forms, with templates the whole team reuses.'],
+           ['hand_click', 'Everyday agreements', 'A lease, a consent form, a release, a loan between friends. Signed properly, without a sales call.']
+         ] %>
+      <% audiences.each do |icon, title, text| %>
+        <div class="rounded-2xl border border-base-content/10 p-6">
+          <span class="inline-flex items-center justify-center w-11 h-11 rounded-xl bg-indigo-50 text-indigo-700" aria-hidden="true">
+            <%= svg_icon(icon, class: 'w-6 h-6') %>
+          </span>
+          <h3 class="mt-4 text-lg font-semibold"><%= title %></h3>
+          <p class="mt-2 text-base-content/70 leading-relaxed"><%= text %></p>
+        </div>
+      <% end %>
+    </div>
+  </section>
+</reveal-on-scroll>
+
+<reveal-on-scroll class="block">
+  <section class="max-w-6xl mx-auto px-4 md:px-2 pb-16 md:pb-24" aria-labelledby="pricing-heading">
+    <div class="rounded-3xl bg-neutral text-white p-8 md:p-12 grid gap-10 lg:grid-cols-12 lg:items-center">
+      <div class="lg:col-span-5">
+        <p class="text-sm font-semibold uppercase tracking-wider text-indigo-300">Pricing</p>
+        <h2 id="pricing-heading" class="mt-2 text-3xl md:text-4xl font-bold tracking-tight">Free to start. One paid plan.</h2>
+        <p class="mt-4 text-white/70 text-lg">No per-document fees. Teams are the same plan with more seats.</p>
+        <%= link_to 'See the full comparison', pricing_path, class: 'mt-6 inline-flex items-center gap-2 font-medium text-white link link-hover' %>
+      </div>
+      <div class="lg:col-span-7 grid gap-4 sm:grid-cols-2">
+        <div class="rounded-2xl bg-white/10 border border-white/15 p-6">
+          <h3 class="text-lg font-semibold">Free</h3>
+          <p class="mt-2 text-4xl font-bold">$0</p>
+          <ul class="mt-4 space-y-2 text-white/80">
+            <li><%= PricingMatrix.free_completions %> completed documents a month</li>
+            <li><%= PricingMatrix.free_seats %> user</li>
+            <li>Full signing, audit trail and verification</li>
+          </ul>
+        </div>
+        <div class="rounded-2xl bg-white text-base-content p-6 shadow-xl">
+          <h3 class="text-lg font-semibold">Paid</h3>
+          <p class="mt-2 text-4xl font-bold">$<%= PricingMatrix.price_per_seat %><span class="text-base font-medium text-base-content/70"> per user / month</span></p>
+          <ul class="mt-4 space-y-2 text-base-content/70">
+            <li>Unlimited documents and sends<a href="<%= terms_path %>" class="link ml-0.5" aria-label="Fair use applies, see the Terms">*</a></li>
+            <li>API, reminders, your own branding</li>
+            <li><%= PricingMatrix.trial_days %>-day free trial, cancel any time</li>
+          </ul>
+          <p class="mt-3 text-xs text-base-content/70">* Fair use applies. See the <%= link_to 'Terms', terms_path, class: 'link' %>.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+</reveal-on-scroll>
+
+<reveal-on-scroll class="block">
+  <section class="border-y border-base-content/5 bg-base-200/50" aria-labelledby="trust-heading">
+    <div class="max-w-6xl mx-auto px-4 md:px-2 py-16 md:py-24 grid gap-12 lg:grid-cols-12 lg:items-center">
+      <div class="lg:col-span-7">
+        <p class="text-sm font-semibold uppercase tracking-wider text-indigo-700">Trust</p>
+        <h2 id="trust-heading" class="mt-2 text-3xl md:text-4xl font-bold tracking-tight">Nothing to take on faith</h2>
+        <dl class="mt-8 grid gap-6 sm:grid-cols-3">
+          <div>
+            <dt class="font-semibold">Hosted in the United States</dt>
+            <dd class="mt-1 text-base-content/70">Your documents and data are stored in US regions.</dd>
+          </div>
+          <div>
+            <dt class="font-semibold">Open source</dt>
+            <dd class="mt-1 text-base-content/70">The complete source is public under the AGPL. <a href="<%= Docuseal::GITHUB_URL %>" target="_blank" rel="noopener" class="link">Read it on GitHub</a>.</dd>
+          </div>
+          <div>
+            <dt class="font-semibold">Verify any document</dt>
+            <dd class="mt-1 text-base-content/70">Anyone can check a signed PDF at <%= link_to 'our verify page', verify_path, class: 'link' %>, no account needed.</dd>
+          </div>
+        </dl>
+        <%= link_to 'Read the trust page', trust_path, class: 'mt-8 inline-flex btn btn-outline bg-white border-2' %>
+      </div>
+      <div class="lg:col-span-5 flex justify-center">
+        <%= render 'marketing/verify_illustration' %>
+      </div>
+    </div>
+  </section>
+</reveal-on-scroll>
+
+<reveal-on-scroll class="block">
+  <section class="max-w-6xl mx-auto px-4 md:px-2 py-16 md:py-24 text-center" aria-labelledby="cta-heading">
+    <h2 id="cta-heading" class="text-3xl md:text-5xl font-bold tracking-tight">Ready when you are.</h2>
+    <p class="mt-4 text-lg text-base-content/70 max-w-xl mx-auto">Send your first document in the next five minutes. Free plan, no card, and everything you sign stays yours.</p>
+    <div class="mt-8 flex flex-col sm:flex-row justify-center gap-3">
+      <%= link_to start_label, start_path, class: 'btn btn-neutral text-white btn-lg text-base px-8', data: start_data %>
+      <%= link_to 'See pricing', pricing_path, class: 'btn btn-outline btn-lg text-base px-8 bg-white border-2' %>
+    </div>
+  </section>
+</reveal-on-scroll>

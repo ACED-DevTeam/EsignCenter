@@ -159,3 +159,197 @@ button[disabled] .enabled, button.btn-disabled .enabled {
 markdown-editor [contenteditable] p {
   margin-bottom: 18px;
 }
+
+/* Accessibility (Session 9). A visible focus ring on everything keyboard
+   users land on — daisyUI's buttons and inputs draw their own, links did
+   not — and one switch that stills every animation and transition for
+   readers who asked their OS for less motion. */
+a:focus-visible,
+button:focus-visible,
+summary:focus-visible,
+[tabindex]:focus-visible {
+  outline: 3px solid #4f46e5;
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* The public marketing pages (app/views/marketing, layouts/marketing). The
+   `mk-` prefix keeps these away from the app's own styles. Every animation
+   sits inside a `no-preference` media query, and each element is fully
+   visible before its animation starts, so nothing here can hide content. */
+.mk-ground {
+  background:
+    radial-gradient(60rem 30rem at 85% -10%, rgb(79 70 229 / 0.10), transparent 60%),
+    radial-gradient(40rem 20rem at -10% 20%, rgb(79 70 229 / 0.06), transparent 60%);
+}
+
+.mk-menu-panel {
+  display: none;
+}
+
+.mk-menu-panel.mk-menu-open {
+  display: flex;
+}
+
+@media (min-width: 768px) {
+  .mk-menu-panel {
+    display: flex;
+  }
+}
+
+/* The finished picture is what paints first: the signature and the seal
+   only animate once the hero's reveal class has landed (JavaScript present,
+   motion allowed), so a screenshot, a social preview or a no-JS render never
+   shows an empty signature box. The hero wrapper itself never fades. */
+.mk-hero-sign {
+  stroke-dasharray: 900;
+  stroke-dashoffset: 0;
+}
+
+.mk-hero-seal {
+  transform-origin: center;
+}
+
+.mk-reveal.mk-hero-wrap {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .mk-reveal {
+    opacity: 0;
+    transform: translateY(18px);
+    transition: opacity 0.7s ease-out, transform 0.7s ease-out;
+  }
+
+  .mk-reveal.mk-revealed {
+    opacity: 1;
+    transform: none;
+  }
+
+  .mk-revealed .mk-hero-sign {
+    animation: mk-sign 1.8s ease-out both;
+  }
+
+  .mk-revealed .mk-hero-seal {
+    animation: mk-seal 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.3) 1.8s both;
+  }
+
+  .mk-hero-card {
+    animation: mk-float 8s ease-in-out infinite;
+  }
+}
+
+@keyframes mk-sign {
+  from {
+    stroke-dashoffset: 900;
+  }
+
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes mk-seal {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes mk-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+/* The rendered Terms of Service and Privacy Policy (app/views/legal). The
+   documents themselves carry no classes at all — they are plain semantic HTML
+   so that the exact bytes an acceptance row is hashed against stay readable
+   and reviewable by a lawyer — so their typography is set here, on the
+   container the page wraps them in. There is no typography plugin in this
+   build; this block is the whole of it. */
+.legal-document {
+  @apply text-base-content/90 leading-relaxed;
+
+  h2 {
+    @apply text-2xl font-bold tracking-tight mt-12 mb-4 text-base-content;
+  }
+
+  h2:first-child {
+    @apply mt-0;
+  }
+
+  h3 {
+    @apply text-lg font-semibold mt-8 mb-3 text-base-content;
+  }
+
+  p {
+    @apply my-4;
+  }
+
+  ul,
+  ol {
+    @apply my-4 pl-6 space-y-2;
+  }
+
+  ul {
+    @apply list-disc;
+  }
+
+  ol {
+    @apply list-decimal;
+  }
+
+  li::marker {
+    @apply text-base-content/40;
+  }
+
+  strong {
+    @apply font-semibold text-base-content;
+  }
+
+  a {
+    @apply link link-hover underline underline-offset-2;
+  }
+
+  /* Tables carry the quota and sub-processor rows. Each one is wrapped in a
+     bare <div> in the document source — the only div in either document —
+     which is what scrolls on a narrow screen, so a wide table never pushes
+     the page sideways and the table itself still fills the measure. */
+  div {
+    @apply my-6 overflow-x-auto;
+  }
+
+  table {
+    @apply w-full text-sm border-collapse;
+  }
+
+  th {
+    @apply text-left font-semibold py-2 pr-6 border-b border-base-300 align-top;
+  }
+
+  td {
+    @apply py-2 pr-6 border-b border-base-300 align-top;
+  }
+}

@@ -30,7 +30,7 @@ RSpec.describe 'ESIGN consent version', type: :request do
       get "/s/#{submitter.slug}"
 
       expect(response).to have_http_status(:ok)
-      expect(response.body).to include('&quot;version&quot;:&quot;v1&quot;')
+      expect(response.body).to include("&quot;version&quot;:&quot;#{EsignConsent::VERSION}&quot;")
       expect(response.body).to include(ERB::Util.html_escape(I18n.t('esign_consent_version_stale')))
     end
   end
@@ -40,7 +40,10 @@ RSpec.describe 'ESIGN consent version', type: :request do
     # version at all is stale too — nothing vouches for which text that page
     # showed, so the signer reloads and agrees again. Both refusals happen
     # before any write, so both cases assert the same empty aftermath.
+    # `v1` is the archived launch disclosure (config/locales/esign_disclosures):
+    # its text is still readable, but a consent given on it is no longer current.
     [['for a version other than the current one', { esign_consent_version: 'v0' }],
+     ['for the superseded v1 disclosure', { esign_consent_version: 'v1' }],
      ['without a version at all', {}]].each do |description, version_params|
       it "refuses a consent #{description} as stale and records nothing" do
         complete(submitter, esign_consent: 'true', **version_params)

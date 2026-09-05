@@ -629,9 +629,11 @@
           v-if="esignConsentRequired"
           ref="esignConsent"
           v-model="esignConsentChecked"
+          :pdf-opened="esignConsentPdfOpened"
           :config="esignConsent"
           :error="showEsignConsentRequired"
           :stale="esignConsentStale"
+          @pdf-opened="esignConsentPdfOpened = true"
         />
         <div
           v-if="(currentField.type !== 'payment' && currentField.type !== 'verification' && currentField.type !== 'kba') || submittedValues[currentField.uuid]"
@@ -679,6 +681,7 @@
         :esign-consent="esignConsentChecked"
         :esign-consent-version="esignConsent.version"
         :esign-consent-locale="esignConsent.locale"
+        :esign-consent-pdf-opened="esignConsentPdfOpened"
         :style="{ maxWidth: isBreakpointMd ? '582px' : '' }"
         @success="[isInvite = false, performComplete($event)]"
       />
@@ -985,8 +988,8 @@ export default {
       default: true
     },
     // { version, locale, consented, label, link_text, required_message,
-    // stale_message, modal_id } from the Rails partial; `consented: true`
-    // means no checkbox is shown.
+    // stale_message, modal_id, pdf_url, view_pdf_text, open_pdf_first } from
+    // the Rails partial; `consented: true` means no checkbox is shown.
     esignConsent: {
       type: Object,
       required: false,
@@ -1158,6 +1161,7 @@ export default {
       showBlankConfirm: false,
       isEsignConsented: this.esignConsent.consented !== false,
       esignConsentChecked: false,
+      esignConsentPdfOpened: false,
       showEsignConsentRequired: false,
       esignConsentStale: false
     }

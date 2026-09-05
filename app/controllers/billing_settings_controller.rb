@@ -18,8 +18,10 @@ class BillingSettingsController < ApplicationController
   include LaunchGates
 
   # $10 per seat per month, one price for the whole product. The Stripe price
-  # id is the authority on what is charged; this is only what we print.
-  PRICE_PER_SEAT_USD = 10
+  # id is the authority on what is charged; this is only what we print, and
+  # it is spelled once, in lib/stripe_billing.rb, so the public pricing page
+  # reads the same number without reaching into a controller.
+  PRICE_PER_SEAT_USD = StripeBilling::PRICE_PER_SEAT_USD
 
   # The paid benefits the free-plan visitor is being sold, in the order they
   # are read. Each is a row of the entitlement matrix (lib/entitlements.rb).

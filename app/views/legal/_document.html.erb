@@ -1,0 +1,48 @@
+<%# One legal document on a page: the heading, the version stamp, a summary
+    that is explicitly NOT the agreement, and then the document itself.
+
+    The wording of these two pages is deliberately English-only, like the
+    marketing pages this layout serves and like the platform notices the
+    mailers send. A legal document translated by a machine is a liability
+    rather than a courtesy, and the agreement people accept has to be the one
+    text we can produce again years later (docs/legal.md). The `<article>`
+    below is the exact text an acceptance row's sha256 is taken over. %>
+<% document = local_assigns.fetch(:document) %>
+<% version = LegalDocuments.version(document) %>
+<% effective_on = LegalDocuments.effective_on(document) %>
+<div class="max-w-3xl mx-auto px-4 md:px-2 py-10 md:py-16">
+  <h1 class="text-4xl md:text-5xl font-bold tracking-tight"><%= title %></h1>
+  <p class="mt-4 text-sm text-base-content/70">
+    Effective <%= effective_on.strftime('%-d %B %Y') %>
+    <span class="px-1" aria-hidden="true">&middot;</span>
+    Version <%= version %>
+  </p>
+  <div class="mt-8 rounded-2xl border border-base-300 bg-base-200 p-5 md:p-6">
+    <h2 class="text-lg font-semibold">Plain-English summary</h2>
+    <ul class="mt-3 space-y-2 text-sm text-base-content/80">
+      <% summary.each do |point| %>
+        <li class="flex gap-2">
+          <span aria-hidden="true">&bull;</span>
+          <span><%= point %></span>
+        </li>
+      <% end %>
+    </ul>
+    <p class="mt-4 text-sm font-medium">This summary is not the agreement. The document below is.</p>
+  </div>
+  <%# NO whitespace inside the <article>: its inner HTML has to be exactly the
+      bytes `data-legal-sha256` is the digest of, so that a reader can check
+      the page against the attribute (and against an acceptance row) without
+      trusting us. The content is our own file from config/legal, rendered by
+      LegalDocuments — never anything a request carried. %>
+  <article class="legal-document mt-12" data-legal-document="<%= document %>" data-legal-version="<%= version %>" data-legal-sha256="<%= LegalDocuments.sha256(document) %>"><%= raw(LegalDocuments.html(document)) %></article>
+  <nav aria-label="Related pages" class="mt-14 pt-8 border-t border-base-300 flex flex-wrap gap-x-6 gap-y-2 text-sm">
+    <% if document == :terms %>
+      <%= link_to 'Privacy Policy', privacy_path, class: 'link link-hover' %>
+    <% else %>
+      <%= link_to 'Terms of Service', terms_path, class: 'link link-hover' %>
+    <% end %>
+    <%= link_to 'Trust and security', trust_path, class: 'link link-hover' %>
+    <%= link_to 'Verify a signed document', verify_path, class: 'link link-hover' %>
+    <%= mail_to Docuseal::SUPPORT_EMAIL, 'Contact us', class: 'link link-hover' %>
+  </nav>
+</div>
