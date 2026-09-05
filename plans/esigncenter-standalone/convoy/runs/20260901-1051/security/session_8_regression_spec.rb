@@ -8,7 +8,7 @@ RSpec.describe 'Session 8 security regressions', type: :request do
     export = AccountExport.create!(account:, requested_by: admin, status: AccountExport::RUNNING,
                                    started_at: 10.minutes.ago)
     blob = ActiveStorage::Blob.create_and_upload!(io: StringIO.new('private account archive'),
-                                                filename: 'export.zip', content_type: 'application/zip')
+                                                  filename: 'export.zip', content_type: 'application/zip')
     export.stage_blob!(blob)
     [export, blob]
   end
@@ -90,7 +90,7 @@ RSpec.describe 'Session 8 security regressions', type: :request do
   it 'does not replace the previous staged locator when storage refuses cleanup on retry' do
     export, blob = staged_export
     replacement = ActiveStorage::Blob.create_after_unfurling!(io: StringIO.new('next archive'),
-                                                            filename: 'next.zip')
+                                                              filename: 'next.zip')
     allow(blob.service).to receive(:delete).with(blob.key).and_raise(Errno::EIO, 'synthetic storage failure')
 
     expect { AccountExportJob.new.send(:stage!, export, replacement) }

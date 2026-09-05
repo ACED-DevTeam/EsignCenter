@@ -161,9 +161,7 @@ class AccountExportJob
       finished = true
     end
 
-    unless finished
-      unstage!(export, blob) if discard_blob(blob, export)
-    end
+    unstage!(export, blob) if !finished && discard_blob(blob, export)
 
     finished
   rescue ActiveRecord::RecordNotFound
