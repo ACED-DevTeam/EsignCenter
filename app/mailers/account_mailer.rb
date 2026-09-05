@@ -185,6 +185,10 @@ class AccountMailer < ApplicationMailer
     @days = Accounts::Exports::TTL.in_days.to_i
     @counts = export.counts
     @size = ActiveSupport::NumberHelper.number_to_human_size(export.total_bytes)
+    # Said in the email as well as on the page: somebody who exports before
+    # deleting the account has to hear "some expected files are not in here"
+    # at the moment they are told it is ready, not when they open the zip.
+    @missing_count = export.summary['missing_count'].to_i
 
     mail(to: export.requested_by.email, subject: 'Your EsignCenter account export is ready')
   end

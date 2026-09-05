@@ -18,7 +18,19 @@ module Accounts
   # behind the application's back — does NOT fail the export. It is named in
   # the manifest's `missing` list instead, because an export that refuses to
   # produce anything at all is worse for the customer than one that says
-  # exactly which file it could not find.
+  # exactly which file it could not find. `missing` also names the files that
+  # were never MADE: a submission that everybody has signed is expected to
+  # have a signed copy per person and an audit trail, and when the generation
+  # job has not run (or failed) those are reported as `not_generated` rather
+  # than passed over in silence (review 2, H7). Every entry carries a reason,
+  # so nothing in that list is a guess.
+  #
+  # AND THE MANIFEST DESCRIBES THE WHOLE ZIP. Every stored file is spooled to
+  # a scratch file FIRST and only copied into the archive once it has arrived
+  # complete (review 2, #9): opening the zip entry before the read meant an
+  # object that vanished mid-download left a truncated entry in the archive
+  # that the manifest did not describe, which is exactly the promise the
+  # checksums exist to make.
   #
   # Only the account's OWN rows are walked. A testing child is a separate
   # account row (Accounts.find_or_create_testing_user), so scoping every query
@@ -34,6 +46,10 @@ module Accounts
     # "Contract" cannot collide.
     SAFE = /[^A-Za-z0-9._-]+/
     MAX_NAME = 80
+
+    # How many submissions are formatted into CSV rows at once. Small enough
+    # that a batch is nothing beside the documents this job already streams.
+    CSV_BATCH = 250
 
     module_function
 
@@ -96,6 +112,7 @@ module Accounts
 
         write_completed_documents!(zip, submission, directory, state)
         write_audit_trail!(zip, submission, directory, state)
+        report_ungenerated!(submission, directory, state)
         write_json!(zip, "#{directory}/submission.json", submission_json(submission), state)
       end
     end
@@ -126,6 +143,40 @@ module Accounts
       added = write_blob!(zip, "#{directory}/audit-trail.pdf", submission.audit_trail.blob, state)
 
       state[:counts]['audit_trails'] += 1 if added
+    end
+
+    # The files a FINISHED submission is supposed to have and does not
+    # (review 2, H7).
+    #
+    # Completion is saved before the job that makes its artifacts runs
+    # (Submitters::SubmitValues, then ProcessSubmitterCompletionJob), so an
+    # export taken while that job is queued — or after it has failed — used to
+    # produce a `submission.json` saying "completed" with no signed copy and no
+    # audit trail beside it, and an EMPTY `missing` list. That is the one
+    # outcome this whole feature must not have: an archive that looks complete
+    # and is not, handed to somebody about to delete the original.
+    #
+    # Only a submission everybody has signed is asked the question, and only
+    # when the template really has documents to render — a submission of a
+    # template with no documents is not owed any.
+    def report_ungenerated!(submission, directory, state)
+      return unless submission_status(submission) == 'completed'
+      return unless documents_expected?(submission)
+
+      submission.submitters.sort_by(&:id).each do |submitter|
+        next if submitter.completed_at.blank?
+        next if submitter.documents.any?
+
+        record_missing(state, "#{directory}/completed/submitter-#{submitter.id}.pdf", NOT_GENERATED)
+      end
+
+      return if submission.audit_trail.attached?
+
+      record_missing(state, "#{directory}/audit-trail.pdf", NOT_GENERATED)
+    end
+
+    def documents_expected?(submission)
+      (submission.template_schema.presence || submission.template&.schema).present?
     end
 
     def submission_json(submission)
@@ -184,14 +235,54 @@ module Accounts
     # --- the flat files ----------------------------------------------------
 
     # The same CSV the templates page exports, over every submission in the
-    # account. Reused rather than rewritten so the columns a customer already
-    # knows are the columns they get here.
+    # account — formatted by the very same code, and written into the zip a
+    # BATCH AT A TIME (review 2, #8).
+    #
+    # `Submissions::GenerateExportFiles` still decides what a row looks like,
+    # so the columns a customer already knows are the columns they get here.
+    # What is no longer reused is its "build every row, then join them all
+    # into one String" shape: over an account's whole history that held the
+    # entire submission set in memory — twice, because the String was then
+    # duplicated — while the PDFs beside it were being streamed a chunk at a
+    # time. The memory promise in this file's header stopped at the CSV.
+    #
+    # Two passes, because the header row is the UNION of the column names of
+    # every row and it has to be written first: the first pass discovers the
+    # names and throws the rows away, the second rebuilds one batch at a time
+    # and writes it out. Twice the formatting work for constant memory, which
+    # is the right way round for a job that already streams gigabytes.
     def write_submissions_csv!(zip, account, state)
-      submissions = Submission.where(account_id: account.id).order(:id)
-      csv = Submissions::GenerateExportFiles.call(submissions, format: :csv,
-                                                               expires_at: Accounts.link_expires_at(account))
+      scope = Submission.where(account_id: account.id)
+      expires_at = Accounts.link_expires_at(account)
+      headers = csv_headers(scope, expires_at)
 
-      write_bytes!(zip, 'submissions.csv', csv.to_s, state)
+      write_stream!(zip, 'submissions.csv', state) do |write|
+        write.call(CSVSafe.generate { |csv| csv << headers })
+
+        each_csv_batch(scope, expires_at) do |rows|
+          write.call(CSVSafe.generate do |csv|
+            rows.each { |row| csv << Submissions::GenerateExportFiles.extract_columns(row, headers) }
+          end)
+        end
+      end
+    end
+
+    def csv_headers(scope, expires_at)
+      names = Set.new
+
+      each_csv_batch(scope, expires_at) do |rows|
+        names += Submissions::GenerateExportFiles.build_headers(rows)
+      end
+
+      names.to_a
+    end
+
+    def each_csv_batch(scope, expires_at)
+      scope.in_batches(of: CSV_BATCH) do |batch|
+        yield Submissions::GenerateExportFiles.build_table_rows(batch, expires_at:)
+      end
+
+      nil
     end
 
     def write_manifest!(zip, export, state)
@@ -214,35 +305,80 @@ module Accounts
 
     # --- writing -----------------------------------------------------------
 
-    # One stored file, streamed. Returns false when the object is not in
-    # storage: the path goes into `missing` and the export carries on.
+    # One stored file. Returns false when the object is not in storage: the
+    # path goes into `missing` and the export carries on.
+    #
+    # SPOOLED, NOT STREAMED STRAIGHT IN (review 2, #9). The bytes go to a
+    # scratch file on disk — chunk by chunk, so memory is still bounded by one
+    # chunk — and the zip entry is opened only once the whole object has
+    # arrived. An object that disappears half-way through therefore leaves
+    # NOTHING in the archive rather than a truncated entry the manifest cannot
+    # describe. The cost is one extra disk write per file, bounded by the size
+    # of the largest single document; the gain is that "every file in this zip
+    # has a checksum in the manifest" is true without an exception.
     def write_blob!(zip, path, blob, state)
       return record_missing(state, path) if blob.nil? || !stored?(blob)
 
       digest = Digest::SHA256.new
       bytes = 0
 
-      zip.put_next_entry(path)
-      blob.download do |chunk|
-        digest << chunk
-        bytes += chunk.bytesize
-        zip.write(chunk)
+      Tempfile.create(['export-entry', File.extname(path)], binmode: true) do |scratch|
+        begin
+          blob.download do |chunk|
+            digest << chunk
+            bytes += chunk.bytesize
+            scratch.write(chunk)
+          end
+        rescue ActiveStorage::FileNotFoundError, Errno::ENOENT
+          # It went away between the check above and the read. Nothing has
+          # been put into the zip, so there is nothing to take back out.
+          return record_missing(state, path)
+        end
+
+        scratch.flush
+        scratch.rewind
+
+        zip.put_next_entry(path)
+        IO.copy_stream(scratch, zip)
       end
 
       state[:entries] << { 'path' => path, 'bytes' => bytes, 'sha256' => digest.hexdigest }
       state[:paths] << path
 
       true
-    rescue ActiveStorage::FileNotFoundError, Errno::ENOENT
-      # The object went away between the check above and the read. The entry
-      # that was opened stays in the zip holding whatever arrived before the
-      # failure; the manifest does not claim it, and the path is named as
-      # missing.
-      record_missing(state, path)
     end
 
     def write_json!(zip, path, data, state)
       write_bytes!(zip, path, JSON.pretty_generate(data), state)
+    end
+
+    # An entry whose bytes are produced a piece at a time, so a large one never
+    # exists as a single String. The digest and the size are accumulated as
+    # the pieces go past.
+    #
+    # Unlike `write_blob!` this opens the entry before the bytes exist, and
+    # that is safe here for a reason: the producer is the database, and a
+    # failure there raises out of the whole build rather than leaving a
+    # finished zip behind — so there is no archive in which this entry could
+    # be truncated and undescribed.
+    def write_stream!(zip, path, state)
+      digest = Digest::SHA256.new
+      bytes = 0
+
+      zip.put_next_entry(path)
+
+      yield(lambda { |chunk|
+        piece = chunk.to_s.dup.force_encoding(Encoding::BINARY)
+
+        digest << piece
+        bytes += piece.bytesize
+        zip.write(piece)
+      })
+
+      state[:entries] << { 'path' => path, 'bytes' => bytes, 'sha256' => digest.hexdigest }
+      state[:paths] << path
+
+      true
     end
 
     def write_bytes!(zip, path, body, state)
@@ -258,8 +394,14 @@ module Accounts
       true
     end
 
-    def record_missing(state, path)
-      state[:missing] << path
+    # Why a file is not in the zip. Two answers, and they are different
+    # problems: the object is gone from the bucket, or the application never
+    # made it in the first place.
+    NOT_IN_STORAGE = 'not_in_storage'
+    NOT_GENERATED = 'not_generated'
+
+    def record_missing(state, path, reason = NOT_IN_STORAGE)
+      state[:missing] << { 'path' => path, 'reason' => reason }
       state[:paths] << path
 
       false
@@ -280,6 +422,9 @@ module Accounts
       { 'counts' => state[:counts].sort.to_h,
         'files' => state[:entries].size,
         'missing' => state[:missing],
+        # Read by the page and the ready email, so neither has to know the
+        # shape of the list to say "some expected files are not in here".
+        'missing_count' => state[:missing].size,
         'total_bytes' => File.size(path),
         'sha256' => Digest::SHA256.file(path).hexdigest }
     end

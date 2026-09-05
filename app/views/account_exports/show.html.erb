@@ -51,6 +51,12 @@
             <% if missing.any? %>
               <p class="text-sm text-amber-600" dir="auto" data-account-export-missing><%= t('account_export_missing_hint', count: missing.size) %></p>
             <% end %>
+            <%# The email is part of the promise, so a message that could not be
+                handed to the mail server is said out loud here rather than
+                leaving somebody waiting for a letter that is not coming. %>
+            <% if export.summary['notified'] == false %>
+              <p class="text-sm text-amber-600" dir="auto" data-account-export-not-notified><%= t('account_export_not_notified') %></p>
+            <% end %>
             <p class="text-sm text-base-content/70" dir="auto"><%= t('account_export_ready_expires', date: Accounts::Deletion.format_date(export.expires_at)) %></p>
             <%= link_to t('account_export_download_button'), settings_account_export_download_path(export), class: 'btn btn-primary', data: { account_export_download: true } %>
           <% when AccountExport::FAILED %>

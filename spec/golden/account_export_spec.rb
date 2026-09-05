@@ -157,6 +157,7 @@ RSpec.describe 'The account export', type: :request do
       expect(book['account']).to eq('id' => account.id, 'name' => account.name)
       expect(book['requested_by']).to eq(admin.email)
       expect(book['missing']).to eq([])
+      expect(book['files']).to all(include('path', 'bytes', 'sha256'))
       expect(book['files'].pluck('path')).to match_array(paths - ['manifest.json'])
 
       with_zip(export) do |zip|
@@ -202,6 +203,7 @@ RSpec.describe 'The account export', type: :request do
 
     it 'names a file that is gone from storage instead of failing the whole export' do
       lost = template.documents.first.blob
+      path = "#{directory_for(template)}/original/sample-document.pdf"
 
       lost.service.delete(lost.key)
 
@@ -209,10 +211,161 @@ RSpec.describe 'The account export', type: :request do
       book = manifest(export)
 
       expect(export.status).to eq(AccountExport::READY)
-      expect(book['missing']).to eq(["#{directory_for(template)}/original/sample-document.pdf"])
-      expect(book['files'].pluck('path'))
-        .not_to include("#{directory_for(template)}/original/sample-document.pdf")
+      expect(book['missing']).to eq([{ 'path' => path, 'reason' => 'not_in_storage' }])
+      expect(book['files'].pluck('path')).not_to include(path)
       expect(export.summary['missing']).to eq(book['missing'])
+      expect(export.summary['missing_count']).to eq(1)
+    end
+
+    # Review 2, Opus #9. The object used to be streamed straight into an open
+    # zip entry, so one that vanished half-way through left a truncated file
+    # in the archive that the manifest did not describe — and the manifest's
+    # checksums are the only reason an export can be trusted at all.
+    it 'never leaves a file in the zip that the manifest does not describe' do
+      lost = template.documents.first.blob
+      first = true
+
+      # Gone AFTER the existence check and after the first chunk: the shape
+      # that used to open an entry and then abandon it.
+      service = ActiveStorage::Blob.service
+
+      allow(service).to receive(:download).and_wrap_original do |original, key, &block|
+        if key == lost.key && first
+          first = false
+          block&.call('partial bytes')
+
+          raise ActiveStorage::FileNotFoundError
+        end
+
+        original.call(key, &block)
+      end
+
+      export = build_export!
+      book = manifest(export)
+      paths = zip_paths(export)
+
+      expect(export.status).to eq(AccountExport::READY)
+      expect(paths).to match_array(book['files'].pluck('path') + ['manifest.json'])
+      expect(book['missing'].pluck('path'))
+        .to include("#{directory_for(template)}/original/sample-document.pdf")
+    end
+  end
+
+  # --- 1b. what a finished submission is OWED (review 2, H7) ----------------
+
+  # Completion is saved before the job that renders the signed copies and the
+  # audit trail. Exported in that window — or after that job has failed — the
+  # archive used to hold a submission.json saying "completed" with neither
+  # artifact beside it and an EMPTY `missing` list: an incomplete archive that
+  # looked complete, handed to somebody about to delete the original. Nothing
+  # is attached by hand here, which is the whole point of the example.
+  describe 'a completed submission whose documents were never generated' do
+    let!(:template) { create(:template, account:, author: admin, only_field_types: %w[text]) }
+
+    let!(:submission) do
+      record = create(:submission, template:, created_by_user: admin)
+
+      create(:submitter, submission: record, account:, uuid: template.submitters.first['uuid'],
+                         email: 'signed@example.com', sent_at: Time.current,
+                         completed_at: Time.current)
+
+      record.reload
+    end
+
+    it 'says so in the manifest, on the page and in the email instead of exporting in silence' do
+      export = build_export!
+      book = manifest(export)
+      submitter = submission.submitters.first
+
+      expect(export.status).to eq(AccountExport::READY)
+      expect(submitter.documents).to be_empty
+      expect(submission.audit_trail).not_to be_attached
+
+      expect(book['missing']).to contain_exactly(
+        { 'path' => "submissions/#{submission.id}/completed/submitter-#{submitter.id}.pdf",
+          'reason' => 'not_generated' },
+        { 'path' => "submissions/#{submission.id}/audit-trail.pdf", 'reason' => 'not_generated' }
+      )
+      expect(export.summary['missing_count']).to eq(2)
+
+      act_as(admin)
+      get '/settings/export'
+
+      expect(response.body).to include(I18n.t('account_export_missing_hint', count: 2))
+    end
+
+    it 'says nothing about a submission nobody has finished' do
+      submission.submitters.first.update!(completed_at: nil)
+
+      expect(manifest(build_export!)['missing']).to eq([])
+    end
+  end
+
+  # --- 1c. the CSV, written a batch at a time (review 2, #8) ----------------
+
+  # The exporter is still what formats a row; what changed is that the rows
+  # are no longer all held at once. The proof that matters is the one thing
+  # batching can get wrong: the header row is the UNION of every batch's
+  # column names, so a column that only exists in a later batch has to be in
+  # the header and every earlier row has to have an empty cell for it.
+  describe 'the submissions CSV' do
+    let!(:one) { create(:template, account:, author: admin, only_field_types: %w[text]) }
+    let!(:two) { create(:template, account:, author: admin, only_field_types: %w[text date]) }
+
+    before do
+      stub_const('Accounts::ExportArchive::CSV_BATCH', 1)
+
+      [one, two].each do |template|
+        submission = create(:submission, template:, created_by_user: admin)
+
+        create(:submitter, submission:, account:, uuid: template.submitters.first['uuid'],
+                           email: "csv-#{template.id}@example.com", sent_at: Time.current)
+      end
+    end
+
+    it 'writes one header row covering every batch, and a line per submission' do
+      export = build_export!
+      csv = with_zip(export) { |zip| CSV.parse(zip.get_entry('submissions.csv').get_input_stream.read) }
+      book = manifest(export)
+
+      header = csv.first
+
+      expect(csv.size).to eq(3)
+      expect(header).to include('Email')
+      # The date column exists only on the second template, which is a batch
+      # of its own: a header built from the first batch alone would lose it.
+      expect(header).to include(*Submissions::GenerateExportFiles.build_headers(
+        Submissions::GenerateExportFiles.build_table_rows(Submission.where(account_id: account.id))
+      ).to_a)
+      expect(csv.drop(1).map(&:size)).to all(eq(header.size))
+      expect(csv.drop(1).flatten.compact).to include("csv-#{one.id}@example.com", "csv-#{two.id}@example.com")
+
+      entry = book['files'].find { |file| file['path'] == 'submissions.csv' }
+
+      expect(entry['sha256']).to be_present
+      expect(entry['bytes']).to be_positive
+    end
+
+    # The memory promise, made measurable: the exporter is never handed more
+    # than one batch of submissions at a time. The shape this replaces called
+    # it once with every submission in the account and kept the whole
+    # formatted row set — and then the CSV String, and then a copy of it — in
+    # memory while the PDFs beside it were being streamed a chunk at a time.
+    it 'never formats more than one batch of submissions at once' do
+      sizes = []
+
+      allow(Submissions::GenerateExportFiles).to receive(:build_table_rows)
+        .and_wrap_original do |original, submissions, **options|
+          sizes << submissions.count
+
+          original.call(submissions, **options)
+        end
+
+      build_export!
+
+      expect(sizes).not_to be_empty
+      expect(sizes).to all(be <= Accounts::ExportArchive::CSV_BATCH)
+      expect(sizes.sum).to be >= Submission.where(account_id: account.id).count
     end
   end
 
@@ -316,6 +469,63 @@ RSpec.describe 'The account export', type: :request do
     end
   end
 
+  # --- 2b. the download link itself (review 2, H5) --------------------------
+
+  describe 'the download link' do
+    def signed_expiry(url)
+      _uuid, _purpose, expires_at = ApplicationRecord.signed_id_verifier
+                                                     .verified(URI.parse(url).path.split('/')[2])
+
+      expires_at
+    end
+
+    it 'is good for ten minutes, not for the life of the file, and is minted fresh on every click' do
+      export = build_export!
+
+      act_as(admin)
+
+      get "/settings/export/download/#{export.id}"
+      first_url = response.headers['Location']
+
+      expect(signed_expiry(first_url))
+        .to be_between(Time.current.to_i, (Accounts::Exports::DOWNLOAD_URL_TTL + 1.minute).from_now.to_i)
+      # The file lives for seven days; the LINK must not.
+      expect(signed_expiry(first_url)).to be < export.reload.expires_at.to_i
+
+      travel(2.minutes) do
+        get "/settings/export/download/#{export.id}"
+
+        expect(response.headers['Location']).not_to eq(first_url)
+        expect(signed_expiry(response.headers['Location'])).to be > signed_expiry(first_url)
+      end
+    end
+
+    it 'is never kept by a shared cache' do
+      export = build_export!
+
+      act_as(admin)
+
+      get "/settings/export/download/#{export.id}"
+      get URI.parse(response.headers['Location']).request_uri
+
+      expect(response).to have_http_status(:ok)
+      expect(response.headers['Cache-Control']).to eq('private, no-store')
+      expect(response.headers['Cache-Control']).not_to include('public')
+    end
+
+    it 'still lets an ordinary document be cached, so the rule is scoped to the archive' do
+      template = create(:template, account:, author: admin, only_field_types: %w[text])
+      blob = template.documents.first.blob
+
+      act_as(admin)
+
+      get URI.parse(ActiveStorage::Blob.proxy_url(blob, expires_at: 1.hour.from_now)).request_uri
+
+      expect(response).to have_http_status(:ok)
+      expect(response.headers['Cache-Control']).to include('public')
+    end
+  end
+
   describe 'a support session' do
     let(:operator_account) { create(:account, :operator) }
     let(:operator) do
@@ -338,8 +548,11 @@ RSpec.describe 'The account export', type: :request do
 
         expect(request.session[SupportImpersonation::SESSION_KEY]).to be_present
 
+        # Refused — by the request-level guard (phase C's classification) or
+        # by CanCan a layer deeper, whichever closes first. What must never
+        # happen is a page of the customer's export door answering 200.
         get '/settings/export'
-        expect(response).to redirect_to(root_path)
+        expect(response).not_to have_http_status(:ok)
 
         expect { post '/settings/export' }.not_to change(AccountExport, :count)
         expect(response).to have_http_status(:forbidden)
@@ -398,6 +611,66 @@ RSpec.describe 'The account export', type: :request do
     end
   end
 
+  # --- 3b. the day's budget, and a build nobody is doing ---------------------
+
+  describe 'a request that never reaches a worker' do
+    # Review 2, M8 + Opus #7. The row and the counter commit before the
+    # enqueue, so an enqueue that raises used to leave a `pending` row that
+    # `reusable` handed to every later request — the export door shut until
+    # the sweep noticed two hours later — with one of the day's five spent on
+    # a build that never existed.
+    it 'is marked failed, gives the day\'s budget back, and says so on the page' do
+      allow(AccountExportJob).to receive(:perform_async).and_raise(Redis::CannotConnectError, 'no redis')
+
+      act_as(admin)
+
+      expect { post '/settings/export' }.to change(AccountExport, :count).by(1)
+
+      export = AccountExport.last
+
+      expect(export.status).to eq(AccountExport::FAILED)
+      expect(export.error).to include('no redis')
+      expect(flash[:alert]).to eq(I18n.t('account_export_enqueue_failed'))
+      expect(Accounts::Exports.remaining_today(account)).to eq(Accounts::Exports::MAX_PER_DAY)
+
+      # And the door is open again immediately, rather than being held by a
+      # pending row nobody is building.
+      allow(AccountExportJob).to receive(:perform_async).and_call_original
+
+      expect { post '/settings/export' }.to change(AccountExport, :count).by(1)
+      expect(flash[:notice]).to eq(I18n.t('account_export_started'))
+    end
+
+    it 'lets go of a pending row that was never claimed, long before the running fuse' do
+      stuck = Accounts::Exports.request!(account, requested_by: admin)
+
+      travel_to((Accounts::Exports::PENDING_STALE_AFTER + 1.minute).from_now) do
+        Accounts::Retention.run!
+
+        expect(stuck.reload.status).to eq(AccountExport::FAILED)
+        expect(Accounts::Exports.remaining_today(account)).to eq(Accounts::Exports::MAX_PER_DAY)
+      end
+    end
+
+    it 'gives the budget back when the build itself fails' do
+      export = AccountExport.create!(account:, requested_by: admin, status: AccountExport::PENDING)
+
+      AccountCounters.increment!(account.id, Accounts::Exports::COUNTER_KEY,
+                                 period: AccountCounters.day_period)
+
+      expect(Accounts::Exports.remaining_today(account)).to eq(Accounts::Exports::MAX_PER_DAY - 1)
+
+      allow(Accounts::ExportArchive).to receive(:call).and_raise(StandardError, 'the bucket said no')
+
+      expect { AccountExportJob.new.perform(export.id) }.to raise_error(StandardError)
+
+      AccountExportJob.new.fail_after_retries(export.id, StandardError.new('the bucket said no'))
+
+      expect(export.reload.status).to eq(AccountExport::FAILED)
+      expect(Accounts::Exports.remaining_today(account)).to eq(Accounts::Exports::MAX_PER_DAY)
+    end
+  end
+
   # --- 4. the seven days ----------------------------------------------------
 
   describe 'expiry' do
@@ -437,6 +710,44 @@ RSpec.describe 'The account export', type: :request do
     end
   end
 
+  # --- 4b. deleting the file the way round that cannot lose it (H6) ---------
+
+  describe 'deleting an expired archive' do
+    it 'keeps the row when the object will not delete, and the next sweep finishes the job' do
+      export = build_export!
+      blob = export.archive.blob
+      service = ActiveStorage::Blob.service
+      refused = false
+
+      allow(service).to receive(:delete).and_wrap_original do |original, key|
+        if key == blob.key && !refused
+          refused = true
+
+          raise Errno::EIO, 'the bucket said no'
+        end
+
+        original.call(key)
+      end
+
+      travel_to(8.days.from_now) do
+        Accounts::Retention.run!
+
+        # The file is still there, so the row that names it is still there
+        # too: nothing is orphaned, and the download door is shut anyway.
+        expect(export.reload.status).to eq(AccountExport::READY)
+        expect(export.archive).to be_attached
+        expect(ActiveStorage::Blob.exists?(blob.id)).to be(true)
+        expect(export.downloadable?).to be(false)
+
+        Accounts::Retention.run!
+
+        expect(export.reload.status).to eq(AccountExport::EXPIRED)
+        expect(ActiveStorage::Blob.exists?(blob.id)).to be(false)
+        expect(service.exist?(blob.key)).to be(false)
+      end
+    end
+  end
+
   # --- 5. the purge ---------------------------------------------------------
 
   describe 'the purge', sidekiq: :inline do
@@ -469,6 +780,30 @@ RSpec.describe 'The account export', type: :request do
       expect(mail.subject).to eq('Your EsignCenter account export is ready')
       expect(mail.body.encoded).to include('/settings/export')
       expect(mail.body.encoded).not_to include(export.archive.blob.key)
+    end
+
+    # Review 2, M12. The job used to commit READY and then `deliver_later!`
+    # outside any rescue: an enqueue that raised took the job down, and the
+    # retry's claim then refused the READY row and returned quietly — so the
+    # promised email was lost for ever with nothing saying so.
+    it 'records that it could not send the message, and the page says so, without rebuilding' do
+      allow(AccountMailer).to receive(:export_ready).and_raise(Redis::CannotConnectError, 'no redis')
+
+      export = build_export!
+
+      expect(export.status).to eq(AccountExport::READY)
+      expect(export.archive).to be_attached
+      expect(export.summary['notified']).to be(false)
+
+      act_as(admin)
+      get '/settings/export'
+
+      expect(response.body).to include('data-account-export-not-notified')
+      expect(response.body).to include(I18n.t('account_export_not_notified'))
+    end
+
+    it 'records the message as sent when it goes out' do
+      expect(build_export!.summary['notified']).to be(true)
     end
 
     it 'tells them when it could not be built' do

@@ -32,12 +32,28 @@ class AccountExportsController < ApplicationController
                 notice: export.in_progress? ? I18n.t('account_export_started') : I18n.t('account_export_reused')
   rescue Accounts::Exports::LimitReached => e
     redirect_to settings_account_export_path, alert: I18n.t('account_export_limit_reached', limit: e.limit)
+  rescue Accounts::Exports::EnqueueFailed => e
+    # The row is already marked failed and the day's budget given back
+    # (Accounts::Exports.abandon!), so the page tells the truth behind this
+    # sentence and the button works again straight away.
+    ErrorReport.error(e, account_id: current_account.id)
+
+    redirect_to settings_account_export_path, alert: I18n.t('account_export_enqueue_failed')
   end
 
-  # The link the page offers. Signed and expiring is not enough on its own —
-  # a signed URL cannot be withdrawn — so the three questions are asked again
-  # here, at the moment of the click: is this export this account's, is it
-  # still ready, and may this person export at all.
+  # The link the page offers. This action is where the authorization lives —
+  # is this export this account's, is it still ready, and may this person
+  # export at all — and all three are asked again at the moment of the click.
+  #
+  # THE URL IT MINTS IS GOOD FOR TEN MINUTES, NOT SEVEN DAYS (review 2, H5).
+  # The blob proxy honours a signed link without asking who is holding it, so
+  # the redirect used to hand out a bearer token for a copy of the whole
+  # account that stayed valid for the file's entire life: copied out of a
+  # browser's history or a proxy log, it went on working after the person was
+  # demoted to viewer, after they signed out, and after a support session was
+  # opened on the account. Ten minutes is the life of one click; the seven
+  # days remain the life of the FILE, and a second click mints a fresh link
+  # after asking all three questions again.
   def download
     authorize!(:export, current_account)
 
@@ -49,7 +65,8 @@ class AccountExportsController < ApplicationController
       return redirect_to(settings_account_export_path, alert: I18n.t('account_export_download_unavailable'))
     end
 
-    redirect_to ActiveStorage::Blob.proxy_url(export.archive.blob, expires_at: export.expires_at),
+    redirect_to ActiveStorage::Blob.proxy_url(export.archive.blob,
+                                              expires_at: Accounts::Exports::DOWNLOAD_URL_TTL.from_now),
                 allow_other_host: true
   end
 end

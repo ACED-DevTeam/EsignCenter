@@ -34,11 +34,6 @@ class CompExpiryJob < ApplicationJob
   # since (Plans::Manual.revoke_expired_comp!). A row that is no longer a comp
   # whose date has passed comes back nil and is left alone — including its
   # audit line, which must never claim a change that did not happen.
-  # The decision is re-made under the row lock, not here: the query that
-  # chose this row ran minutes ago, and an operator can have extended the comp
-  # since (Plans::Manual.revoke_expired_comp!). A row that is no longer a comp
-  # whose date has passed comes back nil and is left alone — including its
-  # audit line, which must never claim a change that did not happen.
   def expire(subscription)
     account = subscription.account
 

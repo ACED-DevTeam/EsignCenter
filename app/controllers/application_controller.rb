@@ -67,6 +67,11 @@ class ApplicationController < ActionController::Base
     rescue_from CanCan::AccessDenied do |e|
       ErrorReport.warning(e)
 
+      # A support session that meets the ability layer instead of the request
+      # rule is still a support session meeting a locked door, and the
+      # customer's audit log has to say so (review batch 2).
+      record_support_impersonation_refusal!(support_impersonation, 'refused_by' => 'ability')
+
       redirect_to root_path, alert: I18n.t('access_denied_alert')
     end
   end

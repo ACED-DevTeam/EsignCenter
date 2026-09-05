@@ -123,7 +123,7 @@ RSpec.describe 'Support impersonation', type: :request do
       # customer example above, and this is the refusal.
       expect(response).to redirect_to(operator_account_path(internal))
       expect(flash[:alert]).to eq(I18n.t('operator_refused_platform_account', kind: internal.account_kind))
-      expect(OperatorEvent.count).to eq(0)
+      expect(events('impersonation.start')).to be_empty
       expect(ActionMailer::Base.deliveries).to be_empty
     end
 
@@ -157,7 +157,7 @@ RSpec.describe 'Support impersonation', type: :request do
       expect(flash[:alert]).to eq(
         I18n.t('operator_impersonation_refused_reason', count: SupportImpersonation::MINIMUM_REASON_LENGTH)
       )
-      expect(OperatorEvent.count).to eq(0)
+      expect(events('impersonation.start')).to be_empty
     end
 
     it 'refuses a mode it does not know' do
@@ -165,7 +165,7 @@ RSpec.describe 'Support impersonation', type: :request do
       start!(mode: 'everything')
 
       expect(flash[:alert]).to eq(I18n.t('operator_impersonation_refused_mode'))
-      expect(OperatorEvent.count).to eq(0)
+      expect(events('impersonation.start')).to be_empty
     end
 
     it 'refuses every person who must never be viewed as' do
@@ -198,7 +198,7 @@ RSpec.describe 'Support impersonation', type: :request do
       start!(user: flagged)
       expect(flash[:alert]).to eq(I18n.t('operator_impersonation_refused_operator_user'))
 
-      expect(OperatorEvent.count).to eq(0)
+      expect(events('impersonation.start')).to be_empty
     end
 
     it 'refuses a purged account' do
@@ -208,7 +208,7 @@ RSpec.describe 'Support impersonation', type: :request do
       start!
 
       expect(flash[:alert]).to eq(I18n.t('operator_impersonation_refused_purged'))
-      expect(OperatorEvent.count).to eq(0)
+      expect(events('impersonation.start')).to be_empty
     end
 
     it 'refuses a second session while one is running' do
@@ -252,26 +252,50 @@ RSpec.describe 'Support impersonation', type: :request do
   # --- 3. the sweep -------------------------------------------------------------
 
   describe 'read-only enforcement, swept off the route table' do
-    # Every write route in the application, with a placeholder standing in for
-    # each id: the refusal happens before any controller looks at one, so what
-    # the id points at is irrelevant.
-    def write_routes
+    # EVERY route in the application, with a placeholder standing in for each
+    # id: the refusal happens before any controller looks at one, so what the
+    # id points at is irrelevant. Every verb, not only the writes — a GET can
+    # write (the signer's form) and a GET can print a credential (the webhook
+    # HMAC page), which is the whole of review batch 2's first finding.
+    def all_routes(verbs)
       Rails.application.routes.routes.filter_map do |route|
         controller = route.defaults[:controller].to_s
 
         next if controller.blank?
-        next unless route.verb.to_s.match?(/POST|PUT|PATCH|DELETE/)
-        next if controller.start_with?('api/')
 
-        path = route.path.spec.to_s.sub('(.:format)', '')
-        next if path.include?('*')
+        verb = route.verb.to_s.split('|').find { |candidate| verbs.include?(candidate) }
+        next if verb.nil?
 
-        # A route can answer to more than one verb (`get|post /mcp`); the
-        # write one is the one this rule is about.
-        verb = route.verb.to_s.split('|').find { |candidate| %w[POST PUT PATCH DELETE].include?(candidate) }
+        # A non-numeric placeholder on purpose: one route in this application
+        # is constrained to a numeric id (`submitters_download`), and a digit
+        # here would send the sweep to that route instead of the signer one it
+        # means to test.
+        path = route.path.spec.to_s.sub('(.:format)', '').gsub(/\*\w+/, 'x').gsub(/:[a-z_]+/, 'x')
 
-        [verb.downcase.to_sym, path.gsub(/:[a-z_]+/, '1'), "#{controller}##{route.defaults[:action]}"]
+        [verb.downcase.to_sym, path, "#{runtime_controller_path(controller)}##{route.defaults[:action]}"]
       end.uniq
+    end
+
+    # The rule is handed the controller's RUNTIME `controller_path`, and a
+    # couple of those differ from the name in the route table
+    # ('..._2fa...' becomes '...2fa...'). A classification keyed on the wrong
+    # one would be documentation that does nothing.
+    def runtime_controller_path(name)
+      "#{name}_controller".camelize.constantize.controller_path
+    rescue NameError
+      name
+    end
+
+    def write_routes
+      all_routes(%w[POST PUT PATCH DELETE]).reject { |_verb, _path, target| skip_in_sweep?(target) }
+    end
+
+    def read_routes
+      all_routes(%w[GET])
+    end
+
+    def skip_in_sweep?(target)
+      target.start_with?('operator/') || target == 'sessions#destroy' || not_this_rule.key?(target)
     end
 
     # The doors this rule does not own, and the reason for each. They are not
@@ -296,29 +320,70 @@ RSpec.describe 'Support impersonation', type: :request do
         'postmark_webhooks#create' =>
           'a provider endpoint on ActionController::API — no session, no cookie and no current_user for a ' \
           'support session to ride in on; it is guarded by basic auth and an IP allowlist instead.',
+        'api/attachments#create' =>
+          'the signer\'s own upload door, on its own ActionController::API base with no Devise session — ' \
+          'it is keyed on a submitter slug and a cookie, and there is no session user for a support ' \
+          'session to ride in on.',
         'template_folders#destroy' =>
           'a dead route: TemplateFoldersController has no destroy action, so Rails answers before any ' \
           'controller callback runs. Nothing to guard, and nothing that could ever succeed.'
       }
     end
 
-    # Every controller with a write route has to be classified in
-    # SupportImpersonation::CLASSIFICATION, so a new one fails here until
-    # somebody has decided which side of the line it is on.
-    it 'classifies every controller in the application that has a write route' do
-      # The operator's own console is excluded on purpose: `console?` keys on
-      # the path prefix, so a console tab added later needs no entry. Every
-      # other name is mapped through the controller class, because the rule is
-      # handed the RUNTIME `controller_path` and a couple of those differ from
-      # the name in the route table — a classification keyed on the wrong one
-      # would be documentation that does nothing.
-      controllers = write_routes.map { |_verb, _path, target| target.split('#').first }
-                                .uniq.reject { |name| SupportImpersonation.console?(name) }
-                                .map { |name| "#{name}_controller".camelize.constantize.controller_path }
+    # EVERY controller in the application has to be classified — GET-only ones
+    # included (review batch 2) — so a new one of any shape fails here until
+    # somebody has decided which side of the line it is on. The operator's own
+    # console is excluded on purpose: `console?` keys on the path prefix, so a
+    # console tab added later needs no entry.
+    it 'classifies every controller in the application, whatever verbs it answers to' do
+      controllers = all_routes(%w[GET POST PUT PATCH DELETE])
+                    .map { |_verb, _path, target| target.split('#').first }
+                    .uniq.reject { |name| SupportImpersonation.console?(name) }
 
       expect(controllers).to match_array(SupportImpersonation::CLASSIFICATION.keys)
     end
 
+    # The `:secret` value in the table IS the list. They used to be two lists
+    # and only one of them was enforced (review batch 2).
+    it 'derives the credential-page list from the classification itself' do
+      expect(SupportImpersonation::SECRET_CONTROLLERS)
+        .to match_array(SupportImpersonation::CLASSIFICATION.select { |_, kind| kind == :secret }.keys)
+      expect(SupportImpersonation::SECRET_CONTROLLERS).to include('webhook_hmac', 'webhook_secret',
+                                                                  'reveal_access_token', 'mcp_settings',
+                                                                  'email_smtp_settings')
+    end
+
+    # A GET is not automatically a read. Every door classified "never" is shut
+    # for GET as well, and each refusal is audited.
+    it 'refuses every read door classified never, and audits each one' do
+      sign_in(operator)
+      start!
+
+      never = read_routes.select do |_verb, _path, target|
+        SupportImpersonation::NEVER.include?(
+          SupportImpersonation::CLASSIFICATION[target.split('#').first]
+        )
+      end
+
+      expect(never.size).to be >= 15
+
+      never.each do |verb, path, target|
+        begin
+          public_send(verb, path, as: :json)
+        rescue StandardError => e
+          raise "#{verb.upcase} #{path} (#{target}) raised #{e.class}: #{e.message}"
+        end
+
+        expect(response).to have_http_status(:forbidden),
+                            "#{verb.upcase} #{path} (#{target}) answered #{response.status}"
+        expect(last_event.action).to eq('impersonation.refused'), "#{target} was refused with no audit row"
+      end
+    end
+
+    # The refusal PAGE is asserted on its own below; this sweep asks for JSON
+    # so that a hundred-odd requests do not each render a full layout. The
+    # decision itself is format-blind — `SupportImpersonation.refuse?` never
+    # looks at the format, only the branch that answers does.
     it 'refuses every write door, with an audit row for each' do
       sign_in(operator)
       start!
@@ -326,11 +391,7 @@ RSpec.describe 'Support impersonation', type: :request do
       swept = 0
 
       write_routes.each do |verb, path, target|
-        next if target.start_with?('operator/')
-        next if target == 'sessions#destroy'
-        next if not_this_rule.key?(target)
-
-        public_send(verb, path)
+        public_send(verb, path, as: :json)
 
         expect(response).to have_http_status(:forbidden),
                             "#{verb.upcase} #{path} (#{target}) answered #{response.status}"
@@ -350,24 +411,43 @@ RSpec.describe 'Support impersonation', type: :request do
       expect(session_state['refused_count']).to eq(swept)
     end
 
+    it 'answers a browser with the refusal page and an API client with JSON' do
+      sign_in(operator)
+      start!
+
+      post '/account_configs'
+
+      expect(response).to have_http_status(:forbidden)
+      expect(response.body).to include('data-support-impersonation-refused')
+      expect(response.body).to include(ERB::Util.html_escape(I18n.t('support_impersonation_refused_body')))
+      expect(response.body).to include('data-support-impersonation-banner')
+
+      post '/account_configs', as: :json
+
+      expect(response).to have_http_status(:forbidden)
+      expect(response.parsed_body).to eq('error' => I18n.t('support_impersonation_refused_json'))
+    end
+
     it 'cannot be driven to a success through the doors this rule does not own' do
       sign_in(operator)
       start!
 
       not_this_rule.each_key do |target|
-        verb, path, = write_routes.find { |_v, _p, t| t == target }
+        verb, path, = all_routes(%w[POST PUT PATCH DELETE]).find { |_v, _p, t| t == target }
 
         status =
           begin
             public_send(verb, path)
             response.status
-          rescue AbstractController::ActionNotFound
-            # A route with no action behind it: Rails answers before any
-            # controller callback runs, and nothing could ever succeed.
-            404
+          rescue StandardError => e
+            # A dead route, or a door that cannot find the record the
+            # placeholder names. Either way nothing was changed and nothing
+            # could ever succeed.
+            "raised #{e.class}"
           end
 
-        expect(status).not_to be_between(200, 299), "#{verb.upcase} #{path} (#{target}) answered #{status}"
+        expect(status).not_to be_between(200, 299), "#{verb.upcase} #{path} (#{target}) answered #{status}" \
+          if status.is_a?(Integer)
       end
     end
 
@@ -441,7 +521,7 @@ RSpec.describe 'Support impersonation', type: :request do
       }
 
       forbidden.each do |(verb, path), target|
-        public_send(verb, path, params: {})
+        public_send(verb, path, params: {}, as: :json)
 
         expect(response).to have_http_status(:forbidden), "#{verb.upcase} #{path} answered #{response.status}"
         expect(last_event.details).to include('target' => target, 'mode' => SupportImpersonation::EDIT_MODE)
@@ -611,7 +691,7 @@ RSpec.describe 'Support impersonation', type: :request do
         get templates_path
 
         expect(response).to redirect_to(operator_account_path(account))
-        expect(flash[:notice]).to eq(I18n.t('support_impersonation_timed_out'))
+        expect(flash[:notice]).to eq(I18n.t('support_impersonation_ended_timeout'))
       end
 
       expect(events('impersonation.end').first.details['ended_by']).to eq('timeout')
@@ -660,6 +740,221 @@ RSpec.describe 'Support impersonation', type: :request do
       get settings_account_path
 
       expect(response.body).not_to include('data-support-access-card')
+    end
+  end
+
+  # --- 8b. review batch 2 regressions --------------------------------------------
+
+  describe 'the doors review batch 2 found open' do
+    let!(:template) { create(:template, account:, author: admin) }
+    let!(:webhook) { create(:webhook_url, account:) }
+
+    # H1 / #4. `/api/*` is ActionController::API and accepts the browser
+    # session, so before the fix a read-only session could drive every one of
+    # these with no rule, no ability layer and no expiry.
+    SupportImpersonation::MODES.each do |mode|
+      it "runs the same rule on the browser-session API in #{mode} mode" do
+        submission = create(:submission, :with_submitters, template:, created_by_user: admin)
+        submitter = submission.submitters.first
+
+        sign_in(operator)
+        start!(mode:)
+
+        # The "sign as the person" door: `completed: true` on a submitter.
+        patch "/api/submitters/#{submitter.id}", params: { completed: true }.to_json,
+                                                 headers: { 'CONTENT_TYPE' => 'application/json' }
+
+        expect(response).to have_http_status(:forbidden)
+        expect(last_event.action).to eq('impersonation.refused')
+        expect(last_event.details['target']).to eq('api/submitters#update')
+        expect(submitter.reload.completed_at).to be_nil
+
+        # Reading one is fine; the signing family is shut for every verb.
+        get "/api/submitters/#{submitter.id}"
+        expect(response).to have_http_status(:forbidden)
+
+        # And a document write, which read-only must refuse outright.
+        patch "/api/templates/#{template.id}", params: { name: "Renamed in #{mode}" }.to_json,
+                                               headers: { 'CONTENT_TYPE' => 'application/json' }
+
+        if mode == SupportImpersonation::READ_ONLY_MODE
+          expect(response).to have_http_status(:forbidden)
+          expect(last_event.details['target']).to eq('api/templates#update')
+        end
+
+        expect(template.reload.name).not_to eq("Renamed in #{mode}")
+      end
+    end
+
+    # ... and a real token client is a different client: no session, no rule.
+    it 'leaves token-authenticated API traffic alone' do
+      create(:account_subscription, account:, access_state: 'active', quantity: 1)
+
+      sign_in(operator)
+      start!
+
+      # A token client is a different client: its own cookie jar, holding no
+      # session at all, which is the only thing this rule ever looks at.
+      Warden.test_reset!
+      token_client = open_session
+
+      token_client.patch("/api/templates/#{template.id}",
+                         params: { name: 'Renamed by the token' }.to_json,
+                         headers: { 'CONTENT_TYPE' => 'application/json',
+                                    'X-Auth-Token' => admin.access_token.token })
+
+      expect(token_client.response).to have_http_status(:ok)
+      expect(template.reload.name).to eq('Renamed by the token')
+      expect(events('impersonation.refused')).to be_empty
+      expect(events('impersonation.end')).to be_empty
+    end
+
+    # H2. The HMAC page printed the whole decrypted signing secret on a GET.
+    it 'refuses the webhook HMAC page and never prints the secret' do
+      secret = webhook.hmac_secret
+      expect(secret).to be_present
+
+      sign_in(operator)
+      start!
+
+      get "/webhook_hmac/#{webhook.id}"
+
+      expect(response).to have_http_status(:forbidden)
+      expect(response.body).not_to include(secret)
+      expect(last_event.details['target']).to eq('webhook_hmac#show')
+    end
+
+    # H3 / #1. `GET /s/:slug` is not a read: it saves default values and
+    # attaches the impersonated person's own signature to a live submitter.
+    it 'refuses the signer form on a GET, and writes nothing to the submitter' do
+      submission = create(:submission, :with_submitters, template:, created_by_user: admin)
+      submitter = submission.submitters.first
+      submitter.update!(email: admin.email)
+
+      sign_in(operator)
+      start!
+
+      expect { get "/s/#{submitter.slug}" }.not_to(change { submitter.reload.attachments.count })
+
+      expect(response).to have_http_status(:forbidden)
+      expect(submitter.reload.opened_at).to be_nil
+      expect(last_event.details['target']).to eq('submit_form#show')
+
+      # The page's own telemetry door is shut for the same reason.
+      post '/api/submitter_form_views', params: { submitter_slug: submitter.slug }.to_json,
+                                        headers: { 'CONTENT_TYPE' => 'application/json' }
+
+      expect(response).to have_http_status(:forbidden)
+      expect(submitter.reload.opened_at).to be_nil
+    end
+
+    # H4 / #5. The binding is re-asked on every request.
+    it 'ends the session the moment the operator loses platform access' do
+      sign_in(operator)
+      start!
+
+      operator.update!(platform_operator: false)
+
+      get root_path
+
+      expect(response).to redirect_to(operator_account_path(account))
+      expect(flash[:notice]).to eq(I18n.t('support_impersonation_ended_operator_access_lost'))
+      expect(events('impersonation.end').first.details['ended_by']).to eq('operator_access_lost')
+      expect(request.session[SupportImpersonation::SESSION_KEY]).to be_nil
+      expect(request.session[:impersonated_user_id]).to be_nil
+    end
+
+    it 'ends the session when the person is archived mid-session' do
+      sign_in(operator)
+      start!
+
+      admin.update!(archived_at: Time.current)
+
+      get root_path
+
+      expect(response).to redirect_to(operator_account_path(account))
+      expect(events('impersonation.end').first.details['ended_by']).to eq('rebinding')
+      expect(request.session[SupportImpersonation::SESSION_KEY]).to be_nil
+    end
+
+    it 'never follows the person into another account' do
+      other = create(:account, name: 'Southgate Partners')
+      create(:user, :admin, account: other)
+
+      sign_in(operator)
+      start!
+
+      Accounts::MoveUser.call(user: admin, to: other)
+
+      get root_path
+
+      expect(response).to redirect_to(operator_account_path(account))
+      expect(events('impersonation.end').first.details['ended_by']).to eq('rebinding')
+      expect(request.session[SupportImpersonation::SESSION_KEY]).to be_nil
+      expect(request.session[:impersonated_user_id]).to be_nil
+    end
+
+    # M13. Sign-out after the hour is up must still sign out.
+    it 'still signs the operator out when the session expired first' do
+      sign_in(operator)
+      start!
+
+      travel(SupportImpersonation::MAX_DURATION + 1.minute) do
+        delete destroy_user_session_path
+
+        expect(response).to have_http_status(:redirect)
+      end
+
+      expect(events('impersonation.end').first.details['ended_by']).to eq('timeout')
+      expect(request.session[SupportImpersonation::SESSION_KEY]).to be_nil
+      expect(request.session[:impersonated_user_id]).to be_nil
+
+      # Warden's test login puts the operator back on the next request; what
+      # must not come back is the impersonation.
+      get root_path
+      expect(response.body).not_to include('data-support-impersonation-banner')
+    end
+
+    # M9. A refused START used to leave no trace at all.
+    it 'audits a refused start, without ever recording the code' do
+      sign_in(operator)
+      start!(code: '000000')
+
+      event = events('impersonation.refused').first
+      expect(event).to be_present
+      expect(event.account).to eq(account)
+      expect(event.operator).to eq(operator)
+      expect(event.reason).to eq(reason)
+      expect(event.details).to include('target' => 'operator/impersonations#create',
+                                       'refusal' => I18n.t('operator_impersonation_refused_code'))
+      expect(event.details.to_json).not_to include('000000')
+      expect(events('impersonation.start')).to be_empty
+    end
+
+    # M9, second half: a door shut by the ability layer rather than by the
+    # request rule is still a locked door the customer hears about.
+    it 'audits a refusal that only the ability layer made' do
+      sign_in(operator)
+      start!
+
+      get settings_users_path
+
+      expect(response).to redirect_to(root_path)
+      expect(events('impersonation.refused').first.details).to include('refused_by' => 'ability')
+    end
+
+    # L6. Not even the first five characters.
+    it 'prints none of the API token at all' do
+      create(:account_subscription, account:, access_state: 'active', quantity: 1)
+
+      sign_in(operator)
+      start!
+
+      get settings_api_index_path
+
+      token = admin.access_token.token
+      expect(response.body).to include('data-support-impersonation-masked-token')
+      expect(response.body).not_to include(token[0, 5])
     end
   end
 

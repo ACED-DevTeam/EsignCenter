@@ -1137,8 +1137,21 @@ Even in "Allow document edits" mode, a support session can never:
 - **Sign anything.** Completing a form, declining, delegating, in-person signing
   and self-signing are refused, as the person and as anybody else.
 
+Three of these are shut for **every** kind of request, a plain page view
+included, because opening them is not a read: the signer's form saves values and
+attaches a signature the moment it is opened, the credential pages print the
+credential, and an export takes the whole account's data out. To look at a form
+the way a signer sees it, use the preview from the template page instead.
+
+The same rules apply to the app's JSON API (`/api/...`) when it is driven from
+the browser, so nothing can be done through a fetch call that cannot be done
+through a page. Genuine API clients — the ones using an `X-Auth-Token` — are
+untouched by any of this.
+
 A refused action is never silent: the page says *"This action is locked"*, a 403
-goes back, nothing changes, and a line lands in the audit log.
+goes back, nothing changes, and a line lands in the audit log. That includes a
+refused *start*: a wrong authenticator code, an archived person or a second
+session while one is running all leave a row (never the code itself).
 
 In read-only mode the rule is simpler still — **nothing** that writes works,
 document edits included.
@@ -1148,7 +1161,14 @@ document edits included.
 The authenticator code proves you are you at the moment you start. It cannot be
 re-asked on every page, so a session simply ends after **60 minutes**: the next
 page you open puts you back on the account's console page with a note saying it
-timed out. You can also end it whenever you like with **End session** on the
+timed out.
+
+Three other things end a session on the very next request, whatever the clock
+says: **your platform access being removed** (pull the flag or their two-factor
+enrolment and the session is over immediately — this is the "cut this operator
+off now" button), **the person being archived**, and **the person moving to
+another account**. A support session is a binding between one operator, one
+person and one account, and it never follows any of them anywhere. You can also end it whenever you like with **End session** on the
 banner, and signing out ends it too. Either way, the exact same audit line is
 written.
 
@@ -1176,8 +1196,9 @@ kinds of row, filterable by action:
 - `impersonation.refused` — one row per locked door somebody walked into, with
   the path and the controller action. A handful is normal (a click on a settings
   page); a long run of them is worth asking about.
-- `impersonation.end` — how it ended (`operator`, `sign_out` or `timeout`), how
-  many seconds it lasted, and how many refusals it collected.
+- `impersonation.end` — how it ended (`operator`, `sign_out`, `timeout`,
+  `operator_access_lost` or `rebinding`), how many seconds it lasted, and how
+  many refusals it collected.
 
 Every row is written inside the transaction that made the change, so there is no
 support session anywhere in this application without these rows behind it.

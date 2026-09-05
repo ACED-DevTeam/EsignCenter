@@ -4674,6 +4674,34 @@ RSpec.describe 'Stripe billing', type: :request do # rubocop:disable RSpec/Multi
         expect(rows.last.reload.access_state).to eq('active')
       end
 
+      # Review 1 loop 2. A row that names no customer can prove nothing either
+      # way. Treating it as "wrong key" stopped the whole sweep, so one legacy
+      # row would have starved every account behind it, every night, for ever.
+      it 'skips a row that names no customer and keeps sweeping' do
+        orphan = create(:account_subscription, account:, access_state: 'active', status: 'active',
+                                               stripe_customer_id: nil,
+                                               stripe_subscription_id: 'sub_no_customer', quantity: 1)
+        later = create(:account_subscription, account: create(:account), access_state: 'active', status: 'active',
+                                              stripe_customer_id: customer_b,
+                                              stripe_subscription_id: subscription_b, quantity: 2)
+
+        stub_missing_subscription('sub_no_customer')
+        stub_subscription(subscription_b, 'subscription-canceled')
+
+        allow(OperatorAlert).to receive(:deliver).and_return(true)
+        allow(ErrorReport).to receive(:warning)
+
+        report = described_class.new.perform
+
+        expect(report.key_mismatch).to be_nil
+        expect(report.vanished).to be_empty
+        expect(report.vanished_skipped.sole).to include(account_id: account.id, subscription: 'sub_no_customer')
+        expect(report.vanished_skipped.sole[:reason]).to include('names no Stripe customer')
+        expect(orphan.reload.access_state).to eq('active')
+        # The sweep carried on: the row AFTER it was still reconciled.
+        expect(later.reload.access_state).to eq('cancelled')
+      end
+
       # The 404 is about ONE subscription id. If a webhook repoints the row
       # while the sweep is asking, cancelling whatever the row holds by then
       # would downgrade a live subscription nobody said anything about.

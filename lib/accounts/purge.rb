@@ -796,7 +796,7 @@ module Accounts
           next
         end
 
-        delete_stored_object!(account, blob)
+        delete_stored_object!(account.id, blob)
 
         # ALL of the blob's attachments, not just the ones the walk listed:
         # nobody outside the family holds this blob (that is what the check
@@ -814,7 +814,11 @@ module Accounts
     # how ActiveStorage removes a blob's derivatives, and they are as much the
     # customer's document as the original is — a preview image of a signed
     # contract left in the bucket is still their contract.
-    def delete_stored_object!(account, blob)
+    # `subject` names the alert, because this is no longer only a purge: the
+    # account export's own expiry borrows this method (Session 8 phase D) and
+    # an operator reading "Account purge could not delete a file" about an
+    # export would go looking for a purge that never happened.
+    def delete_stored_object!(account_id, blob, subject: 'Account purge could not delete a file')
       service = blob.service
 
       service.delete(blob.key)
@@ -824,12 +828,47 @@ module Accounts
 
       true
     rescue StandardError => e
-      message = "account #{account.id}: could not delete the stored file for blob #{blob.id} (#{e.message})"
+      message = "account #{account_id}: could not delete the stored file for blob #{blob.id} (#{e.message})"
 
-      ErrorReport.error(e, account_id: account.id, blob_id: blob.id)
-      OperatorAlert.deliver(subject: 'Account purge could not delete a file', body: message)
+      ErrorReport.error(e, account_id:, blob_id: blob.id)
+      OperatorAlert.deliver(subject:, body: message)
 
       raise StorageFailure, message
+    end
+
+    # ONE blob, deleted in the same order as the walk above, for callers that
+    # are not a purge (Session 8 phase D: an account export expiring, a failed
+    # build being tidied up, a build that died holding a half-written zip).
+    #
+    # It exists because `ActiveStorage::Blob#purge` is BACKWARDS for anything
+    # we promised to delete (review 2, H6): it destroys the attachment and
+    # blob rows first and only then deletes the object, so one transient
+    # storage failure leaves the customer's file in the bucket with no locator
+    # left anywhere — permanently, and invisible to every sweep afterwards,
+    # because nothing in the database still names it. An export archive is a
+    # copy of the WHOLE account, so that is the last file in this application
+    # that may be orphaned that way.
+    #
+    # So: under the blob's row lock, delete the object, verify it is gone,
+    # and only then the rows. A failure raises StorageFailure with everything
+    # still in place, which is what lets the caller leave the row alone and
+    # the next sweep find the file again and try once more.
+    def purge_blob_storage_first!(blob, account_id: nil, subject: 'Could not delete a stored file')
+      return true if blob.nil?
+
+      ApplicationRecord.transaction do
+        locked = ActiveStorage::Blob.lock.find_by(id: blob.id)
+
+        next true if locked.nil?
+
+        delete_stored_object!(account_id, locked, subject:)
+
+        ActiveStorage::VariantRecord.where(blob_id: locked.id).delete_all
+        ActiveStorage::Attachment.where(blob_id: locked.id).delete_all
+        ActiveStorage::Blob.where(id: locked.id).delete_all
+
+        true
+      end
     end
 
     # A shared blob is a file this account is losing that somebody else keeps.

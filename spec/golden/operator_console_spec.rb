@@ -1375,6 +1375,15 @@ RSpec.describe 'Operator console', type: :request do
         StripeReconciliationState.record_report!(report)
       end
 
+      # The subscription the row is currently holding, as Stripe sees it now:
+      # what the locked re-read asks for before it will let go of it.
+      def stub_held(id, fixture)
+        body = JSON.parse(fixture_body(fixture)).merge('id' => id)
+
+        stub_request(:get, %r{\Ahttps://api\.stripe\.com/v1/subscriptions/#{Regexp.escape(id)}})
+          .to_return(status: 200, body: body.to_json, headers: { 'Content-Type' => 'application/json' })
+      end
+
       def stub_adoptable(id, metadata: nil)
         body = JSON.parse(fixture_body('subscription-active')).merge('id' => id)
         body['metadata'] = metadata.stringify_keys if metadata
@@ -1491,6 +1500,46 @@ RSpec.describe 'Operator console', type: :request do
         expect(last_event.details).to include('confirmed_untagged' => true)
       end
 
+      # Review 1 loop 2. The headline finding of the nightly sweep is "this
+      # customer has a live subscription of ours that no row names" — and the
+      # row it names ALWAYS still holds its own, dead subscription id, because
+      # a downgrade never deletes the money history (D43). Refusing that was
+      # refusing the one case the Adopt button exists for.
+      it 'replaces a subscription Stripe has finished with, and records what it replaced' do
+        row = create(:account_subscription, account: target, access_state: 'cancelled', status: 'canceled',
+                                            stripe_subscription_id: subscription_a, stripe_customer_id: customer_a)
+        stub_held(subscription_a, 'subscription-canceled')
+        stub_adoptable(subscription_b)
+
+        post operator_adopt_stripe_subscription_path,
+             params: reason_params(account_id: target.id, subscription_id: subscription_b)
+
+        expect(response).to redirect_to(operator_billing_path)
+        expect(row.reload.stripe_subscription_id).to eq(subscription_b)
+        expect(row.access_state).to eq('active')
+        expect(Plans.key_for(target.reload)).to eq(Plans::PAID)
+        expect(last_event.action).to eq('stripe.adopt')
+        expect(last_event.details).to include('replaced' => subscription_a)
+      end
+
+      # And the line that keeps it safe: a subscription that is still ALIVE is
+      # the duplicate question — it moves money and it belongs to the survivor
+      # policy, never to an account number typed into a form.
+      it 'refuses to replace a subscription that is still live, and cancels nothing' do
+        row = create(:account_subscription, account: target, access_state: 'active', status: 'active',
+                                            stripe_subscription_id: subscription_a, stripe_customer_id: customer_a)
+        stub_held(subscription_a, 'subscription-active')
+
+        post operator_adopt_stripe_subscription_path,
+             params: reason_params(account_id: target.id, subscription_id: subscription_b)
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(response.body).to include(escaped('operator_refused_adopt_already_linked', id: subscription_a))
+        expect(row.reload.stripe_subscription_id).to eq(subscription_a)
+        expect(OperatorEvent.where(action: 'stripe.adopt').count).to eq(0)
+        expect(a_request(:delete, /api\.stripe\.com/)).not_to have_been_made
+      end
+
       # Review 1 H3 / Codex H3. Adopting an id the row already holds used to
       # fall into the Linker's apply_current! branch: Stripe's state (paid
       # access and all) was written, the console then called it a refusal, and
@@ -1517,6 +1566,8 @@ RSpec.describe 'Operator console', type: :request do
         linked = create(:account, name: 'Linked Co')
         create(:account_subscription, account: linked, access_state: 'active', status: 'active',
                                       stripe_subscription_id: subscription_a, stripe_customer_id: customer_a)
+        # Still live at Stripe, so the row will not let go of it.
+        stub_held(subscription_a, 'subscription-active')
 
         [[{ account_id: 0, subscription_id: subscription_b },
           escaped('operator_refused_adopt_no_account', id: 0)],

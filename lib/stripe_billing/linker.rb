@@ -288,7 +288,7 @@ module StripeBilling
       raise AdoptionRefused, :no_subscription if subscription_id.blank?
 
       with_account_lock(account_subscription) do
-        assert_row_free!(account_subscription, subscription_id)
+        replaced = assert_row_adoptable!(account_subscription, subscription_id)
 
         stripe_subscription = StripeBilling.subscription_for(subscription_id)
 
@@ -298,7 +298,7 @@ module StripeBilling
 
         apply_object!(account_subscription, stripe_subscription, event_at: Time.current)
 
-        yield(stripe_subscription) if block_given?
+        yield(stripe_subscription, replaced) if block_given?
 
         account_subscription
       end
@@ -314,14 +314,63 @@ module StripeBilling
     # object the caller checked a moment ago may be stale by the time the lock
     # is granted, which is the whole reason this is here rather than in the
     # controller.
-    def assert_row_free!(account_subscription, subscription_id)
+    # May this row take the subscription, and what is it giving up to do so?
+    # Answers the id being REPLACED — nil when the row held nothing.
+    #
+    # A row that still names a DEAD subscription is the ordinary case the
+    # nightly report exists for (review 1 loop 2): the row keeps its dead id
+    # for ever (D43 never deletes the money history), so "somebody is paying
+    # for nothing" always arrives at this door holding something. Refusing it
+    # made the Adopt button useless for the one case it was built for.
+    #
+    # What is NOT allowed is replacing a subscription that is still alive:
+    # that is the duplicate question, it moves money, and it is decided by the
+    # survivor policy on the webhook path — never by an account number typed
+    # into a form. So the held id is re-read from Stripe, here, under this
+    # lock, and only Stripe calling it finished opens the door.
+    def assert_row_adoptable!(account_subscription, subscription_id)
       existing = account_subscription.stripe_subscription_id
 
-      return if existing.blank?
+      return nil if existing.blank?
 
       raise AdoptionRefused.new(:already_holds_this, { id: existing }) if existing == subscription_id
 
-      raise AdoptionRefused.new(:already_holds_other, { id: existing })
+      raise AdoptionRefused.new(:already_holds_other, { id: existing }) \
+        unless finished_at_stripe?(account_subscription, existing)
+
+      existing
+    end
+
+    # Is the subscription the row still names over? Stripe's own word for it
+    # (`canceled` / `incomplete_expired`), never the cached columns — and
+    # never a guess: a status we cannot read is not "finished".
+    #
+    # A 404 is the third way to be over, and it needs the same corroboration
+    # the nightly sweep uses before it downgrades anything: a subscription
+    # really deleted leaves its CUSTOMER behind, so a customer that resolves
+    # turns "we cannot find this id" into "this subscription is gone". A
+    # customer that 404s too (or a row that names none) means the key is not
+    # looking at our Stripe account, and nothing may be concluded from it.
+    def finished_at_stripe?(account_subscription, existing_id)
+      SubscriptionPolicy.dead?(StripeBilling.subscription_for(existing_id))
+    rescue Stripe::InvalidRequestError => e
+      raise unless e.code.to_s == RESOURCE_MISSING
+
+      customer_resolves?(account_subscription)
+    end
+
+    def customer_resolves?(account_subscription)
+      customer_id = account_subscription.stripe_customer_id
+
+      return false if customer_id.blank?
+
+      StripeBilling.client.v1.customers.retrieve(customer_id)
+
+      true
+    rescue Stripe::InvalidRequestError => e
+      raise unless e.code.to_s == RESOURCE_MISSING
+
+      false
     end
 
     def assert_adoptable!(account_subscription, stripe_subscription, subscription_id, confirm_untagged:)
@@ -968,12 +1017,27 @@ module StripeBilling
     # reason to fail a cancellation that has already happened at Stripe — and
     # the direction it fails in is the safe one, because the automatic refund
     # is only reached when nothing objects.
+    # How far back the pause history is worth reading (review 1 loop 2).
+    #
+    # `customer.subscription.updated` is the busiest event type there is, and
+    # the payload match is a LIKE that no index can serve, so without a bound
+    # this scan grows with the inbox for ever — on the duplicate path, where
+    # money is being decided. Two things bound it: the event type, which is
+    # the leading column of index_stripe_event_inboxes_on_event_type_and_
+    # stripe_created_at, and this window on the row's own `created_at`
+    # (always set, unlike `stripe_created_at`). A collection pause from more
+    # than a year ago says nothing about whether the cycles a duplicate
+    # charged were double charges.
+    PAUSE_HISTORY_WINDOW = 1.year
+
     def paused_in_event_history?(subscription_id)
       return false if subscription_id.blank?
 
       pattern = "%#{ActiveRecord::Base.sanitize_sql_like(subscription_id)}%"
 
-      StripeEventInbox.where(event_type: PAUSE_EVENT_TYPES).where('payload LIKE ?', pattern).find_each.any? do |row|
+      StripeEventInbox.where(event_type: PAUSE_EVENT_TYPES)
+                      .where(created_at: PAUSE_HISTORY_WINDOW.ago..)
+                      .where('payload LIKE ?', pattern).find_each.any? do |row|
         next false unless SubscriptionSync.field(row.event_object, :id).to_s == subscription_id
         next true if STATUS_PAUSE_EVENT_TYPES.include?(row.event_type)
 

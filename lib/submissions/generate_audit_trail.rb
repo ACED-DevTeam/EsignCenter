@@ -252,7 +252,11 @@ module Submissions
 
         next if submitter.blank?
 
-        submission_events = visible_events.select { |e| e.submitter_id == submitter.id }
+        # Signing FACTS (completion, delegation, the emailed-link click and
+        # e-mail/phone verification) come from every event: they are evidence
+        # of who signed and how, on every plan. Only the event LOG below is
+        # filtered by the delivery-tracking entitlement.
+        submission_events = submission.submission_events.select { |e| e.submitter_id == submitter.id }
 
         delegated_event = submission_events.select(&:delegate_form?).max_by(&:event_timestamp)
 

@@ -6,6 +6,15 @@ module Api
     include Pagy::Method
     include TokenAccountGuard
     include AccountActivityStamp
+    # `/api/*` accepts the BROWSER SESSION as well as a token (the in-app
+    # builder and dashboard call it with the cookie), so a support session can
+    # reach every door below. The same rule that governs the HTML doors
+    # therefore governs these, keyed on the same classification: read is read,
+    # document work needs edit mode, and `api/submitters#update` — which takes
+    # `completed: true` and signs for the person — is refused outright. A
+    # request that authenticated with a TOKEN is a different client and is
+    # untouched (see `support_impersonation` below).
+    include SupportImpersonationGuard
 
     DEFAULT_LIMIT = 10
     MAX_LIMIT = 100
@@ -21,6 +30,7 @@ module Api
     before_action :refuse_inactive_token_account!
     before_action :refuse_unentitled_token_account!
     before_action :authenticate_user!
+    before_action :enforce_support_impersonation!
     check_authorization
 
     rescue_from Params::BaseValidator::InvalidParameterError do |e|
@@ -51,6 +61,8 @@ module Api
 
     unless Rails.env.development?
       rescue_from CanCan::AccessDenied do |e|
+        record_support_impersonation_refusal!(support_impersonation, 'refused_by' => 'ability')
+
         render json: { error: access_denied_error_message(e) }, status: :forbidden
       end
 
@@ -148,6 +160,28 @@ module Api
 
     def current_user
       super || @current_user ||= user_from_token
+    end
+
+    # The support rule is about the BROWSER. A request with no signed-in Devise
+    # user is a token client — it carries no session for a support session to
+    # ride in on — and is left alone, which is what keeps genuine API and MCP
+    # traffic out of the impersonation machinery entirely. A request that IS
+    # session-authenticated meets the rule even when a token header rode along
+    # with it, so adding a header can never switch the rule off.
+    def support_impersonation
+      return nil if true_user.blank?
+
+      super
+    end
+
+    # Every refusal on this surface is JSON; there is no page to render.
+    def json_request?
+      true
+    end
+
+    # The same ability the HTML doors get, for the same reason.
+    def current_ability
+      @current_ability ||= Ability.new(current_user, support_impersonation: support_impersonation_mode)
     end
 
     def user_from_token

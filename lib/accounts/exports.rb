@@ -41,6 +41,19 @@ module Accounts
     # Comfortably longer than AccountExportJob::HARD_TIMEOUT.
     STALE_AFTER = 2.hours
 
+    # And a much shorter fuse for a row that never even STARTED (review 2,
+    # Opus #7). A `pending` row that no worker has claimed did not die
+    # half-way through a build — the enqueue never landed, or Redis was down —
+    # so there is nothing to protect and no reason to make the customer wait
+    # two hours before they may ask again.
+    PENDING_STALE_AFTER = 15.minutes
+
+    # How long the link the download button mints is good for (review 2, H5).
+    # Short on purpose: it is a bearer URL that the blob proxy honours without
+    # asking who is holding it, so it must not outlive the click that made it.
+    # The seven days are the life of the FILE; this is the life of one link.
+    DOWNLOAD_URL_TTL = 10.minutes
+
     # Five today already. Carries the count so the page can say it.
     class LimitReached < StandardError
       attr_reader :limit
@@ -51,6 +64,11 @@ module Accounts
         super("this account has already requested #{limit} exports today")
       end
     end
+
+    # The row was written and the job could not be handed to a worker. The
+    # customer is told plainly rather than left watching a spinner for a build
+    # that will never start (review 2, M8).
+    class EnqueueFailed < StandardError; end
 
     module_function
 
@@ -79,11 +97,57 @@ module Accounts
 
       return latest(account) if created.nil?
 
-      # Enqueued AFTER the lock is released: a worker that picks the job up
-      # instantly must not queue behind the transaction that created its row.
-      AccountExportJob.perform_async(created.id)
+      # Enqueued AFTER the lock is released, because a worker that picks the
+      # job up instantly must not queue behind the transaction that created
+      # its row — and therefore the enqueue can fail on its own, with the row
+      # already committed (review 2, M8). A pending row nobody is building is
+      # the worst of both worlds: `reusable` hands it to every later request,
+      # so one Redis wobble used to close the export door until the sweep
+      # noticed. So the failure is written onto the row, the day's budget is
+      # given back, and the caller is told.
+      begin
+        AccountExportJob.perform_async(created.id)
+      rescue StandardError => e
+        abandon!(created, e)
+
+        raise EnqueueFailed, "the export could not be queued (#{e.class}: #{e.message})"
+      end
 
       created
+    end
+
+    # A row that will never be built: marked failed so the page says so, and
+    # the day's budget handed back with it.
+    def abandon!(export, error)
+      export.update_columns(status: AccountExport::FAILED, finished_at: Time.current,
+                            error: "#{error.class}: #{error.message}".first(AccountExportJob::MAX_ERROR),
+                            updated_at: Time.current)
+
+      refund!(export)
+
+      nil
+    rescue StandardError => e
+      ErrorReport.error(e, account_id: export.account_id, account_export_id: export.id)
+
+      nil
+    end
+
+    # The daily budget is spent when the request is made, because that is the
+    # only moment two requests can be serialised against each other. An export
+    # that never produced a file gives it back (review 2, Opus #7): five
+    # failures must not lock a customer out of their own data for the rest of
+    # the day, on the one page whose whole promise is that it always works.
+    #
+    # Refunded against the day the export was ASKED for, not today — a build
+    # that fails at ten past midnight belongs to yesterday's budget. Floored
+    # at zero in SQL, so a double refund can never hand out a sixth export.
+    def refund!(export)
+      AccountCounter.where(account_id: export.account_id, key: COUNTER_KEY,
+                           period: AccountCounters.day_period(export.created_at))
+                    .where('value > 0')
+                    .update_all('value = value - 1, updated_at = CURRENT_TIMESTAMP')
+
+      nil
     end
 
     # The export a new request should be given instead of a new build: one
