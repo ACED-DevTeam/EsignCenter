@@ -137,6 +137,44 @@ RSpec.describe 'Scheduler', type: :lib do
     expect(SchedulerStamps.all['account_retention']).to include('outcome' => 'ok', 'error' => nil)
   end
 
+  # The comp clock (Session 8). It was declared in the schedule and
+  # asserted a line at a time in the first example, but — unlike the other
+  # four — nothing here proved that sidekiq-cron's own loader actually
+  # REGISTERS it, or that a run of it lands a stamp on the operator console's
+  # scheduler tab. A comp that never expires is paid access given away for
+  # ever, and the stamp is the only place anybody would notice the job had
+  # stopped running.
+  it 'declares the comp clock hourly on the billing queue, registers it and stamps a run' do
+    expect(schedule['comp_expiry']).to include(
+      'cron' => '45 * * * *', 'class' => 'CompExpiryJob', 'queue' => 'billing'
+    )
+
+    Sidekiq::Cron::ScheduleLoader.new.load_schedule
+
+    job = Sidekiq::Cron::Job.find('comp_expiry')
+
+    expect(job).to be_present
+    expect(job.source).to eq('schedule')
+    expect(job.klass).to eq('CompExpiryJob')
+    expect(job.cron).to eq('45 * * * *')
+    expect(job.queue_name_with_prefix).to eq('billing')
+
+    # A quiet hour is still a run: nothing is due, the sweep does nothing, and
+    # the stamp says the clock ticked. That is exactly the case a broken
+    # scheduler looks like from the outside, so it is the one worth pinning.
+    allow(Plans::Manual).to receive(:due_comps).and_call_original
+
+    freeze_time do
+      CompExpiryJob.new.perform
+
+      expect(Plans::Manual).to have_received(:due_comps).once
+      expect(SchedulerStamps.all['comp_expiry']).to include(
+        'outcome' => 'ok', 'error' => nil,
+        'started_at' => Time.current.iso8601, 'finished_at' => Time.current.iso8601
+      )
+    end
+  end
+
   # And the sweep list above is not the proof on its own — a stub list can
   # shrink as quietly as the job it describes. This one stubs nothing: a real
   # export whose seven days are up loses its real file when the job the

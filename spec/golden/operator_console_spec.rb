@@ -87,6 +87,19 @@ RSpec.describe 'Operator console', type: :request do
          child = create_testing_child(operator_account)
 
          enroll_two_factor(create(:user, :admin, account: child))
+       }],
+      # The two halves of `User#operator_access?` that nothing swept before
+      # (review 8, proof coverage). Neither is exotic: the first is what any
+      # ordinary member of the operations team looks like before they are
+      # given the flag, and the second is what an admin can do to somebody
+      # else's login without a single OTP ever being entered — flipping
+      # `otp_required_for_login` on its own. Enrolled means a SECRET exists.
+      ['an enrolled admin of the operator account who was never flagged',
+       -> { enroll_two_factor(create(:user, :admin, account: operator_account)) }],
+      ['an operator-flagged user with 2FA required but never enrolled',
+       lambda {
+         create(:user, :admin, account: operator_account, platform_operator: true,
+                               otp_required_for_login: true, otp_secret: nil)
        }]
     ].each do |description, build_user|
       it "has no route under /operator for #{description}" do
@@ -112,6 +125,51 @@ RSpec.describe 'Operator console', type: :request do
         # there, it simply will not act without one.
         expect(response.status).to be_in([200, 302, 422]), "#{verb.upcase} #{path} answered #{response.status}"
       end
+    end
+
+    # Every row above asks for HTML, and HTML is answered by RAISING — the
+    # 404 a missing route would raise. A non-HTML caller cannot be answered
+    # that way (`OperatorAccess#require_operator_access!` sends a bare
+    # `head :not_found` instead), so it is a second code path, and until now
+    # nothing swept it: a JSON or Turbo-stream probe that came back with a
+    # rendered error, a redirect, or any body at all would confirm the surface
+    # is there and leak its shape. It has to be a bare 404 in every format —
+    # including for an API token, the credential most likely to be pointed at
+    # it (review 8, proof coverage).
+    it 'answers a bare 404 under /operator for a non-HTML request or an API token' do
+      operator_account
+      token = create(:user, :admin, account:).access_token.token
+
+      console_routes(account.id).each do |verb, path|
+        [{ 'ACCEPT' => 'application/json' },
+         { 'ACCEPT' => 'application/json', 'x-auth-token' => token }].each do |headers|
+          public_send(verb, path, params: reason_params, headers:)
+
+          expect(response).to have_http_status(:not_found),
+                              "#{verb.upcase} #{path} as JSON answered #{response.status}"
+          expect(response.body).to be_empty,
+                                   "#{verb.upcase} #{path} as JSON answered with a body"
+        end
+      end
+
+      expect(OperatorEvent.count).to eq(0)
+      expect(account.reload.suspended_at).to be_nil
+    end
+
+    # Turbo streams take the raising branch rather than the bare-404 one:
+    # Rails counts any mime type whose name contains "html" as HTML, and
+    # `text/vnd.turbo-stream.html` does. Worth pinning, because it is the
+    # format the console's own buttons would use if any of them ever became a
+    # stream — and the answer has to be the same missing route either way.
+    it 'answers a Turbo-stream probe the same way it answers a browser' do
+      operator_account
+
+      console_routes(account.id).each do |verb, path|
+        expect { public_send(verb, path, params: reason_params, as: :turbo_stream) }
+          .to raise_error(ActionController::RoutingError), "#{verb.upcase} #{path} was not a 404"
+      end
+
+      expect(OperatorEvent.count).to eq(0)
     end
 
     it 'writes nothing when a customer admin tries every write door' do

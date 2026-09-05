@@ -209,12 +209,25 @@ from the pre-deploy snapshot**, never `db:rollback`.
    ```
 
 3. Run the code gates locally on the exact commit you are about to deploy.
-   They grep the code for tenant-isolation leaks and banned test patterns;
-   they do not touch production:
+   They grep the code for tenant-isolation leaks, accounts created without a
+   kind, and banned test patterns; they do not touch production:
 
    ```sh
    docker compose -f docker-compose.dev.yml exec -T -e RAILS_ENV=test app bundle exec rake gates:all
    ```
+
+   **Running the gates — do not hand them a `DATABASE_URL`.** The gates run
+   Rubocop, and one Rubocop rule (`Rails/BulkChangeTable`) used to work out
+   which database we use by reading `config/database.yml`, which only resolves
+   when a `DATABASE_URL` is in the environment. That made the gate answer
+   differently on different machines: silent in CI, and fourteen complaints
+   about migrations nobody had touched on a laptop that happened to export
+   one. The database is now pinned in `.rubocop.yml`, so the answer is the
+   same everywhere — but Rubocop caches results per environment, so a run that
+   was given a `DATABASE_URL` can still leave a stale cache behind. If the
+   gate ever reports migration offences out of nowhere, clear the cache inside
+   the container (`rm -rf /root/.cache/rubocop_cache`) and run it again with
+   no `DATABASE_URL`, exactly as the command above does.
 
 ### 2.2 Snapshot
 
@@ -609,7 +622,8 @@ It returns JSON:
   "status": "ok",
   "db": "ok",
   "redis": "ok",
-  "scheduler_last_tick_at": "2026-09-01T18:42:03Z"
+  "scheduler_last_tick_at": "2026-09-01T18:42:03Z",
+  "operator_account": "ok"
 }
 ```
 
@@ -621,6 +635,23 @@ How to read it:
 | `db` | The app ran `SELECT 1` against PostgreSQL | `error` → check the database in the Render dashboard and `DATABASE_URL`. |
 | `redis` | The app sent `PING` to Redis | `error` → embedded Redis died or a managed `REDIS_URL` is wrong. Background jobs and rate limits are down. Restart the service; check the Render log for `Unable to connect to redis`. |
 | `scheduler_last_tick_at` | When the scheduler last fired. A tiny job (`SchedulerHeartbeatJob`) runs every minute on the `recurrent` queue and writes the time to Redis key `esigncenter:scheduler:last_tick_at`. | Informational only — it never flips `status`. |
+| `operator_account` | `ok` once the platform-operator account exists; `missing` until `rake operator:seed` has been run. | **`missing` on a live instance is urgent.** Run the seed before any customer signs anything — see the note below. Informational only: it never flips `status`. |
+
+**Seed the operator BEFORE any signing traffic.** The platform signing
+certificate — the one identity every customer's documents are signed with —
+lives on the platform-operator account, and that account only exists after
+`rake operator:seed` has been run inside the deployed instance. A brand-new
+instance that takes signing traffic first produces completions with nothing
+behind them: no certificate-backed artefacts, and a mess to unpick afterwards.
+So the order on any fresh deploy is: deploy → check `/up` → if
+`"operator_account": "missing"`, run the seed from the Render Shell (section
+2.7 has the command and the environment variables it needs) → check `/up`
+again and see `"operator_account": "ok"` → only then send anybody a document.
+
+The field is deliberately *not* part of `status`: the seed is a rake task you
+run inside a booted instance, so an instance that refused to come up healthy
+until it was seeded could never be seeded at all. `missing` is a to-do, not an
+outage.
 
 **Reading the heartbeat.** The timestamp should be under 2 minutes old.
 `null` right after a deploy is normal (Redis starts empty and the first tick

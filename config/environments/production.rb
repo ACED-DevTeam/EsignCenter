@@ -11,8 +11,9 @@ Rails.backtrace_cleaner.remove_silencers!
 Rails.application.configure do
   # Render's private hop is trusted by Rails already. Cloudflare's public
   # edges are not, so keep Rails' defaults and add the exact published ranges.
-  trusted_proxies = TrustedProxies.all
-  config.action_dispatch.trusted_proxies = trusted_proxies
+  # Assigned in one expression on purpose: the test environment never loads
+  # this file, so spec/golden/client_ip_spec.rb proves the line by reading it.
+  config.action_dispatch.trusted_proxies = TrustedProxies.all
 
   # Settings specified here will take precedence over those in config/application.rb.
 

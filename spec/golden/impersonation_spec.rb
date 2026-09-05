@@ -330,6 +330,48 @@ RSpec.describe 'Support impersonation', type: :request do
       }
     end
 
+    # The sweep is written off the route table and drops every route whose
+    # `controller` is blank — right, because there is no controller to
+    # classify, and also a blind spot: a Rack app mounted next month would
+    # slip out of every example in this file with nobody noticing. So the
+    # blind spot is a NAMED LIST and the list is asserted (review 8, proof
+    # coverage).
+    #
+    # One entry today: Sidekiq::Web at /jobs. It is not an
+    # ApplicationController, so it carries none of the impersonation guards —
+    # which is safe only because the mount itself lives inside
+    # `authenticated :user, ->(u) { u.operator_access? }` in config/routes.rb:
+    # outside that constraint the route does not exist at all, so a customer
+    # admin (and the support session riding on their account) meets a 404
+    # rather than the job queue. Both halves are pinned here, so neither can
+    # go quietly.
+    let(:mounted_routes_without_a_controller) { ['/jobs'] }
+
+    it 'sweeps every route but a named list of controller-less mounts' do
+      mounted = Rails.application.routes.routes.filter_map do |route|
+        next if route.defaults[:controller].to_s.present?
+
+        route.path.spec.to_s.sub('(.:format)', '')
+      end.uniq
+
+      expect(mounted).to match_array(mounted_routes_without_a_controller)
+    end
+
+    it 'answers 404 on the controller-less mount for everybody but an enrolled operator' do
+      mounted_routes_without_a_controller.each do |path|
+        expect { get path }.to raise_error(ActionController::RoutingError), path
+
+        sign_in(admin)
+        expect { get path }.to raise_error(ActionController::RoutingError), path
+        sign_out(admin)
+
+        internal_admin = create(:user, :admin, account: create(:account, :internal))
+        sign_in(internal_admin)
+        expect { get path }.to raise_error(ActionController::RoutingError), path
+        sign_out(internal_admin)
+      end
+    end
+
     # EVERY controller in the application has to be classified — GET-only ones
     # included (review batch 2) — so a new one of any shape fails here until
     # somebody has decided which side of the line it is on. The operator's own

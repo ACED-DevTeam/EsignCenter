@@ -273,6 +273,7 @@ RSpec.describe 'Quotas', type: :request do # rubocop:disable RSpec/MultipleDescr
       Submitter.order(:id).last.tap { |copy| expect(response).to redirect_to("/s/#{copy.slug}") }
     end
 
+    # D73 golden 1 of 4 — origin signed + copy signed = ONE completion.
     it 'counts one completion for a signed document and the corrected copy the owner resubmits',
        sidekiq: :inline do
       template = text_template_for(free_account)
@@ -317,6 +318,8 @@ RSpec.describe 'Quotas', type: :request do # rubocop:disable RSpec/MultipleDescr
       expect(Quotas.sends_this_month(free_account)).to eq(2)
     end
 
+    # D73 golden 2 of 4 — origin never signed + copy signed = ONE completion,
+    # and it is the copy that carries it.
     it 'counts one when the original was never signed and only the corrected copy is', sidekiq: :inline do
       template = text_template_for(free_account)
       original = own_submitter(free_account, template:)
@@ -393,6 +396,9 @@ RSpec.describe 'Quotas', type: :request do # rubocop:disable RSpec/MultipleDescr
       expect(CompletedSubmitter.find_by!(submitter: copy).is_first).to be(false)
     end
 
+    # D73 golden 3 of 4 — the control. Two documents that are nobody's
+    # correction are two completions; lineage metering discounts corrections,
+    # not ordinary work.
     it 'still counts two unrelated documents as two', sidekiq: :inline do
       template = text_template_for(free_account)
 
@@ -437,6 +443,27 @@ RSpec.describe 'Quotas', type: :request do # rubocop:disable RSpec/MultipleDescr
       expect(Quotas.completions_this_month(free_account)).to eq(1)
       expect(CompletedSubmitter.find_by!(submitter: third).is_first).to be(false)
       expect(Quotas.sends_this_month(free_account)).to eq(3)
+    end
+
+    # D73 golden 4 of 4 — the resend spends a SEND. This is the whole of what
+    # bounds the exemption: corrections are free of the completion cap, and
+    # the 15-a-month send cap is what stops a loop of them (D63). Named on its
+    # own rather than left as a clause inside a bigger example, because it is
+    # the assertion Evan signed off on.
+    it 'spends a send on the corrected resend while adding no completion', sidekiq: :inline do
+      template = text_template_for(free_account)
+      original = own_submitter(free_account, template:)
+      complete!(original)
+      act_as(free_account)
+
+      expect { put "/submitters_resubmit/#{original.id}" }
+        .to change { Quotas.sends_this_month(free_account) }.by(1)
+
+      expect(Quotas.completions_this_month(free_account)).to eq(1)
+
+      complete!(Submitter.order(:id).last)
+
+      expect(Quotas.completions_this_month(free_account)).to eq(1)
     end
 
     it 'spends a send on every copy and refuses the resubmit once the month\'s 15 sends are gone',
@@ -560,6 +587,9 @@ RSpec.describe 'Quotas', type: :request do # rubocop:disable RSpec/MultipleDescr
   # refuses it like any other. (The document has to exist before the cap is
   # reached, which is why this is its own group.)
   describe 'D74: a correction of a family that never completed' do
+    # D74 golden 2 of 3 — a paused free account CANNOT resubmit a document
+    # whose family never completed: that copy really can add a completion, so
+    # it is an ordinary new document and the cap refuses it.
     it 'is still refused by the completions cap', sidekiq: :inline do
       template = text_template_for(free_account)
       never_signed = send_one(free_account, template:).submitters.first
@@ -709,6 +739,8 @@ RSpec.describe 'Quotas', type: :request do # rubocop:disable RSpec/MultipleDescr
     # not what should stand in its way — a mistake is usually spotted exactly
     # when the month has run out. The send is still spent, and a correction
     # of a family that never completed is still refused (the second example).
+    # D74 golden 1 of 3 — a paused (5/5) free account CAN resubmit a document
+    # that was already signed.
     it 'path 5a: the dashboard resubmit of a signed document is allowed at the cap and still costs a send',
        sidekiq: :inline do
       # The dashboard offers "resubmit" only for the signed-in user's own row.
@@ -759,6 +791,21 @@ RSpec.describe 'Quotas', type: :request do # rubocop:disable RSpec/MultipleDescr
       complete!(copy)
 
       expect(Quotas.completions_this_month(free_account)).to eq(5)
+    end
+
+    # D74 golden 3 of 3 — and the send counter still moves on the correction
+    # the cap let through. Named on its own: the exemption is from the
+    # COMPLETIONS cap only, and a reader has to be able to point at the line
+    # that says the send was charged.
+    it 'path 5c: the correction allowed at the cap still spends one of the month\'s sends', sidekiq: :inline do
+      original = capped.last.tap { |submitter| submitter.update!(email: admin_for(free_account).email) }
+      act_as(free_account)
+
+      expect { put "/submitters_resubmit/#{original.id}" }
+        .to change { Quotas.sends_this_month(free_account) }.by(1)
+
+      expect(Quotas.completions_this_month(free_account)).to eq(5)
+      expect(flash[:alert]).to be_blank
     end
 
     it 'path 6: API, MCP and signing-session doors share the guard — a paused paid account gets 422, nothing created',

@@ -36,6 +36,12 @@
 #  fk_rails_...  (collision_user_id => users.id) ON DELETE => nullify
 #  fk_rails_...  (invited_by_id => users.id) ON DELETE => nullify
 #
+
+# Kept BELOW the blank line that closes the annotation block above: annotate_rb
+# rewrites the leading comment block as one unit and stops at the first blank
+# line, so prose written inside it is silently deleted the next time the
+# schema changes (it already ate this paragraph once).
+#
 # The raw token is handed back exactly once, by `generate_token`, and is
 # never stored: the column holds its SHA-256 digest, so the accept link works
 # and a database dump does not.
