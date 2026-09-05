@@ -1,0 +1,77 @@
+<%# What the platform is billing right now, from our own rows. Every number
+    here is what the APP believes; Stripe's ledger is the truth, and the
+    heading above says so. %>
+<div class="card bg-base-100 border border-base-300" data-operator-revenue>
+  <div class="card-body p-5 gap-4">
+    <h2 class="text-xl font-bold"><%= t('operator_revenue_title') %></h2>
+
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div class="rounded-lg border border-base-300 p-3">
+        <div class="text-xs uppercase text-base-content/70"><%= t('operator_revenue_mrr') %></div>
+        <div class="text-2xl font-bold tabular-nums" data-revenue-mrr><%= number_to_currency(@mrr) %></div>
+        <div class="text-xs text-base-content/70 mt-1"><%= t('operator_revenue_mrr_basis', seats: @paying_seats, price: number_to_currency(@price_per_seat)) %></div>
+      </div>
+      <div class="rounded-lg border border-base-300 p-3">
+        <div class="text-xs uppercase text-base-content/70"><%= t('operator_revenue_paying_accounts') %></div>
+        <div class="text-2xl font-bold tabular-nums" data-revenue-paying><%= @paying_rows %></div>
+      </div>
+      <div class="rounded-lg border border-base-300 p-3">
+        <div class="text-xs uppercase text-base-content/70"><%= t('operator_revenue_trials') %></div>
+        <div class="text-2xl font-bold tabular-nums" data-revenue-trials><%= @trials %></div>
+        <div class="text-xs text-base-content/70 mt-1"><%= t('operator_revenue_trials_started', count: @trials_started) %></div>
+      </div>
+      <div class="rounded-lg border border-base-300 p-3">
+        <div class="text-xs uppercase text-base-content/70"><%= t('operator_revenue_conversions') %></div>
+        <div class="text-2xl font-bold tabular-nums" data-revenue-conversions><%= @conversions %></div>
+        <div class="text-xs text-base-content/70 mt-1"><%= t('operator_revenue_cancelled_this_month', count: @cancelled_this_month) %></div>
+      </div>
+    </div>
+
+    <p class="text-xs text-base-content/70 max-w-3xl"><%= t('operator_revenue_mrr_footnote') %></p>
+    <p class="text-xs text-base-content/70 max-w-3xl"><%= t('operator_revenue_conversion_footnote') %></p>
+
+    <div>
+      <h3 class="font-semibold mb-2"><%= t('operator_revenue_by_state') %></h3>
+      <div class="flex flex-wrap gap-2">
+        <% Plans::ACCESS_STATES.each do |state| %>
+          <span class="badge badge-outline whitespace-nowrap" data-revenue-state="<%= state %>">
+            <%= t("operator_plan_filter_#{state}") %>: <%= @by_state.fetch(state, 0) %>
+          </span>
+        <% end %>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div>
+        <h3 class="font-semibold mb-2"><%= t('operator_revenue_comps') %></h3>
+        <% if @comps.empty? %>
+          <p class="text-sm text-base-content/70" data-no-comps><%= t('operator_revenue_no_comps') %></p>
+        <% else %>
+          <ul class="text-sm space-y-1">
+            <% @comps.each do |row| %>
+              <li data-comp-row="<%= row.account_id %>">
+                <%= link_to "#{row.account.name} (##{row.account_id})", operator_account_path(row.account), class: 'link' %>
+                — <%= t('operator_revenue_comp_expires', date: l(row.comp_expires_at.utc, format: :short), seats: row.quantity) %>
+              </li>
+            <% end %>
+          </ul>
+        <% end %>
+      </div>
+      <div>
+        <h3 class="font-semibold mb-2"><%= t('operator_revenue_refunds_owed') %></h3>
+        <% if @refunds_owed.empty? %>
+          <p class="text-sm text-base-content/70" data-no-refunds-owed><%= t('operator_revenue_no_refunds_owed') %></p>
+        <% else %>
+          <ul class="text-sm space-y-1">
+            <% @refunds_owed.each do |row| %>
+              <li data-refund-owed-row="<%= row.account_id %>">
+                <%= link_to "#{row.account.name} (##{row.account_id})", operator_account_path(row.account), class: 'link' %>
+                — <span class="font-mono break-all"><%= row.refund_owed_subscription_id %></span>
+              </li>
+            <% end %>
+          </ul>
+        <% end %>
+      </div>
+    </div>
+  </div>
+</div>

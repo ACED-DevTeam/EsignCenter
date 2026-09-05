@@ -49,6 +49,14 @@
           <%= link_to t('users'), settings_users_path, class: 'text-base hover:bg-base-300' %>
         </li>
       <% end %>
+      <%# Taking everything with you. Keyed on `:export` rather than
+          `:administer` because they are not the same door: a support session
+          keeps the second and loses the first. %>
+      <% if can?(:export, current_account) %>
+        <li>
+          <%= link_to t('export'), settings_account_export_path, class: 'text-base hover:bg-base-300' %>
+        </li>
+      <% end %>
       <%= render 'shared/settings_nav_extra' %>
       <%# API and Webhooks are paid rows shown to everyone (conversion): their pages render the upgrade CTA when the plan lacks them. %>
       <% if can?(:read, AccessToken) %>

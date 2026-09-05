@@ -56,7 +56,73 @@ module Accounts
     def run!(now: Time.current)
       schedule_dormant_warnings!(now:)
       schedule_deletion_reminders!(now:)
+      expire_exports!(now:)
       purge_due!(now:)
+    end
+
+    # --- account exports -------------------------------------------------------
+
+    # The seven-day link, enforced (Session 8 phase D). A ready export whose
+    # date has passed loses its FILE — `archive.purge` deletes the object and
+    # the blob row, not merely the association — and the row is left saying
+    # `expired`, because "you had one and it is gone" is a different sentence
+    # from "you have never made one".
+    #
+    # Three sweeps, and each is a different kind of tidying:
+    #
+    #   * ready and past its date: the promise on the page and in the email;
+    #   * failed and a day old: a failed build normally attaches nothing, but
+    #     a failure AFTER the attach would otherwise keep a zip of the whole
+    #     account for ever;
+    #   * in flight for longer than any build can take: the worker died, and a
+    #     row stuck on `running` would block every future request on that
+    #     account (Accounts::Exports treats pending/running as "one already in
+    #     progress"). Failing it is what opens the door again.
+    #
+    # One export's problem never stops the rest, exactly like the warnings
+    # above.
+    def expire_exports!(now: Time.current)
+      expire_ready_exports!(now:)
+      purge_failed_export_files!(now:)
+      fail_stale_exports!(now:)
+
+      nil
+    end
+
+    def expire_ready_exports!(now: Time.current)
+      AccountExport.where(status: AccountExport::READY).where(expires_at: ..now).find_each do |export|
+        export.archive.purge if export.archive.attached?
+        export.update_columns(status: AccountExport::EXPIRED, updated_at: Time.current)
+      rescue StandardError => e
+        ErrorReport.error(e, account_id: export.account_id, account_export_id: export.id)
+      end
+
+      nil
+    end
+
+    def purge_failed_export_files!(now: Time.current)
+      AccountExport.where(status: AccountExport::FAILED)
+                   .where(created_at: ...(now - Exports::FAILED_RETENTION)).find_each do |export|
+        next unless export.archive.attached?
+
+        export.archive.purge
+      rescue StandardError => e
+        ErrorReport.error(e, account_id: export.account_id, account_export_id: export.id)
+      end
+
+      nil
+    end
+
+    def fail_stale_exports!(now: Time.current)
+      AccountExport.in_progress.where(created_at: ...(now - Exports::STALE_AFTER)).find_each do |export|
+        export.update_columns(status: AccountExport::FAILED, finished_at: Time.current,
+                              error: 'the export did not finish and was abandoned',
+                              updated_at: Time.current)
+      rescue StandardError => e
+        ErrorReport.error(e, account_id: export.account_id, account_export_id: export.id)
+      end
+
+      nil
     end
 
     # --- who gets purged -------------------------------------------------------

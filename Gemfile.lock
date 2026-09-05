@@ -721,6 +721,7 @@ DEPENDENCIES
   rubocop-rspec
   ruby-vips
   rubyXL
+  rubyzip (~> 3.2)
   sentry-rails
   sentry-ruby
   sentry-sidekiq

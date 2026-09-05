@@ -1,0 +1,44 @@
+<%# Seats held for people who have not arrived yet, and the ones that never
+    turned into anybody: every invitation this account has ever written, with
+    the state it ended in. Read-only. %>
+<div class="card bg-base-100 border border-base-300" data-operator-invites>
+  <div class="card-body p-5 gap-3">
+    <h2 class="text-xl font-bold"><%= t('operator_invites_title', count: @invites.size) %></h2>
+    <% if @invites.empty? %>
+      <p class="text-sm text-base-content/70" data-no-invites><%= t('operator_invites_none') %></p>
+    <% else %>
+      <div class="overflow-x-auto">
+        <table class="table w-full">
+          <thead class="bg-base-200">
+            <tr class="text-neutral uppercase">
+              <th><%= t('email') %></th>
+              <th><%= t('role') %></th>
+              <th><%= t('status') %></th>
+              <th><%= t('operator_invites_invited_by') %></th>
+              <th><%= t('operator_column_created') %></th>
+            </tr>
+          </thead>
+          <tbody>
+            <% @invites.each do |invite| %>
+              <% state = if invite.accepted_at? then 'accepted'
+                         elsif invite.revoked_at? then 'revoked'
+                         elsif invite.released_at? then 'released'
+                         elsif invite.payment_pending? then 'payment_pending'
+                         elsif invite.payment_pending_until? then 'payment_expired'
+                         elsif invite.pending? then 'pending'
+                         else 'expired'
+                         end %>
+              <tr data-operator-invite-row="<%= invite.id %>">
+                <td dir="auto" class="break-all"><%= invite.email %></td>
+                <td><span class="badge badge-info badge-outline whitespace-nowrap"><%= t(invite.role) %></span></td>
+                <td><span class="badge badge-ghost whitespace-nowrap" data-invite-state="<%= state %>"><%= t("operator_invite_state_#{state}") %></span></td>
+                <td dir="auto" class="break-all text-sm"><%= invite.invited_by&.email || '—' %></td>
+                <td class="whitespace-nowrap text-sm"><%= l(invite.created_at.utc, format: :short) %></td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+    <% end %>
+  </div>
+</div>

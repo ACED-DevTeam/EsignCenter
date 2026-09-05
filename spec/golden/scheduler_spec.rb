@@ -6,19 +6,21 @@
 RSpec.describe 'Scheduler', type: :lib do
   let(:schedule) { YAML.load_file(Rails.root.join('config/schedule.yml')) }
   let(:tick_key) { SchedulerHeartbeatJob::LAST_TICK_KEY }
+  let(:stamp_keys) { SchedulerStamps::JOB_NAMES.map { |name| "#{SchedulerStamps::KEY_PREFIX}#{name}" } }
 
   before do
-    Sidekiq.redis { |conn| conn.call('DEL', tick_key) }
+    Sidekiq.redis { |conn| conn.call('DEL', tick_key, *stamp_keys) }
   end
 
   after do
-    Sidekiq.redis { |conn| conn.call('DEL', tick_key) }
+    Sidekiq.redis { |conn| conn.call('DEL', tick_key, *stamp_keys) }
     Sidekiq::Cron::Job.destroy_all!
   end
 
   it 'declares the heartbeat every minute on the recurrent queue' do
     expect(schedule.keys).to contain_exactly('scheduler_heartbeat', 'stripe_reconciliation', 'billing_lifecycle',
-                                             'account_retention')
+                                             'account_retention', 'comp_expiry')
+    expect(schedule['comp_expiry']).to include('cron' => '45 * * * *', 'class' => 'CompExpiryJob', 'queue' => 'billing')
     expect(schedule['scheduler_heartbeat']).to include(
       'cron' => '* * * * *', 'class' => 'SchedulerHeartbeatJob', 'queue' => 'recurrent'
     )
@@ -85,6 +87,7 @@ RSpec.describe 'Scheduler', type: :lib do
     expect(BillingLifecycle).to have_received(:run_dunning!).once
     expect(BillingLifecycle).to have_received(:expire_invites!).once
     expect(BillingLifecycle).to have_received(:reconcile_seats!).once
+    expect(SchedulerStamps.all['billing_lifecycle']).to include('outcome' => 'ok', 'error' => nil)
   end
 
   # The retention clock (Session 7 Phase C, D43): dormant-account warnings, the
@@ -119,6 +122,7 @@ RSpec.describe 'Scheduler', type: :lib do
     expect(Accounts::Retention).to have_received(:schedule_dormant_warnings!).once
     expect(Accounts::Retention).to have_received(:schedule_deletion_reminders!).once
     expect(Accounts::Retention).to have_received(:purge_due!).once
+    expect(SchedulerStamps.all['account_retention']).to include('outcome' => 'ok', 'error' => nil)
   end
 
   # sidekiq-cron's own startup hook loads its default schedule file; the app
@@ -147,6 +151,48 @@ RSpec.describe 'Scheduler', type: :lib do
       SchedulerHeartbeatJob.new.perform
 
       expect(Sidekiq.redis { |conn| conn.call('GET', tick_key) }).to eq(Time.current.iso8601)
+    end
+  end
+
+  it 'stamps a completed Stripe reconciliation' do
+    allow(StripeBilling).to receive(:api_key).and_return('sk_test_fake')
+    job = StripeReconciliationJob.new
+    allow(job).to receive(:sweep)
+    allow(job).to receive(:requeue_stuck_events).and_return(0)
+
+    freeze_time do
+      job.perform
+      stamp = SchedulerStamps.all.fetch('stripe_reconciliation')
+
+      expect(stamp).to include('outcome' => 'ok', 'error' => nil,
+                               'started_at' => Time.current.iso8601, 'finished_at' => Time.current.iso8601)
+      expect(stamp['duration_ms']).to be >= 0
+    end
+  end
+
+  it 'stamps a raised job error and re-raises it' do
+    allow(BillingLifecycle).to receive(:run_dunning!).and_raise(RuntimeError, 'sweep failed')
+
+    expect { BillingLifecycleJob.new.perform }.to raise_error(RuntimeError, 'sweep failed')
+    stamp = SchedulerStamps.all.fetch('billing_lifecycle')
+
+    expect(stamp).to include('outcome' => 'error', 'error' => 'RuntimeError: sweep failed')
+    expect(stamp['started_at']).to be_present
+    expect(stamp['finished_at']).to be_present
+    expect(stamp['duration_ms']).to be >= 0
+  end
+
+  it 'reads the existing heartbeat into the same four-job shape' do
+    expect(SchedulerStamps.all.keys).to contain_exactly(*SchedulerStamps::JOB_NAMES, 'scheduler_heartbeat')
+    expect(SchedulerStamps.all.values).to all(be_nil)
+
+    freeze_time do
+      SchedulerHeartbeatJob.new.perform
+
+      expect(SchedulerStamps.all['scheduler_heartbeat']).to eq(
+        'started_at' => Time.current.iso8601, 'finished_at' => Time.current.iso8601,
+        'duration_ms' => 0, 'outcome' => 'ok', 'error' => nil
+      )
     end
   end
 end

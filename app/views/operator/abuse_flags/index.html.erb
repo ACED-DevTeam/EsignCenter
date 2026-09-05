@@ -1,0 +1,95 @@
+<div class="flex-wrap space-y-4 md:flex md:flex-nowrap md:space-y-0 md:space-x-10">
+  <%= render 'operator/shared/nav' %>
+  <div class="md:flex-grow min-w-0">
+    <h1 class="text-4xl font-bold mb-2"><%= t('operator_tab_abuse') %></h1>
+    <p class="text-base-content/70 mb-5 max-w-3xl"><%= t('operator_abuse_queue_intro') %></p>
+
+    <%# One GET form, so a filtered queue is a URL that can be pasted into a
+        ticket. %>
+    <%= form_with url: operator_abuse_path, method: :get, data: { turbo: false }, class: 'card bg-base-100 border border-base-300 mb-5' do %>
+      <div class="card-body p-4 gap-3">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+          <label class="form-control">
+            <span class="label-text mb-1"><%= t('operator_abuse_kind') %></span>
+            <select name="kind" class="select select-bordered w-full" data-abuse-filter="kind">
+              <%= options_for_select([[t('operator_filter_any'), '']] + Operator::AbuseFlagsController::KINDS.map { |kind| [t("operator_abuse_kind_#{kind}"), kind] }, @kind) %>
+            </select>
+          </label>
+          <label class="form-control">
+            <span class="label-text mb-1"><%= t('operator_events_filter_account') %></span>
+            <input type="number" min="1" name="account_id" value="<%= params[:account_id] %>" class="input input-bordered w-full" autocomplete="off" data-abuse-filter="account">
+          </label>
+          <label class="label cursor-pointer justify-start gap-3">
+            <%= check_box_tag :resolved, 'true', @show_resolved, class: 'checkbox', data: { abuse_filter: 'resolved' } %>
+            <span class="label-text"><%= t('operator_abuse_show_resolved') %></span>
+          </label>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button type="submit" class="btn btn-primary"><%= t('operator_filter_apply') %></button>
+          <%= link_to t('operator_filter_clear'), operator_abuse_path, class: 'btn btn-ghost' %>
+        </div>
+      </div>
+    <% end %>
+
+    <% if @account %>
+      <p class="text-sm mb-3" data-abuse-account-filter>
+        <%= t('operator_events_showing_account', name: @account.name, id: @account.id) %>
+      </p>
+    <% end %>
+
+    <% if @flags.empty? %>
+      <p class="text-base-content/70" data-no-abuse-flags><%= t('operator_abuse_queue_empty') %></p>
+    <% else %>
+      <div class="space-y-4">
+        <% @flags.each do |flag| %>
+          <% linked = console_account_for(flag.account) %>
+          <% paused = @paused_account_ids.include?(billing_account_for(flag.account).id) %>
+          <div class="card bg-base-100 border <%= flag.resolved_at ? 'border-base-300' : 'border-red-400' %>" data-operator-flag-row="<%= flag.id %>">
+            <div class="card-body p-5 gap-3">
+              <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+                <div class="min-w-0">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <span class="badge <%= flag.resolved_at ? 'badge-ghost' : 'badge-error' %> badge-outline whitespace-nowrap" data-flag-kind="<%= flag.kind %>">
+                      <%= t("operator_abuse_kind_#{flag.kind}") %>
+                    </span>
+                    <%= link_to "#{linked.name} (##{linked.id})", operator_account_path(linked), class: 'link font-medium' %>
+                    <% if flag.period.present? %>
+                      <span class="text-xs text-base-content/70"><%= t('operator_abuse_period') %>: <%= flag.period %></span>
+                    <% end %>
+                    <% if flag.resolved_at %>
+                      <span class="badge badge-sm badge-ghost whitespace-nowrap" data-flag-resolved><%= t('operator_abuse_resolved_on', date: l(flag.resolved_at.utc, format: :short)) %></span>
+                    <% end %>
+                    <% if paused %>
+                      <span class="badge badge-sm badge-warning badge-outline whitespace-nowrap"><%= t('operator_abuse_paused') %></span>
+                    <% end %>
+                  </div>
+                  <p class="text-xs text-base-content/70 mt-1"><%= t('operator_abuse_raised_on', date: l(flag.created_at.utc, format: :short)) %></p>
+                </div>
+                <div class="flex flex-wrap gap-2 md:justify-end">
+                  <% unless flag.resolved_at %>
+                    <%= render 'operator/shared/reason_action',
+                               key: "resolve_#{flag.id}",
+                               url: operator_resolve_abuse_flag_path(flag, filter_params),
+                               label: t('operator_action_resolve_flag'),
+                               hint: t('operator_action_resolve_flag_hint') %>
+                  <% end %>
+                  <% if paused %>
+                    <%= render 'operator/shared/reason_action',
+                               key: "resume_#{flag.id}",
+                               url: operator_resume_sending_abuse_flag_path(flag, filter_params),
+                               label: t('operator_action_resume_sending'),
+                               hint: t('operator_action_resume_sending_queue_hint'),
+                               button_class: 'btn-outline btn-warning' %>
+                  <% end %>
+                  <%= link_to t('operator_abuse_open_account'), operator_account_path(linked), class: 'btn btn-sm btn-ghost' %>
+                </div>
+              </div>
+              <%= render 'operator/abuse_flags/subject', flag: flag %>
+            </div>
+          </div>
+        <% end %>
+      </div>
+    <% end %>
+    <%= render 'shared/pagination', pagy: @pagy, items_name: 'abuse_flags' %>
+  </div>
+</div>

@@ -7,6 +7,7 @@
 #  id                          :bigint           not null, primary key
 #  access_state                :string           not null
 #  cancel_at_period_end        :boolean          default(FALSE), not null
+#  comp_expires_at             :datetime
 #  current_period_end          :datetime
 #  current_period_start        :datetime
 #  ended_at                    :datetime
@@ -31,6 +32,7 @@
 # Indexes
 #
 #  index_account_subscriptions_on_account_id              (account_id) UNIQUE
+#  index_account_subscriptions_on_comp_expires_at         (comp_expires_at) WHERE (comp_expires_at IS NOT NULL)
 #  index_account_subscriptions_on_stripe_customer_id      (stripe_customer_id) UNIQUE WHERE (stripe_customer_id IS NOT NULL)
 #  index_account_subscriptions_on_stripe_subscription_id  (stripe_subscription_id) UNIQUE WHERE (stripe_subscription_id IS NOT NULL)
 #

@@ -1,0 +1,39 @@
+<%# One audit table, shared by the account page's History card and the Audit
+    log tab. Local: events. %>
+<div class="overflow-x-auto">
+  <table class="table w-full">
+    <thead class="bg-base-200">
+      <tr class="text-neutral uppercase">
+        <th><%= t('operator_event_when') %></th>
+        <th><%= t('operator_event_action') %></th>
+        <th><%= t('operator_event_account') %></th>
+        <th><%= t('operator_event_operator') %></th>
+        <th><%= t('operator_event_reason') %></th>
+        <th><%= t('operator_event_details') %></th>
+      </tr>
+    </thead>
+    <tbody>
+      <% events.each do |event| %>
+        <tr data-operator-event-row="<%= event.id %>">
+          <td class="whitespace-nowrap text-sm"><%= l(event.created_at.utc, format: :short) %></td>
+          <td><span class="badge badge-outline whitespace-nowrap font-mono" data-operator-event-action="<%= event.action %>"><%= event.action %></span></td>
+          <td class="whitespace-nowrap">
+            <% if event.account_id %>
+              <%= link_to "##{event.account_id}", operator_account_path(event.account_id), class: 'link' %>
+            <% else %>
+              <span class="text-base-content/70"><%= t('operator_event_platform_wide') %></span>
+            <% end %>
+          </td>
+          <td dir="auto" class="break-all text-sm"><%= event.operator_label %></td>
+          <td dir="auto" class="text-sm max-w-xs break-words"><%= event.reason.presence || '—' %></td>
+          <td class="text-xs break-all">
+            <%= event.details.present? ? event.details.to_json : '—' %>
+            <% if event.ip.present? %>
+              <span class="text-base-content/70 whitespace-nowrap ml-1" data-operator-event-ip><%= event.ip %></span>
+            <% end %>
+          </td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+</div>

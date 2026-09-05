@@ -1,0 +1,119 @@
+<%# Usage against every limit this account has, where each number comes from
+    (plan default or an operator override), and the two forms that change
+    them. Internal and operator accounts have no caps at all, so they get the
+    table's honest answer and no form: an override row on one is ignored by
+    Quotas.limits_for, and offering a field that does nothing would be a lie. %>
+<% defaults = Quotas.default_limits_for(@billing) %>
+<% rows = [['completions_per_month', @usage.completions], ['sends_per_month', @usage.sends],
+           ['in_flight', @usage.in_flight], ['seats', @usage.seats_used],
+           ['storage_bytes', @usage.storage_bytes], ['fair_use_per_seat', nil],
+           ['sends_per_day_per_seat', nil], ['in_flight_per_seat', nil]] %>
+<div class="card bg-base-100 border border-base-300" data-operator-limits>
+  <div class="card-body p-5 gap-4">
+    <h2 class="text-xl font-bold"><%= t('operator_limits_title') %></h2>
+    <% if @plan == Plans::INTERNAL %>
+      <p class="text-sm text-base-content/70" data-limits-internal><%= t('operator_limits_internal') %></p>
+    <% end %>
+    <div class="overflow-x-auto">
+      <table class="table w-full">
+        <thead class="bg-base-200">
+          <tr class="text-neutral uppercase">
+            <th><%= t('operator_limits_name') %></th>
+            <th class="text-right"><%= t('operator_limits_used') %></th>
+            <th class="text-right"><%= t('operator_limits_effective') %></th>
+            <th><%= t('operator_limits_source') %></th>
+            <th class="text-right"><%= t('operator_limits_plan_default') %></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% rows.each do |field, used| %>
+            <% effective = @limits.public_send(field) %>
+            <% plan_default = defaults.public_send(field) %>
+            <% overridden = @plan != Plans::INTERNAL && @override&.public_send(field).present? %>
+            <% human = ->(value) { value.nil? ? t('operator_unlimited') : (field == 'storage_bytes' ? number_to_human_size(value) : value.to_s) } %>
+            <tr data-limit-row="<%= field %>">
+              <td><%= t("operator_limit_#{field}") %></td>
+              <td class="text-right tabular-nums"><%= used.nil? ? '—' : human.call(used) %></td>
+              <td class="text-right tabular-nums" data-limit-effective="<%= field %>"><%= human.call(effective) %></td>
+              <td>
+                <% if overridden %>
+                  <span class="badge badge-info badge-outline whitespace-nowrap" data-limit-overridden="<%= field %>"><%= t('operator_limits_override') %></span>
+                <% else %>
+                  <span class="text-base-content/70 text-sm"><%= t('operator_limits_from_plan') %></span>
+                <% end %>
+              </td>
+              <td class="text-right tabular-nums text-base-content/70"><%= human.call(plan_default) %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+
+    <% if @account.customer? %>
+      <div class="border-t border-base-300 pt-4">
+        <h3 class="font-semibold mb-1"><%= t('operator_limits_form_title') %></h3>
+        <p class="text-sm text-base-content/70 mb-3"><%= t('operator_limits_form_hint') %></p>
+        <%# This account is paid for by another one, so its caps are the
+            parent's caps: the form writes there, and says so rather than
+            letting an operator believe they raised a limit for this row. %>
+        <% if @billing.id != @account.id %>
+          <p class="text-sm mb-3" data-limits-billing-account>
+            <%= t('operator_limits_on_billing_account', id: @billing.id) %>
+            <%= link_to @billing.name, operator_account_path(@billing), class: 'link' %>
+          </p>
+        <% end %>
+        <%= form_with url: limits_operator_account_path(@account), method: :patch, data: { turbo: false }, class: 'space-y-3' do %>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <% AccountLimitOverride::FIELDS.each do |field| %>
+              <% storage = field == 'storage_bytes' %>
+              <% name = storage ? 'limits[storage_gb]' : "limits[#{field}]" %>
+              <% value = @override&.public_send(field) %>
+              <% value = value.present? ? (value.to_f / 1.gigabyte).round(2) : nil if storage %>
+              <label class="form-control">
+                <span class="label-text mb-1"><%= t("operator_limit_#{field}") %><%= ' (GB)' if storage %></span>
+                <input type="number" step="<%= storage ? '0.01' : '1' %>" min="0" name="<%= name %>" value="<%= value %>"
+                       class="input input-bordered w-full" autocomplete="off" data-limit-field="<%= field %>"
+                       placeholder="<%= defaults.public_send(field).nil? ? t('operator_unlimited') : (storage ? (defaults.storage_bytes.to_f / 1.gigabyte).round(2) : defaults.public_send(field)) %>">
+              </label>
+            <% end %>
+          </div>
+          <label class="form-control">
+            <span class="label-text mb-1"><%= t('operator_reason_label') %></span>
+            <textarea name="reason" rows="2" class="textarea textarea-bordered w-full" required minlength="<%= Operator::BaseController::MINIMUM_REASON_LENGTH %>"></textarea>
+          </label>
+          <button type="submit" class="btn btn-primary btn-sm" data-operator-action="limits"><%= t('operator_limits_save') %></button>
+        <% end %>
+      </div>
+
+      <div class="border-t border-base-300 pt-4">
+        <h3 class="font-semibold mb-1"><%= t('operator_comp_title') %></h3>
+        <p class="text-sm text-base-content/70 mb-3"><%= t('operator_comp_hint') %></p>
+        <%= form_with url: comp_grant_operator_account_path(@account), method: :post, data: { turbo: false }, class: 'space-y-3' do %>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <label class="form-control">
+              <span class="label-text mb-1"><%= t('operator_comp_seats') %></span>
+              <input type="number" min="1" step="1" name="seats" value="<%= @subscription&.quantity || 1 %>" class="input input-bordered w-full" autocomplete="off" data-comp-field="seats">
+            </label>
+            <label class="form-control">
+              <span class="label-text mb-1"><%= t('operator_comp_expires_on') %></span>
+              <% comp_date = @subscription&.comp_expires_at&.utc %>
+            <input type="date" name="comp_expires_on" value="<%= comp_date&.to_date %>" class="input input-bordered w-full" autocomplete="off" required data-comp-field="expires_on">
+            </label>
+          </div>
+          <label class="form-control">
+            <span class="label-text mb-1"><%= t('operator_reason_label') %></span>
+            <textarea name="reason" rows="2" class="textarea textarea-bordered w-full" required minlength="<%= Operator::BaseController::MINIMUM_REASON_LENGTH %>"></textarea>
+          </label>
+          <button type="submit" class="btn btn-primary btn-sm" data-operator-action="comp_grant"><%= t('operator_comp_grant') %></button>
+        <% end %>
+        <% if @subscription.present? %>
+          <div class="mt-3">
+            <%= render 'operator/accounts/action_modal', key: 'comp_revoke', url: comp_revoke_operator_account_path(@account),
+                                                         label: t('operator_comp_revoke'), hint: t('operator_comp_revoke_hint'),
+                                                         button_class: 'btn-outline btn-error', confirm_class: 'btn-error' %>
+          </div>
+        <% end %>
+      </div>
+    <% end %>
+  </div>
+</div>

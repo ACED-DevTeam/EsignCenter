@@ -25,5 +25,11 @@ class SubmissionEventsController < ApplicationController
 
   load_and_authorize_resource :submission
 
-  def index; end
+  def index
+    @delivery_tracking = Entitlements.allowed?(current_account, :delivery_tracking)
+    @submission_events = @submission.submission_events.order(:event_timestamp)
+    return if @delivery_tracking
+
+    @submission_events = @submission_events.where.not(event_type: SubmissionEvents::TRACKING_TYPES)
+  end
 end

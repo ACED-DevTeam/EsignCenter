@@ -225,6 +225,12 @@ Rails.application.routes.draw do
         post :refresh, on: :member
       end
     end
+    # Taking everything with you (Session 8 phase D). Offered before the
+    # deletion door below, and deliberately still open while the account is
+    # suspended or pending deletion.
+    resource :account_export, only: %i[show create], path: 'export', controller: 'account_exports'
+    get '/export/download/:id', to: 'account_exports#download', as: :account_export_download
+
     # Deleting the account is a 90-day decision, so it has a second door:
     # the one that changes your mind again (lib/accounts/deletion.rb).
     resource :account, only: %i[show update destroy] do
@@ -241,10 +247,65 @@ Rails.application.routes.draw do
     end
   end
 
+  # The platform operator's console (Session 8). There is deliberately NO
+  # routing constraint here, unlike /jobs: the 404 comes from
+  # Operator::BaseController's prepended gate, so a route added under this
+  # namespace is closed the moment it exists rather than the moment somebody
+  # remembers to guard it.
+  namespace :operator, path: 'operator' do
+    resources :accounts, only: %i[index show] do
+      member do
+        # Read-only proof that a purge left nothing behind; writes nothing.
+        get :orphans
+
+        post :suspend
+        post :lift_suspension
+        post :resume_sending
+        post :cancel_deletion
+        post :purge
+        post :release_purge_claim
+        post :comp_grant
+        post :comp_revoke
+        patch :limits
+      end
+    end
+
+    # Support impersonation (phase C). The start door is a modal on the account
+    # page; the end door is a path of its own so the banner on every
+    # impersonated page can post to it from wherever the operator has got to.
+    resources :impersonations, only: %i[create]
+    delete 'impersonations/current', to: 'impersonations#destroy', as: :current_impersonation
+
+    resources :events, only: %i[index]
+
+    # The abuse queue: every flag the platform has raised, across accounts.
+    get 'abuse', to: 'abuse_flags#index', as: :abuse
+    post 'abuse/:id/resolve', to: 'abuse_flags#resolve', as: :resolve_abuse_flag
+    post 'abuse/:id/resume_sending', to: 'abuse_flags#resume_sending', as: :resume_sending_abuse_flag
+
+    # Revenue, the Stripe event inbox and last night's reconciliation report.
+    get 'billing', to: 'billing#show', as: :billing
+    post 'billing/events/:id/retry', to: 'billing#retry_event', as: :retry_stripe_event
+    post 'billing/adopt', to: 'billing#adopt', as: :adopt_stripe_subscription
+
+    # How accounts were provisioned, who moved where, and every invitation.
+    get 'provisioning', to: 'provisioning#show', as: :provisioning
+
+    # The recurring-job clock and its evidence.
+    get 'scheduler', to: 'scheduler#show', as: :scheduler
+    post 'scheduler/run', to: 'scheduler#run_now', as: :run_scheduler_job
+
+    # Platform-wide settings, and the read-only picture of how this
+    # deployment is configured.
+    get 'settings', to: 'settings#show', as: :settings
+    patch 'settings', to: 'settings#update'
+  end
+
   # Stripe's own door. Deliberately outside the BILLING_ENABLED gate: the
   # switch decides whether customers can reach the billing pages, not whether
   # Stripe may tell us a subscription changed (see StripeWebhooksController).
   post '/stripe/webhooks', to: 'stripe_webhooks#create', as: :stripe_webhooks
+  post '/webhooks/postmark', to: 'postmark_webhooks#create', as: :postmark_webhooks, defaults: { format: :json }
 
   match '/mcp', to: 'mcp#call', via: %i[get post]
 

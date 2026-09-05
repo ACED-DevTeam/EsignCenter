@@ -1,0 +1,36 @@
+<%# The console's own navigation, in the shape of the settings nav so the two
+    read as one product: a column on desktop, a horizontal scroller on a
+    phone. The Abuse tab carries a badge with the number of open flags: the
+    one number on this console that means somebody is waiting. %>
+<% tabs = [
+     [t('operator_tab_accounts'), operator_accounts_path, nil],
+     [t('operator_tab_abuse'), operator_abuse_path, open_abuse_flag_count],
+     [t('operator_tab_billing'), operator_billing_path, nil],
+     [t('operator_tab_provisioning'), operator_provisioning_path, nil],
+     [t('operator_tab_scheduler'), operator_scheduler_path, nil],
+     [t('operator_tab_events'), operator_events_path, nil],
+     [t('operator_tab_settings'), operator_settings_path, nil]
+   ] %>
+<div class="block w-full md:w-52 flex-none">
+  <menu-active>
+    <ul id="operator_console_menu" class="menu px-0 flex-row md:flex-col overflow-x-auto flex-nowrap">
+      <li class="menu-title py-0 !bg-transparent hidden md:block">
+        <span class="!bg-transparent"><%= t('operator_console') %></span>
+      </li>
+      <% tabs.each do |label, path, badge| %>
+        <li>
+          <%= link_to path, class: 'text-base whitespace-nowrap hover:bg-base-300' do %>
+            <span><%= label %></span>
+            <% if badge.to_i.positive? %>
+              <span class="badge badge-sm badge-error badge-outline" data-operator-open-flags><%= badge %></span>
+            <% end %>
+          <% end %>
+        </li>
+      <% end %>
+    </ul>
+  </menu-active>
+  <div class="mx-4 border-t border-base-300 hidden md:block">
+    <p class="text-sm mt-3 text-base-content/70"><%= t('operator_console_hint') %></p>
+    <%= link_to t('operator_background_jobs'), '/jobs', class: 'link text-sm mt-2 block' %>
+  </div>
+</div>

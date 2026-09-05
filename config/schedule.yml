@@ -36,3 +36,14 @@ account_retention:
   class: 'AccountRetentionJob'
   queue: default
   description: 'Sends dormant-account and scheduled-deletion warnings, and purges accounts whose date has passed'
+
+# The comp clock (Session 8). Paid access the operator gave away always
+# carries the date it ends; this is what ends it, down the same revoke path a
+# hand-revoke takes. Hourly at :45 — a quarter of an hour clear of the billing
+# clock at :15, so the two never contend for the same account row — and on the
+# billing queue, because what it does is billing.
+comp_expiry:
+  cron: '45 * * * *'
+  class: 'CompExpiryJob'
+  queue: billing
+  description: 'Revokes complimentary paid plans whose expiry date has passed'

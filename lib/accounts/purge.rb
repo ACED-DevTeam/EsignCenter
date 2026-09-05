@@ -63,7 +63,7 @@ module Accounts
       template_sharings template_accesses template_versions templates template_folders
       document_metadata email_events email_messages search_entries
       webhook_attempts webhook_events webhook_urls
-      abuse_flags account_counters account_limit_overrides account_accesses account_invites
+      abuse_flags account_counters account_exports account_limit_overrides account_accesses account_invites
       account_linked_accounts account_moves encrypted_configs account_configs provisioning_events
       access_tokens mcp_tokens user_configs encrypted_user_configs
       oauth_access_grants oauth_access_tokens users
@@ -397,6 +397,7 @@ module Accounts
         'webhook_urls' => -> { WebhookUrl.where(account_id: ids).count },
         'abuse_flags' => -> { AbuseFlag.where(account_id: ids).count },
         'account_counters' => -> { AccountCounter.where(account_id: ids).count },
+        'account_exports' => -> { AccountExport.where(account_id: ids).count },
         'account_limit_overrides' => -> { AccountLimitOverride.where(account_id: ids).count },
         'account_accesses' => -> { AccountAccess.where(account_id: ids).count },
         'account_invites' => -> { AccountInvite.where(account_id: ids).count },
@@ -477,6 +478,11 @@ module Accounts
                   'DynamicDocumentVersion' =>
                     DynamicDocumentVersion.where(dynamic_document_id: dynamic_document_ids).ids,
                   'User' => User.where(account_id: ids).ids,
+                  # The export zips (Session 8 phase D): an AccountExport owns
+                  # an attachment holding a copy of EVERYTHING in the account,
+                  # so a walk that forgot it would leave the customer's whole
+                  # document store in the bucket under a tombstone.
+                  'AccountExport' => AccountExport.where(account_id: ids).ids,
                   'Account' => ids },
         attachment_ids: family.flat_map { |record| family_attachment_ids(record) }.uniq,
         webhook_event_ids: (WebhookEvent.where(account_id: ids).ids +
@@ -550,6 +556,7 @@ module Accounts
       delete_projections!(account)
       delete_webhooks!(account, census)
       delete_account_rows!(account, family_ids || [account.id])
+      delete_account_exports!(account)
       delete_users!(account)
 
       nil
@@ -681,9 +688,10 @@ module Accounts
     # Every attachment this account owns: its templates' documents, its
     # submissions' audit trails and merged/preview/combined PDFs, its
     # submitters' documents, attachments and previews, the generated documents
-    # hanging off its templates, the account logo, and each person's saved
-    # signature and initials. The page images hanging off those attachments are
-    # picked up by family_attachment_layers, which walks down from here.
+    # hanging off its templates, the account export zips, the account logo, and
+    # each person's saved signature and initials. The page images hanging off
+    # those attachments are picked up by family_attachment_layers, which walks
+    # down from here.
     def attachments_for(account)
       template_ids = Template.where(account_id: account.id).ids
       dynamic_document_ids = DynamicDocument.where(template_id: template_ids).ids
@@ -695,6 +703,7 @@ module Accounts
                                .or(owned('DynamicDocumentVersion',
                                          DynamicDocumentVersion.where(dynamic_document_id: dynamic_document_ids).ids))
                                .or(owned('User', User.where(account_id: account.id).ids))
+                               .or(owned('AccountExport', AccountExport.where(account_id: account.id).ids))
                                .or(owned('Account', [account.id]))
     end
 
@@ -958,6 +967,18 @@ module Accounts
       scrub_stripe_payloads!(account)
 
       StripeEventInbox.where(account_id: account.id).update_all(account_id: nil)
+    end
+
+    # The export zips the customer asked for (Session 8 phase D). A method of
+    # its own rather than another line in `delete_account_rows!` because the
+    # ORDER is the point: the zip is an attachment holding a copy of the whole
+    # account, so the file has to go with `purge_attachments!` — which is why
+    # AccountExport is one of the census owners — and this takes only the rows
+    # that are left afterwards.
+    def delete_account_exports!(account)
+      AccountExport.where(account_id: account.id).delete_all
+
+      nil
     end
 
     # Every verified webhook is stored byte for byte

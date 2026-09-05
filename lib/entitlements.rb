@@ -7,8 +7,8 @@
 # never a new `if` somewhere else.
 module Entitlements
   # Paid and internal accounts get these; free accounts are refused.
-  # `delivery_tracking` is declared here but enforced in Session 8 (the
-  # EmailEvent projection lands there); its row assertion is owed by S8.
+  # Delivery tracking is filtered in the modal, audit PDF, API event arrays
+  # and export counts; recording for abuse protection applies to every plan.
   PAID_ONLY = %i[api mcp webhooks signing_sessions embed conditional_logic reminders branding_removal
                  custom_email_templates account_smtp bcc delivery_tracking].freeze
 

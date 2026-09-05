@@ -261,9 +261,26 @@ bundle exec rake "operator:limits[ACCOUNT_ID,storage_bytes,5000000000]"
 bundle exec rake "operator:limits[ACCOUNT_ID,completions_per_month,]"   # clear: back to the plan default
 ```
 
+The three paid warn thresholds are overridable the same way (Session 8):
+
+```
+bundle exec rake "operator:limits[ACCOUNT_ID,fair_use_per_seat,900]"        # default 500
+bundle exec rake "operator:limits[ACCOUNT_ID,sends_per_day_per_seat,400]"   # default 200
+bundle exec rake "operator:limits[ACCOUNT_ID,in_flight_per_seat,120]"       # default 50
+```
+
+Those three are not caps and never block anything — they decide when a
+`fair_use_review`, `send_velocity` or `in_flight` flag is raised for the
+operator to look at. They exist so a customer with a genuine mail-merge season
+stops producing a flag a night without anybody having to edit a constant and
+deploy.
+
 Overrides live in `account_limit_overrides` (one row per account). The
-Session 8 console edits the same row; no customer-facing page writes it.
-Overrides change caps only — they never turn the paid fair-use review into a
+**operator console** (Settings → Operator → Accounts → an account) has a form
+for every one of these fields, with the plan default shown beside each and the
+change written to the audit log; the rake task above is the same write from a
+terminal, and no customer-facing page writes the row at all. Overrides change
+caps and thresholds only — they never turn the paid fair-use review into a
 block. Internal and operator accounts have no caps to override: the task
 refuses them, and the engine ignores an override row on one if it ever
 existed.

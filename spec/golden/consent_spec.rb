@@ -593,6 +593,43 @@ RSpec.describe 'ESIGN consent', type: :request do
   end
 
   describe 'audit trail', sidekiq: :inline do
+    let(:timeline_types) { %w[send_email bounce_email complaint_email open_email click_email] }
+    let(:tracking_labels) { ['Email opened', 'Email link clicked', 'Email bounced', 'Spam complaint'] }
+
+    %i[account paid_account internal_account].each do |actor|
+      it "gates tracking in #{actor}'s signed audit PDF without removing signing evidence" do
+        platform_certificate!
+        owner = public_send(actor)
+        # Internal accounts sign with their own certificate row, never the platform one.
+        if owner.internal?
+          create(:encrypted_config, account: owner, key: EncryptedConfig::ESIGN_CERTS_KEY,
+                                    value: GenerateCertificate.call.transform_values(&:to_pem))
+        end
+        submitter = emailed_submitter_for(owner)
+        timeline_types.each do |type|
+          SubmissionEvent.create!(submitter:, event_type: type, data: { email: submitter.email })
+        end
+
+        put "/s/#{submitter.slug}", params: completion_params(submitter).merge(consent_params)
+
+        expect(response).to have_http_status(:ok)
+        audit_trail = submitter.submission.reload.audit_trail
+        expect(audit_trail).to be_attached
+        text = pdf_text(audit_trail.download)
+        expect(text).to match(pdf_phrase('Email sent'))
+        expect(text).to include(I18n.t('consented_to_electronic_signatures', locale: :en))
+        expect(text).not_to match(/translation missing/i)
+
+        tracking_labels.each do |label|
+          if actor == :account
+            expect(text).not_to match(pdf_phrase(label))
+          else
+            expect(text).to match(pdf_phrase(label))
+          end
+        end
+      end
+    end
+
     it 'prints the consent line in each base locale and never a missing translation' do
       platform_certificate!
 

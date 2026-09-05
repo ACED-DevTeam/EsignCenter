@@ -65,6 +65,23 @@ class StripeEventInbox < ApplicationRecord
   # is not re-enqueued by reconciliation.
   MAX_ATTEMPTS = 5
 
+  # How long a `failed` row is left to Sidekiq before the nightly sweep will
+  # enqueue it again (checkpoint 8, C8).
+  #
+  # A `failed` row is not idle: writing `failed` is how the job hands the row
+  # back BEFORE Sidekiq's own retry chain picks it up again, so for the first
+  # several minutes of its life there is already a scheduled attempt out
+  # there with the row's name on it. `retryable` had no time window at all,
+  # so the 06:00 sweep enqueued a second chain for rows Sidekiq still owned —
+  # two workers racing for one compare-and-set claim, one of them burning an
+  # attempt out of a budget of five to discover it lost.
+  #
+  # Thirty minutes is the same number STALE_CLAIM_AFTER uses and for the same
+  # reason: Sidekiq's whole retry chain for this job (five retries, ~17
+  # minutes of backoff) plus its shutdown grace fits inside half an hour, so
+  # a row untouched for longer than that is one nothing is coming back for.
+  RETRY_AFTER = 30.minutes
+
   ERROR_LIMIT = 1000
 
   validates :stripe_event_id, presence: true, uniqueness: true
@@ -113,7 +130,13 @@ class StripeEventInbox < ApplicationRecord
   scope :stale_claims, lambda { |now = Time.current|
     where(status: PROCESSING).where(updated_at: ...(now - STALE_CLAIM_AFTER))
   }
-  scope :retryable, -> { where(status: FAILED).where(attempts: ...MAX_ATTEMPTS) }
+  # Failed, with retries left, and left alone long enough that Sidekiq is not
+  # still holding it (RETRY_AFTER). The window is part of the scope rather
+  # than of its one caller so that everything asking "may this be enqueued
+  # again?" — the sweep, the operator console — asks it exactly once.
+  scope :retryable, lambda { |now = Time.current|
+    where(status: FAILED).where(attempts: ...MAX_ATTEMPTS).where(updated_at: ...(now - RETRY_AFTER))
+  }
 
   def terminal?
     status.in?(TERMINAL_STATUSES)

@@ -7,8 +7,7 @@
 # Quotas.assert_can_create_submissions! on every creation path; documents
 # already sent keep completing, downloads keep working.
 #
-# Session 8's Postmark webhook calls `evaluate!` after it records an
-# EmailEvent; nothing calls it yet.
+# The Postmark webhook calls `evaluate!` after it records an EmailEvent.
 module SendingPause
   COMPLAINT_EVENTS = %w[complaint spam_complaint].freeze
   HARD_BOUNCE_EVENTS = %w[bounce permanent_bounce hard_bounce].freeze
@@ -45,31 +44,48 @@ module SendingPause
 
     return billing unless billing.customer?
 
+    # Creation advisory lock first, account row second, just like creators.
     # The flag is written under the same lock as the pause, so a resume that
     # lands right after sees (and resolves) it instead of racing past it.
-    paused_now = billing.with_lock do
-      next false if billing.sending_paused_at.present?
+    paused_now = Quotas.with_creation_lock(billing) do
+      billing.with_lock do
+        next false if billing.sending_paused_at.present?
 
-      billing.update!(sending_paused_at: Time.current, sending_pause_reason: reason)
+        billing.update!(sending_paused_at: Time.current, sending_pause_reason: reason)
 
-      AbuseFlags.record!(billing, reason == 'complaint' ? 'complaint' : 'bounce_rate',
-                         period: AccountCounters.month_period, details:)
+        AbuseFlags.record!(billing, reason == 'complaint' ? 'complaint' : 'bounce_rate',
+                           period: AccountCounters.month_period, details:)
 
-      true
+        true
+      end
     end
 
     return billing unless paused_now
 
-    QuotaMailer.sending_paused(billing, reason).deliver_later!
+    notify_operator(billing, reason, details)
+    notify_customer(billing, reason)
 
+    billing
+  end
+
+  # State failures propagate to the webhook transaction. Notifications are
+  # independent best-effort handoffs: an operator alert goes first, and a
+  # failure of either message never suppresses the other or undoes the pause.
+  def notify_operator(billing, reason, details)
     OperatorAlert.deliver(
       subject: "Sending paused for account #{billing.id} (#{reason})",
       body: "Sending was paused automatically on account #{billing.id} (#{billing.name}).\n" \
             "Reason: #{reason}\nDetails: #{details.to_json}\n\n" \
             "Review the account, then lift the pause with: rake \"operator:resume_sending[#{billing.id}]\""
     )
+  rescue StandardError => e
+    ErrorReport.error(e, account_id: billing.id)
+  end
 
-    billing
+  def notify_customer(billing, reason)
+    QuotaMailer.sending_paused(billing, reason).deliver_later!
+  rescue StandardError => e
+    ErrorReport.error(e, account_id: billing.id)
   end
 
   # Under the same row lock as pause!: the two writes land together, and a
@@ -77,9 +93,11 @@ module SendingPause
   def resume!(account)
     billing = Plans.billing_account(account)
 
-    billing.with_lock do
-      billing.update!(sending_paused_at: nil, sending_pause_reason: nil)
-      billing.abuse_flags.open.where(kind: FLAG_KINDS).update_all(resolved_at: Time.current)
+    Quotas.with_creation_lock(billing) do
+      billing.with_lock do
+        billing.update!(sending_paused_at: nil, sending_pause_reason: nil)
+        billing.abuse_flags.open.where(kind: FLAG_KINDS).update_all(resolved_at: Time.current)
+      end
     end
 
     billing

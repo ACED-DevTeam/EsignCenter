@@ -19,7 +19,7 @@ class QuotaMailer < ApplicationMailer
     return if prepare(account).blank?
 
     @used = Quotas.completions_this_month(account)
-    @threshold = Quotas::Limits::PAID_COMPLETIONS_REVIEW_PER_SEAT * (Quotas.limits_for(account).seats || 1)
+    @threshold = Quotas.fair_use_threshold(account)
 
     mail(to: @recipients, subject: 'Your EsignCenter account is close to its fair-use level')
   end

@@ -229,17 +229,39 @@ RSpec.describe 'Operator access', type: :request do
   describe 'no HTTP path creates or promotes an operator' do
     # The operator flag is written by exactly one path: `rake operator:seed`
     # (lib/tasks/operator.rake). Nothing else under app/ or lib/ — models,
-    # jobs, mailers and views included — may name it, except the two READS in
-    # app/models/user.rb (the schema annotation and the `operator_access?`
-    # predicate), each pinned by its exact line. And nothing may `permit!` a
-    # whole request payload — that is how a mass-assigned
-    # `platform_operator: true` would slip in.
+    # jobs, mailers and views included — may name it, except a short list of
+    # READS, each pinned by its exact line: the two in app/models/user.rb (the
+    # schema annotation and the `operator_access?` predicate), and the two in
+    # the operator console's user table, which draws a badge beside anybody
+    # holding the flag (Session 8). That badge is worth its pin: it is how an
+    # operator sees at a glance that a login carries platform access — a
+    # mis-provisioned one included, which `operator_access?` would hide
+    # because it also demands 2FA. Both pinned lines are pure reads inside a
+    # view that only an enrolled operator can reach, and neither can assign
+    # anything. And nothing may `permit!` a whole request payload — that is
+    # how a mass-assigned `platform_operator: true` would slip in.
     it 'never mentions platform_operator outside the operator seed and the two user.rb reads, ' \
        'and never permit!s a payload' do
       allowed_reads = {
         'app/models/user.rb' => [
           /\A#\s+platform_operator\s+:boolean\s+default\(FALSE\), not null\z/,
           /\Aplatform_operator\? && otp_required_for_login\? && otp_secret\.present\?\z/
+        ],
+        'app/views/operator/accounts/_users.html.erb' => [
+          /\A<% if user\.platform_operator\? %>\z/,
+          %r{\A<span class="[^"]*" data-platform-operator><%= t\('operator_users_platform_operator'\) %></span>\z}
+        ],
+        # Session 8 phase C, and the same kind of read: support impersonation
+        # REFUSES anybody carrying platform access. One line decides whether
+        # the console offers the door (SupportImpersonation.viewable?, which
+        # the user table above asks), and one line refuses it again in the
+        # controller that opens it. Both are pure reads inside a negation;
+        # neither can assign anything.
+        'lib/support_impersonation.rb' => [
+          /\Auser\.role != 'integration' && !user\.platform_operator\?\z/
+        ],
+        'app/controllers/operator/impersonations_controller.rb' => [
+          /\Araise Refused, t\('operator_impersonation_refused_operator_user'\) if user\.platform_operator\?\z/
         ]
       }
 

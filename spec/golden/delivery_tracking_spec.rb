@@ -1,0 +1,389 @@
+# frozen_string_literal: true
+
+RSpec.describe 'Postmark delivery tracking', type: :request do
+  stash_env 'POSTMARK_WEBHOOK_USERNAME', 'POSTMARK_WEBHOOK_PASSWORD', 'POSTMARK_WEBHOOK_IPS'
+
+  let(:account) { create(:account) }
+  let(:admin) { create(:user, account:) }
+  let(:template) { create(:template, account:, author: admin) }
+  let(:submitter) do
+    create(:submission, :with_submitters, template:, created_by_user: admin).submitters.first.tap do |signer|
+      signer.update!(email: 'signer@example.com')
+    end
+  end
+  let!(:send_event) do
+    create(:email_event, account:, emailable: submitter, event_type: 'send', email: 'signer@example.com')
+  end
+  let(:timeline_projection) do
+    { 'permanent_bounce' => 'bounce_email', 'complaint' => 'complaint_email', 'open' => 'open_email' }
+  end
+  let(:headers) do
+    { 'CONTENT_TYPE' => 'application/json', 'REMOTE_ADDR' => '192.0.2.10',
+      'HTTP_AUTHORIZATION' => ActionController::HttpAuthentication::Basic.encode_credentials('postmark', 'secret') }
+  end
+
+  before do
+    ENV['POSTMARK_WEBHOOK_USERNAME'] = 'postmark'
+    ENV['POSTMARK_WEBHOOK_PASSWORD'] = 'secret'
+    ENV['POSTMARK_WEBHOOK_IPS'] = '192.0.2.0/24'
+  end
+
+  def payload(name)
+    JSON.parse(Rails.root.join("spec/fixtures/postmark/#{name}.json").read).tap do |record|
+      record['Metadata']['message-uuid'] = send_event.message_id
+    end
+  end
+
+  def deliver(record, request_headers = headers)
+    post postmark_webhooks_path, params: record.to_json, headers: request_headers
+  end
+
+  %w[POSTMARK_WEBHOOK_USERNAME POSTMARK_WEBHOOK_PASSWORD].each do |key|
+    it "refuses unconfigured #{key} before authentication" do
+      ENV.delete(key)
+
+      expect { deliver(payload('delivery'), headers.except('HTTP_AUTHORIZATION')) }
+        .not_to change(EmailEvent, :count)
+      expect(response).to have_http_status(:service_unavailable)
+      expect(response.parsed_body).to eq('error' => 'Postmark webhook is not configured')
+    end
+  end
+
+  it 'refuses missing or incorrect Basic credentials before checking the IP' do
+    [nil, ActionController::HttpAuthentication::Basic.encode_credentials('wrong', 'secret'),
+     ActionController::HttpAuthentication::Basic.encode_credentials('postmark', 'wrong')].each do |auth|
+      expect do
+        deliver(payload('delivery'), headers.merge('HTTP_AUTHORIZATION' => auth, 'REMOTE_ADDR' => '203.0.113.1'))
+      end
+        .not_to change(EmailEvent, :count)
+      expect(response).to have_http_status(:unauthorized)
+    end
+  end
+
+  it 'refuses an IP outside the configured range' do
+    expect { deliver(payload('delivery'), headers.merge('REMOTE_ADDR' => '203.0.113.1')) }
+      .not_to change(EmailEvent, :count)
+    expect(response).to have_http_status(:forbidden)
+  end
+
+  it 'uses the built-in Postmark IPs when the override is blank' do
+    ENV['POSTMARK_WEBHOOK_IPS'] = ''
+    deliver(payload('delivery'))
+    expect(response).to have_http_status(:forbidden)
+
+    deliver(payload('delivery'), headers.merge('REMOTE_ADDR' => '3.134.147.250'))
+    expect(response).to have_http_status(:ok)
+  end
+
+  it 'rejects malformed JSON and non-record JSON without writing' do
+    ['{', '[]', 'null'].each do |body|
+      expect { post postmark_webhooks_path, params: body, headers: }.not_to change(EmailEvent, :count)
+      expect(response).to have_http_status(:bad_request)
+    end
+  end
+
+  it 'requires a JSON content type' do
+    deliver(payload('delivery'), headers.merge('CONTENT_TYPE' => 'text/plain'))
+
+    expect(response).to have_http_status(:unsupported_media_type)
+  end
+
+  { 'delivery' => 'delivery', 'bounce_hard' => 'permanent_bounce', 'bounce_soft' => 'soft_bounce',
+    'spam_complaint' => 'complaint', 'open' => 'open', 'click' => 'click',
+    'subscription_change' => 'subscription_change' }.each do |fixture, type|
+    it "records #{fixture} with our attribution and bounded provider data" do
+      record = payload(fixture)
+      record['Tag'] = 'untrusted-provider-tag'
+      record['Details'] = 'x' * 800
+      allow(SendingPause).to receive(:evaluate!)
+
+      expect { deliver(record) }.to change(EmailEvent, :count).by(1)
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body).to eq('recorded' => true)
+
+      event = EmailEvent.order(:id).last
+
+      expect(event).to have_attributes(event_type: type, email: 'signer@example.com', account:,
+                                       emailable: submitter, message_id: send_event.message_id, tag: send_event.tag)
+      expect(event.event_datetime).to be_within(1.second).of(Time.iso8601('2026-09-04T16:33:54.9070259Z'))
+      expect(event.provider_event_key).to eq(
+        "#{record['RecordType']}:#{record['ID'] || record['MessageID']}:signer@example.com:" \
+        '2026-09-04T16:33:54.9070259Z'
+      )
+      expect(event.data).to include('provider_message_id' => record['MessageID'],
+                                    'record_type' => record['RecordType'], 'message_stream' => 'outbound',
+                                    'details' => 'x' * 500)
+      expect(event.data.keys).not_to include('Content', 'content', 'Metadata', 'metadata', 'Tag', 'tag')
+      record.slice('Type', 'TypeCode', 'Description', 'ServerID', 'Inactive', 'OriginalLink',
+                   'FirstOpen', 'UserAgent', 'SuppressSending').each do |key, value|
+        expect(event.data[key.underscore]).to eq(value)
+      end
+      expect(event.data['geo']).to eq(record['Geo']) if record['Geo']
+
+      projection = timeline_projection[type]
+      events = submitter.submission.submission_events
+
+      if projection
+        expect(events.sole).to have_attributes(event_type: projection, submitter:,
+                                               event_timestamp: event.event_datetime)
+        expect(events.sole.data).to include('email' => event.email)
+      else
+        expect(events).to be_empty
+      end
+    end
+  end
+
+  it 'deduplicates retries without evaluating a pause or projecting a second timeline row' do
+    allow(SendingPause).to receive(:evaluate!)
+    record = payload('bounce_hard')
+    deliver(record)
+
+    expect { deliver(record) }.not_to change(EmailEvent, :count)
+    expect(response.parsed_body).to eq('duplicate' => true)
+    expect(submitter.submission.submission_events.count).to eq(1)
+    expect(SendingPause).to have_received(:evaluate!).once
+  end
+
+  it 'ignores unknown types and unknown or absent metadata' do
+    [payload('delivery').merge('RecordType' => 'FutureEvent'),
+     payload('delivery').merge('Metadata' => { 'message-uuid' => SecureRandom.uuid }),
+     payload('delivery').except('Metadata')].each do |record|
+      expect { deliver(record) }.not_to change(EmailEvent, :count)
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body).to eq('ignored' => true)
+    end
+  end
+
+  it 'chooses the matching recipient case-insensitively and accepts the underscore metadata alias' do
+    other = create(:email_event, account:, emailable: template, event_type: 'send',
+                                 message_id: send_event.message_id, email: 'second@example.com')
+    record = payload('delivery').merge('Recipient' => 'SECOND@example.com',
+                                       'Metadata' => { 'message_uuid' => send_event.message_id })
+    deliver(record)
+
+    expect(EmailEvent.order(:id).last).to have_attributes(emailable: template, email: 'SECOND@example.com',
+                                                          tag: other.tag)
+  end
+
+  it 'falls back to the first send when no recipient matches' do
+    deliver(payload('delivery').merge('Recipient' => 'unknown@example.com'))
+
+    expect(EmailEvent.order(:id).last.emailable).to eq(submitter)
+  end
+
+  it 'records non-Submitter mail without a signer timeline row' do
+    send_event.update!(emailable: template)
+
+    expect { deliver(payload('open')) }.not_to change(SubmissionEvent, :count)
+    expect(EmailEvent.order(:id).last.emailable).to eq(template)
+  end
+
+  it 'falls back to now for an invalid timestamp and still deduplicates the original bytes' do
+    freeze_time do
+      record = payload('delivery').merge('DeliveredAt' => 'not-a-time')
+      deliver(record)
+      expect(EmailEvent.order(:id).last.event_datetime).to eq(Time.current)
+
+      expect { deliver(record) }.not_to change(EmailEvent, :count)
+      expect(response.parsed_body).to eq('duplicate' => true)
+    end
+  end
+
+  it 'treats every permanent type and an inactive soft bounce as permanent' do
+    %w[HardBounce BadEmailAddress Blocked DnsError SpamNotification].each do |type|
+      record = payload('bounce_soft').merge('Type' => type, 'ID' => type)
+      deliver(record)
+      expect(EmailEvent.order(:id).last.event_type).to eq('permanent_bounce')
+    end
+
+    deliver(payload('bounce_soft').merge('Inactive' => true))
+    expect(EmailEvent.order(:id).last.event_type).to eq('permanent_bounce')
+  end
+
+  %w[Unsubscribe ManuallyDeactivated].each do |type|
+    it "records #{type} as suppression and excludes it from the bounce pause even when inactive" do
+      stub_const('Quotas::Limits::BOUNCE_MIN_SENDS', 1)
+      stub_const('Quotas::Limits::BOUNCE_PAUSE_RATE', 0.2)
+      record = payload('bounce_hard').merge('Type' => type)
+
+      expect { deliver(record) }.not_to change(SubmissionEvent, :count)
+      expect(response.parsed_body).to eq('recorded' => true)
+      expect(EmailEvent.order(:id).last.event_type).to eq('suppressed')
+      expect(SendingPause.bounce_rate(account)).to be_nil
+      expect(SendingPause.paused?(account)).to be(false)
+    end
+  end
+
+  it 'retains a Postmark click without duplicating the app-owned click timeline row' do
+    SubmissionEvent.create!(submitter:, event_type: 'click_email')
+
+    expect { deliver(payload('click')) }.not_to change(SubmissionEvent, :count)
+    expect(response.parsed_body).to eq('recorded' => true)
+    expect(EmailEvent.order(:id).last.event_type).to eq('click')
+    expect(submitter.submission.submission_events.sole.event_type).to eq('click_email')
+  end
+
+  %w[SoftBounce Transient].each do |type|
+    it "records #{type} without presenting a signer failure" do
+      expect { deliver(payload('bounce_soft').merge('Type' => type)) }.not_to change(SubmissionEvent, :count)
+
+      expect(response.parsed_body).to eq('recorded' => true)
+      expect(EmailEvent.order(:id).last.event_type).to eq('soft_bounce')
+    end
+  end
+
+  %w[bounce_hard spam_complaint open].each do |fixture|
+    it "keeps a CC/BCC #{fixture} off the signer timeline" do
+      copy = create(:email_event, account:, emailable: submitter, event_type: 'send',
+                                  message_id: send_event.message_id, email: 'copy@example.com', tag: 'copy')
+      record = payload(fixture).merge('Recipient' => 'COPY@example.com', 'Email' => 'COPY@example.com')
+
+      expect { deliver(record) }.not_to change(SubmissionEvent, :count)
+      expect(response.parsed_body).to eq('recorded' => true)
+      event = EmailEvent.order(:id).last
+      expect(event).to have_attributes(email: 'COPY@example.com', emailable: submitter, tag: copy.tag)
+      expect(event.data).not_to have_key('recipient_mismatch')
+    end
+  end
+
+  it 'flags fallback attribution and never projects an unmatched address, even if it is the signer' do
+    send_event.update!(email: 'copy@example.com')
+
+    expect { deliver(payload('bounce_hard')) }.not_to change(SubmissionEvent, :count)
+    event = EmailEvent.order(:id).last
+    expect(response.parsed_body).to eq('recorded' => true)
+    expect(event).to have_attributes(email: submitter.email, emailable: submitter, message_id: send_event.message_id)
+    expect(event.data).to include('recipient_mismatch' => true)
+  end
+
+  it 'projects a signer bounce when the address matches case-insensitively' do
+    deliver(payload('bounce_hard').merge('Email' => 'SIGNER@example.com'))
+
+    expect(response.parsed_body).to eq('recorded' => true)
+    expect(submitter.submission.submission_events.sole.event_type).to eq('bounce_email')
+  end
+
+  it 'pauses a customer complaint, opens an abuse flag, and enqueues admin and operator mail' do
+    allow(QuotaMailer).to receive(:sending_paused).and_call_original
+    allow(OperatorMailer).to receive(:alert).and_call_original
+
+    deliver(payload('spam_complaint'))
+
+    expect(response).to have_http_status(:ok)
+    expect(SendingPause.paused?(account)).to be(true)
+    expect(account.abuse_flags.open.where(kind: 'complaint').count).to eq(1)
+    expect(QuotaMailer).to have_received(:sending_paused).with(account, 'complaint').once
+    expect(OperatorMailer).to have_received(:alert).with(/Sending paused/, kind_of(String)).once
+    mail_jobs = Sidekiq::Queues.jobs_by_queue.values.flatten.select { |job| job['wrapped'] == 'ActionMailer::MailDeliveryJob' }
+    expect(mail_jobs.map { |job| job.dig('args', 0, 'arguments', 0) }).to include('QuotaMailer', 'OperatorMailer')
+  end
+
+  it 'pauses for three hard bounces among ten distinct sends' do
+    stub_const('Quotas::Limits::BOUNCE_MIN_SENDS', 10)
+    stub_const('Quotas::Limits::BOUNCE_PAUSE_RATE', 0.2)
+    sends = [send_event] + Array.new(9) do
+      create(:email_event, account:, emailable: submitter, event_type: 'send', email: 'signer@example.com')
+    end
+    sends.first(3).each_with_index do |sent, index|
+      record = payload('bounce_hard').merge('ID' => 900 + index,
+                                            'Metadata' => { 'message-uuid' => sent.message_id })
+      deliver(record)
+    end
+
+    expect(SendingPause.paused?(account)).to be(true)
+    expect(account.reload.sending_pause_reason).to eq('bounce_rate')
+    expect(account.abuse_flags.open.where(kind: 'bounce_rate').count).to eq(1)
+  end
+
+  it 'records internal complaints but never pauses internal sending' do
+    account.update!(account_kind: Account::INTERNAL_KIND)
+    deliver(payload('spam_complaint'))
+
+    expect(response.parsed_body).to eq('recorded' => true)
+    expect(SendingPause.paused?(account)).to be(false)
+    expect(account.abuse_flags.open).to be_empty
+  end
+
+  [RuntimeError, ActiveRecord::RecordNotUnique].each do |failure_class|
+    it "rolls back a failed pause write (#{failure_class}) and retries the same complaint" do
+      allow(AbuseFlags).to receive(:record!).and_raise(failure_class, 'flag write failed')
+      allow(ErrorReport).to receive(:error)
+      record = payload('spam_complaint')
+
+      expect { deliver(record) }.not_to change(EmailEvent, :count)
+      expect(response).to have_http_status(:internal_server_error)
+      expect(SendingPause.paused?(account)).to be(false)
+      expect(submitter.submission.submission_events).to be_empty
+      expect(account.abuse_flags.open).to be_empty
+      expect(ErrorReport).to have_received(:error).with(kind_of(failure_class))
+
+      allow(AbuseFlags).to receive(:record!).and_call_original
+      expect { deliver(record) }.to change(EmailEvent, :count).by(1)
+      expect(response.parsed_body).to eq('recorded' => true)
+      expect(SendingPause.paused?(account)).to be(true)
+      expect(account.abuse_flags.open.where(kind: 'complaint').count).to eq(1)
+      expect(submitter.submission.submission_events.sole.event_type).to eq('complaint_email')
+    end
+  end
+
+  it 'keeps the pause and operator alert when customer mail cannot be enqueued' do
+    mail = instance_double(ActionMailer::MessageDelivery)
+    allow(mail).to receive(:deliver_later!).and_raise(RuntimeError, 'customer queue unavailable')
+    allow(QuotaMailer).to receive(:sending_paused).and_return(mail)
+    allow(OperatorAlert).to receive(:deliver).and_call_original
+    allow(ErrorReport).to receive(:error)
+
+    deliver(payload('spam_complaint'))
+
+    expect(response.parsed_body).to eq('recorded' => true)
+    expect(SendingPause.paused?(account)).to be(true)
+    expect(account.abuse_flags.open.where(kind: 'complaint').count).to eq(1)
+    expect(OperatorAlert).to have_received(:deliver).once
+    expect(ErrorReport).to have_received(:error).with(kind_of(RuntimeError), account_id: account.id)
+    queued = Sidekiq::Queues.jobs_by_queue.values.flatten.to_json
+    expect(queued).to include('OperatorMailer')
+  end
+
+  it 'attempts the operator alert before customer mail and still mails the customer if the alert fails' do
+    attempts = []
+    allow(OperatorAlert).to receive(:deliver) do
+      attempts << :operator
+      raise 'operator queue unavailable'
+    end
+    allow(QuotaMailer).to receive(:sending_paused).and_wrap_original do |original, *args|
+      attempts << :customer
+      original.call(*args)
+    end
+    allow(ErrorReport).to receive(:error)
+
+    deliver(payload('spam_complaint'))
+
+    expect(response.parsed_body).to eq('recorded' => true)
+    expect(attempts).to eq(%i[operator customer])
+    expect(SendingPause.paused?(account)).to be(true)
+    expect(ErrorReport).to have_received(:error).with(kind_of(RuntimeError), account_id: account.id)
+    expect(Sidekiq::Queues.jobs_by_queue.values.flatten.to_json).to include('QuotaMailer')
+  end
+
+  it 'rolls back both rows on a projection failure, then records a retry exactly once' do
+    allow(SubmissionEvent).to receive(:create!).and_raise(RuntimeError, 'projection failed')
+    allow(ErrorReport).to receive(:error)
+
+    expect { deliver(payload('open')) }.not_to change(EmailEvent, :count)
+    expect(response).to have_http_status(:internal_server_error)
+    expect(ErrorReport).to have_received(:error).with(kind_of(RuntimeError))
+
+    allow(SubmissionEvent).to receive(:create!).and_call_original
+    expect { deliver(payload('open')) }.to change(EmailEvent, :count).by(1)
+    deliver(payload('open'))
+    expect(response.parsed_body).to eq('duplicate' => true)
+    expect(submitter.submission.submission_events.count).to eq(1)
+  end
+
+  it 'places the same UUID in the observer and Postmark metadata headers' do
+    mailer = ApplicationMailer.new
+    mailer.set_message_uuid
+
+    expect(mailer.message['X-PM-Metadata-message-uuid'].value).to eq(mailer.message['X-Message-Uuid'].value)
+  end
+end

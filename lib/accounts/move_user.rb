@@ -39,7 +39,7 @@ module Accounts
     #     counters, limit overrides, the subscription — configuration and
     #     policy belong to the account, not to the person.
     MOVED_TABLES = [Template, TemplateSharing, TemplateVersion, Submission, Submitter, SubmissionEvent,
-                    DocumentMetadata, EmailMessage, SearchEntry].freeze
+                    DocumentMetadata, EmailMessage, EmailEvent, SearchEntry].freeze
 
     module_function
 

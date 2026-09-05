@@ -48,6 +48,12 @@
         <% end %>
       </div>
     </div>
+    <%# D78(e): the API-only logins the original import left behind. The list
+        says what they can and cannot do, and what replaces them, so nobody has
+        to guess why one of these rows cannot open Settings. %>
+    <% if params[:status] == 'integration' %>
+      <p class="text-base-content/70 mb-4" dir="auto" data-integration-users-help><%= t('integration_users_help') %></p>
+    <% end %>
     <div class="overflow-x-auto">
       <table class="table w-full table-lg rounded-b-none overflow-hidden">
         <thead class="bg-base-200">

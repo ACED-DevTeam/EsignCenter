@@ -3531,11 +3531,19 @@ RSpec.describe 'Stripe billing', type: :request do # rubocop:disable RSpec/Multi
   describe StripeReconciliationJob do
     # The nightly sweep also asks Stripe which subscriptions each customer
     # has; unless an example is about that, the answer is "just the one".
+    #
+    # The sweep's resume cursor lives in Redis and outlives an example, so it
+    # is cleared on both sides: a run that stopped on its budget would
+    # otherwise make every later example skip rows.
     before do
+      StripeReconciliationState.cursor = nil
+
       stub_request(:get, %r{\Ahttps://api\.stripe\.com/v1/subscriptions\?})
         .to_return(status: 200, body: { object: 'list', data: [] }.to_json,
                    headers: { 'Content-Type' => 'application/json' })
     end
+
+    after { StripeReconciliationState.cursor = nil }
 
     it 'repairs a row Stripe disagrees with, leaves a matching one alone, and alerts once' do
       drifted = create(:account_subscription, account:, access_state: 'active', status: 'active',
@@ -4274,10 +4282,16 @@ RSpec.describe 'Stripe billing', type: :request do # rubocop:disable RSpec/Multi
       stuck = StripeEventInbox.sole
       stuck.update_columns(status: 'pending', updated_at: 20.minutes.ago)
 
+      # Both are older than StripeEventInbox::RETRY_AFTER: a `failed` row
+      # inside that window still belongs to Sidekiq's own retry chain and the
+      # sweep leaves it alone (C8, pinned in its own example below). What is
+      # being asserted here is the budget — retries left, or spent.
       failed = StripeEventInbox.create!(stripe_event_id: 'evt_failed', event_type: 'invoice.paid',
                                         payload: '{}', status: 'failed', attempts: 2)
       exhausted = StripeEventInbox.create!(stripe_event_id: 'evt_exhausted', event_type: 'invoice.paid',
                                            payload: '{}', status: 'failed', attempts: 5)
+
+      [failed, exhausted].each { |row| row.update_columns(updated_at: 45.minutes.ago) }
 
       allow(OperatorAlert).to receive(:deliver).and_return(true)
       ProcessStripeEventJob.jobs.clear
@@ -4371,6 +4385,383 @@ RSpec.describe 'Stripe billing', type: :request do # rubocop:disable RSpec/Multi
       expect(report.errors.size).to eq(1)
       expect(broken.reload.access_state).to eq('active')
       expect(repairable.reload.access_state).to eq('past_due')
+    end
+
+    # C8 (checkpoint 8). A `failed` row is not idle: writing `failed` is how
+    # the job hands the row back BEFORE Sidekiq's own retry chain picks it up
+    # again. Re-enqueuing it while that chain still owns it starts a second
+    # worker racing for one compare-and-set claim, and the loser burns an
+    # attempt out of a budget of five to discover it lost.
+    it 'leaves a failed row Sidekiq still owns alone, and takes it once the retry window has passed' do
+      cancelled_row
+      post_stripe_event('event-customer.subscription.created-trialing')
+
+      inbox = StripeEventInbox.sole
+      inbox.update_columns(status: StripeEventInbox::FAILED, attempts: 1, updated_at: 2.minutes.ago)
+
+      allow(OperatorAlert).to receive(:deliver).and_return(true)
+      ProcessStripeEventJob.jobs.clear
+
+      expect(described_class.new.perform.requeued).to eq(0)
+      expect(ProcessStripeEventJob.jobs).to be_empty
+      expect(inbox.reload.status).to eq('failed')
+
+      inbox.update_columns(updated_at: (StripeEventInbox::RETRY_AFTER + 1.minute).ago)
+
+      expect(described_class.new.perform.requeued).to eq(1)
+      expect(ProcessStripeEventJob.jobs.map { |job| job['args'].first }).to eq([inbox.id])
+    end
+
+    # C5 (checkpoint 8). A subscription DELETED at Stripe — not cancelled,
+    # removed — answers 404 to every retrieve. The sweep used to file that as
+    # one more transient error and file it again the next night, so the row
+    # kept whatever access it last had for ever: an account on the paid plan
+    # with nothing paying for it. Only Stripe's explicit `resource_missing`
+    # counts; any other failure is still transient (the example below).
+    it 'cancels a row whose subscription Stripe no longer has, and hands the account the free plan' do
+      row = create(:account_subscription, account:, access_state: 'active', status: 'active',
+                                          stripe_customer_id: customer_a,
+                                          stripe_subscription_id: subscription_a, quantity: 3)
+
+      stub_request(:get, subscription_url(subscription_a))
+        .with(query: hash_including('expand' => StripeBilling::SUBSCRIPTION_EXPAND))
+        .to_return(status: 404,
+                   body: { error: { type: 'invalid_request_error', code: 'resource_missing',
+                                    message: 'No such subscription' } }.to_json,
+                   headers: { 'Content-Type' => 'application/json' })
+      # A subscription really deleted leaves its customer behind, and that is
+      # what tells "gone" apart from "wrong key" (review 1, H2).
+      stub_request(:get, %r{\Ahttps://api\.stripe\.com/v1/customers/#{Regexp.escape(customer_a)}})
+        .to_return(status: 200, body: { id: customer_a, object: 'customer' }.to_json,
+                   headers: { 'Content-Type' => 'application/json' })
+
+      alerts = []
+      allow(OperatorAlert).to receive(:deliver) { |args| alerts << args }
+      allow(ErrorReport).to receive(:warning)
+
+      report = described_class.new.perform
+
+      expect(report.errors).to be_empty
+      expect(report.vanished.sole).to include(account_id: account.id, subscription: subscription_a,
+                                              was: 'active', now: 'cancelled')
+      expect(row.reload.access_state).to eq('cancelled')
+      expect(account.reload.purged_at).to be_nil
+      expect(alerts.sole[:body]).to include(subscription_a)
+
+      expect_free_plan
+    end
+
+    # A3 (checkpoint 8). The automatic refund of a NEWER duplicate rests on
+    # one claim: every cycle it collected duplicated one the survivor was
+    # already billing. A survivor whose collection was PAUSED breaks that
+    # claim — while it was paused it billed nothing, so what the newer one
+    # took may be the only money the customer ever paid for the service they
+    # had. The duplicate is still cancelled; the refund becomes a person's
+    # decision, and the sweep names it under "needs manual review".
+    context 'when the survivor has a paused-collection history' do
+      let!(:row) do
+        create(:account_subscription, account:, access_state: 'active', status: 'active',
+                                      stripe_status: 'active', stripe_customer_id: customer_a,
+                                      stripe_subscription_id: subscription_a, quantity: 1)
+      end
+
+      before do
+        stub_subscription_list(customer_a, { subscription_a => 'active', subscription_b => 'active' })
+        stub_invoice_list(subscription_b, [paid_invoice(subscription_b, amount: 3000)])
+        stub_duplicate(subscription_b, 'subscription-active')
+      end
+
+      # No refund stub anywhere in this example: a refund attempt would reach
+      # an unstubbed Stripe request and fail the example outright.
+      def expect_manual_review(report)
+        expect(report.duplicates.sole).to include(account_id: account.id, cancelled: subscription_b,
+                                                  refunded: nil)
+        expect(report.manual_refunds.sole[:cancelled]).to eq(subscription_b)
+        expect(row.reload.stripe_subscription_id).to eq(subscription_a)
+      end
+
+      it 'routes the duplicate to manual review when the survivor is paused right now' do
+        stub_subscription(subscription_a, 'subscription-active', { 'pause_collection' => { 'behavior' => 'void' } })
+        cancel_call = stub_cancel(subscription_b, marker: StripeBilling::DUPLICATE_CANCEL_MANUAL_MARKER)
+
+        allow(OperatorAlert).to receive(:deliver).and_return(true)
+        allow(ErrorReport).to receive(:warning)
+
+        report = described_class.new.perform
+
+        expect(cancel_call).to have_been_requested
+        expect_manual_review(report)
+        expect(report.manual_refunds.sole[:note]).to include('paused-collection history')
+      end
+
+      # And the same when the pause has already been LIFTED: the subscription
+      # no longer says anything about itself, so the events we stored at the
+      # time are what remember it.
+      #
+      # Which events those are is the whole of Codex H4. Stripe does NOT emit
+      # `customer.subscription.paused` for a paused COLLECTION — that event is
+      # about a paused subscription STATUS. Setting and clearing
+      # `pause_collection` both arrive as an ordinary
+      # `customer.subscription.updated`: on the object when set, and named in
+      # `previous_attributes` when cleared.
+      def store_event!(id, type, object_extra: {}, previous: nil)
+        data = { object: { id: subscription_a, object: 'subscription', status: 'active' }.merge(object_extra) }
+        data[:previous_attributes] = previous if previous
+
+        StripeEventInbox.create!(stripe_event_id: id, event_type: type, status: 'processed',
+                                 payload: { id:, type:, data: }.to_json)
+      end
+
+      it 'routes it to manual review when an update SET the collection pause' do
+        store_event!('evt_paused', 'customer.subscription.updated',
+                     object_extra: { pause_collection: { behavior: 'void', resumes_at: nil } },
+                     previous: { pause_collection: nil })
+
+        stub_subscription(subscription_a, 'subscription-active')
+        cancel_call = stub_cancel(subscription_b, marker: StripeBilling::DUPLICATE_CANCEL_MANUAL_MARKER)
+
+        allow(OperatorAlert).to receive(:deliver).and_return(true)
+        allow(ErrorReport).to receive(:warning)
+
+        report = described_class.new.perform
+
+        expect(cancel_call).to have_been_requested
+        expect_manual_review(report)
+      end
+
+      it 'routes it to manual review when an update CLEARED the collection pause' do
+        store_event!('evt_resumed', 'customer.subscription.updated',
+                     previous: { pause_collection: { behavior: 'void', resumes_at: nil } })
+
+        stub_subscription(subscription_a, 'subscription-active')
+        cancel_call = stub_cancel(subscription_b, marker: StripeBilling::DUPLICATE_CANCEL_MANUAL_MARKER)
+
+        allow(OperatorAlert).to receive(:deliver).and_return(true)
+        allow(ErrorReport).to receive(:warning)
+
+        report = described_class.new.perform
+
+        expect(cancel_call).to have_been_requested
+        expect_manual_review(report)
+      end
+
+      # And the other half of reading the right field: an ordinary update that
+      # has nothing to do with collection is not a pause. Without this, "look
+      # at customer.subscription.updated" would send every duplicate on every
+      # busy account to manual review and no refund would ever go out.
+      it 'is not fooled by an ordinary update on the survivor' do
+        store_event!('evt_quantity', 'customer.subscription.updated', previous: { quantity: 1 })
+
+        stub_subscription(subscription_a, 'subscription-active')
+        stub_cancel(subscription_b, marker: StripeBilling::DUPLICATE_CANCEL_MARKER,
+                                    invoice: paid_invoice(subscription_b, amount: 3000))
+        refund_call = stub_refund("pi_#{subscription_b}", amount: 3000)
+
+        allow(OperatorAlert).to receive(:deliver).and_return(true)
+        allow(ErrorReport).to receive(:warning)
+
+        report = described_class.new.perform
+
+        expect(refund_call).to have_been_requested
+        expect(report.manual_refunds).to be_empty
+      end
+
+      # The control: the very same duplicate, with a survivor that was never
+      # paused, IS refunded automatically. Without this the two examples above
+      # would pass just as well if the app had stopped refunding altogether.
+      it 'still refunds the newer duplicate automatically when the survivor was never paused' do
+        stub_subscription(subscription_a, 'subscription-active')
+        stub_cancel(subscription_b, marker: StripeBilling::DUPLICATE_CANCEL_MARKER,
+                                    invoice: paid_invoice(subscription_b, amount: 3000))
+        refund_call = stub_refund("pi_#{subscription_b}", amount: 3000)
+
+        allow(OperatorAlert).to receive(:deliver).and_return(true)
+        allow(ErrorReport).to receive(:warning)
+
+        report = described_class.new.perform
+
+        expect(refund_call).to have_been_requested
+        expect(report.manual_refunds).to be_empty
+        expect(report.duplicates.sole[:refunded]).to eq('$30.00')
+      end
+    end
+
+    # Review 1 H2 / Codex H1. `resource_missing` is also what a key pointed at
+    # the WRONG Stripe account answers for every id we hold — so before
+    # anything is downgraded the customer is fetched, and a customer that is
+    # missing too stops the sweep instead of moving the paying customer base
+    # to the free plan.
+    context 'when Stripe cannot find a subscription' do
+      let(:missing_body) do
+        { error: { type: 'invalid_request_error', code: 'resource_missing',
+                   message: 'No such subscription' } }.to_json
+      end
+
+      def missing_response
+        { status: 404, body: missing_body, headers: { 'Content-Type' => 'application/json' } }
+      end
+
+      def stub_missing_subscription(id, &)
+        stub = stub_request(:get, subscription_url(id))
+               .with(query: hash_including('expand' => StripeBilling::SUBSCRIPTION_EXPAND))
+
+        return stub.to_return(&) if block_given?
+
+        stub.to_return(**missing_response)
+      end
+
+      def customer_response(id, status)
+        { status:, body: status == 200 ? { id:, object: 'customer' }.to_json : missing_body,
+          headers: { 'Content-Type' => 'application/json' } }
+      end
+
+      def stub_customer(id, status: 200, &)
+        stub = stub_request(:get, %r{\Ahttps://api\.stripe\.com/v1/customers/#{Regexp.escape(id)}})
+
+        return stub.to_return(&) if block_given?
+
+        stub.to_return(**customer_response(id, status))
+      end
+
+      it 'downgrades nothing and stops when the key cannot find the customer either' do
+        row = create(:account_subscription, account:, access_state: 'active', status: 'active',
+                                            stripe_customer_id: customer_a,
+                                            stripe_subscription_id: subscription_a, quantity: 3)
+
+        stub_missing_subscription(subscription_a)
+        stub_customer(customer_a, status: 404)
+
+        alerts = []
+        allow(OperatorAlert).to receive(:deliver) { |args| alerts << args }
+        allow(ErrorReport).to receive(:warning)
+        allow(ErrorReport).to receive(:error)
+
+        report = described_class.new.perform
+
+        expect(report.key_mismatch).to include(customer_a)
+        expect(report.vanished).to be_empty
+        expect(row.reload.access_state).to eq('active')
+        expect(alerts.sole[:body]).to include('STOPPED')
+        expect(alerts.sole[:body]).to include('STRIPE_SECRET_KEY')
+
+        expect_paid_access
+      end
+
+      it 'settles only a few in one run and leaves the rest for a person' do
+        stub_const("#{described_class}::VANISHED_LIMIT", 2)
+
+        rows = Array.new(3) do |i|
+          create(:account_subscription, account: create(:account), access_state: 'active', status: 'active',
+                                        stripe_customer_id: "cus_missing_#{i}",
+                                        stripe_subscription_id: "sub_missing_#{i}", quantity: 1)
+        end
+
+        rows.each_with_index do |_row, i|
+          stub_missing_subscription("sub_missing_#{i}")
+          stub_customer("cus_missing_#{i}")
+        end
+
+        allow(OperatorAlert).to receive(:deliver).and_return(true)
+        allow(ErrorReport).to receive(:warning)
+
+        report = described_class.new.perform
+
+        expect(report.vanished.size).to eq(2)
+        expect(report.vanished_skipped.sole).to include(account_id: rows.last.account_id,
+                                                        subscription: 'sub_missing_2')
+        expect(report.vanished_skipped.sole[:reason]).to include('more than 2')
+        expect(rows.first.reload.access_state).to eq('cancelled')
+        expect(rows.last.reload.access_state).to eq('active')
+      end
+
+      # The 404 is about ONE subscription id. If a webhook repoints the row
+      # while the sweep is asking, cancelling whatever the row holds by then
+      # would downgrade a live subscription nobody said anything about.
+      it 'leaves the row alone when it has moved on to another subscription in the meantime' do
+        row = create(:account_subscription, account:, access_state: 'active', status: 'active',
+                                            stripe_customer_id: customer_a,
+                                            stripe_subscription_id: subscription_a, quantity: 1)
+
+        stub_missing_subscription(subscription_a)
+        # The swap lands between the 404 and the row lock — which is where the
+        # real race is, a webhook adopting another subscription while the
+        # sweep is asking Stripe about this one.
+        stub_customer(customer_a) do
+          row.update_columns(stripe_subscription_id: subscription_b)
+
+          customer_response(customer_a, 200)
+        end
+
+        allow(OperatorAlert).to receive(:deliver).and_return(true)
+        allow(ErrorReport).to receive(:warning)
+
+        report = described_class.new.perform
+
+        expect(report.vanished).to be_empty
+        expect(report.vanished_skipped.sole[:reason]).to include('different subscription')
+        expect(row.reload.access_state).to eq('active')
+        expect(row.stripe_subscription_id).to eq(subscription_b)
+      end
+    end
+
+    # C10 (checkpoint 8). The sweep is serial and asks Stripe at least twice
+    # per row, and nothing bounded it: at enough accounts it would still be
+    # running when the next night's copy started. It now stops on a
+    # wall-clock budget, says where it stopped, and carries on from there —
+    # so a platform too big for one night is swept a slice at a time rather
+    # than having its first N accounts swept every night and the rest never.
+    it 'stops when its budget is gone, says so, and the next sweep carries on after that row' do
+      stub_const("#{described_class}::SWEEP_BUDGET", 0)
+
+      first = create(:account_subscription, account:, access_state: 'active', status: 'active',
+                                            stripe_customer_id: customer_a,
+                                            stripe_subscription_id: subscription_a, quantity: 1)
+      second = create(:account_subscription, account: create(:account), access_state: 'active', status: 'active',
+                                             stripe_customer_id: customer_b,
+                                             stripe_subscription_id: subscription_b, quantity: 2)
+
+      stub_subscription(subscription_a, 'subscription-canceled')
+      stub_subscription(subscription_b, 'subscription-canceled')
+
+      alerts = []
+      allow(OperatorAlert).to receive(:deliver) { |args| alerts << args }
+      allow(ErrorReport).to receive(:warning)
+
+      report = described_class.new.perform
+
+      expect(report.rows).to eq(1)
+      expect(report.stopped_after).to eq(first.id)
+      expect(StripeReconciliationState.cursor).to eq(first.id)
+      expect(first.reload.access_state).to eq('cancelled')
+      expect(second.reload.access_state).to eq('active')
+      expect(alerts.sole[:body]).to include('Budget exhausted after 1 row(s)')
+
+      second_report = described_class.new.perform
+
+      expect(second_report.rows).to eq(1)
+      expect(second_report.repaired.sole).to include(account_id: second.account_id)
+      expect(second.reload.access_state).to eq('cancelled')
+    end
+
+    # And the report itself outlives the run, for the operator console's
+    # billing tab to read (StripeReconciliationState).
+    it 'keeps the last report where the console can read it' do
+      row = create(:account_subscription, account:, access_state: 'active', status: 'active',
+                                          stripe_customer_id: customer_a,
+                                          stripe_subscription_id: subscription_a, quantity: 1)
+
+      stub_subscription(subscription_a, 'subscription-canceled')
+      allow(OperatorAlert).to receive(:deliver).and_return(true)
+
+      described_class.new.perform
+
+      kept = StripeReconciliationState.last_report
+
+      expect(kept['ran_at']).to be_present
+      expect(kept['rows']).to eq(1)
+      expect(kept['repaired'].sole).to include('account_id' => row.account_id, 'now' => 'cancelled')
+    ensure
+      StripeReconciliationState.delete(StripeReconciliationState::REPORT_KEY)
     end
   end
 

@@ -27,7 +27,9 @@ class ApplicationMailer < ActionMailer::Base
   end
 
   def set_message_uuid
-    message['X-Message-Uuid'] = SecureRandom.uuid
+    uuid = SecureRandom.uuid
+    message['X-Message-Uuid'] = uuid
+    message['X-PM-Metadata-message-uuid'] = uuid
   end
 
   def assign_message_metadata(tag, record)

@@ -1,0 +1,73 @@
+<%# Everybody who can sign in to this account, active first. Nothing here
+    changes a person — who may be archived, promoted or reset is not a console
+    decision — with one exception: "View as this user" starts a SUPPORT SESSION
+    (phase C), which is read-only by default, audited, mailed to the account's
+    administrators, and over in an hour. It is offered only for people it could
+    actually work for: a live customer account, and somebody who is not
+    archived, not the API-only integration login, and not a platform
+    operator. %>
+<div class="card bg-base-100 border border-base-300" data-operator-users>
+  <div class="card-body p-5 gap-3">
+    <h2 class="text-xl font-bold"><%= t('operator_users_title', count: @users.size) %></h2>
+    <div class="overflow-x-auto">
+      <table class="table w-full">
+        <thead class="bg-base-200">
+          <tr class="text-neutral uppercase">
+            <th><%= t('email') %></th>
+            <th><%= t('role') %></th>
+            <th><%= t('operator_users_two_factor') %></th>
+            <th><%= t('operator_users_seat') %></th>
+            <th><%= t('last_session') %></th>
+            <th><%= t('operator_users_archived') %></th>
+            <th class="text-right"><%= t('operator_users_support') %></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% @users.each do |user| %>
+            <tr data-operator-user-row="<%= user.id %>">
+              <td dir="auto" class="break-all">
+                <%= user.email %>
+                <% if user.platform_operator? %>
+                  <span class="badge badge-warning badge-outline whitespace-nowrap ml-1" data-platform-operator><%= t('operator_users_platform_operator') %></span>
+                <% end %>
+              </td>
+              <td>
+                <% if user.role == 'integration' %>
+                  <%# D78(e): the API-only login DocuSeal left behind. Named for
+                      what it is, with the sentence that says what replaces it. %>
+                  <span class="tooltip" data-tip="<%= t('integration_role_tooltip') %>">
+                    <span class="badge badge-ghost whitespace-nowrap" data-integration-role><%= t('integration') %></span>
+                  </span>
+                <% else %>
+                  <span class="badge badge-info badge-outline whitespace-nowrap"><%= t(user.role) %></span>
+                <% end %>
+              </td>
+              <td><%= user.otp_required_for_login? && user.otp_secret.present? ? t('operator_yes') : t('operator_no') %></td>
+              <td>
+                <% if user.read_only? %>
+                  <span class="badge badge-ghost whitespace-nowrap" data-user-read-only><%= t('read_only') %></span>
+                <% else %>
+                  <span class="text-base-content/70 text-sm"><%= t('operator_users_full_access') %></span>
+                <% end %>
+              </td>
+              <td class="whitespace-nowrap text-sm"><%= user.current_sign_in_at ? l(user.current_sign_in_at.utc, format: :short) : '—' %></td>
+              <td class="whitespace-nowrap text-sm"><%= user.archived_at ? l(user.archived_at.utc, format: :short) : '—' %></td>
+              <td class="text-right">
+                <% if SupportImpersonation.viewable?(@account, user) %>
+                  <div class="flex justify-end">
+                    <%= render 'operator/accounts/impersonation_modal', user: user %>
+                  </div>
+                <% else %>
+                  <span class="text-base-content/50 text-sm">—</span>
+                <% end %>
+              </td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+    <% if @users.any? { |user| user.role == 'integration' } %>
+      <p class="text-sm text-base-content/70" data-integration-hint><%= t('integration_users_help') %></p>
+    <% end %>
+  </div>
+</div>

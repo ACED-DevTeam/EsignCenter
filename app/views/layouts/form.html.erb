@@ -8,6 +8,9 @@
     <%= stylesheet_pack_tag 'form', media: 'all' %>
   </head>
   <body>
+    <%# A signed-in page can render with this layout too (the template preview),
+        so the support-session bar belongs here as well. %>
+    <%= render 'shared/support_impersonation_banner' %>
     <%= yield %>
   </body>
 </html>

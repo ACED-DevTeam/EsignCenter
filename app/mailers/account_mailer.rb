@@ -78,6 +78,17 @@ class AccountMailer < ApplicationMailer
       end
     end
 
+    # A platform operator has started a support session inside this account.
+    # Sent every time, to the people who administer it: support access the
+    # customer cannot see is exactly the thing this feature must never be.
+    # Internal accounts are ours, so there is nobody to tell — the history row
+    # is still written either way.
+    def support_access_started(account, event)
+      return Broadcast.new([]) unless account.customer?
+
+      broadcast(account) { |to| support_access_started_to(account, event, to) }
+    end
+
     private
 
     # The one refusal, written once (QuotaMailer#prepare): blank means there
@@ -120,6 +131,26 @@ class AccountMailer < ApplicationMailer
     mail(to:, subject: "Your unused EsignCenter account will be deleted in #{days_left} days")
   end
 
+  # Deliberately does NOT use `prepare` below: that one is built for the
+  # deletion notices and reads a purge date this account does not have. The
+  # message says who was viewed as, in which mode, why, and what to do if
+  # nobody asked for help — and it never carries the recipient list, like every
+  # other broadcast here.
+  def support_access_started_to(account, event, to)
+    return if to.blank?
+
+    @current_account = account
+    mail_account(account)
+
+    @viewed_as = event.details['user_email']
+    @mode = SupportImpersonation.mode_label(event.details['mode'])
+    @reason = event.reason
+    @started_at = event.created_at.utc.strftime('%-d %B %Y at %H:%M UTC')
+    @support_email = Docuseal::SUPPORT_EMAIL
+
+    mail(to:, subject: 'EsignCenter support opened your account')
+  end
+
   # The second way to confirm a deletion: a code to the administrator's own
   # address, so somebody who signs in with Google — and therefore has no
   # password they know — can still prove it is them (review batch 2, K9).
@@ -141,7 +172,45 @@ class AccountMailer < ApplicationMailer
     mail(to: user.email, subject: 'Your EsignCenter account deletion code')
   end
 
+  # The account export is ready (Session 8 phase D). Goes to ONE person — the
+  # one who asked — and never to every administrator: an export is somebody's
+  # own request, not an announcement about the account. The link is to the
+  # export PAGE, which requires signing in, never to the file itself: a raw
+  # blob URL in an inbox is a copy of the whole account for anybody who ever
+  # sees that message.
+  def export_ready(export)
+    return if prepare_export(export).blank?
+
+    @expires_on = Accounts::Deletion.format_date(export.expires_at)
+    @days = Accounts::Exports::TTL.in_days.to_i
+    @counts = export.counts
+    @size = ActiveSupport::NumberHelper.number_to_human_size(export.total_bytes)
+
+    mail(to: export.requested_by.email, subject: 'Your EsignCenter account export is ready')
+  end
+
+  # And when it could not be built. Says so plainly and points at the page,
+  # where the Try again button is.
+  def export_failed(export)
+    return if prepare_export(export).blank?
+
+    mail(to: export.requested_by.email, subject: 'Your EsignCenter account export could not be built')
+  end
+
   private
+
+  # Blank when there is nobody to write to: the person who asked can have been
+  # deleted between requesting the export and it finishing.
+  def prepare_export(export)
+    @current_account = export.account
+    mail_account(export.account)
+
+    @export = export
+    @export_url = "#{root_url.delete_suffix('/')}/settings/export"
+    @support_email = Docuseal::SUPPORT_EMAIL
+
+    export.requested_by&.email.presence
+  end
 
   def format_date(time)
     Accounts::Deletion.format_date(time)

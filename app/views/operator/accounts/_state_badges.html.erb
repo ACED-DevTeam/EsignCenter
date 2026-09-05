@@ -1,0 +1,43 @@
+<%# Every state an account can be in, in one place, so the list and the
+    account page can never describe the same account differently.
+    Locals: account, and optionally usage (OperatorConsole::Usage) and
+    read_only_count. %>
+<% usage = local_assigns[:usage] %>
+<% read_only_count = local_assigns[:read_only_count] %>
+<% storage_limit = usage&.limits&.storage_bytes %>
+<div class="flex flex-wrap gap-1 items-center">
+  <% if account.purged? %>
+    <span class="badge badge-neutral whitespace-nowrap" data-state-badge="purged"><%= t('operator_state_purged') %></span>
+  <% elsif account.archived_at? %>
+    <span class="badge badge-neutral whitespace-nowrap" data-state-badge="archived"><%= t('operator_state_archived') %></span>
+  <% end %>
+  <% if account.suspended_at? %>
+    <span class="badge badge-error badge-outline whitespace-nowrap" data-state-badge="suspended">
+      <%= t('operator_state_suspended', reason: t("operator_suspension_reason_#{account.suspension_reason}", default: account.suspension_reason.to_s)) %>
+    </span>
+  <% end %>
+  <% if account.sending_paused_at? %>
+    <span class="badge badge-warning badge-outline whitespace-nowrap" data-state-badge="sending_paused">
+      <%= t('operator_state_sending_paused', reason: t("sending_pause_reason_#{account.sending_pause_reason}", default: account.sending_pause_reason.to_s)) %>
+    </span>
+  <% end %>
+  <% if account.pending_deletion? %>
+    <span class="badge badge-error badge-outline whitespace-nowrap" data-state-badge="pending_deletion">
+      <%= t('operator_state_pending_deletion', date: Accounts::Deletion.format_date(account.purge_scheduled_for)) %>
+    </span>
+  <% end %>
+  <% if account.purge_started_at? && !account.purged? %>
+    <span class="badge badge-error whitespace-nowrap" data-state-badge="purge_claimed"><%= t('operator_state_purge_claimed') %></span>
+  <% end %>
+  <% if read_only_count.to_i.positive? %>
+    <span class="badge badge-ghost whitespace-nowrap" data-state-badge="read_only_members">
+      <%= t('operator_state_read_only_members', count: read_only_count) %>
+    </span>
+  <% end %>
+  <% if storage_limit.present? && usage.storage_bytes > storage_limit %>
+    <span class="badge badge-error badge-outline whitespace-nowrap" data-state-badge="storage_over_cap"><%= t('operator_state_storage_over_cap') %></span>
+  <% end %>
+  <% if !account.purged? && !account.archived_at? && !account.suspended_at? && !account.sending_paused_at? && !account.pending_deletion? %>
+    <span class="badge badge-success badge-outline whitespace-nowrap" data-state-badge="active"><%= t('operator_state_active') %></span>
+  <% end %>
+</div>

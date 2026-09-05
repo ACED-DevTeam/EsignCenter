@@ -19,6 +19,10 @@ Deleting your EsignCenter account is a **90-day decision**.
 
 A reminder email goes out one week before the date.
 
+The confirmation screen leads with **Export first**, which links to
+**Settings → Export** — one zip with everything in the account. See
+[Take your data with you](#take-your-data-with-you-the-account-export).
+
 Two things about the window are worth saying out loud:
 
 * **Your email addresses stay reserved for you** until the purge. Nobody else
@@ -102,6 +106,47 @@ Two rules protect data that is not really abandoned:
 never removes a document, a template or a person (D43). It only changes what
 you can create next.
 
+## Take your data with you (the account export)
+
+Before you delete anything, take a copy. **Settings → Export** builds one zip
+holding everything in the account:
+
+* every template, with the documents you originally uploaded, and a
+  `template.json` describing its fields, its recipients and its folder;
+* every completed signed document, plus the combined copy where there is one;
+* the audit trail PDF for each submission;
+* a `submission.json` per submission (status, recipients, their timestamps and
+  the values they filled in, a count of each kind of event) and one
+  `submissions.csv` covering them all — the same CSV the templates page
+  exports;
+* a `manifest.json` listing every file in the zip with its size and SHA-256
+  checksum, so you can prove nothing was altered on the way to you.
+
+Things worth knowing:
+
+* It is built **in the background**. Ask for it, close the page, and we email
+  the person who asked when it is ready.
+* The download link is **signed and expires after 7 days**, and the file is
+  then deleted automatically. Ask for another whenever you like.
+* The email links to the export **page**, never to the file, so signing in is
+  always required.
+* **One at a time, five a day.** Asking again while one is being built gives
+  you the one that is being built; a finished export less than an hour old is
+  handed back as it is rather than rebuilt.
+* **It always works** — on the free plan, on a suspended account, and on an
+  account that has already asked to be deleted. That is the point of it.
+* A file that has gone missing from storage does not fail the export: it is
+  named in the manifest's `missing` list instead.
+* A **support session cannot use it.** An operator viewing a customer's
+  account as one of its people is refused the export door in both modes: a zip
+  of somebody's entire document store is exactly the access support
+  impersonation exists to make impossible.
+* The **testing sandbox is not included.** A testing child is a separate
+  account and exports separately.
+
+The zips are themselves account data: they are in the purge inventory below,
+rows and files alike.
+
 ## What survives a purge, and why
 
 | Survives | Why |
@@ -140,6 +185,7 @@ explicit list, in this order, children before parents.
 | `webhook_attempts`, `webhook_events`, `webhook_urls` | delete | Outbound integration and its delivery log. |
 | `abuse_flags` | delete | Anti-abuse signals for this account. |
 | `account_counters` | delete | Quota and dedupe counters. |
+| `account_exports` | delete (files first) | Requested exports of the account, and the zip attached to each. The zip holds a copy of *everything*, so its file goes with the attachment walk above and the row goes here. |
 | `account_limit_overrides` | delete | Per-account limit overrides. |
 | `account_accesses` | delete | Last-seen-in-account records. |
 | `account_invites` | delete | Seats held for people who never arrived. |
@@ -345,13 +391,16 @@ and can subscribe again from the billing page.
 | Requesting and cancelling a deletion, and the Stripe cancel | `lib/accounts/deletion.rb` |
 | The emailed confirmation code | `lib/accounts/deletion_codes.rb` |
 | The purge inventory | `lib/accounts/purge.rb` |
+| The export door (limits, reuse) | `lib/accounts/exports.rb` |
+| Building the zip | `lib/accounts/export_archive.rb`, `AccountExportJob` (queue `documents`) |
+| The export page | `app/views/account_exports/show.html.erb` |
 | Dormant rules, warning schedule, purge scheduling | `lib/accounts/retention.rb` |
 | Nightly sweep (`30 4 * * *`) | `config/schedule.yml` → `AccountRetentionJob` |
 | One account's purge | `AccountPurgeJob` |
 | The Stripe-is-down retry | `CancelDeletedSubscriptionJob` |
 | The emails | `app/mailers/account_mailer.rb` |
 | The screens | `app/views/accounts/_danger_zone.html.erb`, `_delete_account_form.html.erb`, `app/views/shared/_navbar_warning.html.erb` |
-| The proofs | `spec/golden/lifecycle_downgrade_spec.rb` |
+| The proofs | `spec/golden/lifecycle_downgrade_spec.rb`, `spec/golden/account_export_spec.rb` |
 
 The subscription we cancel is stamped in Stripe metadata with
 `esigncenter_cancelled = account-deletion` (and
