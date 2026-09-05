@@ -25,6 +25,13 @@ sending pause is `lib/sending_pause.rb`; storage is `lib/quotas/storage.rb`.
 | Spam complaints | 1 | Any customer account | Sending pauses until the operator reviews (section 3). |
 | Hard bounces | 20% of the last 20 sends, once 10 have gone out | Any customer account | Sending pauses until the operator reviews (section 3). |
 
+**Starter templates cost nothing.** The four ready-made documents put into a
+brand-new account at sign-up (see **[docs/signup.md](signup.md)** §5) are
+templates, not documents sent for signature: they spend no completion, no send
+and no open-document allowance, and the account's counters are still at zero
+when the person first signs in. They do occupy a little storage, like any
+other template.
+
 **Who is exempt:** internal and operator accounts, from every row. Their
 test-mode submissions never meter either — test-mode belongs to internal
 accounts only, so nothing a customer does is "test".

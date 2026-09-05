@@ -26,6 +26,9 @@ class UserConfig < ApplicationRecord
   RECEIVE_COMPLETED_EMAIL = 'receive_completed_email'
   RECEIVE_DECLINED_EMAIL = 'receive_declined_email'
   SHOW_APP_TOUR = 'show_app_tour'
+  # Per person, not per account: two colleagues on one account each dismiss
+  # the first-run checklist for themselves (D50).
+  SHOW_FIRST_RUN_CHECKLIST = 'show_first_run_checklist'
 
   belongs_to :user
 

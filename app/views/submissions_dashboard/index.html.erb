@@ -1,6 +1,17 @@
 <% filter_params = params.permit(Submissions::Filter::ALLOWED_PARAMS).compact_blank %>
 <% is_show_tabs = (@pagy.count.nil? || @pagy.count >= 5) || params[:status].present? || filter_params.present? %>
 <% if Docuseal.demo? %><%= render 'shared/demo_alert' %><% end %>
+<%# The two dashboard cards a new or newly-successful customer account sees
+    (Session 10, D50): the three-step first-run checklist and the one-time
+    upgrade nudge after the first signed document. Both partials decide for
+    themselves whether there is anything to show, so the two dashboards ask
+    the same question in the same words. %>
+<% if signed_in? && current_account.customer? %>
+  <% if FirstRunChecklist.show?(account: current_account, user: current_user, can_create_templates: can?(:create, ::Template)) %>
+    <%= render 'dashboard/first_run_checklist' %>
+  <% end %>
+  <%= render 'dashboard/first_completion_prompt' %>
+<% end %>
 <div class="flex justify-between items-center w-full mb-4">
   <div class="flex items-center flex-grow min-w-0">
     <div class="mr-2">

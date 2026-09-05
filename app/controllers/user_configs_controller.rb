@@ -6,7 +6,8 @@ class UserConfigsController < ApplicationController
 
   ALLOWED_KEYS = [
     UserConfig::RECEIVE_COMPLETED_EMAIL,
-    UserConfig::SHOW_APP_TOUR
+    UserConfig::SHOW_APP_TOUR,
+    UserConfig::SHOW_FIRST_RUN_CHECKLIST
   ].freeze
 
   InvalidKey = Class.new(StandardError)

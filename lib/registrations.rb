@@ -83,6 +83,19 @@ module Registrations
       LegalDocuments.record_acceptance!(user, request:, source:, versions:) if saved && source
     end
 
+    # The four starter templates (D50). Enqueued HERE, from the one place both
+    # self-serve doors save through, so the email form and the Google button
+    # seed by construction rather than because each remembered to. Never for
+    # anything else: only an account that was created by this very save gets
+    # them, which is what keeps an invitee joining an existing account — and
+    # any headless caller reusing this method later — out of it.
+    # StarterTemplatesJob holds its own enqueue until this transaction has
+    # committed, and swallows and reports its own failures: nobody's sign-up
+    # fails because a sample document did.
+    if saved && user.account.customer? && user.account.previously_new_record?
+      StarterTemplatesJob.perform_later(user.account_id)
+    end
+
     saved
   rescue ActiveRecord::RecordNotUnique
     user.errors.add(:email, :taken)

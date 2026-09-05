@@ -8,6 +8,17 @@
 <% can_create_templates = can?(:create, ::Template) %>
 <% show_dropzone = can_create_templates && params[:q].blank? && @pagy.pages == 1 && ((@template_folders.size < 10 && @templates.size.zero?) || (@template_folders.size < 7 && @templates.size < 4) || (@template_folders.size < 4 && @templates.size < 7)) %>
 <% if Docuseal.demo? %><%= render 'shared/demo_alert' %><% end %>
+<%# The two dashboard cards a new or newly-successful customer account sees
+    (Session 10, D50): the three-step first-run checklist and the one-time
+    upgrade nudge after the first signed document. Both partials decide for
+    themselves whether there is anything to show, so the two dashboards ask
+    the same question in the same words. %>
+<% if signed_in? && current_account.customer? %>
+  <% if FirstRunChecklist.show?(account: current_account, user: current_user, can_create_templates: can?(:create, ::Template)) %>
+    <%= render 'dashboard/first_run_checklist' %>
+  <% end %>
+  <%= render 'dashboard/first_completion_prompt' %>
+<% end %>
 <dashboard-dropzone>
   <% if can_create_templates %>
     <%= form_for '', url: '', id: form_id = SecureRandom.uuid, method: :post, class: 'hidden', data: { target: 'dashboard-dropzone.form' }, html: { enctype: 'multipart/form-data' } do %>

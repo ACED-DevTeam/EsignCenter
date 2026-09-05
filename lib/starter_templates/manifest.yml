@@ -1,0 +1,389 @@
+# The four starter templates seeded into a brand-new customer account at
+# sign-up (Session 10 A1, D50). GENERATED — do not hand-edit: this file and
+# the PDFs beside it come out of one run of
+# `rake starter_templates:generate` (lib/starter_templates/generator.rb),
+# which lays the pages out with real font metrics and emits each blank's
+# rectangle from where it actually drew it. Areas are the app's normalized
+# 0-1 page coordinates (x/y from the top-left of the page), exactly as
+# Template#fields stores them.
+templates:
+- slug: mutual-nda
+  name: Mutual Non-Disclosure Agreement
+  description: Two parties agree to keep each other's information private before they
+    work together.
+  submitters:
+  - First Party
+  - Second Party
+  fields:
+  - name: First Party name
+    type: text
+    required: true
+    submitter: First Party
+    page: 0
+    area:
+      x: 0.104575
+      "y": 0.17298
+      w: 0.385621
+      h: 0.021465
+  - name: First Party company
+    type: text
+    required: false
+    submitter: First Party
+    page: 0
+    area:
+      x: 0.509804
+      "y": 0.17298
+      w: 0.385621
+      h: 0.021465
+  - name: Second Party name
+    type: text
+    required: true
+    submitter: Second Party
+    page: 0
+    area:
+      x: 0.104575
+      "y": 0.217172
+      w: 0.385621
+      h: 0.021465
+  - name: Second Party company
+    type: text
+    required: false
+    submitter: Second Party
+    page: 0
+    area:
+      x: 0.509804
+      "y": 0.217172
+      w: 0.385621
+      h: 0.021465
+  - name: Effective date
+    type: date
+    required: true
+    submitter: First Party
+    page: 0
+    area:
+      x: 0.104575
+      "y": 0.261364
+      w: 0.385621
+      h: 0.021465
+  - name: First Party signature
+    type: signature
+    required: true
+    submitter: First Party
+    page: 1
+    area:
+      x: 0.104575
+      "y": 0.119949
+      w: 0.382353
+      h: 0.05303
+  - name: Second Party signature
+    type: signature
+    required: true
+    submitter: Second Party
+    page: 1
+    area:
+      x: 0.513072
+      "y": 0.119949
+      w: 0.382353
+      h: 0.05303
+  - name: First Party date signed
+    type: date
+    required: true
+    submitter: First Party
+    page: 1
+    area:
+      x: 0.104575
+      "y": 0.233586
+      w: 0.385621
+      h: 0.021465
+  - name: Second Party date signed
+    type: date
+    required: true
+    submitter: Second Party
+    page: 1
+    area:
+      x: 0.509804
+      "y": 0.233586
+      w: 0.385621
+      h: 0.021465
+- slug: freelance-service-agreement
+  name: Freelance Service Agreement
+  description: A client and a freelancer agree the work, the fee and the start date.
+  submitters:
+  - Client
+  - Contractor
+  fields:
+  - name: Client name
+    type: text
+    required: true
+    submitter: Client
+    page: 0
+    area:
+      x: 0.104575
+      "y": 0.17298
+      w: 0.385621
+      h: 0.021465
+  - name: Client company
+    type: text
+    required: false
+    submitter: Client
+    page: 0
+    area:
+      x: 0.509804
+      "y": 0.17298
+      w: 0.385621
+      h: 0.021465
+  - name: Contractor name
+    type: text
+    required: true
+    submitter: Contractor
+    page: 0
+    area:
+      x: 0.104575
+      "y": 0.217172
+      w: 0.385621
+      h: 0.021465
+  - name: Contractor company
+    type: text
+    required: false
+    submitter: Contractor
+    page: 0
+    area:
+      x: 0.509804
+      "y": 0.217172
+      w: 0.385621
+      h: 0.021465
+  - name: Scope of work
+    type: text
+    required: true
+    submitter: Client
+    page: 0
+    area:
+      x: 0.104575
+      "y": 0.261364
+      w: 0.79085
+      h: 0.042929
+  - name: Fee
+    type: text
+    required: true
+    submitter: Client
+    page: 0
+    area:
+      x: 0.104575
+      "y": 0.32702
+      w: 0.385621
+      h: 0.021465
+  - name: Start date
+    type: date
+    required: true
+    submitter: Client
+    page: 0
+    area:
+      x: 0.509804
+      "y": 0.32702
+      w: 0.385621
+      h: 0.021465
+  - name: Client signature
+    type: signature
+    required: true
+    submitter: Client
+    page: 1
+    area:
+      x: 0.104575
+      "y": 0.119949
+      w: 0.382353
+      h: 0.05303
+  - name: Contractor signature
+    type: signature
+    required: true
+    submitter: Contractor
+    page: 1
+    area:
+      x: 0.513072
+      "y": 0.119949
+      w: 0.382353
+      h: 0.05303
+  - name: Client date signed
+    type: date
+    required: true
+    submitter: Client
+    page: 1
+    area:
+      x: 0.104575
+      "y": 0.233586
+      w: 0.385621
+      h: 0.021465
+  - name: Contractor date signed
+    type: date
+    required: true
+    submitter: Contractor
+    page: 1
+    area:
+      x: 0.509804
+      "y": 0.233586
+      w: 0.385621
+      h: 0.021465
+- slug: media-release
+  name: Photo & Video Release
+  description: One person gives permission for photos, video and audio of them to
+    be used.
+  submitters:
+  - Participant
+  fields:
+  - name: Participant name
+    type: text
+    required: true
+    submitter: Participant
+    page: 0
+    area:
+      x: 0.104575
+      "y": 0.17298
+      w: 0.385621
+      h: 0.021465
+  - name: Project
+    type: text
+    required: true
+    submitter: Participant
+    page: 0
+    area:
+      x: 0.509804
+      "y": 0.17298
+      w: 0.385621
+      h: 0.021465
+  - name: Date
+    type: date
+    required: true
+    submitter: Participant
+    page: 0
+    area:
+      x: 0.104575
+      "y": 0.217172
+      w: 0.385621
+      h: 0.021465
+  - name: Consent initials
+    type: initials
+    required: true
+    submitter: Participant
+    page: 0
+    area:
+      x: 0.104575
+      "y": 0.676768
+      w: 0.250545
+      h: 0.027778
+  - name: I am 18 or older
+    type: checkbox
+    required: true
+    submitter: Participant
+    page: 0
+    area:
+      x: 0.104575
+      "y": 0.719697
+      w: 0.019608
+      h: 0.015152
+  - name: Signature
+    type: signature
+    required: true
+    submitter: Participant
+    page: 0
+    area:
+      x: 0.104575
+      "y": 0.781566
+      w: 0.79085
+      h: 0.05303
+- slug: bill-of-sale
+  name: Personal Property Bill of Sale
+  description: A seller and a buyer record the item, the price and the date it changed
+    hands.
+  submitters:
+  - Seller
+  - Buyer
+  fields:
+  - name: Seller name
+    type: text
+    required: true
+    submitter: Seller
+    page: 0
+    area:
+      x: 0.104575
+      "y": 0.156566
+      w: 0.385621
+      h: 0.021465
+  - name: Buyer name
+    type: text
+    required: true
+    submitter: Buyer
+    page: 0
+    area:
+      x: 0.509804
+      "y": 0.156566
+      w: 0.385621
+      h: 0.021465
+  - name: Item description
+    type: text
+    required: true
+    submitter: Seller
+    page: 0
+    area:
+      x: 0.104575
+      "y": 0.200758
+      w: 0.79085
+      h: 0.042929
+  - name: Price
+    type: text
+    required: true
+    submitter: Seller
+    page: 0
+    area:
+      x: 0.104575
+      "y": 0.266414
+      w: 0.385621
+      h: 0.021465
+  - name: Date of sale
+    type: date
+    required: true
+    submitter: Seller
+    page: 0
+    area:
+      x: 0.509804
+      "y": 0.266414
+      w: 0.385621
+      h: 0.021465
+  - name: Seller signature
+    type: signature
+    required: true
+    submitter: Seller
+    page: 0
+    area:
+      x: 0.104575
+      "y": 0.688131
+      w: 0.382353
+      h: 0.05303
+  - name: Buyer signature
+    type: signature
+    required: true
+    submitter: Buyer
+    page: 0
+    area:
+      x: 0.513072
+      "y": 0.688131
+      w: 0.382353
+      h: 0.05303
+  - name: Seller date signed
+    type: date
+    required: true
+    submitter: Seller
+    page: 0
+    area:
+      x: 0.104575
+      "y": 0.801768
+      w: 0.385621
+      h: 0.021465
+  - name: Buyer date signed
+    type: date
+    required: true
+    submitter: Buyer
+    page: 0
+    area:
+      x: 0.509804
+      "y": 0.801768
+      w: 0.385621
+      h: 0.021465

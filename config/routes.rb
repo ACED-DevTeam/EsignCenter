@@ -80,6 +80,8 @@ Rails.application.routes.draw do
   resources :account_configs, only: %i[create destroy]
   resources :account_custom_fields, only: %i[create]
   resources :user_configs, only: %i[create]
+  # Putting away the one-time "your first document is signed" banner (D50).
+  resource :first_completion_prompt, only: %i[destroy]
   resources :encrypted_user_configs, only: %i[destroy]
   resources :timestamp_server, only: %i[create]
   resources :dashboard, only: %i[index]

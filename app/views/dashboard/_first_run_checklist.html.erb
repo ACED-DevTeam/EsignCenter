@@ -1,0 +1,49 @@
+<%# The first-run checklist (D50): three steps to a signed document, at the top
+    of both dashboards for a new customer account. Every done-state is a live
+    query (lib/first_run_checklist.rb), so it ticks itself whichever way the
+    work was done — dashboard, API or share link — and the card takes itself
+    away once all three are done, 30 days after sign-up, or when this person
+    dismisses it. Each step links to the action that finishes it: the upload
+    button for the first, the send page of the first template for the other
+    two. The dismiss button is the app tour's pattern — a plain button_to,
+    with `remove-on-event` taking the card off the page so the person is not
+    left looking at what they just dismissed. %>
+<% steps = FirstRunChecklist.steps_for(current_account) %>
+<% done_count = FirstRunChecklist.done_count(steps) %>
+<% first_template = current_account.templates.active.order(:id).first %>
+<% send_path = first_template ? template_path(first_template) : root_path %>
+<% step_paths = { 'choose' => templates_path(anchor: 'templates_upload_button'), 'signer' => send_path, 'send' => send_path } %>
+<div id="first_run_checklist" class="card bg-base-100 border border-base-300 mb-6" data-first-run-checklist>
+  <div class="card-body p-5 md:p-6 gap-4">
+    <div class="flex items-start justify-between gap-3">
+      <div class="min-w-0">
+        <p class="text-lg font-semibold leading-tight" dir="auto"><%= t('first_run_checklist_title') %></p>
+        <p class="text-sm text-base-content/70 mt-1" dir="auto"><%= t('first_run_checklist_progress', done: done_count, total: steps.size) %></p>
+      </div>
+      <remove-on-event data-on="submit" data-selector-id="first_run_checklist" class="flex-none">
+        <%= button_to user_configs_path, params: { user_config: { key: UserConfig::SHOW_FIRST_RUN_CHECKLIST, value: false } }, method: :post, class: 'btn btn-ghost btn-sm btn-circle', form_class: 'inline', 'aria-label': t('dismiss'), title: t('dismiss'), data: { first_run_dismiss: true } do %>
+          <%= svg_icon('x', class: 'w-5 h-5') %>
+        <% end %>
+      </remove-on-event>
+    </div>
+    <ol class="grid gap-3 md:grid-cols-3">
+      <% steps.each_with_index do |(key, is_done), index| %>
+        <li class="contents">
+          <a href="<%= step_paths[key] %>" class="flex items-start gap-3 h-full rounded-2xl border p-4 transition-colors <%= is_done ? 'border-base-300 bg-base-200/60' : 'border-base-300 hover:border-neutral hover:bg-base-200/40' %>" data-first-run-step="<%= key %>" data-done="<%= is_done %>">
+            <span class="flex-none w-7 h-7 rounded-full flex items-center justify-center text-sm font-semibold <%= is_done ? 'bg-neutral text-white' : 'bg-base-200 text-base-content/70' %>">
+              <% if is_done %>
+                <%= svg_icon('check', class: 'w-4 h-4 stroke-2') %>
+              <% else %>
+                <%= index + 1 %>
+              <% end %>
+            </span>
+            <span class="min-w-0">
+              <span class="block font-medium leading-tight <%= 'line-through text-base-content/60' if is_done %>" dir="auto"><%= t("first_run_step_#{key}_title") %></span>
+              <span class="block text-sm text-base-content/70 mt-1" dir="auto"><%= t("first_run_step_#{key}_hint") %></span>
+            </span>
+          </a>
+        </li>
+      <% end %>
+    </ol>
+  </div>
+</div>
