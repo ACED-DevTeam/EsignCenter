@@ -272,7 +272,11 @@ RSpec.describe 'Support impersonation', type: :request do
         # means to test.
         path = route.path.spec.to_s.sub('(.:format)', '').gsub(/\*\w+/, 'x').gsub(/:[a-z_]+/, 'x')
 
-        [verb.downcase.to_sym, path, "#{runtime_controller_path(controller)}##{route.defaults[:action]}"]
+        audit_path = route.path.spec.to_s.sub('(.:format)', '')
+                          .gsub(/:(?:slug|token|signed_uuid|signed_key|signed_id|encoded_key)\b/, '[FILTERED]')
+                          .gsub(/\*\w+/, 'x').gsub(/:[a-z_]+/, 'x')
+
+        [verb.downcase.to_sym, path, "#{runtime_controller_path(controller)}##{route.defaults[:action]}", audit_path]
       end.uniq
     end
 
@@ -386,7 +390,7 @@ RSpec.describe 'Support impersonation', type: :request do
 
       swept = 0
 
-      write_routes.each do |verb, path, target|
+      write_routes.each do |verb, path, target, audit_path|
         public_send(verb, path, as: :json)
 
         expect(response).to have_http_status(:forbidden),
@@ -394,7 +398,7 @@ RSpec.describe 'Support impersonation', type: :request do
 
         event = last_event
         expect(event.action).to eq('impersonation.refused'), "#{target} was refused with no audit row"
-        expect(event.details).to include('path' => path, 'mode' => SupportImpersonation::READ_ONLY_MODE,
+        expect(event.details).to include('path' => audit_path, 'mode' => SupportImpersonation::READ_ONLY_MODE,
                                          'method' => verb.to_s.upcase)
         expect(event.details['target']).to end_with("##{target.split('#').last}")
         expect(event.account).to eq(account)
@@ -596,7 +600,7 @@ RSpec.describe 'Support impersonation', type: :request do
 
         swept = 0
 
-        write_routes.each do |verb, path, target|
+        write_routes.each do |verb, path, target, audit_path|
           next unless refused_in_edit?(target)
 
           public_send(verb, path, as: :json)
@@ -606,7 +610,7 @@ RSpec.describe 'Support impersonation', type: :request do
 
           event = last_event
           expect(event.action).to eq('impersonation.refused'), "#{target} was refused with no audit row"
-          expect(event.details).to include('path' => path, 'mode' => SupportImpersonation::EDIT_MODE,
+          expect(event.details).to include('path' => audit_path, 'mode' => SupportImpersonation::EDIT_MODE,
                                            'method' => verb.to_s.upcase)
           expect(event.account).to eq(account)
 

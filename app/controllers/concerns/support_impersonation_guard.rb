@@ -398,7 +398,7 @@ module SupportImpersonationGuard
       operator: true_user, action:,
       account: Account.find_by(id: state['account_id']),
       subject: User.find_by(id: state['user_id']), reason: state['reason'],
-      details: { path: request.path, method: request.request_method,
+      details: { path: SupportImpersonation.audit_path(request), method: request.request_method,
                  target: "#{controller_path}##{action_name}", mode: state['mode'] }.merge(extra),
       request:
     )
