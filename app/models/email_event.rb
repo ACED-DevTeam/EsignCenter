@@ -40,7 +40,12 @@ class EmailEvent < ApplicationRecord
 
   before_validation :maybe_set_account, on: :create
 
+  # The account this message belongs to. Every emailable answers it the same
+  # way except the one that IS an account: the SaaS lifecycle mail attributes
+  # its send rows to the account itself (Session 10, review 8 C3), because
+  # there is no submitter and no user behind a letter addressed to whoever
+  # administers the account.
   def maybe_set_account
-    self.account ||= emailable.account
+    self.account ||= emailable.is_a?(Account) ? emailable : emailable.account
   end
 end

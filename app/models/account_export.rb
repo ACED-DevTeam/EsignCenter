@@ -51,6 +51,11 @@ class AccountExport < ApplicationRecord
   # upload remains discoverable by worker cleanup, retention and account purge.
   STAGED_BLOB_ID = 'staged_blob_id'
 
+  # Which worker attempt owns a `running` row (review 8, D5). Written by the
+  # claim, read by the next claim: a Sidekiq retry carries the same id and
+  # resumes its own build, and anybody else is refused.
+  ATTEMPT_KEY = 'attempt_id'
+
   belongs_to :account
   # Optional, and the foreign key nullifies: the person who asked can lose
   # their seat or be deleted long before the file expires, and the export is
@@ -66,6 +71,10 @@ class AccountExport < ApplicationRecord
 
   def in_progress?
     status.in?(IN_PROGRESS)
+  end
+
+  def attempt_owner
+    summary[ATTEMPT_KEY].presence
   end
 
   def ready?

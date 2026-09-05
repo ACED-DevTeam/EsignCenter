@@ -2,7 +2,7 @@
 
 # Evidence of a job's latest attempt, separate from the scheduler heartbeat.
 module SchedulerStamps
-  JOB_NAMES = %w[stripe_reconciliation billing_lifecycle account_retention comp_expiry].freeze
+  JOB_NAMES = %w[stripe_reconciliation billing_lifecycle account_retention comp_expiry housekeeping].freeze
   KEY_PREFIX = 'esigncenter:scheduler:last_run:'
 
   module_function

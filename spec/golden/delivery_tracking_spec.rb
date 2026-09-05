@@ -144,13 +144,18 @@ RSpec.describe 'Postmark delivery tracking', type: :request do
     expect(SendingPause).to have_received(:evaluate!).once
   end
 
-  it 'ignores unknown types and unknown or absent metadata' do
+  # A message uuid we have never issued a send row for is PARKED rather than
+  # ignored now (review 8, D8) — that case has its own examples below. What is
+  # still ignored is a callback this application can never attribute at all:
+  # an event type we do not record, and a payload with no message uuid on it
+  # (Postmark's own webhook verification ping).
+  it 'ignores unknown types and absent metadata' do
     [payload('delivery').merge('RecordType' => 'FutureEvent'),
-     payload('delivery').merge('Metadata' => { 'message-uuid' => SecureRandom.uuid }),
      payload('delivery').except('Metadata')].each do |record|
       expect { deliver(record) }.not_to change(EmailEvent, :count)
       expect(response).to have_http_status(:ok)
       expect(response.parsed_body).to eq('ignored' => true)
+      expect(PendingEmailEvent.count).to eq(0)
     end
   end
 
@@ -385,5 +390,227 @@ RSpec.describe 'Postmark delivery tracking', type: :request do
     mailer.set_message_uuid
 
     expect(mailer.message['X-PM-Metadata-message-uuid'].value).to eq(mailer.message['X-Message-Uuid'].value)
+  end
+
+  # ---------------------------------------------------------------------------
+  # The SaaS lifecycle mail (Session 10; review 8, C3)
+  #
+  # "We suspended this account on day 14" is only half a sentence. The other
+  # half is "and here is the delivery record of the warning we sent first",
+  # and until this session there was none: the dunning letters, the suspension
+  # notice, invitations and quota warnings set no message metadata, so no send
+  # row was written and every Postmark event about them was dropped.
+  # ---------------------------------------------------------------------------
+  describe 'the platform’s own letters to a customer' do
+    let!(:admin) { create(:user, :admin, account:, email: 'owner@example.com') }
+
+    # Every customer-facing lifecycle mailer, driven the way its callers drive
+    # it. A mailer added to this family and NOT tracked fails here.
+    def lifecycle_mails
+      { 'billing_payment_failed' => -> { BillingMailer.payment_failed(account, day: 0) },
+        'billing_suspended' => -> { BillingMailer.suspended(account) },
+        'quota_completions_warning' => -> { QuotaMailer.completions_warning(account) },
+        'quota_sending_paused' => -> { QuotaMailer.sending_paused(account, 'complaint') },
+        'account_deletion_scheduled_to' => -> { AccountMailer.deletion_scheduled(account) },
+        'account_invite_invitation' => lambda {
+          # `seats_bought` skips the seat check: this example is about the
+          # message, not about whether a free account may invite anybody.
+          invite = AccountInvites.reserve!(account:, email: 'joiner@example.com', role: 'admin',
+                                           invited_by: admin, seats_bought: 1)
+          AccountInviteMailer.invitation(invite, invite.raw_token)
+        },
+        'settings_smtp_successful_setup' => -> { SettingsMailer.smtp_successful_setup(admin.email, account) } }
+    end
+
+    it 'writes one send row per letter, attributed to the account itself' do
+      lifecycle_mails.each do |tag, build|
+        expect { build.call.deliver_now! }.to change(EmailEvent, :count).by(1)
+
+        event = EmailEvent.order(:id).last
+
+        expect(event).to have_attributes(tag:, event_type: 'send', emailable: account, account:)
+        expect(event.message_id).to be_present
+      end
+    end
+
+    # The whole point of the send row: the bounce that follows it is
+    # attributable instead of being dropped as `{ ignored: true }`.
+    it 'records a bounce of a dunning letter against the account' do
+      BillingMailer.payment_failed(account, day: 0).deliver_now!
+      sent = EmailEvent.order(:id).last
+
+      record = payload('bounce_hard').merge('Metadata' => { 'message-uuid' => sent.message_id },
+                                            'Email' => admin.email, 'Recipient' => admin.email)
+
+      expect { deliver(record) }.to change(EmailEvent, :count).by(1)
+      expect(response.parsed_body).to eq('recorded' => true)
+      expect(EmailEvent.order(:id).last).to have_attributes(event_type: 'permanent_bounce', emailable: account,
+                                                            account:, tag: 'billing_payment_failed')
+    end
+
+    # And the line that must NOT be crossed: an account is never stopped from
+    # sending because a letter WE sent THEM bounced. The pause is about the
+    # mail an account sends its signers.
+    it 'never lets a lifecycle bounce or complaint feed the abuse pause' do
+      stub_const('Quotas::Limits::BOUNCE_MIN_SENDS', 1)
+      stub_const('Quotas::Limits::BOUNCE_PAUSE_RATE', 0.1)
+
+      BillingMailer.payment_failed(account, day: 0).deliver_now!
+      sent = EmailEvent.order(:id).last
+
+      %w[bounce_hard spam_complaint].each do |fixture|
+        record = payload(fixture).merge('Metadata' => { 'message-uuid' => sent.message_id },
+                                        'ID' => "lifecycle-#{fixture}",
+                                        'Email' => admin.email, 'Recipient' => admin.email)
+        deliver(record)
+
+        expect(response.parsed_body).to eq('recorded' => true)
+      end
+
+      expect(SendingPause.paused?(account)).to be(false)
+      expect(account.reload.abuse_flags.open).to be_empty
+      expect(submitter.submission.submission_events).to be_empty
+    end
+
+    # The maths as well as the trigger: lifecycle deliveries must not dilute
+    # the signer-mail window either, or a chatty billing month would quietly
+    # raise the number of signer bounces an account can have.
+    it 'keeps lifecycle deliveries out of the bounce window' do
+      stub_const('Quotas::Limits::BOUNCE_MIN_SENDS', 4)
+      stub_const('Quotas::Limits::BOUNCE_PAUSE_RATE', 0.5)
+
+      4.times { BillingMailer.payment_failed(account, day: 0).deliver_now! }
+
+      # Four deliveries exist, but only the one signer send counts, so the
+      # window is under BOUNCE_MIN_SENDS and no rate can be computed at all.
+      expect(EmailEvent.where(account:, event_type: 'send').count).to eq(5)
+      expect(SendingPause.send(:recent_deliveries, [account.id]).size).to eq(1)
+      expect(SendingPause.bounce_rate(account)).to be_nil
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # A1: the resume watermark
+  # ---------------------------------------------------------------------------
+  describe 'resuming a paused account' do
+    def bounce_three_of_ten!
+      sends = [send_event] + Array.new(9) do
+        create(:email_event, account:, emailable: submitter, event_type: 'send', email: 'signer@example.com')
+      end
+
+      sends.first(3).each_with_index do |sent, index|
+        deliver(payload('bounce_hard').merge('ID' => 800 + index,
+                                             'Metadata' => { 'message-uuid' => sent.message_id }))
+      end
+    end
+
+    before do
+      stub_const('Quotas::Limits::BOUNCE_MIN_SENDS', 10)
+      stub_const('Quotas::Limits::BOUNCE_PAUSE_RATE', 0.2)
+    end
+
+    it 'starts the bounce window again, so the same bounces cannot re-pause it' do
+      bounce_three_of_ten!
+
+      expect(SendingPause.paused?(account)).to be(true)
+
+      SendingPause.resume!(account)
+
+      expect(account.reload.sending_resumed_at).to be_present
+      # The window is empty: every delivery in it happened before the operator
+      # looked at the account and decided.
+      expect(SendingPause.bounce_rate(account)).to be_nil
+      expect(SendingPause.send(:recent_deliveries, [account.id])).to be_empty
+
+      # And one more bounce of the SAME old mail does not put it back.
+      deliver(payload('bounce_hard').merge('ID' => 'after-resume',
+                                           'Metadata' => { 'message-uuid' => send_event.message_id }))
+
+      expect(response.parsed_body).to eq('recorded' => true)
+      expect(SendingPause.paused?(account)).to be(false)
+    end
+
+    it 'still pauses on bounces earned after the resume' do
+      bounce_three_of_ten!
+      SendingPause.resume!(account)
+
+      fresh = Array.new(10) do
+        create(:email_event, account:, emailable: submitter, event_type: 'send', email: 'signer@example.com',
+                             event_datetime: 1.minute.from_now)
+      end
+
+      fresh.first(3).each_with_index do |sent, index|
+        deliver(payload('bounce_hard').merge('ID' => 700 + index,
+                                             'Metadata' => { 'message-uuid' => sent.message_id }))
+      end
+
+      expect(SendingPause.paused?(account)).to be(true)
+      expect(account.reload.sending_pause_reason).to eq('bounce_rate')
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # D8: a callback that arrives before its own send row
+  # ---------------------------------------------------------------------------
+  describe 'a callback that overtakes its send row' do
+    let(:early_uuid) { SecureRandom.uuid }
+    let(:early_bounce) { payload('bounce_hard').merge('Metadata' => { 'message-uuid' => early_uuid }) }
+
+    it 'parks it instead of dropping it, and parks a retry only once' do
+      expect { deliver(early_bounce) }.to change(PendingEmailEvent, :count).by(1)
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body).to eq('parked' => true)
+      expect(EmailEvent.where(event_type: 'permanent_bounce').count).to eq(0)
+
+      expect { deliver(early_bounce) }.not_to change(PendingEmailEvent, :count)
+      expect(response.parsed_body).to eq('parked' => true)
+
+      parked = PendingEmailEvent.sole
+
+      expect(parked.provider_message_id).to eq(early_uuid)
+      expect(parked.record['RecordType']).to eq('Bounce')
+    end
+
+    # The send row is written by an observer that runs after the message has
+    # been handed over, so THIS is the moment the parked event belongs to.
+    it 'attributes it the moment the send row is written' do
+      deliver(early_bounce)
+
+      # The mail is built with the uuid the webhook already named — which is
+      # exactly the ordering being reproduced: the callback came back before
+      # the observer wrote the row for that message.
+      allow(SecureRandom).to receive(:uuid).and_return(early_uuid)
+      submitter.update!(email: 'signer@example.com')
+      SubmitterMailer.invitation_email(submitter).deliver_now!
+
+      expect(PendingEmailEvent.count).to eq(0)
+
+      bounce = EmailEvent.where(event_type: 'permanent_bounce').sole
+
+      expect(bounce).to have_attributes(message_id: early_uuid, emailable: submitter, account:)
+      expect(submitter.submission.submission_events.map(&:event_type)).to include('bounce_email')
+    end
+
+    it 'is attributed by the hourly sweep when the send row lands another way' do
+      deliver(early_bounce)
+
+      create(:email_event, account:, emailable: submitter, event_type: 'send',
+                           message_id: early_uuid, email: 'signer@example.com')
+
+      expect { HousekeepingJob.new.perform }.to change(PendingEmailEvent, :count).by(-1)
+      expect(EmailEvent.where(event_type: 'permanent_bounce').sole.message_id).to eq(early_uuid)
+      expect(SchedulerStamps.all['housekeeping']).to include('outcome' => 'ok', 'error' => nil)
+    end
+
+    it 'drops a parked callback whose send row never came, and keeps a fresh one waiting' do
+      deliver(early_bounce)
+      PendingEmailEvent.sole.update!(created_at: (PendingEmailEvent::MAX_WAIT + 1.day).ago)
+      deliver(payload('bounce_hard').merge('ID' => 'second-early',
+                                           'Metadata' => { 'message-uuid' => SecureRandom.uuid }))
+
+      expect { HousekeepingJob.new.perform }.to change(PendingEmailEvent, :count).by(-1)
+      expect(PendingEmailEvent.sole.provider_message_id).not_to eq(early_uuid)
+      expect(EmailEvent.where(event_type: 'permanent_bounce').count).to eq(0)
+    end
   end
 end

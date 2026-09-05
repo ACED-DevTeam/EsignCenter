@@ -535,6 +535,41 @@ RSpec.describe 'Operator console', type: :request do
       expect(last_event.action).to eq('sending.resume')
     end
 
+    # A1 (review 8). The Resume button lifted the pause and the account was
+    # back inside the minute: the bounce window it is judged by still held the
+    # very bounces that caused it, so the next one re-paused immediately. The
+    # button now moves the watermark, which is what makes it a real resume.
+    it 'really lifts a bounce-rate pause: the bounces it was paused for cannot re-pause it' do
+      stub_const('Quotas::Limits::BOUNCE_MIN_SENDS', 4)
+      stub_const('Quotas::Limits::BOUNCE_PAUSE_RATE', 0.5)
+
+      owner = create(:user, :admin, account:)
+      template = create(:template, account:, author: owner)
+      submitter = create(:submission, :with_submitters, template:, created_by_user: owner).submitters.first
+      sends = Array.new(4) do
+        create(:email_event, account:, emailable: submitter, event_type: 'send', email: submitter.email)
+      end
+      bounce = nil
+      sends.first(2).each do |sent|
+        bounce = create(:email_event, account:, emailable: submitter, event_type: 'permanent_bounce',
+                                      message_id: sent.message_id, email: sent.email)
+      end
+
+      SendingPause.evaluate!(account, event: bounce)
+
+      expect(account.reload.sending_paused_at).to be_present
+
+      post resume_sending_operator_account_path(account), params: reason_params
+
+      expect(account.reload.sending_paused_at).to be_nil
+      expect(SendingPause.bounce_rate(account)).to be_nil
+
+      # The same evidence, presented again, changes nothing.
+      SendingPause.evaluate!(account, event: bounce)
+
+      expect(account.reload.sending_paused_at).to be_nil
+    end
+
     it 'refuses to resume sending that was never paused' do
       post resume_sending_operator_account_path(account), params: reason_params
 
@@ -576,6 +611,10 @@ RSpec.describe 'Operator console', type: :request do
     end
 
     describe 'purge now' do
+      def queued_purges
+        Sidekiq::Queues.jobs_by_queue.values.flatten.count { |job| job.to_json.include?('AccountPurgeJob') }
+      end
+
       before do
         account.update!(deletion_requested_at: 91.days.ago, purge_scheduled_for: 1.day.ago)
       end
@@ -587,6 +626,25 @@ RSpec.describe 'Operator console', type: :request do
         queued = Sidekiq::Queues.jobs_by_queue.values.flatten.select { |job| job.to_json.include?('AccountPurgeJob') }
         expect(queued.size).to eq(1)
         expect(last_event.action).to eq('purge.run')
+      end
+
+      # A2 (review 8). The audit row and the enqueue used to be in one
+      # transaction with Sidekiq outside it, so a COMMIT that failed after the
+      # enqueue left the one irreversible action in the queue with no record of
+      # who asked for it. The job now enqueues only when the decision commits,
+      # declared on the job so every door that starts a purge inherits it.
+      it 'enqueues nothing when the transaction that decided the purge rolls back' do
+        expect do
+          ApplicationRecord.transaction do
+            AccountPurgeJob.perform_later(account.id)
+
+            raise ActiveRecord::Rollback
+          end
+        end.not_to(change { queued_purges })
+
+        expect do
+          ApplicationRecord.transaction { AccountPurgeJob.perform_later(account.id) }
+        end.to(change { queued_purges }.by(1))
       end
 
       it 'refuses a name that does not match and queues nothing' do
@@ -779,6 +837,32 @@ RSpec.describe 'Operator console', type: :request do
 
       expect(response).to have_http_status(:unprocessable_content)
       expect(AccountLimitOverride.count).to eq(0)
+    end
+
+    # B-L4 (review 1). `"ten".to_i` is 0, and 0 is a real cap here — "this
+    # account may not complete a single document this month". A typo used to
+    # save cleanly as the harshest limit in the form, with an audit row saying
+    # the operator had chosen it.
+    it 'refuses a limit that is not a number instead of reading it as zero' do
+      { { completions_per_month: 'ten' } => ['completions per month', 'ten'],
+        { seats: '4 seats' } => ['seats', '4 seats'],
+        { storage_gb: 'lots' } => ['storage (GB)', 'lots'],
+        { fair_use_per_seat: '1e3' } => ['fair use per seat', '1e3'] }.each do |limits, (field, value)|
+        patch limits_operator_account_path(account), params: reason_params(limits:)
+
+        expect(response).to have_http_status(:unprocessable_content), limits.inspect
+        expect(response.body).to include(escaped('operator_refused_limit_not_a_number', field:, value:))
+        expect(AccountLimitOverride.count).to eq(0)
+        expect(OperatorEvent.count).to eq(0)
+      end
+    end
+
+    # And the decimal the storage field is actually typed in still works.
+    it 'accepts a fractional number of gigabytes' do
+      patch limits_operator_account_path(account), params: reason_params(limits: { storage_gb: '1.5' })
+
+      expect(response).to redirect_to(operator_account_path(account))
+      expect(Quotas.limits_for(account.reload).storage_bytes).to eq((1.5 * 1.gigabyte).round)
     end
   end
 
@@ -1536,6 +1620,36 @@ RSpec.describe 'Operator console', type: :request do
         expect(target.reload.account_subscription.stripe_subscription_id).to be_nil
       end
 
+      # B-L6 (review 1), confirmed rather than assumed: EVERY refusal of an
+      # adoption onto an account that has never bought anything leaves the
+      # account exactly as it was. The row the Linker needs is created inside
+      # the action's transaction, so a refusal — from the pre-checks, from
+      # Stripe's answer, or from the locked re-read — takes it away again.
+      # An empty `cancelled/none` subscription row left behind would be a row
+      # the billing page and the reconciliation sweep both have to explain.
+      it 'leaves no half-made subscription row behind, whichever refusal it meets' do
+        stub_adoptable(subscription_b, metadata: { StripeBilling::SubscriptionPolicy::ACCOUNT_TAG_KEY =>
+                                                     create(:account, name: 'Payer Co').id.to_s })
+
+        post operator_adopt_stripe_subscription_path,
+             params: reason_params(account_id: target.id, subscription_id: subscription_b)
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(target.reload.account_subscription).to be_nil
+
+        # And a refusal from Stripe itself, which is raised further in.
+        stub_request(:get, %r{\Ahttps://api\.stripe\.com/v1/subscriptions/#{Regexp.escape(subscription_b)}})
+          .to_return(status: 404, body: { error: { code: 'resource_missing', type: 'invalid_request_error' } }.to_json,
+                     headers: { 'Content-Type' => 'application/json' })
+
+        post operator_adopt_stripe_subscription_path,
+             params: reason_params(account_id: target.id, subscription_id: subscription_b)
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(target.reload.account_subscription).to be_nil
+        expect(OperatorEvent.where(action: 'stripe.adopt').count).to eq(0)
+      end
+
       # Untagged, on a customer no account holds: nothing proves whose it is,
       # so the operator has to say out loud that they have checked — and the
       # refusal leaves no half-made subscription row behind.
@@ -1864,6 +1978,22 @@ RSpec.describe 'Operator console', type: :request do
       expect(response).to have_http_status(:unprocessable_content)
       expect(OperatorConfigs.fetch(OperatorAlert::EMAIL_KEY)).to be_blank
       expect(OperatorEvent.where(action: 'settings.update').count).to eq(0)
+    end
+
+    # B-L5 (review 1). Setting an address on a deployment that has never been
+    # seeded says "run rake operator:seed"; CLEARING one used to answer
+    # "Settings saved" having done nothing at all — and leave an audit row
+    # claiming the change. Both ways round now tell the same truth.
+    it 'says so when there is no operator account to store the setting on' do
+      allow(OperatorConfigs).to receive(:account).and_return(nil)
+
+      ['alerts@processorteam.com', ''].each do |address|
+        patch operator_settings_path, params: reason_params(operator_alert_email: address)
+
+        expect(response).to have_http_status(:unprocessable_content), address.inspect
+        expect(response.body).to include(escaped('operator_refused_no_operator_account'))
+        expect(OperatorEvent.where(action: 'settings.update').count).to eq(0)
+      end
     end
   end
 

@@ -609,6 +609,30 @@ A complaint pauses customer sending, as does a high hard-bounce rate. Internal a
 [Sending pause](quotas-and-limits.md#3-the-sending-pause-abuse-policy)
 for how to investigate and resume sending.
 
+**Our own letters to the customer are tracked too, and never pause them.**
+The billing reminders, the suspension notice, team invitations and quota
+warnings are recorded exactly like signer mail, so "we suspended this account
+on day 14 and the warning bounced" is a question the operator console can
+answer. Those events are attributed to the account rather than to a signer,
+and they are deliberately left out of the sending-pause maths: an account is
+never stopped from sending because a letter *we* sent *them* bounced. A
+resume also stamps the account, and the bounce window starts again from that
+moment — the deliveries an operator has already looked at cannot re-pause the
+account the minute it is let go.
+
+**A callback that arrives before its own send row is kept, not dropped.**
+The send row is written after the message has been handed to Postmark, so a
+fast bounce can genuinely beat it. Such a callback is parked in
+`pending_email_events`, keyed by the message UUID, and attributed the instant
+the send row is written; the hourly housekeeping job replays anything left
+over and drops what has waited more than three days (which means no send row
+is ever coming — worth investigating, because it usually means a mailer is
+not being tracked at all). The endpoint answers `{"parked": true}` for those,
+and still ignores a callback carrying no message UUID of ours, so a Postmark
+verification ping creates nothing. The alternative design — answering 500 so
+Postmark retries — was rejected: it loses the event once the retry schedule
+runs out, and it makes a healthy endpoint look broken.
+
 ## 4. Health check and scheduler heartbeat
 
 `GET https://<your host>/up` is the health check. It needs no login, sets no
@@ -675,9 +699,10 @@ deploy).
 | `scheduler_heartbeat` | every minute | Writes the timestamp `/up` reports. | Nothing time-based is running at all — see the heartbeat notes above. |
 | `stripe_reconciliation` | `0 6 * * *` (06:00 UTC) | Re-reads every Stripe subscription, repairs drift, cancels duplicate subscriptions, settles refunds an earlier attempt owed, re-enqueues stuck webhook events. Emails the operator **once** if it had anything to fix. | The app's idea of who is paying drifts from Stripe's until it runs again. Safe to run by hand: `StripeReconciliationJob.new.perform` in the console. It is idempotent. |
 | `billing_lifecycle` | `15 * * * *` (hourly) | The dunning clock: past-due reminder emails on days 0, 3, 7 and 13, the suspension on day 14, and the seats of invitations nobody accepted (plus any seat hand-back Stripe refused earlier). | Nobody is suspended and nobody is warned; accounts keep paid features they are not paying for, and lapsed invitations keep holding seats the customer is billed for. Hourly, not daily, because day 14 is a deadline that decides whether an account can write. |
+| `housekeeping` | `5 * * * *` (hourly) | The hourly tidy-up: closes a support session the operator walked away from (writes the audited `expired` ending, so the customer's Support-access card stops saying "In progress"), and replays or drops Postmark callbacks parked because they arrived before their own send row. | The customer's support-access history keeps sessions that ended an hour ago marked as still running, and an early webhook waits in `pending_email_events` until the next tick. Nothing is lost either way. |
 | `account_retention` | `30 4 * * *` (04:30 UTC) | The 90-day deletion clock and the dormant-account clock: warning emails (60/30/7 days before a dormancy deletion, one week before a scheduled one) and the purges whose date has passed — plus the account-export housekeeping: a ready export's zip is deleted the night its seven days are up, a failed export's half-built file is cleared up a day later, and a build whose worker died is released so the account's export door opens again. Every sweep runs even if another raises; the job then ends in an error, so the stamp says which night was incomplete. See **docs/account-deletion.md**. | Nothing is destroyed early — every deadline simply slips until it runs. Deletions and dormancy warnings are late, never wrong. But export zips — a copy of a whole account — stay in the bucket past their advertised seven days, and an export whose worker died keeps that account's export button stuck on "being built" until it runs. |
 
-All four are safe to re-run: each decides from the clock and its own dedupe
+All five are safe to re-run: each decides from the clock and its own dedupe
 counters, so a catch-up run after an outage sends what was missed once, not
 once per missed tick. If the billing sweep first catches up after day 14, it
 sends the missed day-13 reminder alongside the suspension notice, once each.

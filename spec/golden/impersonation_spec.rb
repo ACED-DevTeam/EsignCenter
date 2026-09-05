@@ -1091,6 +1091,27 @@ RSpec.describe 'Support impersonation', type: :request do
       expect(events('impersonation.action')).to be_empty
     end
 
+    # B3 (review 8). The row was written; the COUNTER was not — so a session
+    # the ability layer turned away five times reported "1 blocked" on the way
+    # out, and the customer's Support-access card printed that number. The
+    # count the customer is shown has to be the count of rows in their own log.
+    it 'counts an ability-layer refusal towards the total the customer is shown' do
+      elsewhere = create(:account, name: 'Somebody Else')
+      stranger = create(:template, account: elsewhere, author: create(:user, :admin, account: elsewhere))
+
+      start_edit!
+
+      2.times { put template_path(stranger), params: { template: { name: 'Renamed by support' } } }
+      delete template_path(template), params: { permanently: 'true' } # refused by the request rule
+
+      expect(session_state['refused_count']).to eq(3)
+
+      delete operator_current_impersonation_path
+
+      expect(events('impersonation.refused').count).to eq(3)
+      expect(events('impersonation.end').first.details).to include('refused_count' => 3, 'action_count' => 0)
+    end
+
     # V2-4. `records` says WHICH record was touched and nothing else: an
     # id-shaped KEY carrying the customer's free text (an `external_id`, an
     # application key) is customer data, and these rows outlive the records
@@ -1682,6 +1703,79 @@ RSpec.describe 'Support impersonation', type: :request do
       token = admin.access_token.token
       expect(response.body).to include('data-support-impersonation-masked-token')
       expect(response.body).not_to include(token[0, 5])
+    end
+  end
+
+  # --- 8b. the session that was walked away from (Session 8, walk finding 2) ---------
+  #
+  # Every other ending is written by the operator's NEXT request. Somebody who
+  # closes the browser never makes one: the session was over on the clock, but
+  # the customer's Support-access card said "In progress" for ever and their
+  # log had a start with no ending. The hourly tidy-up writes it.
+  describe 'a session the operator walked away from' do
+    def abandon!
+      sign_in(operator)
+      start!(mode: SupportImpersonation::EDIT_MODE)
+      reset! # the browser is gone: no further request will ever be made
+
+      events('impersonation.start').first
+    end
+
+    it 'is closed by the hourly sweep once its hour is up, with an audited expiry' do
+      started = abandon!
+
+      # Inside the hour, it is still a live session and nothing touches it.
+      expect { HousekeepingJob.new.perform }.not_to(change { events('impersonation.end').count })
+
+      started.update!(created_at: (SupportImpersonation::MAX_DURATION + 5.minutes).ago)
+
+      expect { HousekeepingJob.new.perform }.to(change { events('impersonation.end').count }.by(1))
+
+      ended = events('impersonation.end').first
+
+      expect(ended.details).to include('start_event_id' => started.id, 'ended_by' => 'expired',
+                                       'mode' => SupportImpersonation::EDIT_MODE,
+                                       'duration_seconds' => SupportImpersonation::MAX_DURATION.to_i)
+      expect(ended.account_id).to eq(account.id)
+      expect(ended.subject).to eq(admin)
+      expect(ended.reason).to eq(reason)
+      # Nobody pressed anything: the clock ran out, like `comp.expire`.
+      expect(ended.operator).to be_nil
+
+      # And it is written once, however many times the sweep runs.
+      expect { HousekeepingJob.new.perform }.not_to(change { events('impersonation.end').count })
+    end
+
+    it 'stops the customer’s support-access card saying the session is still running' do
+      started = abandon!
+      started.update!(created_at: (SupportImpersonation::MAX_DURATION + 5.minutes).ago)
+
+      sign_in(admin)
+      get settings_account_path
+
+      expect(response.body).to include(I18n.t('support_access_still_open'))
+
+      HousekeepingJob.new.perform
+
+      get settings_account_path
+
+      expect(response.body).not_to include(I18n.t('support_access_still_open'))
+    end
+
+    # A session that ended properly is not touched, and neither is one whose
+    # operator came back with the cookie still in hand and ended it themselves.
+    it 'leaves a session that wrote its own ending alone' do
+      sign_in(operator)
+      start!
+      delete operator_current_impersonation_path
+
+      expect(events('impersonation.end').count).to eq(1)
+
+      OperatorEvent.where(action: 'impersonation.start').update_all(
+        created_at: (SupportImpersonation::MAX_DURATION + 5.minutes).ago
+      )
+
+      expect { HousekeepingJob.new.perform }.not_to(change { events('impersonation.end').count })
     end
   end
 

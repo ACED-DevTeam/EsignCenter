@@ -44,12 +44,15 @@ module Operator
 
       raise Refused, t('operator_refused_job_unknown') if job_class.nil?
 
+      # The audit row first and the enqueue after it has COMMITTED (review 8,
+      # A2): a run-now that outlives the record of who asked for it is a sweep
+      # nobody can account for, and these jobs suspend accounts and purge them.
       ApplicationRecord.transaction do
         OperatorEvents.record!(operator: true_user, action: 'scheduler.run_now', reason:,
                                details: { job: name, job_class: entry['class'] }, request:)
-
-        job_class.perform_later
       end
+
+      job_class.perform_later
 
       redirect_to operator_scheduler_path, notice: t('operator_notice_job_enqueued', job: name)
     end

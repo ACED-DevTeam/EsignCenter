@@ -19,7 +19,7 @@ RSpec.describe 'Scheduler', type: :lib do
 
   it 'declares the heartbeat every minute on the recurrent queue' do
     expect(schedule.keys).to contain_exactly('scheduler_heartbeat', 'stripe_reconciliation', 'billing_lifecycle',
-                                             'account_retention', 'comp_expiry')
+                                             'account_retention', 'comp_expiry', 'housekeeping')
     expect(schedule['comp_expiry']).to include('cron' => '45 * * * *', 'class' => 'CompExpiryJob', 'queue' => 'billing')
     expect(schedule['scheduler_heartbeat']).to include(
       'cron' => '* * * * *', 'class' => 'SchedulerHeartbeatJob', 'queue' => 'recurrent'
@@ -173,6 +173,53 @@ RSpec.describe 'Scheduler', type: :lib do
         'started_at' => Time.current.iso8601, 'finished_at' => Time.current.iso8601
       )
     end
+  end
+
+  # The hourly tidy-up (Session 10). Two states that end by themselves and
+  # need something to write the ending down: a support session the operator
+  # walked away from — over, but with the customer's card still saying "In
+  # progress" until this runs — and a Postmark callback parked because it
+  # arrived before its own send row. Asserted the same way as the comp clock:
+  # declared, REGISTERED by sidekiq-cron's own loader, every sweep run, and a
+  # stamp on the console's scheduler tab afterwards.
+  it 'declares the hourly tidy-up, registers it and runs every sweep' do
+    expect(schedule['housekeeping']).to include(
+      'cron' => '5 * * * *', 'class' => 'HousekeepingJob', 'queue' => 'default'
+    )
+
+    Sidekiq::Cron::ScheduleLoader.new.load_schedule
+
+    job = Sidekiq::Cron::Job.find('housekeeping')
+
+    expect(job).to be_present
+    expect(job.source).to eq('schedule')
+    expect(job.klass).to eq('HousekeepingJob')
+    expect(job.cron).to eq('5 * * * *')
+    expect(job.queue_name_with_prefix).to eq('default')
+
+    allow(SupportImpersonation).to receive(:expire_abandoned!).and_return(0)
+    allow(PostmarkWebhooks).to receive(:sweep_pending!).and_return({})
+
+    HousekeepingJob.new.perform
+
+    expect(SupportImpersonation).to have_received(:expire_abandoned!).once
+    expect(PostmarkWebhooks).to have_received(:sweep_pending!).once
+    expect(HousekeepingJob::SWEEPS).to contain_exactly(:expire_support_sessions!, :sweep_pending_email_events!)
+    expect(SchedulerStamps.all['housekeeping']).to include('outcome' => 'ok', 'error' => nil)
+  end
+
+  # One sweep raising must not stop the other: an operator's session left open
+  # for ever is not an acceptable consequence of a webhook replay bug.
+  it 'runs every sweep even when one of them raises' do
+    allow(SupportImpersonation).to receive(:expire_abandoned!).and_raise(RuntimeError, 'sweep failed')
+    allow(PostmarkWebhooks).to receive(:sweep_pending!).and_return({})
+    allow(ErrorReport).to receive(:error)
+
+    HousekeepingJob.new.perform
+
+    expect(PostmarkWebhooks).to have_received(:sweep_pending!).once
+    expect(ErrorReport).to have_received(:error).with(kind_of(RuntimeError))
+    expect(SchedulerStamps.all['housekeeping']).to include('outcome' => 'ok')
   end
 
   # And the sweep list above is not the proof on its own — a stub list can

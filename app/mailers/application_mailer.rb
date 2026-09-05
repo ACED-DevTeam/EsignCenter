@@ -48,8 +48,40 @@ class ApplicationMailer < ActionMailer::Base
 
   protected
 
+  # The account a message belongs to, named by every mailer that writes to a
+  # customer. It does two things, and the second one is why it is called even
+  # by mailers with nothing to configure:
+  #
+  #   * the interceptor resolves the right outgoing server from it;
+  #   * it makes the message TRACKABLE. Delivery tracking hangs off
+  #     `@message_metadata` (ActionMailerEventsObserver writes one `send` row
+  #     per recipient, and PostmarkWebhooks attributes every bounce, complaint
+  #     and open back to it). Until Session 10 the SaaS lifecycle mail — the
+  #     dunning letters, the suspension notice, invitations, quota warnings —
+  #     set no metadata at all, so no send row was written and every Postmark
+  #     event about them was dropped as `{ ignored: true }`: we could suspend
+  #     an account on day 14 and not be able to prove the warning was ever
+  #     delivered (review 8, C3). Naming the account is now enough, because
+  #     that is the record the row is attributed to.
+  #
+  # A mailer that has already named a more specific record — SubmitterMailer
+  # naming the submitter, UserMailer the user — keeps it: whoever calls
+  # `assign_message_metadata` is saying "this message is ABOUT this record",
+  # and the account is only the fallback.
   def mail_account(account)
     @_mail_account = account
+
+    assign_message_metadata(default_message_tag, account) if account && @message_metadata.blank?
+
+    account
+  end
+
+  # "billing_payment_failed", "quota_storage_warning",
+  # "account_deletion_reminder_to" — the mailer and the message, which is what
+  # a tag is for. Derived rather than typed at eighteen call sites, so a mail
+  # added next month is tagged the day it is written.
+  def default_message_tag
+    "#{self.class.name.underscore.delete_suffix('_mailer')}_#{action_name}"
   end
 
   # How a platform notice opens, asked by the templates.

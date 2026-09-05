@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_05_120000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_06_100100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gin"
   enable_extension "pg_catalog.plpgsql"
@@ -198,6 +198,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_05_120000) do
     t.datetime "purged_at"
     t.string "sending_pause_reason"
     t.datetime "sending_paused_at"
+    t.datetime "sending_resumed_at"
     t.datetime "suspended_at"
     t.string "suspension_reason"
     t.string "timezone", null: false
@@ -493,6 +494,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_05_120000) do
     t.index ["operator_user_id", "created_at"], name: "index_operator_events_on_operator_user_id_and_created_at"
     t.index ["operator_user_id"], name: "index_operator_events_on_operator_user_id"
     t.index ["subject_type", "subject_id"], name: "index_operator_events_on_subject_type_and_subject_id"
+  end
+
+  create_table "pending_email_events", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "provider_event_key", null: false
+    t.string "provider_message_id", null: false
+    t.jsonb "record", default: {}, null: false
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_pending_email_events_on_created_at"
+    t.index ["provider_event_key"], name: "index_pending_email_events_on_provider_event_key", unique: true
+    t.index ["provider_message_id"], name: "index_pending_email_events_on_provider_message_id"
   end
 
   create_table "provisioning_events", force: :cascade do |t|

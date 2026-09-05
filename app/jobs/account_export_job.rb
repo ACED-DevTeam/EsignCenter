@@ -81,14 +81,53 @@ class AccountExportJob
   # against, so it has to mean "a worker took this on at this moment" — on a
   # Sidekiq retry hours after the first try, the second attempt is a live build
   # however long ago the first one started.
+  #
+  # ONE WORKER, UNDER THE ROW'S LOCK, AND IT SIGNS THE CLAIM (review 8, D5).
+  # This used to be a read followed by an update with neither: two workers
+  # handed the same export id — a duplicate enqueue, or a Sidekiq retry that
+  # overlapped the attempt it was retrying — both read `pending`, both wrote
+  # `running`, and both then built a zip over the same row, one of them
+  # deleting the other's staged blob mid-upload. So the read and the write are
+  # one statement under the lock, and the row records WHOSE attempt it is:
+  #
+  #   * a row nobody owns (pending) is claimed;
+  #   * a running row is claimed only by the attempt that already owns it,
+  #     which is what a Sidekiq retry is — same `jid`, so it resumes its own
+  #     half-finished build instead of being locked out of it;
+  #   * a running row owned by somebody else is left alone. Nothing else may
+  #     decide a worker died: the nightly stale-export recovery does that, and
+  #     it is the only thing that hands the row back.
+  #
+  # A hand-driven run (`AccountExportJob.new.perform(id)` — the console, and
+  # specs) has no `jid` and signs with an attempt id of its own, so it takes a
+  # pending row and refuses one another worker is building.
   def claim(export_id)
     export = AccountExport.find_by(id: export_id)
 
-    return nil if export.nil? || !export.in_progress?
+    return nil if export.nil?
 
-    export.update!(status: AccountExport::RUNNING, started_at: Time.current)
+    attempt = attempt_id
+    claimed = false
 
-    export
+    export.with_lock do
+      next unless export.in_progress?
+      next if export.status == AccountExport::RUNNING && export.attempt_owner.present? &&
+              export.attempt_owner != attempt
+
+      export.update!(status: AccountExport::RUNNING, started_at: Time.current,
+                     summary: export.summary.merge(AccountExport::ATTEMPT_KEY => attempt))
+
+      claimed = true
+    end
+
+    claimed ? export : nil
+  end
+
+  # Who this attempt is. Sidekiq's job id is the same string across every retry
+  # of one job, which is exactly the identity the claim needs; a run driven by
+  # hand has none and gets one that belongs to this object alone.
+  def attempt_id
+    @attempt_id ||= jid.presence || "inline-#{SecureRandom.hex(8)}"
   end
 
   # The staged locator is committed before upload. Upload and finalization

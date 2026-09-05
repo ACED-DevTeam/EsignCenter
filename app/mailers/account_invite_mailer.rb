@@ -16,8 +16,9 @@
 #
 # English-only copy like BillingMailer and QuotaMailer: this is platform mail
 # about an account, not a document a signer has to read in their own language.
-# `mail_account` so the interceptor picks the right outgoing server; no
-# message metadata, because an invitation is not an emailable record.
+# `mail_account` names the account: it picks the right outgoing server AND
+# attributes the send row delivery tracking writes, so an invitation that
+# bounced is visible instead of silent (Session 10, review 8 C3).
 class AccountInviteMailer < ApplicationMailer
   def invitation(invite, raw_token)
     raise ArgumentError, 'the invitation has no token to send' if raw_token.blank?

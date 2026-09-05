@@ -37,6 +37,11 @@ module SupportImpersonation
   # account, as one of their people" deserves a sentence, not a ticket number.
   MINIMUM_REASON_LENGTH = 10
 
+  # How far back the abandoned-session sweep looks. Days rather than hours, so
+  # a scheduler that was down overnight still closes what it missed, and
+  # bounded so the hourly sweep never grows into a walk of the whole log.
+  SWEEP_WINDOW = 7.days
+
   # The operator's own console. Never refused — it is the surface the session
   # is driven from, it is behind its own 404 gate, and the end door lives in
   # it.
@@ -470,6 +475,74 @@ module SupportImpersonation
 
   def mode_label(mode)
     I18n.t(mode == EDIT_MODE ? 'support_impersonation_mode_edit' : 'support_impersonation_mode_read_only')
+  end
+
+  # ABANDONED SESSIONS ARE CLOSED ON THE HOUR (walk finding 2, Session 8).
+  #
+  # A support session ends on the operator's next request — the guard sees the
+  # hour is up and writes `impersonation.end`. An operator who simply closes
+  # the browser never makes that request, so the row was never written: the
+  # session was over (nothing it could do would be honoured after MAX_DURATION)
+  # but the customer's Support-access card went on saying "In progress" for
+  # ever, and their log had a start with no ending.
+  #
+  # So the hourly housekeeping sweep writes the missing row itself, with
+  # `ended_by: 'expired'` and `operator: nil` — nobody pressed anything, the
+  # clock ran out (the same shape CompExpiryJob's `comp.expire` uses). It can
+  # say when the session started and how long the hour was; it cannot say how
+  # many refusals or actions it collected, because those numbers live in the
+  # operator's own session cookie, so it does not pretend to (the card prints a
+  # dash for a session recorded without them).
+  #
+  # Idempotent by construction: a session that later writes its own end row —
+  # the operator comes back with the cookie still in hand — is matched by
+  # `start_event_id` like every other end row, and this sweep only ever looks
+  # at starts that have none.
+  def expire_abandoned!(now: Time.current)
+    closed = 0
+
+    abandoned_starts(now).each do |event|
+      ApplicationRecord.transaction do
+        next if end_row_exists?(event)
+
+        OperatorEvents.record!(
+          operator: nil, action: 'impersonation.end', account: event.account, subject: event.subject,
+          reason: event.reason,
+          details: { start_event_id: event.id, ended_by: 'expired', mode: event.details['mode'],
+                     duration_seconds: MAX_DURATION.to_i }
+        )
+
+        closed += 1
+      end
+    end
+
+    closed
+  end
+
+  # Every start whose hour is up and which has no end row. Bounded by the
+  # oldest window worth walking: a start from last year has been swept many
+  # times over, and re-reading them all every hour would grow without end.
+  def abandoned_starts(now = Time.current)
+    starts = OperatorEvent.where(action: 'impersonation.start')
+                          .where(created_at: (now - SWEEP_WINDOW)...(now - MAX_DURATION))
+                          .preload(:account, :subject).to_a
+
+    return [] if starts.empty?
+
+    ended = ended_start_event_ids(starts.map(&:id))
+
+    starts.reject { |event| ended.include?(event.id) }
+  end
+
+  def ended_start_event_ids(start_ids)
+    OperatorEvent.where(action: 'impersonation.end')
+                 .where("details ->> 'start_event_id' IN (?)", start_ids.map(&:to_s))
+                 .pluck(Arel.sql("details ->> 'start_event_id'")).to_set(&:to_i)
+  end
+
+  def end_row_exists?(event)
+    OperatorEvent.where(action: 'impersonation.end')
+                 .exists?(["details ->> 'start_event_id' = ?", event.id.to_s])
   end
 
   # The customer's own history: the last few times support looked at this

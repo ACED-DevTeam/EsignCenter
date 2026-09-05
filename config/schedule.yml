@@ -49,3 +49,14 @@ comp_expiry:
   class: 'CompExpiryJob'
   queue: billing
   description: 'Revokes complimentary paid plans whose expiry date has passed'
+
+# The hourly tidy-up (HousekeepingJob): support sessions the operator walked
+# away from, which are over but have no audited ending until something writes
+# one, and Postmark webhooks parked because they arrived before their own send
+# row. At :05, clear of the billing clock at :15 and the comp clock at :45, and
+# on the default queue because neither sweep is billing work.
+housekeeping:
+  cron: '5 * * * *'
+  class: 'HousekeepingJob'
+  queue: default
+  description: 'Closes support sessions whose hour ran out unattended and attributes or drops parked email webhooks'

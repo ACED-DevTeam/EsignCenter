@@ -4363,6 +4363,55 @@ RSpec.describe 'Stripe billing', type: :request do # rubocop:disable RSpec/Multi
       expect(ProcessStripeEventJob.jobs).to be_empty
     end
 
+    # D6 (review 8). The sweep read the stale ids and then handed a bare
+    # `where(id: ...)` to the writer, whose UPDATE had lost the staleness
+    # predicate — so a row a live worker claimed in the gap between the two was
+    # released out from under it: two workers on one Stripe event, and a note
+    # on the row saying nobody owned it. The staleness is decided by the write
+    # now, exactly as it already was on the console's own Retry button.
+    it 'does not release a claim taken between reading the stale ids and writing' do
+      cancelled_row
+      post_stripe_event('event-customer.subscription.created-trialing')
+
+      inbox = StripeEventInbox.sole
+      inbox.update_columns(status: StripeEventInbox::PROCESSING, attempts: 1,
+                           updated_at: (StripeEventInbox::STALE_CLAIM_AFTER + 10.minutes).ago)
+
+      # A worker picks the row up in the instant between the two statements.
+      allow(described_class).to receive(:release_stale_claims!).and_wrap_original do |original, scope|
+        inbox.update_columns(updated_at: Time.current)
+
+        original.call(scope)
+      end
+
+      ProcessStripeEventJob.jobs.clear
+      described_class.new.perform
+
+      expect(inbox.reload.status).to eq('processing')
+      expect(inbox.attempts).to eq(1)
+      expect(inbox.last_error).to be_nil
+    end
+
+    # The same rule stated on the writer itself, which is where it now lives: a
+    # caller may narrow WHICH rows are released, never WHEN one may be.
+    it 'never releases a fresh claim, whatever scope the caller hands it' do
+      cancelled_row
+      post_stripe_event('event-customer.subscription.created-trialing')
+
+      inbox = StripeEventInbox.sole
+      inbox.update_columns(status: StripeEventInbox::PROCESSING, attempts: 1, updated_at: 2.minutes.ago)
+
+      expect(described_class.release_stale_claims!(StripeEventInbox.where(id: inbox.id))).to eq(0)
+      expect(described_class.release_stale_claims!(StripeEventInbox.all)).to eq(0)
+      expect(inbox.reload.status).to eq('processing')
+      expect(inbox.last_error).to be_nil
+
+      inbox.update_columns(updated_at: (StripeEventInbox::STALE_CLAIM_AFTER + 1.minute).ago)
+
+      expect(described_class.release_stale_claims!(StripeEventInbox.where(id: inbox.id))).to eq(1)
+      expect(inbox.reload.status).to eq('failed')
+    end
+
     it 'keeps going when Stripe fails on one account' do
       broken = create(:account_subscription, account:, access_state: 'active', status: 'active',
                                              stripe_subscription_id: subscription_a)

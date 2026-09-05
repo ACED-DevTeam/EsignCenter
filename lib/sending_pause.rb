@@ -20,6 +20,11 @@ module SendingPause
   # and nobody remembers the second list (review 1, A-L2).
   PAUSE_EVENTS = (COMPLAINT_EVENTS + HARD_BOUNCE_EVENTS).freeze
 
+  # The mail this policy is about: what an account sends its signers. Every
+  # other send row belongs to the platform's own mail to the account's
+  # administrators (Session 10, review 8 C3) and is deliberately outside it.
+  SIGNER_EMAILABLE_TYPE = 'Submitter'
+
   module_function
 
   # Reads the column fresh rather than the object's copy: the account a
@@ -96,12 +101,22 @@ module SendingPause
 
   # Under the same row lock as pause!: the two writes land together, and a
   # pause arriving at the same moment is either fully before or fully after.
+  #
+  # THE WATERMARK IS THE POINT (review 8, A1). Clearing the pause used to be
+  # all this did, and the bounce window it is judged by is the last
+  # BOUNCE_WINDOW deliveries — which, a second after a resume, are the very
+  # deliveries that caused the pause. So the next bounce re-paused the account
+  # instantly, and the console's Resume button could not lift a `bounce_rate`
+  # pause at all: it lifted it and the account was back inside the minute.
+  # `sending_resumed_at` is where the window starts from now on. Deliveries
+  # before a resume are history — an operator has looked at them and decided —
+  # and the next pause has to be earned by mail sent AFTER that decision.
   def resume!(account)
     billing = Plans.billing_account(account)
 
     Quotas.with_creation_lock(billing) do
       billing.with_lock do
-        billing.update!(sending_paused_at: nil, sending_pause_reason: nil)
+        billing.update!(sending_paused_at: nil, sending_pause_reason: nil, sending_resumed_at: Time.current)
         billing.abuse_flags.open.where(kind: FLAG_KINDS).update_all(resolved_at: Time.current)
       end
     end
@@ -117,7 +132,17 @@ module SendingPause
   end
 
   # Called with an EmailEvent after it is recorded.
+  #
+  # SIGNER MAIL ONLY, and that is a policy statement, not an optimisation
+  # (Session 10, C3). Since the SaaS lifecycle mail is tracked too, this is
+  # now asked about dunning letters, invitations and quota warnings as well —
+  # and an account must never be stopped from sending because OUR letter to
+  # THEM bounced. The pause is about the mail an account sends its signers:
+  # that is what a complaint is a complaint about, and that is the only mail
+  # counted in `bounce_rate` below.
   def evaluate!(account, event:)
+    return nil unless counts_towards_pause?(event)
+
     billing = Plans.billing_account(account)
 
     if COMPLAINT_EVENTS.include?(event.event_type)
@@ -127,6 +152,13 @@ module SendingPause
     end
 
     nil
+  end
+
+  # Mail an account sent its SIGNERS. Every send row the abuse pause looks at
+  # is one of these; a row attributed to the account itself is platform mail
+  # from us to them (lib/action_mailer_events_observer.rb, review 8 C3).
+  def counts_towards_pause?(event)
+    event.emailable_type == SIGNER_EMAILABLE_TYPE
   end
 
   # The share of the last BOUNCE_WINDOW deliveries that hard-bounced, when it
@@ -142,23 +174,43 @@ module SendingPause
 
     return nil if (deliveries = recent_deliveries(ids)).size < Quotas::Limits::BOUNCE_MIN_SENDS
 
-    bounced = EmailEvent.where(account_id: ids, event_type: HARD_BOUNCE_EVENTS,
-                               message_id: deliveries.map(&:first))
-                        .pluck(:message_id, :email)
-                        .map { |message_id, email| [message_id, email.to_s.downcase] }
+    # No watermark on this side: the window above is already only deliveries
+    # made since the resume, and a bounce is dated by the PROVIDER's clock —
+    # Postmark reports "bounced at" from its own timestamp, which can read
+    # earlier than our resume even for a message we sent afterwards. What
+    # matters is which delivery it belongs to.
+    bounced = signer_events(ids, HARD_BOUNCE_EVENTS).where(message_id: deliveries.map(&:first))
+                                                    .pluck(:message_id, :email)
+                                                    .map { |message_id, email| [message_id, email.to_s.downcase] }
 
     rate = (deliveries & bounced).size.to_f / deliveries.size
 
     rate >= Quotas::Limits::BOUNCE_PAUSE_RATE ? rate : nil
   end
 
+  # Signer mail of this family, of these types: the one filter both sides of
+  # the bounce maths share, so a window and the bounces measured against it can
+  # never be drawn from different sets of mail (review 8, C3).
+  def signer_events(ids, event_types)
+    EmailEvent.where(account_id: ids, event_type: event_types, emailable_type: SIGNER_EMAILABLE_TYPE)
+  end
+
+  # When the operator last let this family send again, or nil. The bounce
+  # window starts here (review 8, A1).
+  def resumed_at(ids)
+    Account.where(id: ids).maximum(:sending_resumed_at)
+  end
+
   # The newest BOUNCE_WINDOW distinct (message_id, email) pairs among the
   # send events, each pair dated by its latest event.
   def recent_deliveries(ids)
+    sends = signer_events(ids, 'send')
+    watermark = resumed_at(ids)
+    sends = sends.where(event_datetime: watermark..) if watermark
+
     distinct_pairs =
-      EmailEvent.where(account_id: ids, event_type: 'send')
-                .select('DISTINCT ON (message_id, LOWER(email)) message_id, LOWER(email) AS email, event_datetime')
-                .order(Arel.sql('message_id, LOWER(email), event_datetime DESC'))
+      sends.select('DISTINCT ON (message_id, LOWER(email)) message_id, LOWER(email) AS email, event_datetime')
+           .order(Arel.sql('message_id, LOWER(email), event_datetime DESC'))
 
     EmailEvent.from(distinct_pairs, :email_events)
               .order(event_datetime: :desc)

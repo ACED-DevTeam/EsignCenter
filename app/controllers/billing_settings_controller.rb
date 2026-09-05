@@ -438,6 +438,15 @@ class BillingSettingsController < ApplicationController
     return unmatched_checkout(session_id) unless ours?(session) && subscription_id.present?
 
     flash_for_outcome(StripeBilling::Linker.link_and_apply!(@subscription, subscription_id))
+  rescue Stripe::InvalidRequestError => e
+    # A session id Stripe has never heard of is not an outage (S6, S4): it is a
+    # bookmarked, mistyped or made-up return URL, and this is the same answer
+    # as a session that turns out to belong to somebody else. Letting it fall
+    # through to the Stripe handler told the customer the payment provider was
+    # unreachable and paged us with an ErrorReport.error for a stale bookmark.
+    raise unless e.code.to_s == 'resource_missing'
+
+    unmatched_checkout(session_id)
   end
 
   # A Checkout session this app can act on: a completed subscription purchase,

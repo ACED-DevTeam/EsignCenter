@@ -79,8 +79,18 @@ class StripeReconciliationJob < ApplicationJob
     # A class method because the operator console releases exactly one row
     # this way (a Retry on a stuck event) and the claim logic must have one
     # home, not two.
-    def release_stale_claims!(scope = StripeEventInbox.stale_claims)
-      scope.update_all(status: StripeEventInbox::FAILED, last_error: STALE_CLAIM_NOTE, updated_at: Time.current)
+    #
+    # THE STALENESS IS DECIDED BY THIS WRITE, not by whatever the caller
+    # selected a moment earlier (review 8, D6). The nightly sweep read the
+    # stale ids and then passed a bare `where(id: ...)` back in, so a row a
+    # live worker had claimed in the meantime was released out from under it —
+    # two workers on one Stripe event, and the note on the row saying nobody
+    # owned it. `scope` narrows WHICH rows may be released; it can no longer
+    # widen WHEN one may be.
+    def release_stale_claims!(scope = StripeEventInbox.all)
+      StripeEventInbox.stale_claims.merge(scope)
+                      .update_all(status: StripeEventInbox::FAILED, last_error: STALE_CLAIM_NOTE,
+                                  updated_at: Time.current)
     end
 
     # The one way an inbox row is handed back to Sidekiq. Returns how many.
@@ -524,6 +534,10 @@ class StripeReconciliationJob < ApplicationJob
     # then hold back the very row this sweep just decided nobody owns.
     released = StripeEventInbox.stale_claims.ids
 
+    # The predicate travels with the write (see release_stale_claims!): an id
+    # in this list that a worker has claimed since it was read is left alone,
+    # and re-enqueuing it below costs nothing — the claim is a compare-and-set
+    # over pending/failed, so the live worker keeps it.
     self.class.release_stale_claims!(StripeEventInbox.where(id: released))
 
     self.class.requeue!(released + StripeEventInbox.stuck.pluck(:id) + StripeEventInbox.retryable.pluck(:id))
