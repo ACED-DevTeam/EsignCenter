@@ -16,6 +16,12 @@ class TemplatesFormPreviewDocumentController < ApplicationController
 
     return head :not_found if attachments.blank?
 
+    if (blob = Submissions::OriginalDocumentPdf.single_pdf(attachments)&.blob)
+      return redirect_to blobs_proxy_path(signed_uuid: blob.signed_uuid(expires_at: 5.minutes.from_now.to_i),
+                                          filename: blob.filename, disposition: 'inline'),
+                         allow_other_host: false
+    end
+
     send_data Submissions::OriginalDocumentPdf.call(attachments),
               filename: "#{@template.name}.pdf",
               type: 'application/pdf',

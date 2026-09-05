@@ -216,12 +216,12 @@ module EsignConsent
   end
 
   # The address the disclosure tells the signer to write to — "tell the sender"
-  # has to name somewhere real. It is exactly where a reply to this signer's
-  # invitation email lands (Submitters::ReplyTo, which the mailer reads too),
-  # and platform support only when that account has no reachable address at
-  # all.
+  # has to name somewhere real. It is where a reply to this signer's
+  # invitation email lands (Submitters::ReplyTo, whose header half the mailer
+  # reads), and platform support only when that account has no reachable
+  # address at all.
   def sender_email(submitter)
-    Submitters::ReplyTo.call(submitter) || Docuseal::SUPPORT_EMAIL
+    Submitters::ReplyTo.disclosure(submitter) || Docuseal::SUPPORT_EMAIL
   end
 
   # What the page says it showed as the sender, as one fingerprint the form

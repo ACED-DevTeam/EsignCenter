@@ -29,7 +29,7 @@ module ConsentSpecSupport
                     esign_consent_version_stale esign_consent_view_pdf esign_consent_open_pdf_first
                     esign_consent_shown_to esign_consent_sender_not_recorded esign_consent_pdf_opened
                     esign_consent_pdf_not_opened esign_consent_the_sender
-                    esign_consent_document_too_many_requests
+                    esign_consent_document_too_many_requests esign_consent_view_first_pdf
                     consented_to_electronic_signatures close
                     submission_event_names.esign_consent_by_html].freeze
 end
@@ -731,23 +731,69 @@ RSpec.describe 'ESIGN consent', type: :request do
 
     # The sender signing their own document: replying to themselves reaches
     # nobody, so the chain moves on to the account's first administrator.
-    it 'matches when the sender is the signer and falls to the first admin' do
+    # Where the two halves part company: a mail carries no Reply-To rather than
+    # publish this account's own administrator mailbox, but the disclosure must
+    # still name somebody the signer can write to.
+    it 'leaves the header off for a self-signed document and shows the admin in the disclosure' do
       other_admin = create(:user, account:)
       submitter = emailed_submitter_for(account)
       submitter.update!(email: admin_for(account).email)
 
       expected = [admin_for(account), other_admin].min_by(&:id).email
 
-      expect(invitation_reply_to(submitter.reload)).to eq(expected)
+      expect(invitation_reply_to(submitter.reload)).to be_nil
       expect(modal_sender_email(submitter)).to eq(expected)
+    end
+
+    it 'leaves the header off for a configured no-reply address and shows the admin in the disclosure' do
+      submitter = emailed_submitter_for(account)
+      submitter.update!(preferences: { 'reply_to' => 'no-reply@acme.example' })
+
+      expect(invitation_reply_to(submitter.reload)).to be_nil
+      expect(modal_sender_email(submitter)).to eq(admin_for(account).email)
+    end
+
+    it 'keeps the display name on the header and prints the bare address in the disclosure' do
+      submitter = emailed_submitter_for(account)
+      submitter.update!(preferences: { 'reply_to' => 'Contracts Team <contracts@acme.example>' })
+
+      mail = SubmitterMailer.invitation_email(submitter.reload)
+
+      expect(mail[:reply_to].to_s).to include('Contracts Team')
+      expect(mail.reply_to).to eq(['contracts@acme.example'])
+      expect(modal_sender_email(submitter)).to eq('contracts@acme.example')
+    end
+
+    # A documents-copy mail with no copy address of its own keeps behaving as
+    # it did: it never borrows the invitation copy's reply-to.
+    it 'does not lend the invitation reply-to to a documents-copy mail' do
+      platform_certificate!
+      submitter = emailed_submitter_for(paid_account)
+      create(:account_config, account: paid_account, key: AccountConfig::SUBMITTER_INVITATION_EMAIL_KEY,
+                              value: { 'subject' => 'Please sign', 'body' => 'Hello {{submitter.link}}',
+                                       'reply_to' => 'invites@acme.example' })
+
+      put "/s/#{submitter.slug}", params: completion_params(submitter, esign_consent: 'true')
+      expect(submitter.reload.completed_at).to be_present
+
+      expect(SubmitterMailer.invitation_email(submitter).reply_to).to eq(['invites@acme.example'])
+      expect(SubmitterMailer.documents_copy_email(submitter).reply_to)
+        .to eq([admin_for(paid_account).email])
     end
   end
 
   describe 'the document PDF door (/s/:slug/document.pdf)' do
-    it 'serves the unsigned original inline for the slug and 404s for an unknown one' do
+    # One PDF and nothing to merge: the door hands the browser a short-lived
+    # signed storage link rather than reading the file through the app.
+    it 'redirects a single-PDF form to the file, served inline, and 404s for an unknown slug' do
       submitter = emailed_submitter_for(account)
 
       get "/s/#{submitter.slug}/document.pdf"
+
+      expect(response).to have_http_status(:found)
+      expect(response.location).to include('disposition=inline')
+
+      follow_redirect!
 
       expect(response).to have_http_status(:ok)
       expect(response.media_type).to eq('application/pdf')
@@ -755,6 +801,56 @@ RSpec.describe 'ESIGN consent', type: :request do
       expect(response.body[0, 5]).to eq('%PDF-')
 
       get '/s/does-not-exist/document.pdf'
+
+      expect(response).to have_http_status(:not_found)
+    end
+
+    # Over the cap the first document alone is served, and the link says so.
+    it 'serves the first document only when the documents are too big to merge' do
+      template = create(:template, account:, author: admin_for(account), attachment_count: 2,
+                                   only_field_types: %w[text])
+      submitter = emailed_submitter_for(account, template:)
+      documents = Submissions::OriginalDocumentPdf.attachments_for(submitter.submission)
+
+      expect(documents.size).to eq(2)
+      expect(Submissions::OriginalDocumentPdf.truncated?(documents)).to be(false)
+
+      stub_const('Submissions::OriginalDocumentPdf::MERGE_SIZE_LIMIT', 1)
+
+      expect(Submissions::OriginalDocumentPdf.truncated?(documents)).to be(true)
+      expect(Submissions::OriginalDocumentPdf.servable(documents)).to eq(documents.first(1))
+
+      # The one document left is a PDF, so it goes out as a signed link.
+      get "/s/#{submitter.slug}/document.pdf"
+      expect(response).to have_http_status(:found)
+
+      # And the link on the form says what it will actually hand over.
+      get "/s/#{submitter.slug}"
+      expect(esign_consent_contract['view_pdf_text']).to eq(I18n.t('esign_consent_view_first_pdf'))
+    end
+
+    it 'merges both documents, and promises the whole thing, when the cap does not bite' do
+      template = create(:template, account:, author: admin_for(account), attachment_count: 2,
+                                   only_field_types: %w[text])
+      submitter = emailed_submitter_for(account, template:)
+
+      get "/s/#{submitter.slug}/document.pdf"
+
+      expect(response).to have_http_status(:ok)
+      expect(response.media_type).to eq('application/pdf')
+      expect(response.body[0, 5]).to eq('%PDF-')
+
+      get "/s/#{submitter.slug}"
+      expect(esign_consent_contract['view_pdf_text']).to eq(I18n.t('esign_consent_view_pdf'))
+    end
+
+    it 'refuses a signer who has already completed, like the page redirects one' do
+      submitter = emailed_submitter_for(account)
+
+      put "/s/#{submitter.slug}", params: completion_params(submitter, esign_consent: 'true')
+      expect(submitter.reload.completed_at).to be_present
+
+      get "/s/#{submitter.slug}/document.pdf"
 
       expect(response).to have_http_status(:not_found)
     end
@@ -773,8 +869,7 @@ RSpec.describe 'ESIGN consent', type: :request do
       post '/submit_form_email_2fa', params: { submitter_slug: submitter.slug, one_time_code: code }
 
       get "/s/#{submitter.slug}/document.pdf"
-      expect(response).to have_http_status(:ok)
-      expect(response.media_type).to eq('application/pdf')
+      expect(response).to have_http_status(:found)
     end
 
     # The builder's dry run shows the same gate, so its link has to answer too.
@@ -784,7 +879,10 @@ RSpec.describe 'ESIGN consent', type: :request do
       act_as(account)
       get "/templates/#{template.id}/form_document.pdf"
 
-      expect(response).to have_http_status(:ok)
+      expect(response).to have_http_status(:found)
+
+      follow_redirect!
+
       expect(response.media_type).to eq('application/pdf')
 
       act_as(paid_account)
@@ -845,7 +943,7 @@ RSpec.describe 'ESIGN consent', type: :request do
         expect_door_refused(second)
 
         get "/s/#{first.slug}/document.pdf"
-        expect(response).to have_http_status(:ok)
+        expect(response).to have_http_status(:found)
       end
     end
 
@@ -876,7 +974,7 @@ RSpec.describe 'ESIGN consent', type: :request do
 
       SubmitFormDocumentController::REQUESTS_PER_SLUG_PER_HOUR.times do
         get "/s/#{submitter.slug}/document.pdf"
-        expect(response).to have_http_status(:ok)
+        expect(response).to have_http_status(:found)
       end
 
       get "/s/#{submitter.slug}/document.pdf"
@@ -942,7 +1040,7 @@ RSpec.describe 'ESIGN consent', type: :request do
                    esign_consent_version_stale esign_consent_view_pdf
                    esign_consent_open_pdf_first esign_consent_pdf_opened
                    esign_consent_pdf_not_opened esign_consent_the_sender
-                   esign_consent_document_too_many_requests
+                   esign_consent_document_too_many_requests esign_consent_view_first_pdf
                    esign_consent_shown_to esign_consent_sender_not_recorded].index_with do |key|
         I18n.t(key, locale: :en)
       end
@@ -1054,6 +1152,39 @@ RSpec.describe 'ESIGN consent', type: :request do
         expect(text).to match(pdf_phrase(I18n.t('esign_consent_pdf_opened', locale:))), locale
         expect(text).not_to match(pdf_phrase(I18n.t('esign_consent_pdf_not_opened', locale:))), locale
       end
+    end
+
+    # Direction is a property of the language, not of the characters in the
+    # string: an English disclosure that names an Arabic company is still an
+    # English sentence and must not come out mirrored.
+    it 'keeps an English trail in logical order and reverses only the names inside it' do
+      platform_certificate!
+      account.update!(locale: 'en', name: 'شركة أكمي')
+      submitter = emailed_submitter_for(account)
+      submitter.update!(name: 'ישראל ישראלי')
+
+      put "/s/#{submitter.slug}", params: completion_params(submitter).merge(consent_params(submitter, locale: 'en'))
+
+      expect(response).to have_http_status(:ok)
+
+      text = pdf_text(submitter.submission.reload.audit_trail.download)
+      paragraphs = EsignConsent.disclosure_paragraphs(
+        EsignConsent.disclosure_text(version: EsignConsent::VERSION, locale: 'en'),
+        sender_name: rtl(account.name), sender_email: admin_for(account).email
+      )
+
+      # English prose, unmirrored, with the Arabic company name reordered.
+      expect(text).to match(pdf_phrase(paragraphs.first.first(70)))
+      expect(text).to include(rtl(account.name))
+      expect(text).not_to include(account.name)
+      # The heading too: English, with only the Hebrew signer name reordered.
+      expect(text).to match(pdf_phrase(I18n.t('esign_consent_disclosure_title', locale: :en)))
+      expect(text).to match(pdf_phrase(I18n.t('esign_consent_shown_to', submitter_name: rtl(submitter.name),
+                                                                        locale: :en)))
+      # ...and never the other way round: the heading must not carry the signer
+      # name in logical order (the event log below still does, as it always has).
+      expect(text).not_to match(pdf_phrase(I18n.t('esign_consent_shown_to', submitter_name: submitter.name,
+                                                                            locale: :en)))
     end
 
     it 'prints the consent line in each base locale and never a missing translation' do

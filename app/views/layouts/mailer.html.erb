@@ -13,15 +13,34 @@
     puts a frame around it and imposes nothing inside it — no headings, no
     accent colours, no restyled links.
 
-    Two different signatures sit at the bottom, and only one of them can ever
-    disappear. The wordmark and the support line are the PLATFORM's, and go
-    on the platform's own notices (billing, account, quota, invitations,
-    operator, SMTP) always; on the mail an account sends its own signers they
-    disappear once that account has paid for branding removal. The DocuSeal
-    attribution underneath is the AGPL notice and never disappears — it is
-    rendered here, once, for every mail (shared/mailer_attribution). %>
+    Three signatures sit at the bottom, and each answers a different question.
+
+    The SUPPORT line is on platform notices and nowhere else — billing,
+    account, quota, invitations, operator, SMTP, the mail we write to the
+    person who runs an account. It is deliberately absent from signer mail
+    even on a free account: a signer's questions are about the DOCUMENT, and
+    they go to the person who sent it, not to us. Putting our address at the
+    bottom of somebody else's correspondence only misdirects them.
+
+    The WORDMARK is the platform's too, but it answers "who runs this?", which
+    a signer does have a reason to ask. So it stays on signer mail and
+    disappears only when that account has paid for branding removal — and it
+    stays on a platform notice whatever the flag says, because the reader has
+    to recognise who is writing to them.
+
+    The DocuSeal attribution underneath is the AGPL notice and never
+    disappears at all — rendered here, once, for every mail
+    (shared/mailer_attribution). %>
 <% content = yield %>
-<% branded = platform_notice? || !Accounts.branding_removed?(@current_account) %>
+<% notice = platform_notice? %>
+<% branded = notice || !Accounts.branding_removed?(@current_account) %>
+<%# Rendered up here so the footer rule below can ask whether it said anything.
+    The partial decides for itself whether the "Sent using" line appears; all
+    this does is avoid drawing an empty bordered strip under a mail where it
+    decided not to and there is no support line either. Nothing here can
+    suppress it — `attribution` is printed verbatim whenever it has content. %>
+<% attribution = render(partial: 'shared/mailer_attribution') %>
+<% footer = notice || attribution.to_s.strip.present? %>
 <!DOCTYPE html>
 <html>
   <head>
@@ -62,14 +81,16 @@
                 <%= content %>
               </td>
             </tr>
-            <tr>
-              <td class="ec-foot ec-pad" style="padding: 20px 32px 24px; border-top: 1px solid #e5e7eb; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 12px; line-height: 1.5; color: #6b7280;">
-                <% if branded %>
-                  <p data-mail-support style="margin: 0 0 8px;"><%= mail_to Docuseal::SUPPORT_EMAIL %></p>
-                <% end %>
-                <%= render partial: 'shared/mailer_attribution' %>
-              </td>
-            </tr>
+            <% if footer %>
+              <tr>
+                <td class="ec-foot ec-pad" style="padding: 20px 32px 24px; border-top: 1px solid #e5e7eb; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 12px; line-height: 1.5; color: #6b7280;">
+                  <% if notice %>
+                    <p data-mail-support style="margin: 0 0 8px;"><%= mail_to Docuseal::SUPPORT_EMAIL %></p>
+                  <% end %>
+                  <%= attribution %>
+                </td>
+              </tr>
+            <% end %>
           </table>
         </td>
       </tr>
