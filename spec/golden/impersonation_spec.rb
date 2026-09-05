@@ -320,10 +320,6 @@ RSpec.describe 'Support impersonation', type: :request do
         'postmark_webhooks#create' =>
           'a provider endpoint on ActionController::API — no session, no cookie and no current_user for a ' \
           'support session to ride in on; it is guarded by basic auth and an IP allowlist instead.',
-        'api/attachments#create' =>
-          'the signer\'s own upload door, on its own ActionController::API base with no Devise session — ' \
-          'it is keyed on a submitter slug and a cookie, and there is no session user for a support ' \
-          'session to ride in on.',
         'template_folders#destroy' =>
           'a dead route: TemplateFoldersController has no destroy action, so Rails answers before any ' \
           'controller callback runs. Nothing to guard, and nothing that could ever succeed.'
@@ -435,19 +431,20 @@ RSpec.describe 'Support impersonation', type: :request do
       not_this_rule.each_key do |target|
         verb, path, = all_routes(%w[POST PUT PATCH DELETE]).find { |_v, _p, t| t == target }
 
+        # A raise is only ever an acceptable answer for the one route with no
+        # action behind it. Anywhere else it would let a door excuse itself by
+        # failing on the placeholder id instead of being tested (review batch
+        # 2, N1), so it is a failure here.
         status =
           begin
             public_send(verb, path)
             response.status
           rescue StandardError => e
-            # A dead route, or a door that cannot find the record the
-            # placeholder names. Either way nothing was changed and nothing
-            # could ever succeed.
-            "raised #{e.class}"
+            expect(target).to eq('template_folders#destroy'), "#{verb.upcase} #{path} raised #{e.class}"
+            404
           end
 
-        expect(status).not_to be_between(200, 299), "#{verb.upcase} #{path} (#{target}) answered #{status}" \
-          if status.is_a?(Integer)
+        expect(status).not_to be_between(200, 299), "#{verb.upcase} #{path} (#{target}) answered #{status}"
       end
     end
 
@@ -773,17 +770,39 @@ RSpec.describe 'Support impersonation', type: :request do
         get "/api/submitters/#{submitter.id}"
         expect(response).to have_http_status(:forbidden)
 
-        # And a document write, which read-only must refuse outright.
+        # A document write. Edit mode has to WORK here — the in-app builder
+        # saves through this door, so a mode the console offers and the API
+        # refuses is a mode that does not exist (review batch 2, N2) — and
+        # read-only has to refuse it with exactly one row, not one per ability
+        # check.
+        before = events('impersonation.refused').count
+
         patch "/api/templates/#{template.id}", params: { name: "Renamed in #{mode}" }.to_json,
                                                headers: { 'CONTENT_TYPE' => 'application/json' }
 
-        if mode == SupportImpersonation::READ_ONLY_MODE
+        if mode == SupportImpersonation::EDIT_MODE
+          expect(response).to have_http_status(:ok)
+          expect(template.reload.name).to eq('Renamed in edit')
+          expect(events('impersonation.refused').count).to eq(before)
+        else
           expect(response).to have_http_status(:forbidden)
           expect(last_event.details['target']).to eq('api/templates#update')
+          expect(events('impersonation.refused').count).to eq(before + 1)
+          expect(template.reload.name).not_to eq('Renamed in read_only')
         end
-
-        expect(template.reload.name).not_to eq("Renamed in #{mode}")
       end
+    end
+
+    # ... and it acts as the PERSON the session says it is viewing as, not as
+    # the operator (which is what made edit mode inert here).
+    it 'acts as the impersonated person on the browser-session API' do
+      sign_in(operator)
+      start!
+
+      get '/api/user'
+
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body['email']).to eq(admin.email)
     end
 
     # ... and a real token client is a different client: no session, no rule.
@@ -807,6 +826,34 @@ RSpec.describe 'Support impersonation', type: :request do
       expect(template.reload.name).to eq('Renamed by the token')
       expect(events('impersonation.refused')).to be_empty
       expect(events('impersonation.end')).to be_empty
+    end
+
+    # N1. The signer's upload door has its own ActionController::API base, no
+    # Devise and no Pretender — but it honours the session cookie and is keyed
+    # on a slug the operator can read off the customer's submission page, so a
+    # read-only session could attach a signature image to a live submitter.
+    it 'refuses the signer upload door, with a real submitter, and attaches nothing' do
+      submission = create(:submission, :with_submitters, template:, created_by_user: admin)
+      submitter = submission.submitters.first
+
+      sign_in(operator)
+      start!
+
+      expect do
+        post '/api/attachments',
+             params: { submitter_slug: submitter.slug, type: 'attachments',
+                       file: Rack::Test::UploadedFile.new(Rails.root.join('spec/fixtures/sample-document.pdf'),
+                                                          'application/pdf') }
+      end.not_to(change { submitter.reload.attachments.count })
+
+      expect(response).to have_http_status(:forbidden)
+      expect(response.parsed_body).to eq('error' => I18n.t('support_impersonation_refused_json'))
+
+      event = last_event
+      expect(event.action).to eq('impersonation.refused')
+      expect(event.details['target']).to eq('api/attachments#create')
+      expect(event.operator).to eq(operator)
+      expect(event.account).to eq(account)
     end
 
     # H2. The HMAC page printed the whole decrypted signing secret on a GET.
@@ -855,9 +902,11 @@ RSpec.describe 'Support impersonation', type: :request do
 
       operator.update!(platform_operator: false)
 
-      get root_path
+      get templates_path
 
-      expect(response).to redirect_to(operator_account_path(account))
+      # NOT the console: they can no longer open it, and a redirect there is a
+      # redirect to a 404 (review batch 2, N3).
+      expect(response).to redirect_to(root_path)
       expect(flash[:notice]).to eq(I18n.t('support_impersonation_ended_operator_access_lost'))
       expect(events('impersonation.end').first.details['ended_by']).to eq('operator_access_lost')
       expect(request.session[SupportImpersonation::SESSION_KEY]).to be_nil

@@ -137,8 +137,18 @@ module SupportImpersonationGuard
     if json_request?
       render json: { error: message }, status: :forbidden
     else
-      redirect_to(account ? operator_account_path(account) : operator_accounts_path, notice: message)
+      redirect_to(support_impersonation_exit_path(ended_by, account), notice: message)
     end
+  end
+
+  # Where the operator is put down. The console, normally — except when the
+  # reason the session ended is that they can no longer OPEN the console, in
+  # which case every page under /operator answers 404 and the redirect would
+  # land them on one (review batch 2, N3).
+  def support_impersonation_exit_path(ended_by, account)
+    return root_path if ended_by == 'operator_access_lost'
+
+    account ? operator_account_path(account) : operator_accounts_path
   end
 
   # A refusal is not a 500 and never a silent no-op: the operator gets a page
