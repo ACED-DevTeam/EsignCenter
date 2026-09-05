@@ -34,7 +34,7 @@ Triage: REAL. Final status: FIXED and re-reviewed. Cycle 2 deterministic interle
 
 `discard_blob` rescues storage deletion errors, but `discard_staged_blob` then clears the staged pointer regardless. `stage!` also replaces a previous pointer after the same swallowed deletion error. A transient bucket failure therefore strands a whole-account zip without a locator during exhausted-retry cleanup or the next build attempt. The failed-file sweep cannot recover it.
 
-Triage: REAL by direct code trace; regression pending. Fix-now: export cleanup Done-when. Clear or replace the locator only after storage-first deletion succeeds.
+Triage: REAL, reproduced on both cleanup paths. Final status: FIXED and re-reviewed. Fix-now: export cleanup Done-when. Clear or replace the locator only after storage-first deletion succeeds.
 
 ### Cycle 2 evidence and checkpoint
 
@@ -70,3 +70,5 @@ Final results below. Rails logs redirected into `sec8-scratch/rails.log`; no fin
 - `git diff --check`: passed. No commit was pushed. Checkpoints: `494ff74e` and `d85f6cb0`, followed by the final evidence/formatting checkpoint.
 
 **FINAL VERDICT: PASS. Findings 1, 2, 3 and 4: FIXED, regression-proven, re-reviewed. 0 open, 0 carried over, 0 rejected.** No finding exceeds the three-cycle cap. No user action is required and no exception-list entry is owed.
+
+Cleanup verified: `capped --session "$S" --cleanup` reported "nothing left running" and no sweeper intervention. Final evidence checkpoint before this cleanup note: `90f282a8`.
