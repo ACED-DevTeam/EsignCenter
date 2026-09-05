@@ -1,4 +1,4 @@
-<p>Hello,</p>
+<p><%= mail_greeting %></p>
 <p>This is a reminder that your EsignCenter account, <strong><%= @current_account.name %></strong>, is <strong>permanently deleted on <%= @purge_date %></strong> — <%= @days_left %> days from now.</p>
 <p>Everything goes: documents, templates, people and settings. It cannot be recovered afterwards.</p>
 <p><strong>Download anything you want to keep</strong> from the <%= link_to 'templates page', @templates_url %> before then.</p>

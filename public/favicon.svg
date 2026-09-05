@@ -1,11 +1,5 @@
-<svg height="180" width="180" viewBox="0 0 180 180" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <linearGradient id="esignCenterFaviconGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#6366F1"/>
-      <stop offset="100%" stop-color="#2563EB"/>
-    </linearGradient>
-  </defs>
-  <rect x="2" y="2" width="176" height="176" rx="40" fill="url(#esignCenterFaviconGradient)"/>
-  <path d="M 48 94 L 78 123 L 134 58" stroke="#FFFFFF" stroke-width="18" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-  <path d="M 44 142 C 75 154, 105 154, 136 142" stroke="#FFFFFF" stroke-width="9" stroke-linecap="round" fill="none" opacity="0.85"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="180" height="180" viewBox="0 0 180 180" role="img" aria-label="EsignCenter">
+  <rect x="8" y="8" width="164" height="164" rx="36" fill="#4F46E5"/>
+  <path d="M 50 94 L 78 121 L 132 60" stroke="#FFFFFF" stroke-width="15" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <path d="M 46 140 C 76 151, 104 151, 134 140" stroke="#FFFFFF" stroke-width="8" stroke-linecap="round" fill="none" opacity="0.85"/>
 </svg>

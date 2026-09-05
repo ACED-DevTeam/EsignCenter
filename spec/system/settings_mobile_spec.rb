@@ -132,6 +132,28 @@ RSpec.describe 'Settings on a phone' do
       expect(page).to have_css('a[href="/settings/account"][aria-current="page"]', visible: :all)
     end
 
+    # Webhooks is near the end of the strip, well past the right edge on a
+    # 390px screen. Opening it must not look like a settings page with no
+    # active tab: the strip scrolls the current one into the middle.
+    it 'scrolls the active tab into view when it starts off screen' do
+      visit '/settings/webhooks'
+
+      tab = find('#account_settings_menu a[aria-current="page"]', visible: :all)
+
+      expect(tab.text.strip).to eq('Webhooks')
+
+      inside = page.evaluate_script(<<~JS)
+        (function () {
+          var el = document.querySelector('#account_settings_menu a[aria-current="page"]');
+          var r = el.getBoundingClientRect();
+          return r.left >= -1 && r.right <= window.innerWidth + 1 && r.width > 0;
+        })()
+      JS
+
+      expect(inside).to be(true), 'the active tab was left outside the viewport'
+      expect(overflow).to be <= 0
+    end
+
     it 'keeps the settings navigation on one horizontal strip' do
       visit '/settings/profile'
 

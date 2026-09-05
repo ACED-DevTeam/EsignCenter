@@ -28,9 +28,15 @@
     stays on a platform notice whatever the flag says, because the reader has
     to recognise who is writing to them.
 
-    The DocuSeal attribution underneath is the AGPL notice and never
-    disappears at all — rendered here, once, for every mail
-    (shared/mailer_attribution). %>
+    The line underneath comes from shared/mailer_attribution, and it is NOT
+    the DocuSeal attribution — a previous version of this comment said it was
+    and was simply wrong. The AGPL attribution points are the interactive ones
+    (shared/_powered_by, shared/_attribution), which `rake gates:branding`
+    pins. What the partial carries in mail is the product's own "Sent using
+    EsignCenter…" line, which an account may switch off once it has paid for
+    branding removal — and, on a platform notice, the plainer "Sent by
+    EsignCenter" instead, because a bill reminder is not the place to sell
+    free document signing. %>
 <% content = yield %>
 <% notice = platform_notice? %>
 <% branded = notice || !Accounts.branding_removed?(@current_account) %>

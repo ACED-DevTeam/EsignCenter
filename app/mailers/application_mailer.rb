@@ -10,7 +10,7 @@ class ApplicationMailer < ActionMailer::Base
 
   register_observer ActionMailerEventsObserver
 
-  helper_method :platform_notice?
+  helper_method :platform_notice?, :mail_greeting
 
   before_action do
     ActiveStorage::Current.url_options = Docuseal.default_url_options
@@ -50,6 +50,21 @@ class ApplicationMailer < ActionMailer::Base
 
   def mail_account(account)
     @_mail_account = account
+  end
+
+  # How a platform notice opens, asked by the templates.
+  #
+  # "Hi Jane," when we know who is reading it, and "Hello," when we do not —
+  # a message going to several administrators at once, or to an address with
+  # no person behind it. A mailer says who it is writing to by setting
+  # `@first_name`; saying nothing means the plain greeting, which is the right
+  # answer and never a wrong one.
+  #
+  # English-only, like every other word in these notices (they are platform
+  # mail, not localized signer mail), and escaped by the template like any
+  # other customer-supplied string.
+  def mail_greeting
+    @first_name.present? ? "Hi #{@first_name}," : 'Hello,'
   end
 
   # Which of the two kinds of mail this is, asked by layouts/mailer.
