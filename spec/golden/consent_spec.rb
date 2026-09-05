@@ -992,32 +992,21 @@ RSpec.describe 'ESIGN consent', type: :request do
         expect(response).to have_http_status(:not_found)
       end
 
-      it 'refuses an archived account' do
-        submitter = emailed_submitter_for(account)
-        account.update!(archived_at: Time.current)
+      # Each of the four states Submitters::FormOpen#locked? asks about, closed
+      # one at a time on an otherwise open form: whichever one it is, the door
+      # 404s.
+      {
+        'an archived account' => ->(submitter) { submitter.account.update!(archived_at: Time.current) },
+        'a declined signer' => ->(submitter) { submitter.update!(declined_at: Time.current) },
+        'an expired submission' => ->(submitter) { submitter.submission.update!(expire_at: 1.day.ago) },
+        'an archived template' => ->(submitter) { submitter.submission.template.update!(archived_at: Time.current) }
+      }.each do |description, close_the_form|
+        it "refuses #{description}" do
+          submitter = emailed_submitter_for(account)
+          close_the_form.call(submitter)
 
-        expect_door_refused(submitter)
-      end
-
-      it 'refuses a declined signer' do
-        submitter = emailed_submitter_for(account)
-        submitter.update!(declined_at: Time.current)
-
-        expect_door_refused(submitter)
-      end
-
-      it 'refuses an expired submission' do
-        submitter = emailed_submitter_for(account)
-        submitter.submission.update!(expire_at: 1.day.ago)
-
-        expect_door_refused(submitter)
-      end
-
-      it 'refuses an archived template' do
-        submitter = emailed_submitter_for(account)
-        submitter.submission.template.update!(archived_at: Time.current)
-
-        expect_door_refused(submitter)
+          expect_door_refused(submitter)
+        end
       end
 
       it 'refuses a signer whose turn has not come under an enforced order' do

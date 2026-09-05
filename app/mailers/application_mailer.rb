@@ -67,6 +67,24 @@ class ApplicationMailer < ActionMailer::Base
     @first_name.present? ? "Hi #{@first_name}," : 'Hello,'
   end
 
+  # The addresses a notice to an account's administrators goes to, and the
+  # name it may greet by — one answer for both mailers that fan a notice out
+  # this way (BillingMailer#prepare, QuotaMailer#prepare).
+  #
+  # Every such notice goes to EVERY active administrator in ONE message, so
+  # there is a name to use only when there is exactly one of them, which is
+  # most accounts. With several admins on the To line "Hi Jane," would be
+  # wrong for everybody else reading it, and the greeting stays plain
+  # (mail_greeting). Blank means the account has no active administrator and
+  # the caller sends nothing.
+  def admin_recipients(account)
+    admins = account.users.active.admins.to_a
+
+    @first_name = admins.one? ? admins.first.first_name.presence : nil
+
+    admins.map(&:email)
+  end
+
   # Which of the two kinds of mail this is, asked by layouts/mailer.
   #
   # A PLATFORM notice is written by EsignCenter to the people who run an
