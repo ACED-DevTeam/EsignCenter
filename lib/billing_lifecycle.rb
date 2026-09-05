@@ -85,7 +85,13 @@ module BillingLifecycle
     if (deadline = suspends_on(row)) && deadline <= now
       # A missed day-13 tick still owes the final reminder. Its existing
       # claim prevents a second mail on later sweeps.
-      send_dunning!(row, account, 13)
+      #
+      # `late: true` because the deadline is behind us, not ahead: this is the
+      # same letter arriving in the same tick as the suspension, and the
+      # ordinary day-13 wording ("on <date> the account is suspended", and
+      # "nothing has changed on your account yet") would be flatly untrue by
+      # the time it landed.
+      send_dunning!(row, account, 13, late: true)
       suspend_for_billing!(row, account)
     else
       dunning_step_for(row, now:).each { |day| send_dunning!(row, account, day) }
@@ -272,13 +278,13 @@ module BillingLifecycle
   # only right if this claim was the only one. The error is reported and
   # swallowed — one account's mail server must not stop the sweep for
   # everybody else.
-  def send_dunning!(row, account, day)
+  def send_dunning!(row, account, day, late: false)
     key = dunning_key(row, "day#{day}")
 
     return unless AccountCounters.increment!(account.id, key, period: COUNTER_PERIOD) == 1
 
     begin
-      BillingMailer.payment_failed(account, day:, suspends_on: suspends_on(row)).deliver_later!
+      BillingMailer.payment_failed(account, day:, late:, suspends_on: suspends_on(row)).deliver_later!
     rescue StandardError => e
       release_counter(account, key)
       ErrorReport.error(e, account_id: account.id)

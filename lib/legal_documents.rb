@@ -244,7 +244,7 @@ module LegalDocuments
       version: DOCUMENTS[doc][:version],
       effective_on: DOCUMENTS[doc][:effective_on],
       limits: Quotas::Limits,
-      price: BillingSettingsController::PRICE_PER_SEAT_USD,
+      price: StripeBilling::PRICE_PER_SEAT_USD,
       trial_days: StripeBilling::TRIAL_PERIOD_DAYS,
       invite_days: BillingLifecycle::INVITE_TOKEN_DAYS,
       grace_days: BillingLifecycle::PAST_DUE_GRACE_DAYS,

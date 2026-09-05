@@ -10,6 +10,8 @@ class ApplicationMailer < ActionMailer::Base
 
   register_observer ActionMailerEventsObserver
 
+  helper_method :platform_notice?
+
   before_action do
     ActiveStorage::Current.url_options = Docuseal.default_url_options
   end
@@ -48,6 +50,21 @@ class ApplicationMailer < ActionMailer::Base
 
   def mail_account(account)
     @_mail_account = account
+  end
+
+  # Which of the two kinds of mail this is, asked by layouts/mailer.
+  #
+  # A PLATFORM notice is written by EsignCenter to the people who run an
+  # account — billing, the account lifecycle, quota warnings, invitations,
+  # operator alerts, the SMTP test — and always carries the product's name,
+  # because that is who is writing and the reader has to recognise it.
+  #
+  # Everything else is the CUSTOMER's own mail to their signers, and an
+  # account that has paid for branding removal gets no wordmark and no
+  # support line on it. The DocuSeal attribution is a separate thing and is
+  # never affected either way.
+  def platform_notice?
+    false
   end
 
   private

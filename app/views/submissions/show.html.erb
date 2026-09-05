@@ -20,12 +20,12 @@
         <%= button_to button_title(title: t('unarchive'), disabled_with: t('unarchive')[0..-2], icon: svg_icon('rotate', class: 'w-6 h-6')), submission_unarchive_index_path(@submission), class: 'btn btn-primary btn-ghost text-base hidden md:flex' %>
       <% end %>
       <% if @submission.audit_trail.present? %>
-        <a href="<%= ActiveStorage::Blob.proxy_path(@submission.audit_trail.blob, expires_at: 4.hours.from_now) %>" class="white-button" target="_blank">
+        <a href="<%= ActiveStorage::Blob.proxy_path(@submission.audit_trail.blob, expires_at: 4.hours.from_now) %>" class="white-button" aria-label="<%= t('audit_log') %>" target="_blank">
           <%= svg_icon('external_link', class: 'w-6 h-6') %>
           <span class="hidden md:inline"><%= t('audit_log') %></span>
         </a>
       <% elsif signed_in? %>
-        <%= link_to submission_events_path(@submission), class: 'white-button', data: { turbo_frame: :modal } do %>
+        <%= link_to submission_events_path(@submission), class: 'white-button', 'aria-label': t('event_log'), data: { turbo_frame: :modal } do %>
           <%= svg_icon('logs', class: 'w-6 h-6') %>
           <span class="hidden md:block"><%= t('event_log') %></span>
         <% end %>
@@ -33,7 +33,7 @@
       <% if signed_in? && !is_all_completed && can?(:manage, :resend_all) && @submission.submitters.to_a.size > 3 && !@submission.archived_at? && !@submission.template&.archived_at? && !@submission.expired? && can?(:update, @submission) %>
         <% pending_submitters_count = @submission.submitters.to_a.count { |s| !s.completed_at? && s.email.present? && !s.declined_at? } %>
         <% if pending_submitters_count.positive? %>
-          <%= button_to button_title(title: t('re_send_emails'), title_class: 'hidden md:inline', disabled_with: t('sending'), icon: svg_icon('mail_forward', class: 'w-6 h-6')), submission_resend_email_index_path(@submission), class: 'white-button', data: { turbo_confirm: t('are_you_sure_you_want_to_re_send_email_to_n_recipients', count: pending_submitters_count) } %>
+          <%= button_to button_title(title: t('re_send_emails'), title_class: 'hidden md:inline', disabled_with: t('sending'), icon: svg_icon('mail_forward', class: 'w-6 h-6')), submission_resend_email_index_path(@submission), class: 'white-button', 'aria-label': t('re_send_emails'), data: { turbo_confirm: t('are_you_sure_you_want_to_re_send_email_to_n_recipients', count: pending_submitters_count) } %>
         <% end %>
       <% end %>
       <% if @submission.submitters.to_a.any?(&:completed_at?) %>

@@ -185,10 +185,12 @@ Session 5 re-points that trait, not the spec.
 modules directly, including the "clearing is always allowed" rule and the
 refusal copy in every declared language.
 
-### 1.8 What later sessions owe
+### 1.8 What the later sessions finished
 
-- **Session 6** — wire the upgrade call-to-action (Phase C's
-  `shared/_upgrade_cta`, `data-upgrade-cta`) to the real Checkout link.
+- **The upgrade call-to-action is wired** — `shared/_upgrade_cta`
+  (`data-upgrade-cta`) points at the billing page whenever billing is switched
+  on and the person looking could actually buy (a customer account, an admin),
+  and at the usage page otherwise, so the link is never dead.
 - **Delivery tracking is complete** — Postmark events project into the signer
   timeline, with the free/paid/internal assertion in the golden gating spec.
 
@@ -242,7 +244,7 @@ The listing below is every occurrence of `multitenant` in `app/`, `lib/` and
 | `app/views/accounts/show.html.erb:136,159` | Decline / delegate toggles were a cloud upsell | customer-ok | Toggles unconditional for everyone (D30); the disabled-toggle tooltip plumbing removed |
 | `app/views/accounts/show.html.erb:239,258` | "Always enforce signing order" and "direct file links" behind a cloud ability | customer-ok | Unconditional (signing order is a core row) |
 | `app/views/accounts/show.html.erb:275` | "Build search index" control | operator-only | `operator_access?` alone (already the operator gate; the tenancy half dropped) |
-| `app/views/accounts/show.html.erb:287` | Cloud-only "Delete my account" danger zone | hidden | The button was removed; the `DELETE /settings/account` route still answers a hand-built request until Session 7 replaces the flow with the recovery-window deletion |
+| `app/views/accounts/show.html.erb:287` | Cloud-only "Delete my account" danger zone | hidden | The cloud button was removed. `DELETE /settings/account` is now the recovery-window deletion Session 7 built: it asks for a confirmation and a proof of identity, then schedules the purge 90 days out rather than destroying anything |
 | `app/views/devise/sessions/new.html.erb:3` | Cloud "select server" picker | hidden | Render removed; the (empty) partial deleted |
 | `app/views/email_smtp_settings/index.html.erb:38,53` | SMTP security radios / required from-address | customer-ok | Both unconditional. The page itself is a paid row: `can?(:use, :account_smtp)` shows the form, otherwise the upgrade CTA |
 | `app/views/esign_settings/show.html.erb:106` | Custom timestamp-server form | operator-only | **Done (Session 4):** the timestamp-server form, the certificate table, the certificate upload button and the verify-PDF box all render only for `operator_access?`. Every admin still sees the signing preferences on the same page |
@@ -338,8 +340,8 @@ regex, so the literal grep does not list it.
   Drive import link is gone from the upload dropzone.
 - **Upgrade CTA** (`shared/_upgrade_cta`): one partial (title, "%{feature}
   is available on the paid plan", an "Upgrade plan" button carrying
-  `data-upgrade-cta` with a placeholder `#` link until Session 6 wires
-  Checkout). Rendered on: API, MCP, Webhooks, Email SMTP, Notifications (BCC
+  `data-upgrade-cta`, which points at the billing page for anyone who could
+  buy and at the usage page for everyone else). Rendered on: API, MCP, Webhooks, Email SMTP, Notifications (BCC
   and reminders), Personalization (email templates and branding removal), the
   template code modal and the template preferences API tab. When a page has
   two gated surfaces (Notifications, Personalization) the second one renders

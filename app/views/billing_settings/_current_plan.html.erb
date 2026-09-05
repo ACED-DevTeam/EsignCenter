@@ -8,6 +8,13 @@
     card has to say the more useful of the two). Driven off the flag itself,
     never off access_state. %>
 <% cancels_on = @subscription&.cancel_at_period_end && ends_on %>
+<%# A trial the customer cancelled while it was still running. Stripe reads
+    it as `canceling` (the flag outranks the status), so the card used to
+    quote "$10 per month" with no trial note at all — a price for a charge
+    that is never going to happen. The trial's own end date is the useful
+    one, and the honest amount is nothing. %>
+<% trial_cancelled = @in_trial && @view_state == 'canceling' %>
+<% trial_ends_on = @subscription&.trial_end || ends_on %>
 <div class="card bg-base-100 border border-base-300" data-billing-card="<%= @view_state %>">
   <div class="card-body p-5 md:p-6 gap-4">
     <div class="flex items-start gap-4">
@@ -21,7 +28,11 @@
           <% when 'trialing' %>
             <%= @subscription&.trial_end ? t('billing_trial_ends_on', date: billing_date(@subscription.trial_end)) : t('billing_trial_running') %>
           <% when 'canceling' %>
-            <%= cancels_on ? t('billing_cancels_on', date: billing_date(cancels_on)) : t('billing_cancels_at_period_end') %>
+            <% if trial_cancelled && trial_ends_on %>
+              <%= t('billing_trial_cancels_on', date: billing_date(trial_ends_on)) %>
+            <% else %>
+              <%= cancels_on ? t('billing_cancels_on', date: billing_date(cancels_on)) : t('billing_cancels_at_period_end') %>
+            <% end %>
           <% when 'incomplete' %>
             <%= t('billing_incomplete_headline') %>
           <% when 'past_due' %>
@@ -40,7 +51,13 @@
       <dd data-billing-seats><%= @billed_seats %></dd>
       <dt class="text-base-content/70"><%= t('billing_monthly_cost') %></dt>
       <dd data-billing-amount>
-        <%= @view_state == 'trialing' ? t('billing_then_amount_per_month', total: @monthly_total, price: @price_per_seat) : t('billing_amount_per_month', total: @monthly_total, price: @price_per_seat) %>
+        <% if trial_cancelled %>
+          <%= t('billing_trial_no_charge') %>
+        <% elsif @view_state == 'trialing' %>
+          <%= t('billing_then_amount_per_month', total: @monthly_total, price: @price_per_seat) %>
+        <% else %>
+          <%= t('billing_amount_per_month', total: @monthly_total, price: @price_per_seat) %>
+        <% end %>
       </dd>
     </dl>
 

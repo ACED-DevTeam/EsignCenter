@@ -200,6 +200,24 @@ class Ability
 
     allowed.each { |feature| can :use, feature }
     (Entitlements::FEATURES - allowed).each { |feature| cannot :use, feature }
+
+    # The reply-to address on the signer-email forms (D78, item 5). Upstream
+    # hid it behind a cloud-only ability that nothing in this build ever
+    # grants, so the field was invisible to every account on the platform —
+    # while a reply-to saved in the account's email config really IS put on
+    # the outgoing mail (SubmitterMailer#build_submitter_reply_to reads
+    # `email_config.value['reply_to']`). A field that does something and can
+    # be set by nobody is not a gate, it is a bug.
+    #
+    # It rides with the paid row it sits inside: the same entitlement as the
+    # custom email templates whose forms carry it, so it appears and
+    # disappears with them, and the writes go through the same server-side
+    # guards (Entitlements.require_for_account_config! for the account rows,
+    # TemplatesPreferencesController for the per-template one).
+    #
+    # `:personalization_advanced` stays ungranted on purpose: nothing reads
+    # the setting it hides.
+    can :manage, :reply_to if allowed.include?(:custom_email_templates)
   end
 
   # Read-only document access (viewer and above).

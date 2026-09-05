@@ -141,6 +141,7 @@ RSpec.describe 'Marketing pages', type: :request do
       expect(cell.call('api')).to eq(['Not included', 'Included'])
       expect(cell.call('send_and_sign')).to eq(%w[Included Included])
 
+      forbidden_trust_phrases.each { |phrase| expect(body_text_outside_disclaimer).not_to include(phrase) }
       expect(response.body).to include("$#{StripeBilling::PRICE_PER_SEAT_USD}")
       expect(response.body).to include("#{StripeBilling::TRIAL_PERIOD_DAYS}-day")
       expect(response.body).to include(Quotas::Limits::PAID_COMPLETIONS_REVIEW_PER_SEAT.to_s)

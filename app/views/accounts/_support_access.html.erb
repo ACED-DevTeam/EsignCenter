@@ -2,58 +2,60 @@
     that should only be visible to support: every session is listed here, with
     the reason it was opened, for anybody who administers the account. The card
     is drawn only once there is something to show — an empty "nobody has ever
-    looked at your account" panel is noise on a settings page. %>
+    looked at your account" panel is noise on a settings page.
+
+    Six columns of table never fitted the settings column, which is 576px wide
+    on any screen: at 1440 the last two — Actions and Reason, the two that
+    matter most — sat off the right edge behind a scrollbar nobody looks for
+    (checkpoint 9, D2/4). So each session is a labelled card at every width,
+    and nothing is ever cut off. %>
 <% sessions = can?(:administer, current_account) ? SupportImpersonation.recent_for(current_account) : [] %>
 <% if sessions.any? %>
   <div class="px-1 mt-8" data-support-access-card>
     <h2 class="text-2xl font-bold mb-2"><%= t('support_access_title') %></h2>
     <p class="text-sm text-base-content/70 mb-3"><%= t('support_access_hint') %></p>
-    <div class="overflow-x-auto">
-      <table class="table w-full">
-        <thead>
-          <tr class="text-neutral uppercase">
-            <th><%= t('support_access_when') %></th>
-            <th><%= t('support_access_viewed_as') %></th>
-            <th><%= t('support_access_mode') %></th>
-            <th><%= t('support_access_duration') %></th>
-            <th><%= t('support_access_changes') %></th>
-            <th><%= t('support_access_reason') %></th>
-          </tr>
-        </thead>
-        <tbody>
-          <% sessions.each do |started, ended| %>
-            <tr data-support-access-row="<%= started.id %>">
-              <td class="whitespace-nowrap text-sm">
-                <%= l(started.created_at.in_time_zone(current_account.timezone), format: :short) %>
-              </td>
-              <td dir="auto" class="break-all text-sm"><%= started.details['user_email'] %></td>
-              <td class="text-sm"><%= SupportImpersonation.mode_label(started.details['mode']) %></td>
-              <td class="whitespace-nowrap text-sm">
-                <% seconds = ended&.details&.dig('duration_seconds') %>
-                <% if seconds %>
-                  <%= distance_of_time_in_words(seconds.to_i.seconds) %>
-                <% else %>
-                  <%= t('support_access_still_open') %>
-                <% end %>
-              </td>
-              <%# What the session actually did. A read-only session changes nothing
-                  by definition, but "Allow document edits" is a mode that can archive
-                  a template or fix a signer's email address, and the customer is
-                  entitled to see how much of that happened without asking us.
+    <ul class="space-y-3">
+      <% sessions.each do |started, ended| %>
+        <li class="rounded-2xl border border-base-300 bg-base-100 p-4 text-sm" data-support-access-row="<%= started.id %>">
+          <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+            <span class="font-medium">
+              <%= t('support_access_when') %>:
+              <%= l(started.created_at.in_time_zone(current_account.timezone), format: :short) %>
+            </span>
+            <span class="text-base-content/70">
+              <%= t('support_access_duration') %>:
+              <% seconds = ended&.details&.dig('duration_seconds') %>
+              <%= seconds ? distance_of_time_in_words(seconds.to_i.seconds) : t('support_access_still_open') %>
+            </span>
+          </div>
+          <dl class="mt-2 space-y-1">
+            <div class="flex flex-wrap gap-x-2">
+              <dt class="text-base-content/70"><%= t('support_access_viewed_as') %>:</dt>
+              <dd dir="auto" class="break-all"><%= started.details['user_email'] %></dd>
+            </div>
+            <div class="flex flex-wrap gap-x-2">
+              <dt class="text-base-content/70"><%= t('support_access_mode') %>:</dt>
+              <dd><%= SupportImpersonation.mode_label(started.details['mode']) %></dd>
+            </div>
+            <%# What the session actually did. A read-only session changes nothing
+                by definition, but "Allow document edits" is a mode that can archive
+                a template or fix a signer's email address, and the customer is
+                entitled to see how much of that happened without asking us.
 
-                  An ACTION is one allowed edit-mode request that went through. An
-                  attempt the account itself turned away — a form that failed its own
-                  validation, a signer who could no longer be edited — is in the audit
-                  log with its outcome and is deliberately NOT counted here: telling a
-                  customer "3 actions" for three things that never happened would be
-                  worse than saying nothing (review 8, X4/Y3).
+                An ACTION is one allowed edit-mode request that went through. An
+                attempt the account itself turned away — a form that failed its own
+                validation, a signer who could no longer be edited — is in the audit
+                log with its outcome and is deliberately NOT counted here: telling a
+                customer "3 actions" for three things that never happened would be
+                worse than saying nothing (review 8, X4/Y3).
 
-                  The numbers come off the session's own end row; sessions recorded
-                  before we started counting print a dash rather than a reassuring
-                  and unearned zero. %>
-              <td class="whitespace-nowrap text-sm" data-support-access-changes="<%= started.id %>">
-                <% counted = ended&.details&.key?('action_count') %>
-                <% if counted %>
+                The numbers come off the session's own end row; sessions recorded
+                before we started counting print a dash rather than a reassuring
+                and unearned zero. %>
+            <div class="flex flex-wrap gap-x-2" data-support-access-changes="<%= started.id %>">
+              <dt class="text-base-content/70"><%= t('support_access_changes') %>:</dt>
+              <dd>
+                <% if ended&.details&.key?('action_count') %>
                   <%= t('support_access_changes_summary', count: ended.details['action_count'].to_i) %>
                   <% if ended.details['refused_count'].to_i.positive? %>
                     <span class="text-base-content/70">· <%= t('support_access_blocked_summary', count: ended.details['refused_count'].to_i) %></span>
@@ -61,12 +63,15 @@
                 <% else %>
                   <span class="text-base-content/70">—</span>
                 <% end %>
-              </td>
-              <td dir="auto" class="text-sm"><%= started.reason %></td>
-            </tr>
-          <% end %>
-        </tbody>
-      </table>
-    </div>
+              </dd>
+            </div>
+            <div class="flex flex-wrap gap-x-2">
+              <dt class="text-base-content/70"><%= t('support_access_reason') %>:</dt>
+              <dd dir="auto" class="break-words"><%= started.reason %></dd>
+            </div>
+          </dl>
+        </li>
+      <% end %>
+    </ul>
   </div>
 <% end %>

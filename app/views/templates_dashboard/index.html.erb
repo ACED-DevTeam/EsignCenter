@@ -41,7 +41,7 @@
         <span class="hidden sm:block">
           <%= render 'templates/upload_button' %>
         </span>
-        <%= link_to new_template_path, class: 'white-button !border gap-2', data: { turbo_frame: :modal } do %>
+        <%= link_to new_template_path, class: 'white-button !border gap-2', 'aria-label': t('create'), data: { turbo_frame: :modal } do %>
           <%= svg_icon('plus', class: 'w-6 h-6 stroke-2') %>
           <span class="hidden md:block"><%= t('create') %></span>
         <% end %>
@@ -98,6 +98,13 @@
   <% end %>
 </dashboard-dropzone>
 <% if show_dropzone %>
+  <%# A first-run shelf should say what belongs on it. The dropzone below is
+      the action; this is the one sentence that explains what it makes. It
+      only appears while the shelf really is empty — once there is anything
+      to look at, the dropzone speaks for itself. %>
+  <% if @templates.blank? && @template_folders.blank? && params[:q].blank? %>
+    <p class="mt-8 text-center text-base-content/70" data-templates-empty-hint><%= t('templates_empty_state_hint') %></p>
+  <% end %>
   <%= render 'templates/dropzone' %>
 <% elsif !can_create_templates && @templates.blank? && @template_folders.blank? && params[:q].blank? %>
   <%# Without the dropzone an empty dashboard is a heading over nothing at

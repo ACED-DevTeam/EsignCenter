@@ -1,11 +1,21 @@
+<%# The settings navigation is two shapes, not two markups. From `md` up it is
+    the sidebar it has always been. Below `md` the same list turns into a
+    horizontal strip of tabs that scrolls sideways, because stacked vertically
+    it pushed the actual settings a full phone-screen-and-a-half down the page
+    (checkpoint 9, D2/1). The "Back" arrow and the "Settings" caption are
+    sidebar furniture and stand down on a phone: the logo in the navbar is the
+    way out, and the page's own heading already says where you are. %>
 <div class="block w-full md:w-52 flex-none">
-  <menu-active>
-    <ul id="account_settings_menu" class="menu px-0">
-      <li class="menu-title py-0 !bg-transparent mb-3 -mt-5"><a href="<%= '/' %>" class="!bg-transparent !text-neutral font-medium flex items-center space-x-0.5"><%= svg_icon('arrow_left', class: 'w-4 h-4 stroke-2') %><span><%= t('back') %></span></a></li>
-      <li class="menu-title py-0 !bg-transparent">
+  <menu-active class="settings-tabs block">
+    <ul id="account_settings_menu"
+        class="menu px-0 menu-horizontal md:menu-vertical flex-nowrap md:flex-wrap w-full
+               whitespace-nowrap md:whitespace-normal overflow-x-auto md:overflow-visible
+               border-b border-base-300 md:border-b-0 pb-1 md:pb-0">
+      <li class="menu-title py-0 !bg-transparent mb-3 -mt-5 hidden md:block"><a href="<%= '/' %>" class="!bg-transparent !text-neutral font-medium flex items-center space-x-0.5"><%= svg_icon('arrow_left', class: 'w-4 h-4 stroke-2') %><span><%= t('back') %></span></a></li>
+      <li class="menu-title py-0 !bg-transparent hidden md:block">
         <span class="!bg-transparent"><%= t('settings') %></span>
       </li>
-      <li></li>
+      <li class="hidden md:block"></li>
       <li>
         <%= link_to t('profile'), settings_profile_index_path, class: 'text-base hover:bg-base-300' %>
       </li>
@@ -77,10 +87,10 @@
         <% end %>
         <%= render 'shared/settings_nav_extra2' %>
         <% if test_mode_available? && ((can?(:manage, EncryptedConfig) && current_user == true_user) || (current_user != true_user && current_account.testing?)) %>
-          <%= form_for '', url: testing_account_path, method: current_account.testing? ? :delete : :post, html: { class: 'w-full' } do |f| %>
+          <%= form_for '', url: testing_account_path, method: current_account.testing? ? :delete : :post, html: { class: 'w-auto md:w-full' } do |f| %>
             <li>
-              <label class="flex items-center text-base hover:bg-base-300 w-full justify-between" for="testing_toggle">
-                <span class="mr-2 w-full">
+              <label class="flex items-center text-base hover:bg-base-300 w-auto md:w-full justify-between" for="testing_toggle">
+                <span class="mr-2 w-auto md:w-full">
                   <%= t('test_mode') %>
                 </span>
                 <submit-form data-on="change" class="flex">

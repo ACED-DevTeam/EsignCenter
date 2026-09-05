@@ -18,6 +18,7 @@ class TemplatesPreferencesController < ApplicationController
   EMAIL_TEMPLATE_PREFERENCE_KEYS = %w[request_email_subject request_email_body
                                       invitation_reminder_email_subject invitation_reminder_email_body
                                       documents_copy_email_subject documents_copy_email_body
+                                      documents_copy_email_reply_to
                                       completed_notification_email_subject completed_notification_email_body
                                       submitters].freeze
 

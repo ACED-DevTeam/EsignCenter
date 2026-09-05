@@ -66,7 +66,15 @@ module Registrations
   # just as important, a person can never exist without one. A failure to
   # record the agreement is therefore a failure to sign up, and is raised
   # rather than swallowed.
-  def save_signup(user, request: nil, source: nil, versions: nil)
+  #
+  # REQUIRED rather than defaulted (review 2), because the default was the
+  # dangerous one: a door added next year that simply forgot the argument
+  # would create a login with no agreement behind it and nothing would say
+  # so. Now it has to answer the question. A headless caller with no human in
+  # front of it — a console, a provisioning script — passes `source: nil`
+  # explicitly, which records nothing and is a decision somebody made rather
+  # than one they overlooked.
+  def save_signup(user, source:, request: nil, versions: nil)
     saved = false
 
     User.transaction do
