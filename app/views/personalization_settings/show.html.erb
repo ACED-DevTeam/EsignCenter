@@ -1,9 +1,13 @@
 <div class="flex flex-wrap space-y-4 md:flex-nowrap md:space-y-0">
   <%= render 'shared/settings_nav' %>
   <div class="flex-grow max-w-xl mx-auto">
-    <p class="text-4xl font-bold mb-4">
+    <%# Headings, not styled paragraphs. Every other settings page opens with
+        an h1 and this one opened with nothing at all, which leaves a screen
+        reader no way to skim the page or jump between its four sections. The
+        classes are unchanged: this is the same page, correctly marked up. %>
+    <h1 class="text-4xl font-bold mb-4">
       <%= t('email_templates') %>
-    </p>
+    </h1>
     <% if can?(:use, :custom_email_templates) %>
       <div class="space-y-4">
         <%= render 'signature_request_email_form' %>
@@ -14,17 +18,17 @@
     <% else %>
       <%= render 'shared/upgrade_cta', feature: t('email_templates'), body: safe_join([t('custom_email_templates_are_available_on_the_paid_plan'), t('upgrade_to_unlock_this_and_every_other_paid_feature')], ' ') %>
     <% end %>
-    <p class="text-4xl font-bold mb-4 mt-8">
+    <h2 class="text-4xl font-bold mb-4 mt-8">
       <%= t('company_logo') %>
-    </p>
+    </h2>
     <%= render 'logo_form' %>
-    <p class="text-4xl font-bold mb-4 mt-8">
+    <h2 class="text-4xl font-bold mb-4 mt-8">
       <%= t('branding') %>
-    </p>
+    </h2>
     <%= render 'branding_form' %>
-    <p class="text-4xl font-bold mb-4 mt-8">
+    <h2 class="text-4xl font-bold mb-4 mt-8">
       <%= t('submission_form') %>
-    </p>
+    </h2>
     <div class="space-y-4">
       <%= render 'form_completed_message_form' %>
       <%= render 'form_completed_button_form' %>

@@ -48,6 +48,8 @@ en: &en
   upgrade_to_add_more_users: "Upgrade to add more people to this account."
   need_help_email_us: "Need help? Email us:"
   no_documents_here_yet: "No documents here yet."
+  templates_empty_state_hint: "Templates are the documents you send out to be signed. Upload a PDF or Word file to create your first one."
+  submissions_empty_state_hint: "Every document you send for signature appears here, with who has signed it and who has not."
   account_deletion_banner: "This account will be permanently deleted on %{date}."
   account_deletion_banner_hint: "Everything stays readable, downloadable and exportable until then. Nothing new can be created."
   account_deletion_cancel_button: "Cancel deletion"
@@ -160,6 +162,8 @@ en: &en
   billing_trial_running: "Your free trial is running."
   billing_cancels_on: "Your subscription ends on %{date}."
   billing_cancels_at_period_end: "Your subscription ends at the end of the current period."
+  billing_trial_cancels_on: "Your trial ends on %{date}; you will not be charged."
+  billing_trial_no_charge: "Nothing — the trial ends before the first charge."
   billing_renews_on: "Renews on %{date}."
   billing_renews_monthly: "Renews every month."
   billing_past_due_headline: "We could not take the last payment."
@@ -185,13 +189,15 @@ en: &en
   billing_benefit_reminders: "Automatic reminders for signers who forget"
   billing_benefit_branding: "Your branding on emails and signing pages, not ours"
   billing_benefit_email_templates: "Custom email templates and your own SMTP server"
-  billing_seats_billed: "Seats billed: %{count} — everyone who signs in to this account."
+  billing_seats_billed: "Seats billed: %{count} — everyone with full access here and in any linked account, plus invitations not yet accepted. Read-only members, API integration logins and test-mode users are not billed."
   billing_trial_used: "Your free trial has been used."
   start_free_trial: "Start 14-day free trial"
   upgrade_to_paid: "Upgrade to Paid"
   manage_billing: "Manage billing"
   billing_view_usage: "See this month's usage"
   billing_already_subscribed: "You already have an active subscription — use Manage billing."
+  billing_refused_incomplete: "Your previous checkout is still finishing — complete the payment under Manage billing."
+  billing_refused_suspended: "Your account is suspended — pay the open invoice under Manage billing to lift it."
   billing_refused_pending_deletion: "Your account is scheduled for deletion. Cancel the deletion first if you want to subscribe again."
   billing_account_moved_away: "This account was closed when its last member joined another team, so its billing can no longer be changed here."
   billing_no_customer_yet: "There is no billing account yet. Start a subscription first."
@@ -199,6 +205,8 @@ en: &en
   billing_checkout_cancelled: "Checkout cancelled — nothing was charged."
   billing_trial_started: "Your 14-day trial has started."
   billing_subscription_active: "Your subscription is active."
+  billing_checkout_past_due: "Your subscription was created, but the payment has not gone through yet. Sort the card out under Manage billing."
+  billing_checkout_canceling: "Your subscription is active and already set to end at the end of the current period. You can resume it from Manage billing."
   billing_state_incomplete: "Payment not completed"
   billing_incomplete_headline: "Payment not completed yet — finish it from Manage billing."
   billing_duplicate_cancelled: "You already had an active subscription; the duplicate was cancelled and you will not be charged for it."
@@ -350,6 +358,7 @@ en: &en
   webhook_url_must_not_point_at_a_private_address: must not point at localhost or a private/metadata address
   webhook_url_must_be_a_full_url: must be a full URL with a host, such as https://example.com/webhook
   templates_that_require_email_2fa_cannot_be_used_via_a_shared_link: Templates that require email 2FA cannot be used via a shared link.
+  shared_link_email_2fa_note: "Because this template asks signers to verify their email address, any link you have already circulated now shows the “Email invitation required” page instead of the form."
   removing_product_name_branding_from_emails_and_signing_pages_is_available_on_the_paid_plan: 'Removing %{product_name} branding from emails and signing pages is available on the paid plan.'
   custom_email_templates_are_available_on_the_paid_plan: Custom email templates are available on the paid plan.
   automatic_reminders_are_available_on_the_paid_plan: Automatic sign request reminders are available on the paid plan.
@@ -903,6 +912,9 @@ en: &en
   draw: Draw
   upload_signature: Upload Signature
   integration: "API integration (legacy)"
+  integration_users_help: "Legacy API logins can create and send documents through the API on this account's plan but cannot manage users or billing. The supported replacement is an API token."
+  integration_users: "API integration logins"
+  view_integration_users: "View API integration logins"
   admin: Admin
   tenant_admin: Tenant Admin
   editor: Editor
@@ -1933,7 +1945,6 @@ en: &en
   operator_refused_no_operator_account: "There is no operator account to store the setting on. Run `rake operator:seed`."
   operator_notice_settings_saved: "Settings saved."
   integration_role_tooltip: "API-only login from the original DocuSeal data; cannot manage users or billing. Replace with an API token."
-  integration_users_help: "Legacy API logins can create and send documents through the API on this account's plan but cannot manage users or billing. The supported replacement is an API token."
 
 
 es: &es
@@ -1984,6 +1995,8 @@ es: &es
   upgrade_to_add_more_users: "Mejora tu plan para añadir más personas a esta cuenta."
   need_help_email_us: "¿Necesitas ayuda? Escríbenos:"
   no_documents_here_yet: "Aún no hay documentos aquí."
+  templates_empty_state_hint: "Las plantillas son los documentos que envías para firmar. Sube un PDF o un archivo de Word para crear la primera."
+  submissions_empty_state_hint: "Todos los documentos que envías para firmar aparecen aquí, con quién ha firmado y quién no."
   account_deletion_banner: "Esta cuenta se eliminará definitivamente el %{date}."
   account_deletion_banner_hint: "Hasta entonces, todo sigue siendo legible, descargable y exportable. No se puede crear nada nuevo."
   account_deletion_cancel_button: "Cancelar la eliminación"
@@ -2029,6 +2042,8 @@ es: &es
   billing_trial_running: "Tu prueba gratuita está en curso."
   billing_cancels_on: "Tu suscripción termina el %{date}."
   billing_cancels_at_period_end: "Tu suscripción termina al final del periodo actual."
+  billing_trial_cancels_on: "Tu prueba termina el %{date}; no se te cobrará nada."
+  billing_trial_no_charge: "Nada: la prueba termina antes del primer cobro."
   billing_renews_on: "Se renueva el %{date}."
   billing_renews_monthly: "Se renueva cada mes."
   billing_past_due_headline: "No pudimos cobrar el último pago."
@@ -2054,13 +2069,15 @@ es: &es
   billing_benefit_reminders: "Recordatorios automáticos para los firmantes que se olvidan"
   billing_benefit_branding: "Tu marca en los correos y las páginas de firma, no la nuestra"
   billing_benefit_email_templates: "Plantillas de correo personalizadas y tu propio servidor SMTP"
-  billing_seats_billed: "Puestos facturados: %{count} — todas las personas que inician sesión en esta cuenta."
+  billing_seats_billed: "Puestos facturados: %{count} — todas las personas con acceso completo en esta cuenta y en las cuentas vinculadas, más las invitaciones aún sin aceptar. Los miembros de solo lectura, los accesos de API y los usuarios en modo de prueba no se facturan."
   billing_trial_used: "Ya has usado tu prueba gratuita."
   start_free_trial: "Empezar prueba gratuita de 14 días"
   upgrade_to_paid: "Cambiar al plan de pago"
   manage_billing: "Gestionar facturación"
   billing_view_usage: "Ver el uso de este mes"
   billing_already_subscribed: "Ya tienes una suscripción activa: usa Gestionar facturación."
+  billing_refused_incomplete: "Tu pago anterior aún se está completando: termínalo en Gestionar facturación."
+  billing_refused_suspended: "Tu cuenta está suspendida: paga la factura pendiente en Gestionar facturación para levantarla."
   billing_refused_pending_deletion: "Tu cuenta está programada para eliminarse. Cancela la eliminación primero si quieres volver a suscribirte."
   billing_account_moved_away: "Esta cuenta se cerró cuando su último miembro se unió a otro equipo, así que su facturación ya no se puede cambiar aquí."
   billing_no_customer_yet: "Todavía no hay una cuenta de facturación. Empieza una suscripción primero."
@@ -2068,6 +2085,8 @@ es: &es
   billing_checkout_cancelled: "Pago cancelado: no se ha cobrado nada."
   billing_trial_started: "Tu prueba de 14 días ha comenzado."
   billing_subscription_active: "Tu suscripción está activa."
+  billing_checkout_past_due: "Tu suscripción se creó, pero el pago aún no se ha realizado. Revisa la tarjeta en Gestionar facturación."
+  billing_checkout_canceling: "Tu suscripción está activa y ya está programada para terminar al final del periodo actual. Puedes reanudarla desde Gestionar facturación."
   billing_state_incomplete: "Pago sin completar"
   billing_incomplete_headline: "El pago aún no se ha completado: termínalo en Gestionar facturación."
   billing_duplicate_cancelled: "Ya tenías una suscripción activa; la duplicada se canceló y no se te cobrará por ella."
@@ -2214,6 +2233,7 @@ es: &es
   webhook_url_must_not_point_at_a_private_address: no debe apuntar a localhost ni a una dirección privada o de metadatos
   webhook_url_must_be_a_full_url: debe ser una URL completa con host, por ejemplo https://example.com/webhook
   templates_that_require_email_2fa_cannot_be_used_via_a_shared_link: Las plantillas que requieren 2FA por correo electrónico no se pueden usar mediante un enlace compartido.
+  shared_link_email_2fa_note: "Como esta plantilla pide a los firmantes que verifiquen su correo electrónico, cualquier enlace que ya hayas repartido muestra ahora la página «Se requiere una invitación por correo electrónico» en lugar del formulario."
   removing_product_name_branding_from_emails_and_signing_pages_is_available_on_the_paid_plan: 'Eliminar la marca %{product_name} de los correos y las páginas de firma está disponible en el plan de pago.'
   custom_email_templates_are_available_on_the_paid_plan: Las plantillas de correo personalizadas están disponibles en el plan de pago.
   automatic_reminders_are_available_on_the_paid_plan: Los recordatorios automáticos de solicitud de firma están disponibles en el plan de pago.
@@ -2748,7 +2768,10 @@ es: &es
   upload_initials: Subir iniciales
   draw: Dibujar
   upload_signature: Subir firma
-  integration: "API integration (legacy)"
+  integration: "Integración de API (heredada)"
+  integration_users_help: "Los accesos de API heredados pueden crear y enviar documentos a través de la API con el plan de esta cuenta, pero no pueden gestionar usuarios ni la facturación. El reemplazo admitido es un token de API."
+  integration_users: "Accesos de integración de API"
+  view_integration_users: "Ver accesos de integración de API"
   admin: Administrador
   tenant_admin: Tenant Admin
   editor: Editor
@@ -3341,6 +3364,8 @@ it: &it
   upgrade_to_add_more_users: "Passa a un piano superiore per aggiungere altre persone a questo account."
   need_help_email_us: "Hai bisogno di aiuto? Scrivici:"
   no_documents_here_yet: "Non c'è ancora nessun documento qui."
+  templates_empty_state_hint: "I modelli sono i documenti che invii per la firma. Carica un PDF o un file Word per creare il primo."
+  submissions_empty_state_hint: "Ogni documento che invii per la firma compare qui, con chi ha firmato e chi no."
   account_deletion_banner: "Questo account sarà eliminato definitivamente il %{date}."
   account_deletion_banner_hint: "Fino ad allora tutto resta leggibile, scaricabile ed esportabile. Non è possibile creare nulla di nuovo."
   account_deletion_cancel_button: "Annulla l'eliminazione"
@@ -3386,6 +3411,8 @@ it: &it
   billing_trial_running: "La tua prova gratuita è in corso."
   billing_cancels_on: "Il tuo abbonamento termina il %{date}."
   billing_cancels_at_period_end: "Il tuo abbonamento termina alla fine del periodo corrente."
+  billing_trial_cancels_on: "La tua prova termina il %{date}; non ti verrà addebitato nulla."
+  billing_trial_no_charge: "Niente: la prova termina prima del primo addebito."
   billing_renews_on: "Si rinnova il %{date}."
   billing_renews_monthly: "Si rinnova ogni mese."
   billing_past_due_headline: "Non siamo riusciti a incassare l'ultimo pagamento."
@@ -3411,13 +3438,15 @@ it: &it
   billing_benefit_reminders: "Promemoria automatici per i firmatari che dimenticano"
   billing_benefit_branding: "Il tuo marchio nelle email e nelle pagine di firma, non il nostro"
   billing_benefit_email_templates: "Modelli email personalizzati e il tuo server SMTP"
-  billing_seats_billed: "Postazioni fatturate: %{count} — tutte le persone che accedono a questo account."
+  billing_seats_billed: "Postazioni fatturate: %{count} — tutte le persone con accesso completo in questo account e negli account collegati, più gli inviti non ancora accettati. I membri in sola lettura, gli accessi API e gli utenti in modalità test non vengono fatturati."
   billing_trial_used: "La tua prova gratuita è già stata usata."
   start_free_trial: "Inizia la prova gratuita di 14 giorni"
   upgrade_to_paid: "Passa al piano a pagamento"
   manage_billing: "Gestisci fatturazione"
   billing_view_usage: "Vedi l'utilizzo di questo mese"
   billing_already_subscribed: "Hai già un abbonamento attivo: usa Gestisci fatturazione."
+  billing_refused_incomplete: "Il pagamento precedente è ancora in corso: completalo da Gestisci fatturazione."
+  billing_refused_suspended: "Il tuo account è sospeso: paga la fattura aperta da Gestisci fatturazione per riattivarlo."
   billing_refused_pending_deletion: "Il tuo account è programmato per l'eliminazione. Annulla prima l'eliminazione se vuoi abbonarti di nuovo."
   billing_account_moved_away: "Questo account è stato chiuso quando il suo ultimo membro è entrato in un altro team, quindi la fatturazione non può più essere modificata qui."
   billing_no_customer_yet: "Non esiste ancora un account di fatturazione. Attiva prima un abbonamento."
@@ -3425,6 +3454,8 @@ it: &it
   billing_checkout_cancelled: "Pagamento annullato: non è stato addebitato nulla."
   billing_trial_started: "La tua prova di 14 giorni è iniziata."
   billing_subscription_active: "Il tuo abbonamento è attivo."
+  billing_checkout_past_due: "L'abbonamento è stato creato, ma il pagamento non è ancora andato a buon fine. Sistema la carta da Gestisci fatturazione."
+  billing_checkout_canceling: "Il tuo abbonamento è attivo ed è già impostato per terminare alla fine del periodo corrente. Puoi riattivarlo da Gestisci fatturazione."
   billing_state_incomplete: "Pagamento non completato"
   billing_incomplete_headline: "Il pagamento non è ancora andato a buon fine: completalo in Gestisci fatturazione."
   billing_duplicate_cancelled: "Avevi già un abbonamento attivo; quello duplicato è stato annullato e non ti verrà addebitato."
@@ -3571,6 +3602,7 @@ it: &it
   webhook_url_must_not_point_at_a_private_address: non deve puntare a localhost o a un indirizzo privato/di metadati
   webhook_url_must_be_a_full_url: deve essere un URL completo con host, ad esempio https://example.com/webhook
   templates_that_require_email_2fa_cannot_be_used_via_a_shared_link: I modelli che richiedono 2FA via email non possono essere utilizzati tramite un link condiviso.
+  shared_link_email_2fa_note: "Poiché questo modello chiede ai firmatari di verificare la propria email, qualsiasi link già distribuito mostra ora la pagina «È richiesto un invito via email» invece del modulo."
   removing_product_name_branding_from_emails_and_signing_pages_is_available_on_the_paid_plan: 'La rimozione del marchio %{product_name} da email e pagine di firma è disponibile nel piano a pagamento.'
   custom_email_templates_are_available_on_the_paid_plan: I modelli email personalizzati sono disponibili nel piano a pagamento.
   automatic_reminders_are_available_on_the_paid_plan: I promemoria automatici delle richieste di firma sono disponibili nel piano a pagamento.
@@ -4105,7 +4137,10 @@ it: &it
   upload_initials: Carica iniziali
   draw: Disegna
   upload_signature: Carica firma
-  integration: "API integration (legacy)"
+  integration: "Integrazione API (legacy)"
+  integration_users_help: "Gli accessi API legacy possono creare e inviare documenti tramite l'API con il piano di questo account, ma non possono gestire utenti o fatturazione. Il sostituto supportato è un token API."
+  integration_users: "Accessi di integrazione API"
+  view_integration_users: "Visualizza gli accessi di integrazione API"
   admin: Amministratore
   tenant_admin: Amministratore tenant
   editor: Editor
@@ -4698,6 +4733,8 @@ fr: &fr
   upgrade_to_add_more_users: "Passez à une offre supérieure pour ajouter d'autres personnes à ce compte."
   need_help_email_us: "Besoin d'aide ? Écrivez-nous :"
   no_documents_here_yet: "Aucun document ici pour l'instant."
+  templates_empty_state_hint: "Les modèles sont les documents que vous envoyez à signer. Importez un PDF ou un fichier Word pour créer le premier."
+  submissions_empty_state_hint: "Chaque document envoyé à signer apparaît ici, avec qui l'a signé et qui ne l'a pas encore fait."
   account_deletion_banner: "Ce compte sera définitivement supprimé le %{date}."
   account_deletion_banner_hint: "D'ici là, tout reste lisible, téléchargeable et exportable. Rien de nouveau ne peut être créé."
   account_deletion_cancel_button: "Annuler la suppression"
@@ -4743,6 +4780,8 @@ fr: &fr
   billing_trial_running: "Votre essai gratuit est en cours."
   billing_cancels_on: "Votre abonnement prend fin le %{date}."
   billing_cancels_at_period_end: "Votre abonnement prend fin à la fin de la période en cours."
+  billing_trial_cancels_on: "Votre essai se termine le %{date} ; vous ne serez pas débité."
+  billing_trial_no_charge: "Rien — l'essai se termine avant le premier prélèvement."
   billing_renews_on: "Renouvellement le %{date}."
   billing_renews_monthly: "Renouvellement chaque mois."
   billing_past_due_headline: "Nous n'avons pas pu encaisser le dernier paiement."
@@ -4768,13 +4807,15 @@ fr: &fr
   billing_benefit_reminders: "Rappels automatiques pour les signataires qui oublient"
   billing_benefit_branding: "Votre marque sur les e-mails et les pages de signature, pas la nôtre"
   billing_benefit_email_templates: "Modèles d'e-mails personnalisés et votre propre serveur SMTP"
-  billing_seats_billed: "Sièges facturés : %{count} — toutes les personnes qui se connectent à ce compte."
+  billing_seats_billed: "Sièges facturés : %{count} — toutes les personnes ayant un accès complet sur ce compte et sur les comptes liés, plus les invitations pas encore acceptées. Les membres en lecture seule, les identifiants API et les utilisateurs en mode test ne sont pas facturés."
   billing_trial_used: "Votre essai gratuit a déjà été utilisé."
   start_free_trial: "Démarrer l'essai gratuit de 14 jours"
   upgrade_to_paid: "Passer à la formule payante"
   manage_billing: "Gérer la facturation"
   billing_view_usage: "Voir la consommation de ce mois"
   billing_already_subscribed: "Vous avez déjà un abonnement actif — utilisez Gérer la facturation."
+  billing_refused_incomplete: "Votre paiement précédent est encore en cours — terminez-le depuis Gérer la facturation."
+  billing_refused_suspended: "Votre compte est suspendu — réglez la facture en attente depuis Gérer la facturation pour le réactiver."
   billing_refused_pending_deletion: "La suppression de votre compte est programmée. Annulez d'abord la suppression si vous souhaitez vous réabonner."
   billing_account_moved_away: "Ce compte a été fermé lorsque son dernier membre a rejoint une autre équipe ; sa facturation ne peut donc plus être modifiée ici."
   billing_no_customer_yet: "Il n'y a pas encore de compte de facturation. Commencez d'abord un abonnement."
@@ -4782,6 +4823,8 @@ fr: &fr
   billing_checkout_cancelled: "Paiement annulé — rien n'a été débité."
   billing_trial_started: "Votre essai de 14 jours a commencé."
   billing_subscription_active: "Votre abonnement est actif."
+  billing_checkout_past_due: "Votre abonnement a été créé, mais le paiement n'a pas encore abouti. Corrigez la carte depuis Gérer la facturation."
+  billing_checkout_canceling: "Votre abonnement est actif et déjà programmé pour se terminer à la fin de la période en cours. Vous pouvez le reprendre depuis Gérer la facturation."
   billing_state_incomplete: "Paiement non finalisé"
   billing_incomplete_headline: "Votre paiement n'a pas encore abouti : terminez-le dans Gérer la facturation."
   billing_duplicate_cancelled: "Vous aviez déjà un abonnement actif ; le doublon a été annulé et ne vous sera pas facturé."
@@ -4928,6 +4971,7 @@ fr: &fr
   webhook_url_must_not_point_at_a_private_address: ne doit pas pointer vers localhost ni vers une adresse privée ou de métadonnées
   webhook_url_must_be_a_full_url: doit être une URL complète avec un hôte, par exemple https://example.com/webhook
   templates_that_require_email_2fa_cannot_be_used_via_a_shared_link: Les modèles nécessitant une authentification à deux facteurs par e-mail ne peuvent pas être utilisés via un lien partagé.
+  shared_link_email_2fa_note: "Comme ce modèle demande aux signataires de vérifier leur adresse e-mail, tout lien que vous avez déjà diffusé affiche désormais la page « Invitation par e-mail requise » à la place du formulaire."
   removing_product_name_branding_from_emails_and_signing_pages_is_available_on_the_paid_plan: 'La suppression de la marque %{product_name} des e-mails et des pages de signature est disponible avec l''abonnement payant.'
   custom_email_templates_are_available_on_the_paid_plan: 'Les modèles d''e-mail personnalisés sont disponibles avec l''abonnement payant.'
   automatic_reminders_are_available_on_the_paid_plan: 'Les rappels automatiques de demande de signature sont disponibles avec l''abonnement payant.'
@@ -5462,7 +5506,10 @@ fr: &fr
   upload_initials: Téléverser les initiales
   draw: Dessiner
   upload_signature: Téléverser la signature
-  integration: "API integration (legacy)"
+  integration: "Intégration API (héritée)"
+  integration_users_help: "Les identifiants API hérités peuvent créer et envoyer des documents via l'API selon le forfait de ce compte, mais ne peuvent gérer ni les utilisateurs ni la facturation. Le remplacement pris en charge est un jeton d'API."
+  integration_users: "Identifiants d'intégration API"
+  view_integration_users: "Voir les identifiants d'intégration API"
   admin: Administrateur
   tenant_admin: Administrateur locataire
   editor: Éditeur
@@ -6055,6 +6102,8 @@ pt: &pt
   upgrade_to_add_more_users: "Faça upgrade para adicionar mais pessoas a esta conta."
   need_help_email_us: "Precisa de ajuda? Escreva para nós:"
   no_documents_here_yet: "Ainda não há documentos aqui."
+  templates_empty_state_hint: "Os modelos são os documentos que você envia para assinatura. Envie um PDF ou um arquivo Word para criar o primeiro."
+  submissions_empty_state_hint: "Todos os documentos que você envia para assinatura aparecem aqui, com quem já assinou e quem ainda não."
   account_deletion_banner: "Esta conta será excluída permanentemente em %{date}."
   account_deletion_banner_hint: "Até lá, tudo continua legível, descarregável e exportável. Não é possível criar nada novo."
   account_deletion_cancel_button: "Cancelar a exclusão"
@@ -6100,6 +6149,8 @@ pt: &pt
   billing_trial_running: "Seu teste gratuito está em andamento."
   billing_cancels_on: "Sua assinatura termina em %{date}."
   billing_cancels_at_period_end: "Sua assinatura termina no fim do período atual."
+  billing_trial_cancels_on: "Seu teste termina em %{date}; você não será cobrado."
+  billing_trial_no_charge: "Nada — o teste termina antes da primeira cobrança."
   billing_renews_on: "Renova em %{date}."
   billing_renews_monthly: "Renova todos os meses."
   billing_past_due_headline: "Não conseguimos cobrar o último pagamento."
@@ -6125,13 +6176,15 @@ pt: &pt
   billing_benefit_reminders: "Lembretes automáticos para signatários que esquecem"
   billing_benefit_branding: "Sua marca nos e-mails e nas páginas de assinatura, não a nossa"
   billing_benefit_email_templates: "Modelos de e-mail personalizados e seu próprio servidor SMTP"
-  billing_seats_billed: "Lugares cobrados: %{count} — todas as pessoas que entram nesta conta."
+  billing_seats_billed: "Lugares cobrados: %{count} — todas as pessoas com acesso completo nesta conta e em contas vinculadas, mais os convites ainda não aceitos. Membros somente leitura, logins de API e usuários em modo de teste não são cobrados."
   billing_trial_used: "Seu teste gratuito já foi usado."
   start_free_trial: "Iniciar teste gratuito de 14 dias"
   upgrade_to_paid: "Mudar para o plano pago"
   manage_billing: "Gerenciar faturamento"
   billing_view_usage: "Ver o uso deste mês"
   billing_already_subscribed: "Você já tem uma assinatura ativa — use Gerenciar faturamento."
+  billing_refused_incomplete: "Seu checkout anterior ainda está sendo concluído — finalize o pagamento em Gerenciar faturamento."
+  billing_refused_suspended: "Sua conta está suspensa — pague a fatura em aberto em Gerenciar faturamento para reativá-la."
   billing_refused_pending_deletion: "A exclusão da sua conta está agendada. Cancele a exclusão primeiro se quiser assinar novamente."
   billing_account_moved_away: "Esta conta foi encerrada quando seu último membro entrou em outra equipe, então o faturamento não pode mais ser alterado aqui."
   billing_no_customer_yet: "Ainda não há uma conta de faturamento. Comece uma assinatura primeiro."
@@ -6139,6 +6192,8 @@ pt: &pt
   billing_checkout_cancelled: "Pagamento cancelado — nada foi cobrado."
   billing_trial_started: "Seu teste de 14 dias começou."
   billing_subscription_active: "Sua assinatura está ativa."
+  billing_checkout_past_due: "Sua assinatura foi criada, mas o pagamento ainda não foi concluído. Ajuste o cartão em Gerenciar faturamento."
+  billing_checkout_canceling: "Sua assinatura está ativa e já está programada para terminar no fim do período atual. Você pode retomá-la em Gerenciar faturamento."
   billing_state_incomplete: "Pagamento não concluído"
   billing_incomplete_headline: "O seu pagamento ainda não foi concluído: termine-o em Gerir faturação."
   billing_duplicate_cancelled: "Já tinha uma subscrição ativa; a duplicada foi cancelada e não lhe será cobrada."
@@ -6285,6 +6340,7 @@ pt: &pt
   webhook_url_must_not_point_at_a_private_address: não deve apontar para localhost nem para um endereço privado/de metadados
   webhook_url_must_be_a_full_url: deve ser um URL completo com host, por exemplo https://example.com/webhook
   templates_that_require_email_2fa_cannot_be_used_via_a_shared_link: Modelos que exigem 2FA por e-mail não podem ser usados por meio de um link compartilhado.
+  shared_link_email_2fa_note: "Como este modelo pede que os signatários verifiquem o e-mail, qualquer link que você já tenha divulgado agora mostra a página “É necessário um convite por e-mail” em vez do formulário."
   removing_product_name_branding_from_emails_and_signing_pages_is_available_on_the_paid_plan: 'Remover a marca %{product_name} dos e-mails e das páginas de assinatura está disponível no plano pago.'
   custom_email_templates_are_available_on_the_paid_plan: Modelos de e-mail personalizados estão disponíveis no plano pago.
   automatic_reminders_are_available_on_the_paid_plan: Lembretes automáticos de solicitação de assinatura estão disponíveis no plano pago.
@@ -6819,7 +6875,10 @@ pt: &pt
   upload_initials: Enviar iniciais
   draw: Desenhar
   upload_signature: Enviar assinatura
-  integration: "API integration (legacy)"
+  integration: "Integração de API (legada)"
+  integration_users_help: "Os logins de API legados podem criar e enviar documentos pela API no plano desta conta, mas não podem gerenciar usuários nem o faturamento. A substituição suportada é um token de API."
+  integration_users: "Logins de integração de API"
+  view_integration_users: "Ver logins de integração de API"
   admin: Administrador
   tenant_admin: Tenant Admin
   editor: Editor
@@ -7412,6 +7471,8 @@ de: &de
   upgrade_to_add_more_users: "Führen Sie ein Upgrade durch, um weitere Personen zu diesem Konto hinzuzufügen."
   need_help_email_us: "Brauchen Sie Hilfe? Schreiben Sie uns:"
   no_documents_here_yet: "Hier gibt es noch keine Dokumente."
+  templates_empty_state_hint: "Vorlagen sind die Dokumente, die Sie zur Unterschrift versenden. Laden Sie ein PDF oder eine Word-Datei hoch, um die erste zu erstellen."
+  submissions_empty_state_hint: "Jedes Dokument, das Sie zur Unterschrift versenden, erscheint hier – mit dem Stand, wer unterschrieben hat und wer noch nicht."
   account_deletion_banner: "Dieses Konto wird am %{date} endgültig gelöscht."
   account_deletion_banner_hint: "Bis dahin bleibt alles lesbar, herunterladbar und exportierbar. Es kann nichts Neues erstellt werden."
   account_deletion_cancel_button: "Löschung abbrechen"
@@ -7457,6 +7518,8 @@ de: &de
   billing_trial_running: "Ihre kostenlose Testphase läuft."
   billing_cancels_on: "Ihr Abonnement endet am %{date}."
   billing_cancels_at_period_end: "Ihr Abonnement endet am Ende des laufenden Zeitraums."
+  billing_trial_cancels_on: "Ihre Testphase endet am %{date}; es wird nichts abgebucht."
+  billing_trial_no_charge: "Nichts – die Testphase endet vor der ersten Abbuchung."
   billing_renews_on: "Verlängert sich am %{date}."
   billing_renews_monthly: "Verlängert sich jeden Monat."
   billing_past_due_headline: "Wir konnten die letzte Zahlung nicht einziehen."
@@ -7482,13 +7545,15 @@ de: &de
   billing_benefit_reminders: "Automatische Erinnerungen für Unterzeichner, die es vergessen"
   billing_benefit_branding: "Ihr Branding in E-Mails und auf Signaturseiten, nicht unseres"
   billing_benefit_email_templates: "Eigene E-Mail-Vorlagen und Ihr eigener SMTP-Server"
-  billing_seats_billed: "Abgerechnete Plätze: %{count} – alle, die sich in diesem Konto anmelden."
+  billing_seats_billed: "Abgerechnete Plätze: %{count} – alle Personen mit vollem Zugriff in diesem Konto und in verknüpften Konten, plus noch nicht angenommene Einladungen. Mitglieder mit Lesezugriff, API-Zugänge und Nutzer im Testmodus werden nicht berechnet."
   billing_trial_used: "Ihre kostenlose Testphase wurde bereits genutzt."
   start_free_trial: "14 Tage kostenlos testen"
   upgrade_to_paid: "Auf den bezahlten Tarif wechseln"
   manage_billing: "Abrechnung verwalten"
   billing_view_usage: "Nutzung dieses Monats ansehen"
   billing_already_subscribed: "Sie haben bereits ein aktives Abonnement – nutzen Sie Abrechnung verwalten."
+  billing_refused_incomplete: "Ihre vorherige Zahlung wird noch abgeschlossen – schließen Sie sie unter Abrechnung verwalten ab."
+  billing_refused_suspended: "Ihr Konto ist gesperrt – begleichen Sie die offene Rechnung unter Abrechnung verwalten, um die Sperre aufzuheben."
   billing_refused_pending_deletion: "Ihr Konto ist zur Löschung vorgemerkt. Brechen Sie die Löschung zuerst ab, wenn Sie erneut abonnieren möchten."
   billing_account_moved_away: "Dieses Konto wurde geschlossen, als sein letztes Mitglied einem anderen Team beigetreten ist; die Abrechnung kann hier nicht mehr geändert werden."
   billing_no_customer_yet: "Es gibt noch kein Abrechnungskonto. Starten Sie zuerst ein Abonnement."
@@ -7496,6 +7561,8 @@ de: &de
   billing_checkout_cancelled: "Bezahlvorgang abgebrochen – es wurde nichts berechnet."
   billing_trial_started: "Ihre 14-tägige Testphase hat begonnen."
   billing_subscription_active: "Ihr Abonnement ist aktiv."
+  billing_checkout_past_due: "Ihr Abonnement wurde angelegt, die Zahlung ist aber noch nicht durchgegangen. Prüfen Sie die Karte unter Abrechnung verwalten."
+  billing_checkout_canceling: "Ihr Abonnement ist aktiv und endet bereits zum Ende der aktuellen Periode. Sie können es unter Abrechnung verwalten fortsetzen."
   billing_state_incomplete: "Zahlung nicht abgeschlossen"
   billing_incomplete_headline: "Ihre Zahlung ist noch nicht abgeschlossen – schließen Sie sie unter Abrechnung verwalten ab."
   billing_duplicate_cancelled: "Sie hatten bereits ein aktives Abonnement; das doppelte wurde gekündigt und wird Ihnen nicht berechnet."
@@ -7642,6 +7709,7 @@ de: &de
   webhook_url_must_not_point_at_a_private_address: darf nicht auf localhost oder eine private/Metadaten-Adresse verweisen
   webhook_url_must_be_a_full_url: muss eine vollständige URL mit Host sein, z. B. https://example.com/webhook
   templates_that_require_email_2fa_cannot_be_used_via_a_shared_link: Vorlagen, die eine Zwei-Faktor-Authentifizierung per E-Mail erfordern, können nicht über einen geteilten Link verwendet werden.
+  shared_link_email_2fa_note: "Da diese Vorlage von Unterzeichnenden eine E-Mail-Bestätigung verlangt, zeigt jeder bereits verteilte Link jetzt die Seite „E-Mail-Einladung erforderlich“ statt des Formulars."
   removing_product_name_branding_from_emails_and_signing_pages_is_available_on_the_paid_plan: 'Das Entfernen des %{product_name}-Brandings aus E-Mails und Signaturseiten ist im kostenpflichtigen Tarif verfügbar.'
   custom_email_templates_are_available_on_the_paid_plan: Eigene E-Mail-Vorlagen sind im kostenpflichtigen Tarif verfügbar.
   automatic_reminders_are_available_on_the_paid_plan: Automatische Erinnerungen für Signaturanfragen sind im kostenpflichtigen Tarif verfügbar.
@@ -8176,7 +8244,10 @@ de: &de
   upload_initials: Initialen hochladen
   draw: Zeichnen
   upload_signature: Unterschrift hochladen
-  integration: "API integration (legacy)"
+  integration: "API-Integration (alt)"
+  integration_users_help: "Alte API-Zugänge können über die API Dokumente im Tarif dieses Kontos erstellen und versenden, aber keine Nutzer und keine Abrechnung verwalten. Der unterstützte Ersatz ist ein API-Token."
+  integration_users: "API-Integrationszugänge"
+  view_integration_users: "API-Integrationszugänge anzeigen"
   admin: Administrator
   tenant_admin: Mandantenadministrator
   editor: Redakteur
@@ -8769,6 +8840,8 @@ pl:
   upgrade_to_add_more_users: "Przejdź na wyższy plan, aby dodać więcej osób do tego konta."
   need_help_email_us: "Potrzebujesz pomocy? Napisz do nas:"
   no_documents_here_yet: "Nie ma tu jeszcze żadnych dokumentów."
+  templates_empty_state_hint: "Szablony to dokumenty, które wysyłasz do podpisu. Prześlij plik PDF lub Word, aby utworzyć pierwszy."
+  submissions_empty_state_hint: "Każdy dokument wysłany do podpisu pojawia się tutaj wraz z informacją, kto już podpisał, a kto jeszcze nie."
   account_deletion_banner: "To konto zostanie trwale usunięte %{date}."
   account_deletion_banner_hint: "Do tego czasu wszystko pozostaje do odczytu, pobrania i eksportu. Nie można tworzyć niczego nowego."
   account_deletion_cancel_button: "Anuluj usunięcie"
@@ -8815,6 +8888,8 @@ pl:
   billing_trial_running: "Twój bezpłatny okres próbny trwa."
   billing_cancels_on: "Twoja subskrypcja kończy się %{date}."
   billing_cancels_at_period_end: "Twoja subskrypcja kończy się z końcem bieżącego okresu."
+  billing_trial_cancels_on: "Twój okres próbny kończy się %{date}; nie zostaniesz obciążony opłatą."
+  billing_trial_no_charge: "Nic — okres próbny kończy się przed pierwszą opłatą."
   billing_renews_on: "Odnawia się %{date}."
   billing_renews_monthly: "Odnawia się co miesiąc."
   billing_past_due_headline: "Nie udało nam się pobrać ostatniej płatności."
@@ -8840,13 +8915,15 @@ pl:
   billing_benefit_reminders: "Automatyczne przypomnienia dla podpisujących, którzy zapomną"
   billing_benefit_branding: "Twoja marka w e-mailach i na stronach podpisu, nie nasza"
   billing_benefit_email_templates: "Własne szablony e-maili i własny serwer SMTP"
-  billing_seats_billed: "Rozliczane miejsca: %{count} — wszyscy, którzy logują się do tego konta."
+  billing_seats_billed: "Rozliczane stanowiska: %{count} — wszystkie osoby z pełnym dostępem na tym koncie i na kontach powiązanych oraz jeszcze niezaakceptowane zaproszenia. Członkowie tylko do odczytu, loginy API i użytkownicy w trybie testowym nie są rozliczani."
   billing_trial_used: "Bezpłatny okres próbny został już wykorzystany."
   start_free_trial: "Rozpocznij 14-dniowy okres próbny"
   upgrade_to_paid: "Przejdź na plan płatny"
   manage_billing: "Zarządzaj rozliczeniami"
   billing_view_usage: "Zobacz zużycie w tym miesiącu"
   billing_already_subscribed: "Masz już aktywną subskrypcję — użyj Zarządzaj rozliczeniami."
+  billing_refused_incomplete: "Poprzednia płatność wciąż jest finalizowana — dokończ ją w Zarządzaj rozliczeniami."
+  billing_refused_suspended: "Twoje konto jest zawieszone — opłać zaległą fakturę w Zarządzaj rozliczeniami, aby je odblokować."
   billing_refused_pending_deletion: "Twoje konto jest zaplanowane do usunięcia. Anuluj najpierw usuwanie, jeśli chcesz ponownie wykupić subskrypcję."
   billing_account_moved_away: "To konto zostało zamknięte, gdy jego ostatni członek dołączył do innego zespołu, więc jego rozliczeń nie można już tutaj zmienić."
   billing_no_customer_yet: "Nie ma jeszcze konta rozliczeniowego. Najpierw rozpocznij subskrypcję."
@@ -8854,6 +8931,8 @@ pl:
   billing_checkout_cancelled: "Płatność anulowana — nic nie zostało pobrane."
   billing_trial_started: "Twój 14-dniowy okres próbny się rozpoczął."
   billing_subscription_active: "Twoja subskrypcja jest aktywna."
+  billing_checkout_past_due: "Subskrypcja została utworzona, ale płatność jeszcze się nie powiodła. Popraw kartę w Zarządzaj rozliczeniami."
+  billing_checkout_canceling: "Twoja subskrypcja jest aktywna, ale ma zakończyć się z końcem bieżącego okresu. Możesz ją wznowić w Zarządzaj rozliczeniami."
   billing_state_incomplete: "Płatność niezakończona"
   billing_incomplete_headline: "Twoja płatność nie została jeszcze zakończona — dokończ ją w Zarządzaj płatnościami."
   billing_duplicate_cancelled: "Masz już aktywną subskrypcję; duplikat został anulowany i nie zostanie za niego pobrana opłata."
@@ -8886,6 +8965,13 @@ pl:
   seat_add_price_changed: "Cena tego miejsca zmieniła się od czasu wyceny. Nic nie zostało pobrane: rozpocznij zaproszenie od nowa, aby zobaczyć aktualną kwotę."
   seat_add_charged_without_invite: "Miejsce zostało dodane do subskrypcji, ale nie udało się zapisać zaproszenia. Nikt go nie zajmuje, więc zostanie automatycznie usunięte z subskrypcji w ciągu godziny; kwota pobrana dzisiaj pozostaje na fakturze za ten miesiąc. Zaproś tę osobę ponownie, kiedy zechcesz."
   read_only: "Read-only"
+  admin: "Administrator"
+  editor: "Redaktor"
+  viewer: "Przeglądający"
+  integration: "Integracja API (starsza)"
+  integration_users_help: "Starsze loginy API mogą tworzyć i wysyłać dokumenty przez API w ramach planu tego konta, ale nie mogą zarządzać użytkownikami ani rozliczeniami. Zalecanym zamiennikiem jest token API."
+  integration_users: "Loginy integracji API"
+  view_integration_users: "Zobacz loginy integracji API"
   give_full_access: "Give full access"
   make_read_only: "Make read-only"
   pending_invitations: "Pending invitations"
@@ -9007,6 +9093,7 @@ pl:
   webhook_url_must_not_point_at_a_private_address: nie może wskazywać na localhost ani na adres prywatny/metadanych
   webhook_url_must_be_a_full_url: musi być pełnym adresem URL z hostem, np. https://example.com/webhook
   templates_that_require_email_2fa_cannot_be_used_via_a_shared_link: Szablony wymagające uwierzytelniania e-mail 2FA nie mogą być używane za pomocą udostępnionego linku.
+  shared_link_email_2fa_note: "Ponieważ ten szablon wymaga od podpisujących weryfikacji adresu e-mail, każdy rozesłany wcześniej link pokazuje teraz stronę „Wymagane zaproszenie e-mail” zamiast formularza."
   removing_product_name_branding_from_emails_and_signing_pages_is_available_on_the_paid_plan: 'Usunięcie brandingu %{product_name} z e-maili i stron podpisywania jest dostępne w płatnym planie.'
   custom_email_templates_are_available_on_the_paid_plan: Własne szablony e-maili są dostępne w płatnym planie.
   automatic_reminders_are_available_on_the_paid_plan: Automatyczne przypomnienia o prośbie o podpis są dostępne w płatnym planie.
@@ -9198,6 +9285,8 @@ uk:
   upgrade_to_add_more_users: "Перейдіть на платний тариф, щоб додати більше людей до цього облікового запису."
   need_help_email_us: "Потрібна допомога? Напишіть нам:"
   no_documents_here_yet: "Тут ще немає документів."
+  templates_empty_state_hint: "Шаблони — це документи, які ви надсилаєте на підпис. Завантажте PDF або файл Word, щоб створити перший."
+  submissions_empty_state_hint: "Кожен документ, надісланий на підпис, з’являється тут разом із тим, хто вже підписав, а хто ще ні."
   account_deletion_banner: "Цей обліковий запис буде остаточно видалено %{date}."
   account_deletion_banner_hint: "До того часу все залишається доступним для читання, завантаження та експорту. Створити щось нове неможливо."
   account_deletion_cancel_button: "Скасувати видалення"
@@ -9244,6 +9333,8 @@ uk:
   billing_trial_running: "Ваш безкоштовний пробний період триває."
   billing_cancels_on: "Ваша підписка завершується %{date}."
   billing_cancels_at_period_end: "Ваша підписка завершується наприкінці поточного періоду."
+  billing_trial_cancels_on: "Ваш пробний період завершується %{date}; кошти не буде списано."
+  billing_trial_no_charge: "Нічого — пробний період завершиться до першого списання."
   billing_renews_on: "Поновлюється %{date}."
   billing_renews_monthly: "Поновлюється щомісяця."
   billing_past_due_headline: "Нам не вдалося отримати останній платіж."
@@ -9269,13 +9360,15 @@ uk:
   billing_benefit_reminders: "Автоматичні нагадування для підписантів, які забули"
   billing_benefit_branding: "Ваш бренд у листах і на сторінках підписання, а не наш"
   billing_benefit_email_templates: "Власні шаблони листів і власний SMTP-сервер"
-  billing_seats_billed: "Оплачувані місця: %{count} — усі, хто входить до цього облікового запису."
+  billing_seats_billed: "Оплачувані місця: %{count} — усі, хто має повний доступ у цьому та пов'язаних облікових записах, плюс ще не прийняті запрошення. Учасники лише для читання, API-логіни та користувачі в тестовому режимі не тарифікуються."
   billing_trial_used: "Безкоштовний пробний період уже використано."
   start_free_trial: "Почати 14-денний безкоштовний період"
   upgrade_to_paid: "Перейти на платний план"
   manage_billing: "Керувати оплатою"
   billing_view_usage: "Переглянути використання цього місяця"
   billing_already_subscribed: "У вас уже є активна підписка — скористайтеся розділом «Керувати оплатою»."
+  billing_refused_incomplete: "Попередня оплата ще завершується — завершіть її в розділі «Керувати оплатою»."
+  billing_refused_suspended: "Ваш обліковий запис призупинено — сплатіть відкритий рахунок у розділі «Керувати оплатою», щоб зняти призупинення."
   billing_refused_pending_deletion: "Ваш обліковий запис заплановано до видалення. Спершу скасуйте видалення, якщо ви хочете підписатися знову."
   billing_account_moved_away: "Цей обліковий запис було закрито, коли його останній учасник приєднався до іншої команди, тож змінити тут платіжні дані вже не можна."
   billing_no_customer_yet: "Платіжного облікового запису ще немає. Спершу оформіть підписку."
@@ -9283,6 +9376,8 @@ uk:
   billing_checkout_cancelled: "Оплату скасовано — нічого не списано."
   billing_trial_started: "Ваш 14-денний пробний період розпочався."
   billing_subscription_active: "Ваша підписка активна."
+  billing_checkout_past_due: "Підписку створено, але оплата ще не пройшла. Перевірте картку в розділі «Керувати оплатою»."
+  billing_checkout_canceling: "Ваша підписка активна, але вже налаштована завершитися наприкінці поточного періоду. Ви можете відновити її в розділі «Керувати оплатою»."
   billing_state_incomplete: "Платіж не завершено"
   billing_incomplete_headline: "Ваш платіж ще не пройшов — завершіть його в розділі Керувати оплатою."
   billing_duplicate_cancelled: "У вас уже була активна підписка; дублікат скасовано, і плату за нього не буде стягнено."
@@ -9315,6 +9410,13 @@ uk:
   seat_add_price_changed: "Ціна цього місця змінилася з моменту розрахунку. Нічого не списано: почніть запрошення знову, щоб побачити поточну суму."
   seat_add_charged_without_invite: "Місце додано до підписки, але запрошення не вдалося зберегти. Його ніхто не займає, тож воно автоматично зникне з підписки протягом години; сума, списана сьогодні, залишиться в рахунку за цей місяць. Запросіть цю людину ще раз, коли буде зручно."
   read_only: "Read-only"
+  admin: "Адміністратор"
+  editor: "Редактор"
+  viewer: "Переглядач"
+  integration: "Інтеграція API (застаріла)"
+  integration_users_help: "Застарілі API-логіни можуть створювати та надсилати документи через API в межах тарифу цього облікового запису, але не можуть керувати користувачами чи оплатою. Підтримувана заміна — API-токен."
+  integration_users: "API-логіни інтеграції"
+  view_integration_users: "Переглянути API-логіни інтеграції"
   give_full_access: "Give full access"
   make_read_only: "Make read-only"
   pending_invitations: "Pending invitations"
@@ -9436,6 +9538,7 @@ uk:
   webhook_url_must_not_point_at_a_private_address: не може вказувати на localhost або приватну адресу/адресу метаданих
   webhook_url_must_be_a_full_url: має бути повною URL-адресою з хостом, наприклад https://example.com/webhook
   templates_that_require_email_2fa_cannot_be_used_via_a_shared_link: Шаблони, які вимагають 2FA електронною поштою, не можна використовувати через спільне посилання.
+  shared_link_email_2fa_note: "Оскільки цей шаблон вимагає від підписантів підтвердження електронної пошти, будь-яке вже розіслане посилання тепер показує сторінку «Потрібне запрошення електронною поштою» замість форми."
   removing_product_name_branding_from_emails_and_signing_pages_is_available_on_the_paid_plan: 'Видалення брендингу %{product_name} з електронних листів і сторінок підписання доступне в платному плані.'
   custom_email_templates_are_available_on_the_paid_plan: Власні шаблони електронних листів доступні в платному плані.
   automatic_reminders_are_available_on_the_paid_plan: Автоматичні нагадування про запит на підпис доступні в платному плані.
@@ -9627,6 +9730,8 @@ cs:
   upgrade_to_add_more_users: "Přejděte na vyšší tarif a přidejte do tohoto účtu další lidi."
   need_help_email_us: "Potřebujete pomoc? Napište nám:"
   no_documents_here_yet: "Zatím tu nejsou žádné dokumenty."
+  templates_empty_state_hint: "Šablony jsou dokumenty, které posíláte k podpisu. Nahrajte PDF nebo soubor Word a vytvořte první."
+  submissions_empty_state_hint: "Každý dokument, který pošlete k podpisu, se objeví zde — včetně toho, kdo už podepsal a kdo ještě ne."
   account_deletion_banner: "Tento účet bude trvale smazán %{date}."
   account_deletion_banner_hint: "Do té doby zůstává vše čitelné, ke stažení i k exportu. Nic nového nelze vytvořit."
   account_deletion_cancel_button: "Zrušit smazání"
@@ -9673,6 +9778,8 @@ cs:
   billing_trial_running: "Vaše bezplatná zkušební verze běží."
   billing_cancels_on: "Vaše předplatné končí %{date}."
   billing_cancels_at_period_end: "Vaše předplatné končí na konci aktuálního období."
+  billing_trial_cancels_on: "Vaše zkušební období končí %{date}; nic vám nebude účtováno."
+  billing_trial_no_charge: "Nic – zkušební období skončí před první platbou."
   billing_renews_on: "Obnovuje se %{date}."
   billing_renews_monthly: "Obnovuje se každý měsíc."
   billing_past_due_headline: "Poslední platbu se nám nepodařilo strhnout."
@@ -9698,13 +9805,15 @@ cs:
   billing_benefit_reminders: "Automatické připomínky pro podepisující, kteří zapomněli"
   billing_benefit_branding: "Vaše značka v e-mailech a na podpisových stránkách, ne naše"
   billing_benefit_email_templates: "Vlastní e-mailové šablony a vlastní SMTP server"
-  billing_seats_billed: "Účtovaná místa: %{count} — všichni, kdo se do tohoto účtu přihlašují."
+  billing_seats_billed: "Účtovaná místa: %{count} — všichni s plným přístupem v tomto účtu a v propojených účtech plus dosud nepřijaté pozvánky. Členové jen pro čtení, přihlášení k API a uživatelé v testovacím režimu se neúčtují."
   billing_trial_used: "Bezplatná zkušební verze již byla využita."
   start_free_trial: "Spustit 14denní zkušební verzi"
   upgrade_to_paid: "Přejít na placený plán"
   manage_billing: "Správa fakturace"
   billing_view_usage: "Zobrazit spotřebu tohoto měsíce"
   billing_already_subscribed: "Aktivní předplatné už máte — použijte Správu fakturace."
+  billing_refused_incomplete: "Vaše předchozí platba se stále dokončuje – dokončete ji ve Správě fakturace."
+  billing_refused_suspended: "Váš účet je pozastaven – uhraďte otevřenou fakturu ve Správě fakturace a pozastavení skončí."
   billing_refused_pending_deletion: "Váš účet je naplánován ke smazání. Pokud si chcete znovu předplatit, nejdřív smazání zrušte."
   billing_account_moved_away: "Tento účet byl uzavřen, když jeho poslední člen přešel do jiného týmu, takže jeho fakturaci už zde nelze změnit."
   billing_no_customer_yet: "Fakturační účet zatím neexistuje. Nejprve založte předplatné."
@@ -9712,6 +9821,8 @@ cs:
   billing_checkout_cancelled: "Platba zrušena — nic nebylo účtováno."
   billing_trial_started: "Vaše 14denní zkušební verze začala."
   billing_subscription_active: "Vaše předplatné je aktivní."
+  billing_checkout_past_due: "Předplatné bylo vytvořeno, ale platba zatím neproběhla. Upravte kartu ve Správě fakturace."
+  billing_checkout_canceling: "Vaše předplatné je aktivní, ale už je nastaveno na ukončení na konci aktuálního období. Můžete ho obnovit ve Správě fakturace."
   billing_state_incomplete: "Platba nedokončena"
   billing_incomplete_headline: "Vaše platba zatím neproběhla – dokončete ji ve Správě fakturace."
   billing_duplicate_cancelled: "Už jste měli aktivní předplatné; duplicitní bylo zrušeno a nebude vám účtováno."
@@ -9744,6 +9855,13 @@ cs:
   seat_add_price_changed: "Cena tohoto místa se od výpočtu změnila. Nic nebylo strženo: začněte pozvánku znovu a uvidíte aktuální částku."
   seat_add_charged_without_invite: "Místo bylo přidáno k předplatnému, ale pozvánku se nepodařilo uložit. Nikdo ho neobsazuje, takže se z předplatného během hodiny automaticky odebere; částka stržená dnes zůstane na faktuře za tento měsíc. Pozvěte toho člověka znovu, až budete chtít."
   read_only: "Read-only"
+  admin: "Správce"
+  editor: "Editor"
+  viewer: "Prohlížející"
+  integration: "Integrace API (starší)"
+  integration_users_help: "Starší přihlášení k API mohou v rámci tarifu tohoto účtu vytvářet a odesílat dokumenty přes API, ale nemohou spravovat uživatele ani fakturaci. Podporovanou náhradou je API token."
+  integration_users: "Přihlášení pro integraci API"
+  view_integration_users: "Zobrazit přihlášení pro integraci API"
   give_full_access: "Give full access"
   make_read_only: "Make read-only"
   pending_invitations: "Pending invitations"
@@ -9865,6 +9983,7 @@ cs:
   webhook_url_must_not_point_at_a_private_address: nesmí odkazovat na localhost ani na privátní adresu / adresu metadat
   webhook_url_must_be_a_full_url: musí být úplná URL adresa s hostitelem, např. https://example.com/webhook
   templates_that_require_email_2fa_cannot_be_used_via_a_shared_link: Šablony vyžadující e-mailové 2FA nelze používat prostřednictvím sdíleného odkazu.
+  shared_link_email_2fa_note: "Protože tato šablona vyžaduje od podepisujících ověření e-mailu, každý již rozeslaný odkaz nyní místo formuláře zobrazí stránku „Je vyžadována e-mailová pozvánka“."
   removing_product_name_branding_from_emails_and_signing_pages_is_available_on_the_paid_plan: 'Odstranění brandingu %{product_name} z e-mailů a podpisových stránek je k dispozici v placeném plánu.'
   custom_email_templates_are_available_on_the_paid_plan: Vlastní e-mailové šablony jsou k dispozici v placeném plánu.
   automatic_reminders_are_available_on_the_paid_plan: Automatická připomenutí žádostí o podpis jsou k dispozici v placeném plánu.
@@ -10056,6 +10175,8 @@ he:
   upgrade_to_add_more_users: "שדרגו את התוכנית כדי להוסיף עוד אנשים לחשבון הזה."
   need_help_email_us: "צריכים עזרה? כתבו לנו:"
   no_documents_here_yet: "אין כאן עדיין מסמכים."
+  templates_empty_state_hint: "תבניות הן המסמכים שאתם שולחים לחתימה. העלו קובץ PDF או Word כדי ליצור את הראשונה."
+  submissions_empty_state_hint: "כל מסמך שאתם שולחים לחתימה מופיע כאן, יחד עם מי שכבר חתם ומי שעדיין לא."
   account_deletion_banner: "חשבון זה יימחק לצמיתות בתאריך %{date}."
   account_deletion_banner_hint: "עד אז הכול נשאר קריא, ניתן להורדה ולייצוא. לא ניתן ליצור דבר חדש."
   account_deletion_cancel_button: "ביטול המחיקה"
@@ -10102,6 +10223,8 @@ he:
   billing_trial_running: "תקופת הניסיון החינם שלך פעילה."
   billing_cancels_on: "המנוי שלך מסתיים ב-%{date}."
   billing_cancels_at_period_end: "המנוי שלך מסתיים בתום התקופה הנוכחית."
+  billing_trial_cancels_on: "תקופת הניסיון שלך מסתיימת ב-%{date}; לא תחויב."
+  billing_trial_no_charge: "כלום — תקופת הניסיון מסתיימת לפני החיוב הראשון."
   billing_renews_on: "מתחדש ב-%{date}."
   billing_renews_monthly: "מתחדש מדי חודש."
   billing_past_due_headline: "לא הצלחנו לגבות את התשלום האחרון."
@@ -10127,13 +10250,15 @@ he:
   billing_benefit_reminders: "תזכורות אוטומטיות לחותמים ששוכחים"
   billing_benefit_branding: "המיתוג שלך במיילים ובדפי החתימה, לא שלנו"
   billing_benefit_email_templates: "תבניות אימייל מותאמות ושרת SMTP משלך"
-  billing_seats_billed: "מקומות בחיוב: %{count} — כל מי שמתחבר לחשבון הזה."
+  billing_seats_billed: "מושבים בחיוב: %{count} — כל מי שיש לו גישה מלאה בחשבון הזה ובחשבונות המקושרים, בתוספת הזמנות שטרם התקבלו. חברים לקריאה בלבד, כניסות API ומשתמשי מצב בדיקה אינם מחויבים."
   billing_trial_used: "כבר השתמשת בתקופת הניסיון החינם."
   start_free_trial: "התחלת ניסיון חינם ל-14 ימים"
   upgrade_to_paid: "שדרוג לתוכנית בתשלום"
   manage_billing: "ניהול החיוב"
   billing_view_usage: "צפייה בשימוש של החודש"
   billing_already_subscribed: "כבר יש לך מנוי פעיל — השתמשו בניהול החיוב."
+  billing_refused_incomplete: "התשלום הקודם שלך עדיין בתהליך — יש להשלים אותו דרך ניהול החיוב."
+  billing_refused_suspended: "החשבון שלך מושהה — יש לשלם את החשבונית הפתוחה דרך ניהול החיוב כדי להסיר את ההשהיה."
   billing_refused_pending_deletion: "החשבון שלך מתוזמן למחיקה. בטלו קודם את המחיקה אם ברצונכם להירשם שוב למנוי."
   billing_account_moved_away: "החשבון הזה נסגר כשהחבר האחרון בו הצטרף לצוות אחר, ולכן כבר לא ניתן לשנות כאן את החיוב שלו."
   billing_no_customer_yet: "עדיין אין חשבון חיוב. התחילו קודם מנוי."
@@ -10141,6 +10266,8 @@ he:
   billing_checkout_cancelled: "התשלום בוטל — לא בוצע כל חיוב."
   billing_trial_started: "תקופת הניסיון ל-14 ימים החלה."
   billing_subscription_active: "המנוי שלך פעיל."
+  billing_checkout_past_due: "המנוי נוצר, אך התשלום עדיין לא עבר. יש לעדכן את הכרטיס דרך ניהול החיוב."
+  billing_checkout_canceling: "המנוי שלך פעיל וכבר מוגדר להסתיים בסוף התקופה הנוכחית. אפשר לחדש אותו דרך ניהול החיוב."
   billing_state_incomplete: "התשלום לא הושלם"
   billing_incomplete_headline: "התשלום שלך עדיין לא הושלם — השלימו אותו במסך ניהול החיוב."
   billing_duplicate_cancelled: "כבר היה לך מנוי פעיל; הכפילות בוטלה ולא תחויב עליה."
@@ -10173,6 +10300,13 @@ he:
   seat_add_price_changed: "המחיר של המקום הזה השתנה מאז ההצעה. לא חויבת בכלום: התחל את ההזמנה מחדש כדי לראות את הסכום הנוכחי."
   seat_add_charged_without_invite: "המקום נוסף למנוי אך לא ניתן היה לשמור את ההזמנה. אף אחד לא משתמש במקום הזה, ולכן הוא יוסר מהמנוי אוטומטית בתוך שעה; הסכום שחויב היום נשאר בחשבונית של החודש. אפשר להזמין את אותו אדם שוב מתי שתרצה."
   read_only: "Read-only"
+  admin: "מנהל"
+  editor: "עורך"
+  viewer: "צופה"
+  integration: "אינטגרציית API (מדור קודם)"
+  integration_users_help: "כניסות API מדור קודם יכולות ליצור ולשלוח מסמכים דרך ה-API בהתאם לתוכנית של החשבון, אך אינן יכולות לנהל משתמשים או חיוב. התחליף הנתמך הוא אסימון API."
+  integration_users: "כניסות אינטגרציית API"
+  view_integration_users: "הצגת כניסות אינטגרציית API"
   give_full_access: "Give full access"
   make_read_only: "Make read-only"
   pending_invitations: "Pending invitations"
@@ -10293,6 +10427,7 @@ he:
   webhook_url_must_not_point_at_a_private_address: אינה יכולה להפנות ל-localhost או לכתובת פרטית/כתובת מטא-נתונים
   webhook_url_must_be_a_full_url: חייבת להיות כתובת URL מלאה עם מארח, לדוגמה https://example.com/webhook
   templates_that_require_email_2fa_cannot_be_used_via_a_shared_link: תבניות הדורשות אימות דו-שלבי באימייל אינן ניתנות לשימוש באמצעות קישור משותף.
+  shared_link_email_2fa_note: "מכיוון שתבנית זו מחייבת את החותמים לאמת את כתובת הדוא״ל, כל קישור שכבר הפצתם מציג כעת את הדף «נדרשת הזמנה בדוא״ל» במקום הטופס."
   removing_product_name_branding_from_emails_and_signing_pages_is_available_on_the_paid_plan: 'הסרת המיתוג של %{product_name} מאימיילים ומעמודי החתימה זמינה בתוכנית בתשלום.'
   custom_email_templates_are_available_on_the_paid_plan: תבניות אימייל מותאמות אישית זמינות בתוכנית בתשלום.
   automatic_reminders_are_available_on_the_paid_plan: תזכורות אוטומטיות לבקשות חתימה זמינות בתוכנית בתשלום.
@@ -10484,6 +10619,8 @@ nl: &nl
   upgrade_to_add_more_users: "Upgrade om meer mensen aan dit account toe te voegen."
   need_help_email_us: "Hulp nodig? Mail ons:"
   no_documents_here_yet: "Hier staan nog geen documenten."
+  templates_empty_state_hint: "Sjablonen zijn de documenten die u ter ondertekening verstuurt. Upload een PDF- of Word-bestand om het eerste te maken."
+  submissions_empty_state_hint: "Elk document dat u ter ondertekening verstuurt, verschijnt hier, met wie het al heeft ondertekend en wie nog niet."
   account_deletion_banner: "Dit account wordt definitief verwijderd op %{date}."
   account_deletion_banner_hint: "Tot dan blijft alles leesbaar, downloadbaar en exporteerbaar. Er kan niets nieuws worden aangemaakt."
   account_deletion_cancel_button: "Verwijdering annuleren"
@@ -10529,6 +10666,8 @@ nl: &nl
   billing_trial_running: "Uw gratis proefperiode loopt."
   billing_cancels_on: "Uw abonnement eindigt op %{date}."
   billing_cancels_at_period_end: "Uw abonnement eindigt aan het einde van de huidige periode."
+  billing_trial_cancels_on: "Je proefperiode eindigt op %{date}; er wordt niets afgeschreven."
+  billing_trial_no_charge: "Niets — de proefperiode eindigt vóór de eerste afschrijving."
   billing_renews_on: "Wordt verlengd op %{date}."
   billing_renews_monthly: "Wordt elke maand verlengd."
   billing_past_due_headline: "We konden de laatste betaling niet innen."
@@ -10554,13 +10693,15 @@ nl: &nl
   billing_benefit_reminders: "Automatische herinneringen voor ondertekenaars die het vergeten"
   billing_benefit_branding: "Uw huisstijl in e-mails en op ondertekenpagina's, niet die van ons"
   billing_benefit_email_templates: "Eigen e-mailsjablonen en uw eigen SMTP-server"
-  billing_seats_billed: "Gefactureerde zetels: %{count} — iedereen die op dit account inlogt."
+  billing_seats_billed: "Gefactureerde plaatsen: %{count} — iedereen met volledige toegang in dit account en in gekoppelde accounts, plus nog niet geaccepteerde uitnodigingen. Alleen-lezenleden, API-logins en gebruikers in testmodus worden niet gefactureerd."
   billing_trial_used: "Uw gratis proefperiode is al gebruikt."
   start_free_trial: "Start gratis proefperiode van 14 dagen"
   upgrade_to_paid: "Upgraden naar betaald"
   manage_billing: "Facturatie beheren"
   billing_view_usage: "Bekijk het verbruik van deze maand"
   billing_already_subscribed: "U heeft al een actief abonnement — gebruik Facturatie beheren."
+  billing_refused_incomplete: "Je vorige betaling wordt nog afgerond — rond die af via Facturatie beheren."
+  billing_refused_suspended: "Je account is opgeschort — betaal de openstaande factuur via Facturatie beheren om dit op te heffen."
   billing_refused_pending_deletion: "Uw account staat gepland voor verwijdering. Annuleer eerst de verwijdering als u opnieuw een abonnement wilt nemen."
   billing_account_moved_away: "Dit account is gesloten toen het laatste lid zich bij een ander team aansloot, dus de facturering kan hier niet meer worden gewijzigd."
   billing_no_customer_yet: "Er is nog geen factuuraccount. Start eerst een abonnement."
@@ -10568,6 +10709,8 @@ nl: &nl
   billing_checkout_cancelled: "Afrekenen geannuleerd — er is niets in rekening gebracht."
   billing_trial_started: "Uw proefperiode van 14 dagen is gestart."
   billing_subscription_active: "Uw abonnement is actief."
+  billing_checkout_past_due: "Je abonnement is aangemaakt, maar de betaling is nog niet gelukt. Herstel de kaart via Facturatie beheren."
+  billing_checkout_canceling: "Je abonnement is actief en staat al ingesteld om aan het einde van de huidige periode te stoppen. Je kunt het hervatten via Facturatie beheren."
   billing_state_incomplete: "Betaling niet voltooid"
   billing_incomplete_headline: "Je betaling is nog niet voltooid — rond deze af bij Facturering beheren."
   billing_duplicate_cancelled: "Je had al een actief abonnement; het dubbele is geannuleerd en wordt niet in rekening gebracht."
@@ -10714,6 +10857,7 @@ nl: &nl
   webhook_url_must_not_point_at_a_private_address: mag niet naar localhost of een privé-/metadata-adres verwijzen
   webhook_url_must_be_a_full_url: moet een volledige URL met host zijn, bijvoorbeeld https://example.com/webhook
   templates_that_require_email_2fa_cannot_be_used_via_a_shared_link: Sjablonen waarvoor e-mail-2FA vereist is, kunnen niet via een gedeelde link worden gebruikt.
+  shared_link_email_2fa_note: "Omdat deze sjabloon ondertekenaars vraagt hun e-mailadres te verifiëren, toont elke link die je al hebt rondgestuurd nu de pagina ‘E-mailuitnodiging vereist’ in plaats van het formulier."
   removing_product_name_branding_from_emails_and_signing_pages_is_available_on_the_paid_plan: 'Het verwijderen van %{product_name}-branding uit e-mails en ondertekeningspagina''s is beschikbaar in het betaalde abonnement.'
   custom_email_templates_are_available_on_the_paid_plan: Aangepaste e-mailsjablonen zijn beschikbaar in het betaalde abonnement.
   automatic_reminders_are_available_on_the_paid_plan: Automatische herinneringen voor ondertekeningsverzoeken zijn beschikbaar in het betaalde abonnement.
@@ -11249,7 +11393,10 @@ nl: &nl
   upload_initials: Initialen uploaden
   draw: Tekenen
   upload_signature: Handtekening uploaden
-  integration: "API integration (legacy)"
+  integration: "API-integratie (verouderd)"
+  integration_users_help: "Verouderde API-logins kunnen via de API documenten maken en versturen binnen het abonnement van dit account, maar kunnen geen gebruikers of facturering beheren. De ondersteunde vervanging is een API-token."
+  integration_users: "API-integratielogins"
+  view_integration_users: "API-integratielogins bekijken"
   admin: Beheerder
   tenant_admin: Tenantbeheerder
   editor: Bewerker
@@ -11842,6 +11989,8 @@ ar:
   upgrade_to_add_more_users: "قم بالترقية لإضافة المزيد من الأشخاص إلى هذا الحساب."
   need_help_email_us: "تحتاج مساعدة؟ راسلنا:"
   no_documents_here_yet: "لا توجد مستندات هنا بعد."
+  templates_empty_state_hint: "القوالب هي المستندات التي ترسلها للتوقيع. ارفع ملف PDF أو Word لإنشاء أول قالب."
+  submissions_empty_state_hint: "كل مستند ترسله للتوقيع يظهر هنا، مع بيان من وقّع ومن لم يوقّع بعد."
   account_deletion_banner: "سيتم حذف هذا الحساب نهائيًا في %{date}."
   account_deletion_banner_hint: "حتى ذلك الحين يظل كل شيء قابلاً للقراءة والتنزيل والتصدير. لا يمكن إنشاء أي شيء جديد."
   account_deletion_cancel_button: "إلغاء الحذف"
@@ -11888,6 +12037,8 @@ ar:
   billing_trial_running: "فترتك التجريبية المجانية جارية."
   billing_cancels_on: "ينتهي اشتراكك في %{date}."
   billing_cancels_at_period_end: "ينتهي اشتراكك في نهاية الفترة الحالية."
+  billing_trial_cancels_on: "تنتهي فترتك التجريبية في %{date}؛ ولن يتم تحصيل أي مبلغ منك."
+  billing_trial_no_charge: "لا شيء — تنتهي الفترة التجريبية قبل أول عملية دفع."
   billing_renews_on: "يتجدد في %{date}."
   billing_renews_monthly: "يتجدد كل شهر."
   billing_past_due_headline: "لم نتمكن من تحصيل الدفعة الأخيرة."
@@ -11913,13 +12064,15 @@ ar:
   billing_benefit_reminders: "تذكيرات تلقائية للموقّعين الذين ينسون"
   billing_benefit_branding: "علامتك التجارية في الرسائل وصفحات التوقيع، وليست علامتنا"
   billing_benefit_email_templates: "قوالب بريد مخصصة وخادم SMTP خاص بك"
-  billing_seats_billed: "المقاعد المفوترة: %{count} — كل من يسجّل الدخول إلى هذا الحساب."
+  billing_seats_billed: "المقاعد المفوترة: %{count} — كل من لديه وصول كامل في هذا الحساب وفي الحسابات المرتبطة، إضافةً إلى الدعوات التي لم تُقبل بعد. الأعضاء للقراءة فقط وعمليات تسجيل الدخول عبر واجهة برمجة التطبيقات والمستخدمون في وضع الاختبار لا تُحتسب عليهم رسوم."
   billing_trial_used: "لقد استخدمت فترتك التجريبية المجانية بالفعل."
   start_free_trial: "ابدأ تجربة مجانية لمدة 14 يومًا"
   upgrade_to_paid: "الترقية إلى الخطة المدفوعة"
   manage_billing: "إدارة الفوترة"
   billing_view_usage: "عرض استخدام هذا الشهر"
   billing_already_subscribed: "لديك اشتراك نشط بالفعل — استخدم إدارة الفوترة."
+  billing_refused_incomplete: "لا تزال عملية الدفع السابقة قيد الإكمال — أكملها من إدارة الفوترة."
+  billing_refused_suspended: "حسابك موقوف — ادفع الفاتورة المستحقة من إدارة الفوترة لرفع الإيقاف."
   billing_refused_pending_deletion: "حسابك مُجدوَل للحذف. ألغِ الحذف أولاً إذا كنت ترغب في الاشتراك مرة أخرى."
   billing_account_moved_away: "أُغلق هذا الحساب عندما انضم آخر عضو فيه إلى فريق آخر، لذلك لم يعد بالإمكان تغيير الفوترة من هنا."
   billing_no_customer_yet: "لا يوجد حساب فوترة بعد. ابدأ اشتراكًا أولًا."
@@ -11927,6 +12080,8 @@ ar:
   billing_checkout_cancelled: "تم إلغاء الدفع — لم يتم خصم أي مبلغ."
   billing_trial_started: "بدأت فترتك التجريبية لمدة 14 يومًا."
   billing_subscription_active: "اشتراكك نشط."
+  billing_checkout_past_due: "تم إنشاء اشتراكك، لكن الدفع لم يتم بعد. عالج بطاقتك من إدارة الفوترة."
+  billing_checkout_canceling: "اشتراكك نشط ومحدَّد بالفعل لينتهي مع نهاية الفترة الحالية. يمكنك استئنافه من إدارة الفوترة."
   billing_state_incomplete: "لم يكتمل الدفع"
   billing_incomplete_headline: "لم تكتمل عملية الدفع بعد — أكملها من إدارة الفوترة."
   billing_duplicate_cancelled: "كان لديك اشتراك نشط بالفعل؛ تم إلغاء الاشتراك المكرر ولن تتم محاسبتك عليه."
@@ -11959,6 +12114,13 @@ ar:
   seat_add_price_changed: "تغيّر سعر هذا المقعد منذ تقديره. لم يتم خصم أي مبلغ: ابدأ الدعوة من جديد لرؤية المبلغ الحالي."
   seat_add_charged_without_invite: "تمت إضافة المقعد إلى اشتراكك لكن تعذّر حفظ الدعوة. لا أحد يشغل هذا المقعد، لذا سيُزال من الاشتراك تلقائيًا خلال ساعة، ويبقى المبلغ المخصوم اليوم على فاتورة هذا الشهر. يمكنك دعوة الشخص مرة أخرى متى شئت."
   read_only: "Read-only"
+  admin: "مسؤول"
+  editor: "محرر"
+  viewer: "مشاهد"
+  integration: "تكامل واجهة برمجة التطبيقات (قديم)"
+  integration_users_help: "يمكن لعمليات تسجيل الدخول القديمة عبر واجهة برمجة التطبيقات إنشاء المستندات وإرسالها ضمن خطة هذا الحساب، لكنها لا تستطيع إدارة المستخدمين أو الفوترة. البديل المدعوم هو رمز واجهة برمجة التطبيقات."
+  integration_users: "حسابات تكامل واجهة برمجة التطبيقات"
+  view_integration_users: "عرض حسابات تكامل واجهة برمجة التطبيقات"
   give_full_access: "Give full access"
   make_read_only: "Make read-only"
   pending_invitations: "Pending invitations"
@@ -12083,6 +12245,7 @@ ar:
   webhook_url_must_not_point_at_a_private_address: يجب ألا يشير إلى localhost أو إلى عنوان خاص/عنوان بيانات وصفية
   webhook_url_must_be_a_full_url: يجب أن يكون عنوان URL كاملاً يتضمن مضيفاً، مثل https://example.com/webhook
   templates_that_require_email_2fa_cannot_be_used_via_a_shared_link: لا يمكن استخدام القوالب التي تتطلب التحقق بخطوتين عبر البريد الإلكتروني من خلال رابط مشترك.
+  shared_link_email_2fa_note: "بما أن هذا النموذج يطلب من الموقّعين التحقق من بريدهم الإلكتروني، فإن أي رابط سبق أن وزّعته يعرض الآن صفحة «الدعوة عبر البريد الإلكتروني مطلوبة» بدلاً من النموذج."
   removing_product_name_branding_from_emails_and_signing_pages_is_available_on_the_paid_plan: 'إزالة علامة %{product_name} التجارية من رسائل البريد الإلكتروني وصفحات التوقيع متاحة في الخطة المدفوعة.'
   custom_email_templates_are_available_on_the_paid_plan: قوالب البريد الإلكتروني المخصصة متاحة في الخطة المدفوعة.
   automatic_reminders_are_available_on_the_paid_plan: التذكيرات التلقائية لطلبات التوقيع متاحة في الخطة المدفوعة.
@@ -12274,6 +12437,8 @@ ko:
   upgrade_to_add_more_users: "업그레이드하면 이 계정에 사람을 더 추가할 수 있습니다."
   need_help_email_us: "도움이 필요하신가요? 이메일로 문의해 주세요:"
   no_documents_here_yet: "아직 문서가 없습니다."
+  templates_empty_state_hint: "템플릿은 서명을 받기 위해 보내는 문서입니다. PDF 또는 Word 파일을 업로드해 첫 번째 템플릿을 만들어 보세요."
+  submissions_empty_state_hint: "서명을 위해 보낸 모든 문서가 여기에 표시되며, 누가 서명했고 누가 아직 하지 않았는지 알 수 있습니다."
   account_deletion_banner: "이 계정은 %{date}에 영구적으로 삭제됩니다."
   account_deletion_banner_hint: "그때까지 모든 자료는 읽기, 다운로드, 내보내기가 가능합니다. 새로 만들 수는 없습니다."
   account_deletion_cancel_button: "삭제 취소"
@@ -12320,6 +12485,8 @@ ko:
   billing_trial_running: "무료 체험이 진행 중입니다."
   billing_cancels_on: "구독은 %{date}에 종료됩니다."
   billing_cancels_at_period_end: "구독은 현재 기간이 끝날 때 종료됩니다."
+  billing_trial_cancels_on: "체험이 %{date}에 종료되며 요금은 청구되지 않습니다."
+  billing_trial_no_charge: "없음 — 첫 청구 전에 체험이 종료됩니다."
   billing_renews_on: "%{date}에 갱신됩니다."
   billing_renews_monthly: "매월 갱신됩니다."
   billing_past_due_headline: "마지막 결제를 처리하지 못했습니다."
@@ -12345,13 +12512,15 @@ ko:
   billing_benefit_reminders: "잊은 서명자를 위한 자동 알림"
   billing_benefit_branding: "이메일과 서명 페이지에 우리 브랜드가 아닌 고객 브랜드 표시"
   billing_benefit_email_templates: "맞춤 이메일 템플릿과 자체 SMTP 서버"
-  billing_seats_billed: "청구 좌석: %{count}개 — 이 계정에 로그인하는 모든 사람."
+  billing_seats_billed: "청구 좌석: %{count}개 — 이 계정과 연결된 계정에서 전체 권한을 가진 모든 사람과 아직 수락되지 않은 초대를 포함합니다. 읽기 전용 멤버, API 로그인, 테스트 모드 사용자는 청구되지 않습니다."
   billing_trial_used: "무료 체험을 이미 사용했습니다."
   start_free_trial: "14일 무료 체험 시작"
   upgrade_to_paid: "유료 플랜으로 업그레이드"
   manage_billing: "결제 관리"
   billing_view_usage: "이번 달 사용량 보기"
   billing_already_subscribed: "이미 활성 구독이 있습니다 — 결제 관리를 사용하세요."
+  billing_refused_incomplete: "이전 결제가 아직 처리 중입니다 — 결제 관리에서 결제를 완료하세요."
+  billing_refused_suspended: "계정이 정지되었습니다 — 결제 관리에서 미결제 청구서를 결제하면 정지가 해제됩니다."
   billing_refused_pending_deletion: "계정이 삭제 예정입니다. 다시 구독하려면 먼저 삭제를 취소하세요."
   billing_account_moved_away: "이 계정은 마지막 구성원이 다른 팀에 합류하면서 닫혔으므로 여기에서는 결제 정보를 더 이상 변경할 수 없습니다."
   billing_no_customer_yet: "아직 결제 계정이 없습니다. 먼저 구독을 시작하세요."
@@ -12359,6 +12528,8 @@ ko:
   billing_checkout_cancelled: "결제가 취소되었습니다 — 청구된 금액은 없습니다."
   billing_trial_started: "14일 체험이 시작되었습니다."
   billing_subscription_active: "구독이 활성화되었습니다."
+  billing_checkout_past_due: "구독이 생성되었지만 결제가 아직 완료되지 않았습니다. 결제 관리에서 카드를 확인하세요."
+  billing_checkout_canceling: "구독은 활성 상태이지만 현재 기간이 끝나면 종료되도록 설정되어 있습니다. 결제 관리에서 다시 시작할 수 있습니다."
   billing_state_incomplete: "결제가 완료되지 않음"
   billing_incomplete_headline: "아직 결제가 완료되지 않았습니다. 결제 관리에서 마무리해 주세요."
   billing_duplicate_cancelled: "이미 활성 구독이 있어 중복 구독은 취소되었으며 요금이 청구되지 않습니다."
@@ -12391,6 +12562,13 @@ ko:
   seat_add_price_changed: "견적을 낸 뒤 해당 좌석의 가격이 바뀌었습니다. 청구된 금액은 없습니다. 초대를 다시 시작해 현재 금액을 확인하세요."
   seat_add_charged_without_invite: "좌석은 구독에 추가되었지만 초대장을 저장하지 못했습니다. 그 좌석을 쓰는 사람이 없으므로 한 시간 이내에 구독에서 자동으로 제외됩니다. 오늘 청구된 금액은 이번 달 청구서에 그대로 남습니다. 준비되면 그 사람을 다시 초대하세요."
   read_only: "Read-only"
+  admin: "관리자"
+  editor: "편집자"
+  viewer: "뷰어"
+  integration: "API 연동(레거시)"
+  integration_users_help: "레거시 API 로그인은 이 계정의 플랜에서 API로 문서를 만들고 보낼 수 있지만 사용자나 결제는 관리할 수 없습니다. 지원되는 대체 수단은 API 토큰입니다."
+  integration_users: "API 연동 로그인"
+  view_integration_users: "API 연동 로그인 보기"
   give_full_access: "Give full access"
   make_read_only: "Make read-only"
   pending_invitations: "Pending invitations"
@@ -12510,6 +12688,7 @@ ko:
   webhook_url_must_not_point_at_a_private_address: localhost 또는 사설/메타데이터 주소를 가리킬 수 없습니다
   webhook_url_must_be_a_full_url: '호스트가 포함된 전체 URL이어야 합니다(예: https://example.com/webhook)'
   templates_that_require_email_2fa_cannot_be_used_via_a_shared_link: 이메일 2FA가 필요한 템플릿은 공유 링크로 사용할 수 없습니다.
+  shared_link_email_2fa_note: "이 템플릿은 서명자에게 이메일 인증을 요구하므로, 이미 배포한 링크는 이제 양식 대신 «이메일 초대가 필요합니다» 페이지를 표시합니다."
   removing_product_name_branding_from_emails_and_signing_pages_is_available_on_the_paid_plan: '이메일과 서명 페이지에서 %{product_name} 브랜딩 제거는 유료 플랜에서 사용할 수 있습니다.'
   custom_email_templates_are_available_on_the_paid_plan: 사용자 지정 이메일 템플릿은 유료 플랜에서 사용할 수 있습니다.
   automatic_reminders_are_available_on_the_paid_plan: 서명 요청 자동 알림은 유료 플랜에서 사용할 수 있습니다.
@@ -12701,6 +12880,8 @@ ja:
   upgrade_to_add_more_users: "アップグレードすると、このアカウントに人を追加できます。"
   need_help_email_us: "お困りですか？メールでお問い合わせください:"
   no_documents_here_yet: "まだ書類はありません。"
+  templates_empty_state_hint: "テンプレートは、署名を依頼するために送る書類です。PDF または Word ファイルをアップロードして最初のテンプレートを作成しましょう。"
+  submissions_empty_state_hint: "署名を依頼した書類はすべてここに表示され、誰が署名済みで誰がまだかがわかります。"
   account_deletion_banner: "このアカウントは %{date} に完全に削除されます。"
   account_deletion_banner_hint: "それまではすべて閲覧・ダウンロード・エクスポートできます。新規作成はできません。"
   account_deletion_cancel_button: "削除を取り消す"
@@ -12747,6 +12928,8 @@ ja:
   billing_trial_running: "無料トライアルが進行中です。"
   billing_cancels_on: "サブスクリプションは %{date} に終了します。"
   billing_cancels_at_period_end: "サブスクリプションは現在の期間の終わりに終了します。"
+  billing_trial_cancels_on: "トライアルは %{date} に終了し、料金は請求されません。"
+  billing_trial_no_charge: "なし — 最初の請求前にトライアルが終了します。"
   billing_renews_on: "%{date} に更新されます。"
   billing_renews_monthly: "毎月更新されます。"
   billing_past_due_headline: "前回のお支払いを処理できませんでした。"
@@ -12772,13 +12955,15 @@ ja:
   billing_benefit_reminders: "署名を忘れた相手への自動リマインダー"
   billing_benefit_branding: "メールや署名ページに表示されるのは当社ではなくお客様のブランド"
   billing_benefit_email_templates: "カスタムメールテンプレートと自社 SMTP サーバー"
-  billing_seats_billed: "請求対象シート: %{count}（このアカウントにログインするすべての人）"
+  billing_seats_billed: "課金対象シート: %{count} — このアカウントおよび連携アカウントでフルアクセスを持つ全員と、未承諾の招待を含みます。閲覧のみのメンバー、APIログイン、テストモードのユーザーは課金されません。"
   billing_trial_used: "無料トライアルはすでに利用済みです。"
   start_free_trial: "14 日間の無料トライアルを開始"
   upgrade_to_paid: "有料プランにアップグレード"
   manage_billing: "お支払いの管理"
   billing_view_usage: "今月の利用状況を見る"
   billing_already_subscribed: "すでに有効なサブスクリプションがあります。「お支払いの管理」をご利用ください。"
+  billing_refused_incomplete: "前回のお支払いがまだ完了していません。「お支払いの管理」から完了してください。"
+  billing_refused_suspended: "アカウントは停止中です。「お支払いの管理」から未払いの請求書をお支払いいただくと解除されます。"
   billing_refused_pending_deletion: "このアカウントは削除予定です。もう一度契約するには、先に削除を取り消してください。"
   billing_account_moved_away: "このアカウントは、最後のメンバーが別のチームに参加した時点で閉鎖されたため、ここでお支払い情報を変更することはできません。"
   billing_no_customer_yet: "まだお支払い用アカウントがありません。先にサブスクリプションを開始してください。"
@@ -12786,6 +12971,8 @@ ja:
   billing_checkout_cancelled: "お支払いをキャンセルしました。請求は発生していません。"
   billing_trial_started: "14 日間のトライアルが開始しました。"
   billing_subscription_active: "サブスクリプションが有効になりました。"
+  billing_checkout_past_due: "サブスクリプションは作成されましたが、お支払いがまだ完了していません。「お支払いの管理」からカードをご確認ください。"
+  billing_checkout_canceling: "サブスクリプションは有効ですが、現在の期間の終了時に終了する設定になっています。「お支払いの管理」から再開できます。"
   billing_state_incomplete: "支払いが未完了です"
   billing_incomplete_headline: "お支払いがまだ完了していません。お支払いの管理から完了してください。"
   billing_duplicate_cancelled: "すでに有効なサブスクリプションがあるため、重複分は解約され、請求されません。"
@@ -12818,6 +13005,13 @@ ja:
   seat_add_price_changed: "見積もり後にこの席の金額が変わりました。請求は発生していません。招待をやり直して現在の金額をご確認ください。"
   seat_add_charged_without_invite: "席はサブスクリプションに追加されましたが、招待を保存できませんでした。その席は誰も使っていないため、1時間以内に自動でサブスクリプションから外れます。本日請求された金額は今月の請求書に残ります。準備ができたら、あらためて招待してください。"
   read_only: "Read-only"
+  admin: "管理者"
+  editor: "編集者"
+  viewer: "閲覧者"
+  integration: "API連携（レガシー）"
+  integration_users_help: "レガシーAPIログインは、このアカウントのプランでAPI経由で書類を作成・送信できますが、ユーザーや請求は管理できません。サポートされている代替手段はAPIトークンです。"
+  integration_users: "API連携ログイン"
+  view_integration_users: "API連携ログインを表示"
   give_full_access: "Give full access"
   make_read_only: "Make read-only"
   pending_invitations: "Pending invitations"
@@ -12937,6 +13131,7 @@ ja:
   webhook_url_must_not_point_at_a_private_address: は localhost やプライベート/メタデータのアドレスを指すことはできません
   webhook_url_must_be_a_full_url: 'はホストを含む完全な URL である必要があります（例: https://example.com/webhook）'
   templates_that_require_email_2fa_cannot_be_used_via_a_shared_link: メール2FAが必要なテンプレートは共有リンクでは使用できません。
+  shared_link_email_2fa_note: "このテンプレートは署名者にメールアドレスの確認を求めるため、すでに配布したリンクはフォームではなく「メールでの招待が必要です」ページを表示します。"
   removing_product_name_branding_from_emails_and_signing_pages_is_available_on_the_paid_plan: 'メールと署名ページからの%{product_name}ブランディングの削除は有料プランでご利用いただけます。'
   custom_email_templates_are_available_on_the_paid_plan: カスタムメールテンプレートは有料プランでご利用いただけます。
   automatic_reminders_are_available_on_the_paid_plan: 署名依頼の自動リマインダーは有料プランでご利用いただけます。

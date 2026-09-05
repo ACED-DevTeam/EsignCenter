@@ -14,6 +14,12 @@
           <span><%= t('enable_shared_link') %></span>
           <%= check_box_tag 'shared_link', 'true', false, disabled: true, class: 'toggle' %>
         </label>
+        <%# The toggle above only says the link is off from now on. This says
+            what happened to the links already out in the world: switching
+            email verification on does not un-send anything, the form simply
+            stops opening from a bare link — and the owner should hear that
+            from us rather than from a signer who cannot get in. %>
+        <p class="text-sm text-base-content/70 mt-2 mb-4" dir="auto" data-shared-link-2fa-note><%= t('shared_link_email_2fa_note') %></p>
       <% else %>
         <label for="template_shared_link" class="flex items-center my-4 justify-between gap-1 alert bg-base-100 border-base-300">
           <span><%= t('enable_shared_link') %></span>

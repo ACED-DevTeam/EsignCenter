@@ -253,6 +253,12 @@ class BillingSettingsController < ApplicationController
     @pending_deletion = current_account.pending_deletion?
     @actionable = !@read_only && !@manual && !@pending_deletion
     @view_state = view_state
+    # Stripe's own word for the subscription, not our access state. A trial
+    # the customer has already cancelled reads as `canceling` here — the flag
+    # outranks the status in `access_state_for` — while Stripe is still
+    # running it as a trial and has charged nothing. The card has to say "no
+    # charge is coming" rather than quote a monthly price they will never pay.
+    @in_trial = @subscription&.stripe_status == 'trialing'
     # What Stripe actually bills: the quantity frozen at Checkout, which is
     # not the same as the number of people in the account today. The page
     # quotes the invoice, and says the difference out loud.
@@ -291,8 +297,21 @@ class BillingSettingsController < ApplicationController
       StripeBilling::Linker.holds_live_subscription?(@subscription)
   end
 
+  # Three honest sentences where there used to be one. "You already have an
+  # active subscription" is simply untrue for the two states that reach here
+  # without one: an `incomplete` subscription whose first payment never
+  # finished, and a `suspended` account frozen for an unpaid invoice. Both
+  # need a different next step, so both get their own sentence.
   def refuse_checkout
-    redirect_to settings_billing_path, alert: I18n.t('billing_already_subscribed')
+    redirect_to settings_billing_path, alert: I18n.t(refusal_key)
+  end
+
+  def refusal_key
+    case @view_state
+    when 'incomplete' then 'billing_refused_incomplete'
+    when 'suspended' then 'billing_refused_suspended'
+    else 'billing_already_subscribed'
+    end
   end
 
   def create_checkout_session(customer_id)
@@ -459,6 +478,13 @@ class BillingSettingsController < ApplicationController
     state = @subscription.reload.access_state
 
     return { notice: I18n.t('billing_trial_started') } if state == 'trialing'
+    # Two paid states that are NOT "your subscription is active", and saying
+    # so used to contradict the state card the customer was looking at. A
+    # subscription whose first payment failed is past_due before it ever
+    # charged; one Stripe hands back already set to cancel ends at the period
+    # end. Each says what it is and where to fix it.
+    return { alert: I18n.t('billing_checkout_past_due') } if state == 'past_due'
+    return { notice: I18n.t('billing_checkout_canceling') } if state == 'canceling'
     # An incomplete or already-cancelled subscription is not "active": the
     # state card says what happened, and a green sentence would contradict it.
     return {} unless Plans::PAID_ACCESS_STATES.include?(state)

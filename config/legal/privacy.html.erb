@@ -77,10 +77,12 @@
     and to answer “who did this, and from where?”.
   </li>
   <li>
-    <strong>Support session records.</strong> If you ask us for help and give us
-    permission to look at your account, every action taken during that session
-    is logged to your account's own audit log, and a banner is visible on every
-    page for the whole time it lasts.
+    <strong>Support session records.</strong> When one of our operators opens a
+    support session on your account, we record the start of it — with the
+    written reason they gave — every change they make, and every door they are
+    refused at. Your administrators are emailed the moment a session starts,
+    and Settings lists every session there has ever been. Section 10 sets out
+    exactly how that access works.
   </li>
   <li>
     <strong>What you write to us</strong> when you email support.
@@ -332,12 +334,16 @@
     <%= sentence.call(dormant_warning_days) %> days beforehand.
   </li>
   <li>
-    <strong>When you delete your account</strong>, everything is permanently
-    destroyed <%= deletion_window_days %> days later, and you can call it off at
-    any point in between. Two things survive: the verification record of each
-    signed document — a fingerprint, a date and a signer count, which
-    names nobody — and the payment history we are required to keep. Both
-    are described in our <a href="/terms">Terms of Service</a>.
+    <strong>When you delete your account</strong>, your documents, templates,
+    audit trails, files, settings and logins are destroyed
+    <%= deletion_window_days %> days later, and you can call it off at any
+    point in between. A short list survives, set out in section 8 of our
+    <a href="/terms">Terms of Service</a>: the verification record of each
+    signed document (kept permanently), your subscription and payment history,
+    the record of what our payment processor told us with the identity
+    redacted out of it, a stub of the account row itself, our own log of
+    support access to the account, and any stored file that another
+    <%= product %> account is also using.
   </li>
   <li>
     <strong>Email delivery records</strong> — what we sent on your behalf

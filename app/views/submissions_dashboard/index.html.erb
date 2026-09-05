@@ -18,7 +18,7 @@
       <span class="hidden sm:block">
         <%= render 'templates/upload_button' %>
       </span>
-      <%= link_to new_template_path, class: 'white-button !border gap-2', data: { turbo_frame: :modal } do %>
+      <%= link_to new_template_path, class: 'white-button !border gap-2', 'aria-label': t('create'), data: { turbo_frame: :modal } do %>
         <%= svg_icon('plus', class: 'w-6 h-6 stroke-2') %>
         <span class="hidden md:block"><%= t('create') %></span>
       <% end %>
@@ -67,6 +67,11 @@
   </div>
 <% end %>
 <% if params[:q].blank? && params[:status].blank? && filter_params.blank? && @pagy.count.present? && @pagy.count < 5 %>
+  <%# Nothing sent yet is a legitimate state, not a broken page: say what this
+      list is for, then offer the one action that fills it. %>
+  <% if @pagy.count.zero? %>
+    <p class="mt-8 text-center text-base-content/70" data-submissions-empty-hint><%= t('submissions_empty_state_hint') %></p>
+  <% end %>
   <%= render 'templates/dropzone' %>
 <% end %>
 <% if @submissions.present? || (params[:q].blank? && filter_params.blank?) %>

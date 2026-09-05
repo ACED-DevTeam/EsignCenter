@@ -872,6 +872,38 @@ RSpec.describe 'Feature gating', type: :request do
       expect(template.preferences['request_email_subject']).to eq('Custom subject')
     end
 
+    # D78 item 5. The reply-to box on the three signer-email forms was gated
+    # behind an ability nothing in this build ever granted, so no account on
+    # the platform could set it — while a reply-to saved in the config really
+    # is put on the outgoing mail (SubmitterMailer#build_submitter_reply_to).
+    # It now rides with the row it sits inside: refused at the server for a
+    # free account, saved for a paid one, and actually on the letter.
+    def save_invitation_reply_to(account, address)
+      act_as(account)
+      post '/settings/personalization',
+           params: { account_config: { key: AccountConfig::SUBMITTER_INVITATION_EMAIL_KEY,
+                                       value: { subject: 'Please sign {{template.name}}',
+                                                body: 'Hello {{submitter.link}}',
+                                                reply_to: address } } }
+    end
+
+    it 'refuses a reply-to for a free account, saves it for a paid one, and puts it on the signer mail' do
+      expect(Ability.new(admin_for(free_account)).can?(:manage, :reply_to)).to be(false)
+      expect(Ability.new(admin_for(paid_account)).can?(:manage, :reply_to)).to be(true)
+
+      expect { save_invitation_reply_to(free_account, 'contracts@example.com') }
+        .not_to change(AccountConfig, :count)
+      expect_html_refusal
+
+      expect { save_invitation_reply_to(paid_account, 'contracts@example.com') }
+        .to change(AccountConfig, :count).by(1)
+      expect(flash[:alert]).to be_nil
+
+      mail = SubmitterMailer.invitation_email(sent_submitter_for(paid_account))
+
+      expect(mail.reply_to).to eq(['contracts@example.com'])
+    end
+
     it 'refuses the send dialog\'s "save this message to the template" for a free account before anything ' \
        'persists, and saves it for internal' do
       free_template = template_for(free_account)

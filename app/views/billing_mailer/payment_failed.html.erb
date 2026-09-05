@@ -4,11 +4,19 @@
 <% else %>
   <p>The payment for your EsignCenter subscription is still outstanding. We have been retrying it for <%= @day %> days.</p>
 <% end %>
-<p>Nothing has changed on your account yet: you can send, sign and download exactly as before, and we will keep retrying the card.</p>
-<% if @suspends_on %>
-  <p><strong>What happens if it is not settled:</strong> on <%= @suspends_on.utc.strftime('%-d %B %Y') %> the account is suspended. A suspended account can still be signed into, and every document stays readable, downloadable and exportable — signers already part-way through a document still finish it — but nothing new can be created or changed until the payment goes through.</p>
+<%# The catch-up tick: this letter and the suspension notice go out together,
+    so the future tense below would be wrong in both halves — the freeze is
+    not coming, it has happened. The suspension email says what that means in
+    full; this one just tells the truth about when. %>
+<% if @late %>
+  <p>The <%= @grace_days %>-day grace period has now run out, so <strong>the account was suspended today</strong>. Everyone can still sign in, and every document stays readable, downloadable and exportable — signers already part-way through a document still finish it — but nothing new can be created or changed until the payment goes through. A separate email covers this in full.</p>
 <% else %>
-  <p><strong>What happens if it is not settled:</strong> after <%= @grace_days %> days the account is suspended — still readable, downloadable and exportable, but nothing new can be created until the payment goes through.</p>
+  <p>Nothing has changed on your account yet: you can send, sign and download exactly as before, and we will keep retrying the card.</p>
+  <% if @suspends_on %>
+    <p><strong>What happens if it is not settled:</strong> on <%= @suspends_on.utc.strftime('%-d %B %Y') %> the account is suspended. A suspended account can still be signed into, and every document stays readable, downloadable and exportable — signers already part-way through a document still finish it — but nothing new can be created or changed until the payment goes through.</p>
+  <% else %>
+    <p><strong>What happens if it is not settled:</strong> after <%= @grace_days %> days the account is suspended — still readable, downloadable and exportable, but nothing new can be created until the payment goes through.</p>
+  <% end %>
 <% end %>
 <p>Updating the card takes a minute, and paying lifts everything by itself.</p>
 <p><%= link_to 'Update your payment method', @billing_url %></p>

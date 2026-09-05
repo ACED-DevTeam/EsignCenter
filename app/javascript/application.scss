@@ -172,6 +172,45 @@ summary:focus-visible,
   outline-offset: 3px;
 }
 
+/* The settings tab strip on a phone. A strip that scrolls with a clean edge
+   looks like a strip that has ended, so the last visible tab sits under a
+   short fade that says there is more to the right. It belongs to the small
+   screen only: from `md` the same menu is the sidebar again. */
+.settings-tabs {
+  position: relative;
+}
+
+.settings-tabs::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 2rem;
+  pointer-events: none;
+  background: linear-gradient(to left, hsl(var(--b1)), hsl(var(--b1) / 0));
+}
+
+@media (min-width: 768px) {
+  .settings-tabs::after {
+    display: none;
+  }
+}
+
+/* daisyUI draws a tooltip's bubble as a ::before that is always in the
+   layout and merely faded out — up to 20rem wide, absolutely positioned, and
+   half of it hanging past the element it belongs to. On a phone that is real
+   width: the account settings page, whose preference rows each carry one,
+   scrolled 76px sideways with nothing visible to explain it. The bubble is
+   built only when it is actually wanted, so a tooltip nobody is pointing at
+   costs the page nothing. Keyed on `data-tip`, the attribute daisyUI reads
+   the bubble's text from, so the responsive variants (`sm:tooltip`,
+   `md:tooltip`) are covered by the same rule. */
+[data-tip]:not(:hover):not(:focus):not(:focus-within):not(.tooltip-open)::before,
+[data-tip]:not(:hover):not(:focus):not(:focus-within):not(.tooltip-open)::after {
+  display: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

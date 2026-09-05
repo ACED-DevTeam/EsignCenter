@@ -326,14 +326,57 @@ RSpec.describe 'Feature gating UI', type: :request do
   end
 
   describe 'attribution points' do
+    # An attribution link that nobody can see is not attribution. Nokogiri
+    # computes no styles, so this is the two ways markup actually takes a link
+    # off the screen without removing it: Tailwind's `hidden` class on any
+    # container, or an inline display/visibility style. Either one anywhere up
+    # the tree — the link's own element included — disqualifies it.
+    def visibly_rendered?(node)
+      [node, *node.ancestors].none? do |el|
+        el.element? &&
+          (el['class'].to_s.split.include?('hidden') ||
+            el['style'].to_s.match?(/display\s*:\s*none|visibility\s*:\s*hidden/i))
+      end
+    end
+
     # DOM lookups, never substring checks: an anchor parked inside an HTML
     # comment is still a substring of the body but is not attribution.
     def docuseal_attribution_links(body)
-      Nokogiri::HTML(body).css("a[href^='#{Docuseal::DOCUSEAL_URL}']").select { |a| a.text.strip == 'DocuSeal' }
+      Nokogiri::HTML(body)
+              .css("a[href^='#{Docuseal::DOCUSEAL_URL}']")
+              .select { |a| a.text.strip == 'DocuSeal' && visibly_rendered?(a) }
     end
 
     def product_attribution_links(body)
-      Nokogiri::HTML(body).css("a[href='#{Docuseal::PRODUCT_URL}']").select { |a| a.text.strip == Docuseal.product_name }
+      Nokogiri::HTML(body)
+              .css("a[href='#{Docuseal::PRODUCT_URL}']")
+              .select { |a| a.text.strip == Docuseal.product_name && visibly_rendered?(a) }
+    end
+
+    # The proof that the two helpers above are worth anything: take a page
+    # that really does carry the attribution, wrap the link in a container
+    # that hides it, and the helper must stop counting it. Without this, a
+    # future `hidden` class on the footer would pass every check on the page.
+    def wrap_link(body, link, wrapper)
+      body.sub(link.to_html, "#{wrapper}#{link.to_html}</div>")
+    end
+
+    it 'refuses to count an attribution link that a container has hidden' do
+      body = signing_page_for(free_account)
+      link = docuseal_attribution_links(body).first
+
+      expect(link).to be_present
+
+      expect(docuseal_attribution_links(wrap_link(body, link, '<div class="hidden">'))).to be_empty
+      expect(docuseal_attribution_links(wrap_link(body, link, '<div style="display: none">'))).to be_empty
+      expect(docuseal_attribution_links(wrap_link(body, link, '<div style="visibility:hidden">'))).to be_empty
+      expect(docuseal_attribution_links(wrap_link(body, link, '<div class="mt-4">'))).not_to be_empty
+
+      qr_body = qr_page_for(free_account)
+      qr_link = product_attribution_links(qr_body).first
+
+      expect(qr_link).to be_present
+      expect(product_attribution_links(wrap_link(qr_body, qr_link, '<div class="hidden">'))).to be_empty
     end
 
     def signing_page_for(account)

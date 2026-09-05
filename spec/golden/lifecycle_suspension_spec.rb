@@ -871,6 +871,8 @@ RSpec.describe 'Billing dunning', type: :request do
   let(:first_notice) { 'We could not take your EsignCenter payment' }
   let(:reminder) { 'Your EsignCenter payment is still outstanding' }
   let(:last_warning) { 'Last reminder: your EsignCenter account is suspended tomorrow' }
+  # The catch-up copy of the same letter, sent in the tick that suspends.
+  let(:late_warning) { 'Last reminder: your EsignCenter payment is overdue' }
   let(:suspended_subject) { 'Your EsignCenter account is suspended' }
   let(:recovered) { 'Your EsignCenter payment went through' }
   let(:subscription) do
@@ -952,6 +954,12 @@ RSpec.describe 'Billing dunning', type: :request do
     expect(AccountStates.read_only?(account)).to be(true)
   end
 
+  # The catch-up tick sends the final reminder and the suspension notice
+  # together, so the reminder may not talk about the freeze as something that
+  # is still coming: its ordinary wording promises "on <date> the account is
+  # suspended" and "nothing has changed on your account yet", and by the time
+  # this copy lands both sentences are false. The late letter says the
+  # account was suspended today, and its subject drops "tomorrow".
   it 'catches up a missed final reminder at day 15 and suspends, each mail exactly once', sidekiq: :inline do
     subscription.update!(access_state: 'past_due', past_due_since: 15.days.ago)
 
@@ -961,10 +969,36 @@ RSpec.describe 'Billing dunning', type: :request do
 
     expect(account.reload.suspended_at).to be_present
     expect(account.suspension_reason).to eq('billing')
-    expect(mails_titled(last_warning).size).to eq(1)
+    expect(mails_titled(late_warning).size).to eq(1)
+    expect(mails_titled(last_warning)).to be_empty
     expect(mails_titled(suspended_subject).size).to eq(1)
     expect(mails_titled(first_notice)).to be_empty
     expect(mails_titled(reminder)).to be_empty
+
+    body = body_of(mails_titled(late_warning).sole)
+
+    expect(body).to include('the account was suspended today')
+    expect(body).not_to include('Nothing has changed on your account yet')
+    expect(body).not_to include('the account is suspended. A suspended account')
+  end
+
+  # And the reminder that arrives ON day 13, a day before the deadline, still
+  # says the freeze is ahead of it — the late wording is for the late tick
+  # only.
+  it 'keeps the future tense on a day-13 reminder sent inside the grace period', sidekiq: :inline do
+    apply!('subscription-past_due')
+    started = subscription.past_due_since
+
+    travel_to(started + 13.days + 1.hour) { BillingLifecycle.run_dunning! }
+
+    expect(mails_titled(late_warning)).to be_empty
+    expect(account.reload.suspended_at).to be_nil
+
+    body = body_of(mails_titled(last_warning).sole)
+
+    expect(body).to include('Nothing has changed on your account yet')
+    expect(body).to include((started + 14.days).utc.strftime('%-d %B %Y'))
+    expect(body).not_to include('was suspended today')
   end
 
   # Review 7, A4. The dedupe counter used to be spent BEFORE the mail was

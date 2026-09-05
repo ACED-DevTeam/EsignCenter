@@ -896,8 +896,46 @@ RSpec.describe 'Billing page', type: :request do # rubocop:disable RSpec/Multipl
 
       post '/settings/billing/checkout'
 
-      expect(flash[:alert]).to eq(I18n.t('billing_already_subscribed'))
+      # Its own sentence: "you already have an active subscription" is not
+      # what happened to somebody whose first payment never finished.
+      expect(flash[:alert]).to eq(I18n.t('billing_refused_incomplete'))
       expect(WebMock).not_to have_requested(:post, 'https://api.stripe.com/v1/checkout/sessions')
+    end
+
+    # And the third refusal: a frozen account is not "already subscribed"
+    # either — it is behind on an invoice, and the sentence says which door
+    # settles it.
+    it 'tells a suspended account to pay the open invoice rather than sell it a second subscription' do
+      create(:account_subscription, account:, access_state: 'suspended', status: 'unpaid',
+                                    stripe_status: 'unpaid', stripe_customer_id: 'cus_x',
+                                    stripe_subscription_id: 'sub_x')
+
+      post '/settings/billing/checkout'
+
+      expect(response).to redirect_to('/settings/billing')
+      expect(flash[:alert]).to eq(I18n.t('billing_refused_suspended'))
+      expect(WebMock).not_to have_requested(:post, 'https://api.stripe.com/v1/checkout/sessions')
+    end
+
+    # A trial the customer cancelled while it was still running. Stripe reads
+    # it as `canceling`, so the card used to quote "$10 per month" beside a
+    # cancellation date and no trial note at all — a price for a charge that
+    # is never going to be taken.
+    it 'says a cancelled trial ends with no charge instead of quoting a monthly price' do
+      create(:account_subscription, account:, access_state: 'canceling', status: 'trialing',
+                                    stripe_status: 'trialing', cancel_at_period_end: true, quantity: 1,
+                                    stripe_customer_id: 'cus_x', stripe_subscription_id: 'sub_x',
+                                    trial_end: 8.days.from_now, current_period_end: 8.days.from_now,
+                                    trial_used_at: Time.current)
+
+      doc = page
+
+      expect(doc.at('[data-billing-headline]').text.strip).to eq(
+        I18n.t('billing_trial_cancels_on', date: I18n.l(8.days.from_now.to_date, format: :long))
+      )
+      expect(doc.at('[data-billing-amount]').text.strip).to eq(I18n.t('billing_trial_no_charge'))
+      expect(doc.at('[data-billing-amount]').text).not_to include('$10 per month')
+      expect(doc.text).to include(I18n.t('billing_resume_hint'))
     end
 
     # Every other settings page renders dates in the account's timezone; a
@@ -962,6 +1000,37 @@ RSpec.describe 'Billing page', type: :request do # rubocop:disable RSpec/Multipl
       expect(Plans.key_for(account)).to eq(Plans::PAID)
 
       expect(page.at('[data-billing-state]')['data-billing-state']).to eq('trialing')
+    end
+
+    # The green sentence used to be sent for every PAID access state, and two
+    # of them are not "your subscription is active": a subscription whose
+    # first renewal already failed is past_due, and one Stripe hands back with
+    # the cancellation flag on ends at the period end. Both contradicted the
+    # state card the customer was looking at on the same page.
+    it 'does not call a past-due subscription active on the way back from Checkout' do
+      checkout_row!(customer: trialing_subscription['customer'])
+      past_due = trialing_subscription.merge('status' => 'past_due')
+      stub_subscription_retrieve(past_due['id'], past_due)
+      stub_checkout_retrieve('cs_test_past_due', reference: account.id.to_s, subscription: past_due)
+
+      get '/settings/billing/return', params: { session_id: 'cs_test_past_due' }
+
+      expect(account.reload.account_subscription.access_state).to eq('past_due')
+      expect(flash[:notice]).to be_nil
+      expect(flash[:alert]).to eq(I18n.t('billing_checkout_past_due'))
+    end
+
+    it 'says a subscription already set to cancel ends at the period end rather than calling it active' do
+      checkout_row!(customer: trialing_subscription['customer'])
+      canceling = trialing_subscription.merge('status' => 'active', 'cancel_at_period_end' => true)
+      stub_subscription_retrieve(canceling['id'], canceling)
+      stub_checkout_retrieve('cs_test_canceling', reference: account.id.to_s, subscription: canceling)
+
+      get '/settings/billing/return', params: { session_id: 'cs_test_canceling' }
+
+      expect(account.reload.account_subscription.access_state).to eq('canceling')
+      expect(flash[:notice]).to eq(I18n.t('billing_checkout_canceling'))
+      expect(flash[:notice]).not_to eq(I18n.t('billing_subscription_active'))
     end
 
     it 'ignores a Checkout session that belongs to somebody else' do

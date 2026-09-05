@@ -34,4 +34,13 @@ class AccountInviteMailer < ApplicationMailer
 
     mail(to: invite.email, subject: "#{@inviter_name} invited you to join #{@account.name} on EsignCenter")
   end
+
+  private
+
+  # Written by the platform, not by a customer: the mail layout signs it
+  # with the product's name and the support address whatever the account's
+  # branding-removal setting says (ApplicationMailer#platform_notice?).
+  def platform_notice?
+    true
+  end
 end

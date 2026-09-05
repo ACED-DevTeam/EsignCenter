@@ -11,11 +11,17 @@ class BillingMailer < ApplicationMailer
   # One reminder inside the grace period. `day` is how many days into it we
   # are (BillingLifecycle::DUNNING_DAYS) and `suspends_on` is the date the
   # account stops being able to send — every one of these says both.
-  def payment_failed(account, day:, suspends_on: nil)
+  #
+  # `late` is the one case where the deadline is already behind us: a sweep
+  # that missed the day-13 tick sends this letter in the same breath as the
+  # suspension itself, so the letter says the freeze HAS happened instead of
+  # promising it for a date that has been and gone.
+  def payment_failed(account, day:, suspends_on: nil, late: false)
     return if prepare(account).blank?
 
     @day = day
     @suspends_on = suspends_on
+    @late = late
     @last_warning = day == BillingLifecycle::DUNNING_DAYS.last
 
     mail(to: @recipients, subject: subject_for_day(day))
@@ -68,6 +74,10 @@ class BillingMailer < ApplicationMailer
   # thing four times teaches people to ignore it.
   def subject_for_day(day)
     return 'We could not take your EsignCenter payment' if day.zero?
+    # The catch-up copy of the last warning: the suspension happened today,
+    # so promising it for tomorrow would be the one thing the subject line
+    # must not do.
+    return 'Last reminder: your EsignCenter payment is overdue' if @late
     return 'Last reminder: your EsignCenter account is suspended tomorrow' if @last_warning
 
     'Your EsignCenter payment is still outstanding'
@@ -85,5 +95,12 @@ class BillingMailer < ApplicationMailer
     @support_email = Docuseal::SUPPORT_EMAIL
 
     @recipients = account.users.active.admins.pluck(:email)
+  end
+
+  # Written by the platform, not by a customer: the mail layout signs it
+  # with the product's name and the support address whatever the account's
+  # branding-removal setting says (ApplicationMailer#platform_notice?).
+  def platform_notice?
+    true
   end
 end

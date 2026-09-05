@@ -540,13 +540,26 @@ rather than a link** — opening it would put you inside a signer's session.
    Add URL `https://<user>:<pass>@esigncenter.com/webhooks/postmark`, replacing
    the placeholders with those credentials. URL-encode any special characters.
 3. Tick **Delivery**, **Bounce**, **Spam complaint** and **Open**; leave
-   **Subscription change** on. Do not enable Postmark click tracking: the app
-   already records clicks through its own signature-request links. If a Click
-   webhook is already enabled, its events are kept only in EmailEvent and do
-   not create another signer timeline entry. Enable open tracking on the
-   stream/messages if you want open events. Save and verify the webhook.
-   A verification payload without one of our message UUIDs is acknowledged
-   and ignored; it does not create a customer event.
+   **Subscription change** on. Save and verify the webhook. A verification
+   payload without one of our message UUIDs is acknowledged and ignored; it
+   does not create a customer event.
+
+   **Leave Postmark's link tracking switched OFF** (Servers → EsignCenter →
+   the message stream → Settings → Tracking). The app records its own clicks:
+   every signature-request link it sends carries a tracking parameter, and
+   following that link writes the click straight into the signer's timeline.
+   Postmark's link tracking rewrites those same URLs to go through its own
+   redirector first, so every click would be recorded twice — once by
+   Postmark and once by us — and signers would see a postmarkapp.com address
+   in place of ours. If a Click webhook is already enabled, its events are
+   kept only in EmailEvent and never reach the signer timeline, so nothing is
+   double-counted there.
+
+   **Open tracking is the other way round.** The app has no tracking pixel of
+   its own, so Postmark's open tracking is the only source of open events:
+   turn it on for the stream if you want opens in the signer timeline, and
+   leave it off if you would rather not track opens at all — the Open webhook
+   then simply never fires.
 4. Send a test signature request and open its event log from a paid or
    internal account. Delivery is recorded behind the scenes; the existing
    sent entry remains the visible proof of sending. Permanent signer bounces,

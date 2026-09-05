@@ -493,6 +493,49 @@ RSpec.describe 'Legal documents', type: :request do
       expect(LegalAcceptance.count).to eq(0)
     end
 
+    it 'refuses a Google sign-up that carries no versions at all' do
+      ENV['GOOGLE_OAUTH_CLIENT_ID'] = 'google-client-id'
+      ENV['GOOGLE_OAUTH_CLIENT_SECRET'] = 'google-client-secret'
+      OmniAuth.config.test_mode = true
+      OmniAuth.config.mock_auth[:google_oauth2] =
+        OmniAuth::AuthHash.new(provider: 'google_oauth2', uid: '107691503500061507152',
+                               info: { email: 'ada@example.com', name: 'Ada Lovelace' },
+                               extra: { raw_info: { email_verified: true } })
+
+      expect do
+        post user_google_oauth2_omniauth_authorize_path
+        follow_redirect!
+      end.not_to change(User, :count)
+
+      expect(flash[:alert]).to eq(I18n.t('legal_documents_updated_please_review'))
+      expect(LegalAcceptance.count).to eq(0)
+    end
+
+    # The Google door's half of the transaction proof: the user really is
+    # saved before the agreement is written, so the rollback is the only thing
+    # standing between us and a Google login that agreed to nothing.
+    it 'leaves no user behind when the agreement cannot be recorded on the Google door' do
+      ENV['GOOGLE_OAUTH_CLIENT_ID'] = 'google-client-id'
+      ENV['GOOGLE_OAUTH_CLIENT_SECRET'] = 'google-client-secret'
+      OmniAuth.config.test_mode = true
+      OmniAuth.config.mock_auth[:google_oauth2] =
+        OmniAuth::AuthHash.new(provider: 'google_oauth2', uid: '107691503500061507153',
+                               info: { email: 'grace@example.com', name: 'Grace Hopper' },
+                               extra: { raw_info: { email_verified: true } })
+
+      allow(LegalDocuments).to receive(:record_acceptance!).and_raise(ActiveRecord::RecordNotSaved)
+
+      expect do
+        post user_google_oauth2_omniauth_authorize_path(LegalDocuments.version_fields)
+        expect { follow_redirect! }.to raise_error(ActiveRecord::RecordNotSaved)
+      end.not_to change(User, :count)
+
+      expect(LegalDocuments).to have_received(:record_acceptance!)
+      expect(User.find_by(email: 'grace@example.com')).to be_nil
+      expect(Account.where(name: 'Grace Hopper')).to be_empty
+      expect(LegalAcceptance.count).to eq(0)
+    end
+
     it 'refuses an invitation accepted on a stale page, and creates nothing' do
       account = create(:account)
       create(:user, account:)
