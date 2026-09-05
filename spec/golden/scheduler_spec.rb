@@ -110,19 +110,74 @@ RSpec.describe 'Scheduler', type: :lib do
     expect(job.cron).to eq('30 4 * * *')
     expect(job.queue_name_with_prefix).to eq('default')
 
-    # All three sweeps, every night. A rename that quietly dropped one would
-    # stop the warnings going out, or stop the purges happening at all — and
-    # nothing else in the app would notice.
+    # EVERY sweep, every night, and through the one entry point that owns the
+    # list (review 8, C1/C2). A rename that quietly dropped one would stop the
+    # warnings going out, stop the purges happening at all, or — as it did
+    # until this session — leave every account export in the bucket past its
+    # seven days and leave a build whose worker died blocking that account's
+    # export door for ever. `run!` is stubbed with `and_call_original` on
+    # purpose: a job that stops going through it fails on the first
+    # expectation, and a sweep dropped from `run!` fails on its own.
+    allow(Accounts::Retention).to receive(:run!).and_call_original
     allow(Accounts::Retention).to receive(:schedule_dormant_warnings!)
     allow(Accounts::Retention).to receive(:schedule_deletion_reminders!)
+    allow(Accounts::Retention).to receive(:expire_exports!)
     allow(Accounts::Retention).to receive(:purge_due!)
 
     AccountRetentionJob.new.perform
 
+    expect(Accounts::Retention).to have_received(:run!).once
     expect(Accounts::Retention).to have_received(:schedule_dormant_warnings!).once
     expect(Accounts::Retention).to have_received(:schedule_deletion_reminders!).once
+    expect(Accounts::Retention).to have_received(:expire_exports!).once
     expect(Accounts::Retention).to have_received(:purge_due!).once
+    expect(Accounts::Retention::SWEEPS)
+      .to contain_exactly(:schedule_dormant_warnings!, :schedule_deletion_reminders!,
+                          :expire_exports!, :purge_due!)
     expect(SchedulerStamps.all['account_retention']).to include('outcome' => 'ok', 'error' => nil)
+  end
+
+  # And the sweep list above is not the proof on its own — a stub list can
+  # shrink as quietly as the job it describes. This one stubs nothing: a real
+  # export whose seven days are up loses its real file when the job the
+  # scheduler runs runs (review 8, C1).
+  it 'really expires a ready export whose seven days are up when the retention job runs' do
+    account = create(:account)
+    admin = create(:user, :admin, account:)
+    export = AccountExport.create!(account:, requested_by: admin, status: AccountExport::READY,
+                                   started_at: 8.days.ago, finished_at: 8.days.ago, expires_at: 1.day.ago)
+
+    export.archive.attach(io: Rails.root.join('spec/fixtures/sample-document.pdf').open,
+                          filename: 'esigncenter-export.zip', content_type: 'application/zip')
+
+    blob = export.archive.blob
+
+    AccountRetentionJob.new.perform
+
+    expect(export.reload.status).to eq(AccountExport::EXPIRED)
+    expect(export.archive).not_to be_attached
+    expect(ActiveStorage::Blob.exists?(blob.id)).to be(false)
+    expect(blob.service.exist?(blob.key)).to be(false)
+    expect(SchedulerStamps.all['account_retention']).to include('outcome' => 'ok', 'error' => nil)
+  end
+
+  # One sweep raising must not cost the others their night (review 8, C1).
+  # The job still ends in a failure, so the stamp on the scheduler tab says
+  # the night was bad and Sidekiq retries it — but the work that could be
+  # done was done.
+  it 'runs every retention sweep even when one of them raises, and stamps the failure' do
+    allow(Accounts::Retention).to receive(:schedule_dormant_warnings!).and_raise(StandardError, 'mail is down')
+    allow(Accounts::Retention).to receive(:schedule_deletion_reminders!)
+    allow(Accounts::Retention).to receive(:expire_exports!)
+    allow(Accounts::Retention).to receive(:purge_due!)
+
+    expect { AccountRetentionJob.new.perform }.to raise_error(Accounts::Retention::SweepFailed, /mail is down/)
+
+    expect(Accounts::Retention).to have_received(:schedule_deletion_reminders!).once
+    expect(Accounts::Retention).to have_received(:expire_exports!).once
+    expect(Accounts::Retention).to have_received(:purge_due!).once
+    expect(SchedulerStamps.all['account_retention'])
+      .to include('outcome' => 'error', 'error' => a_string_including('schedule_dormant_warnings!'))
   end
 
   # sidekiq-cron's own startup hook loads its default schedule file; the app

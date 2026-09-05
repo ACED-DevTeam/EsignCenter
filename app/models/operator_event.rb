@@ -52,7 +52,7 @@ class OperatorEvent < ApplicationRecord
     stripe.retry_event stripe.adopt
     scheduler.run_now
     settings.update
-    impersonation.start impersonation.end impersonation.refused
+    impersonation.start impersonation.end impersonation.refused impersonation.action
   ].freeze
 
   belongs_to :operator, class_name: 'User', foreign_key: :operator_user_id,

@@ -114,6 +114,15 @@ holding everything in the account:
 * every template, with the documents you originally uploaded, and a
   `template.json` describing its fields, its recipients and its folder;
 * every completed signed document, plus the combined copy where there is one;
+* every document a **submission owns itself** rather than borrowing from its
+  template — what a corrected copy carries, and what a one-off upload becomes
+  — filed under `original/` inside that submission's folder;
+* every file a **signer sent**: the documents they attached to a file field,
+  and the signature, initials and stamp images their signature is made of,
+  filed under `attachments/submitter-<id>/` inside the submission they belong
+  to. These are nowhere else in the zip — the CSV records a file field as a
+  link into our storage, and that link is worth nothing once the account is
+  gone;
 * the audit trail PDF for each submission;
 * a `submission.json` per submission (status, recipients, their timestamps and
   the values they filled in, a count of each kind of event) and one
@@ -126,8 +135,14 @@ Things worth knowing:
 
 * It is built **in the background**. Ask for it, close the page, and we email
   the person who asked when it is ready.
-* The **file** is kept for 7 days and then deleted automatically. Ask for
-  another whenever you like.
+* The **file** is kept for 7 days and then deleted automatically — by the
+  nightly retention sweep (`AccountRetentionJob`, 04:30 UTC), which also
+  clears up the half-built file of an export that failed and releases a build
+  whose worker died, so a dead export can never leave the button stuck. Ask
+  for another whenever you like. A build that dies part-way through *uploading*
+  its zip is included in that: the export row names the file it is uploading
+  before the upload starts, so the copy it left behind is found and deleted
+  like any other, and never sits in storage with nothing pointing at it.
 * The **link** the Download button makes is good for **10 minutes**, not 7
   days. It is a bearer link — anyone holding it can fetch the file — so it is
   deliberately short-lived, is never stored by a shared cache, and a fresh one
@@ -414,7 +429,7 @@ and can subscribe again from the billing page.
 | The export door (limits, reuse) | `lib/accounts/exports.rb` |
 | Building the zip | `lib/accounts/export_archive.rb`, `AccountExportJob` (queue `documents`) |
 | The export page | `app/views/account_exports/show.html.erb` |
-| Dormant rules, warning schedule, purge scheduling | `lib/accounts/retention.rb` |
+| Dormant rules, warning schedule, purge scheduling, export expiry | `lib/accounts/retention.rb` |
 | Nightly sweep (`30 4 * * *`) | `config/schedule.yml` → `AccountRetentionJob` |
 | One account's purge | `AccountPurgeJob` |
 | The Stripe-is-down retry | `CancelDeletedSubscriptionJob` |

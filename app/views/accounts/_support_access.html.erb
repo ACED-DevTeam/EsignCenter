@@ -16,6 +16,7 @@
             <th><%= t('support_access_viewed_as') %></th>
             <th><%= t('support_access_mode') %></th>
             <th><%= t('support_access_duration') %></th>
+            <th><%= t('support_access_changes') %></th>
             <th><%= t('support_access_reason') %></th>
           </tr>
         </thead>
@@ -33,6 +34,32 @@
                   <%= distance_of_time_in_words(seconds.to_i.seconds) %>
                 <% else %>
                   <%= t('support_access_still_open') %>
+                <% end %>
+              </td>
+              <%# What the session actually did. A read-only session changes nothing
+                  by definition, but "Allow document edits" is a mode that can archive
+                  a template or fix a signer's email address, and the customer is
+                  entitled to see how much of that happened without asking us.
+
+                  An ACTION is one allowed edit-mode request that went through. An
+                  attempt the account itself turned away — a form that failed its own
+                  validation, a signer who could no longer be edited — is in the audit
+                  log with its outcome and is deliberately NOT counted here: telling a
+                  customer "3 actions" for three things that never happened would be
+                  worse than saying nothing (review 8, X4/Y3).
+
+                  The numbers come off the session's own end row; sessions recorded
+                  before we started counting print a dash rather than a reassuring
+                  and unearned zero. %>
+              <td class="whitespace-nowrap text-sm" data-support-access-changes="<%= started.id %>">
+                <% counted = ended&.details&.key?('action_count') %>
+                <% if counted %>
+                  <%= t('support_access_changes_summary', count: ended.details['action_count'].to_i) %>
+                  <% if ended.details['refused_count'].to_i.positive? %>
+                    <span class="text-base-content/70">· <%= t('support_access_blocked_summary', count: ended.details['refused_count'].to_i) %></span>
+                  <% end %>
+                <% else %>
+                  <span class="text-base-content/70">—</span>
                 <% end %>
               </td>
               <td dir="auto" class="text-sm"><%= started.reason %></td>

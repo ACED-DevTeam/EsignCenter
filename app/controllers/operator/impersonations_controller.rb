@@ -68,7 +68,7 @@ module Operator
         # Who is inside. Carried on the session because the one door that has
         # to refuse without Devise reads the operator from here
         # (SupportImpersonationSessionRefusal).
-        'operator_id' => true_user.id, 'refused_count' => 0
+        'operator_id' => true_user.id, 'refused_count' => 0, 'action_count' => 0
       }
 
       notify_customer(event)

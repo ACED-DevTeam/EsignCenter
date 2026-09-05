@@ -7,9 +7,11 @@
 # The whole of this file is the answer to one question — "what is this session
 # allowed to do?" — and it is deliberately written as a WHITELIST. A request
 # that changes something is refused unless it is named here as a document
-# action and the session was started in edit mode. Everything else is refused,
-# including doors nobody has thought about yet: a controller added next month
-# is closed the day it is routed, and the spec below (spec/golden/
+# action, the session was started in edit mode, and the action is not one of
+# the per-action overrides below — permanent deletion, and anything that
+# completes a form for a signer, are refused in edit mode too. Everything else
+# is refused, including doors nobody has thought about yet: a controller added
+# next month is closed the day it is routed, and the spec below (spec/golden/
 # impersonation_spec.rb) fails until somebody has decided which side of the
 # line it is on.
 #
@@ -245,6 +247,99 @@ module SupportImpersonation
   # behind.
   SECRET_CONTROLLERS = CLASSIFICATION.select { |_, kind| kind == :secret }.keys.freeze
 
+  # Per-ACTION overrides on the `:edit` controllers.
+  #
+  # The classification answers "is this controller document work?". These
+  # answer the question review 8 found nobody was asking — "...and is THIS
+  # action on it something a support session may do?". Edit mode was
+  # action-blind, so an operator could permanently destroy a customer's signed
+  # documents (their submitters and their whole `submission_events` trail with
+  # them) and complete a form on a signer's behalf, with no refusal and no
+  # audit row.
+  #
+  # Two rules, and everything else on an `:edit` controller stays allowed:
+  #
+  #   * nothing a support session does may be IRREVERSIBLE. Archiving is a
+  #     soft delete the customer can undo, so it stays; `destroy!` is not, so
+  #     it goes. Those doors do both, chosen by `permanently`, which is why
+  #     these overrides read the payload rather than only the action name.
+  #   * no submitter may transition to COMPLETED. The signer's own doors are
+  #     already `:signing` — never, in either mode, for any verb — and these
+  #     are the operator-side doors that reach the same place: a creation
+  #     payload carrying `completed: true`, and the resubmit door, which opens
+  #     a fresh signing session as the person.
+  #
+  #   :never              — refused in edit mode too, whatever the payload.
+  #   :permanent_destroy  — refused when the payload asks for the irreversible
+  #                         branch; the archiving branch stays allowed.
+  #   :completion         — refused when the payload would mark a submitter
+  #                         completed; the same door without it stays allowed.
+  EDIT_ACTION_OVERRIDES = {
+    'templates#destroy' => :permanent_destroy,
+    'submissions#destroy' => :permanent_destroy,
+    'api/templates#destroy' => :permanent_destroy,
+    'api/submissions#destroy' => :permanent_destroy,
+    'submissions#create' => :completion,
+    'api/submissions#create' => :completion,
+    'submitters_resubmit#update' => :never
+  }.freeze
+
+  # What the four destroy doors themselves read (`params[:permanently].in?`).
+  # Written the same way on purpose: a value those controllers would treat as
+  # "archive" must not be refused here, or support loses the archive button
+  # for nothing.
+  PERMANENT_VALUES = ['true', true].freeze
+
+  # The keys that sign for somebody, and the ONE question asked about them.
+  #
+  # The builder does not compare a value against a list of spellings — it asks
+  # `attrs[:completed].present?` (lib/submissions/create_from_submitters.rb),
+  # so `"false"`, `"no"`, `"0"`, `0`, `"x"` and `2` all mark the submitter
+  # finished. A guard that recognised only `true`/`"true"`/`"1"`/`1` was a
+  # spelling allow-list in front of a door that accepts anything non-blank,
+  # and one character got round it (review 8, V2-1/X1). So the guard asks the
+  # builder's own question: refuse when the key is present in the builder's
+  # sense — anything but `nil`, `false`, `""` and empty collections.
+  #
+  # `completed_at` is not read by any creation path today; it is listed so a
+  # door that starts reading it is closed the day it does. The other completion
+  # routes (`api/submitters#update`, `api/signing_sessions#create`) live on
+  # controllers classified `:signing` — never, in either mode, for any verb —
+  # and need nothing here.
+  COMPLETION_KEYS = %w[completed completed_at].freeze
+
+  # Where the scan may NOT go. `values`, `metadata`, `variables`, `fields` and
+  # `preferences` are the CUSTOMER's own data: a checkbox field called
+  # "completed" on a compliance template ("Training completed?") is not a
+  # request to sign for anybody, and a depth-blind scan refused legitimate
+  # support work over it and wrote a refusal into the customer's own audit
+  # card (review 8, V2-3/X3). The builder reads `attrs[:completed]` off the
+  # submitter node itself and never out of these, so skipping them cannot let
+  # a completion through.
+  CUSTOMER_DATA_KEYS = %w[values metadata variables fields preferences].freeze
+
+  # What an `impersonation.action` row says actually happened. The row is
+  # written AFTER the whole request — the error handling included — because
+  # the customer's Support-access card counts ACTIONS THAT LANDED and a 422
+  # that changed nothing is not one of them (review 8, X4/W1/Y1/Y3).
+  #
+  #   * `changed` — the request went through. This is the only outcome the
+  #     customer's "Actions" total counts;
+  #   * `failed` — the door was open and the request did not go through: the
+  #     response says so (4xx, whether the controller rendered it itself or a
+  #     `rescue_from` answered it), or it redirected with an alert, which is
+  #     how half this application says "no" (review 8, Y3);
+  #   * `error` — something raised and nobody answered it. The row still
+  #     lands, because "support touched this and it blew up" is exactly what a
+  #     customer asking questions a month later needs to see.
+  #
+  # A request the rule or the ability layer refused gets its
+  # `impersonation.refused` row and NO action row: exactly one row per
+  # request, whatever happens to it.
+  ACTION_CHANGED = 'changed'
+  ACTION_FAILED = 'failed'
+  ACTION_ERROR = 'error'
+
   module_function
 
   # Who may be viewed as at all. The console's user table asks this to decide
@@ -269,7 +364,7 @@ module SupportImpersonation
   #     closed the day it is routed rather than open until somebody notices;
   #   * reading is otherwise fine;
   #   * of the writes, only signing out and document work in edit mode pass.
-  def refuse?(controller_path:, action:, mode:, read_request:)
+  def refuse?(controller_path:, action:, mode:, read_request:, params: {})
     return false if console?(controller_path)
 
     kind = CLASSIFICATION[controller_path]
@@ -277,8 +372,55 @@ module SupportImpersonation
     return true if kind.nil? || NEVER.include?(kind)
     return false if read_request
     return false if ALWAYS_ALLOWED.include?("#{controller_path}##{action}")
+    return true unless mode == EDIT_MODE && kind == :edit
 
-    !(mode == EDIT_MODE && kind == :edit)
+    edit_action_refused?("#{controller_path}##{action}", params)
+  end
+
+  # The per-action half of the rule, asked only of a request edit mode would
+  # otherwise allow. An action nobody has listed is allowed, which is safe
+  # because its CONTROLLER had to be classified `:edit` to get this far — and
+  # the spec sweeps the route table in edit mode too, so an `:edit` controller
+  # that grows an action nobody has decided about fails there.
+  def edit_action_refused?(target, params)
+    case EDIT_ACTION_OVERRIDES[target]
+    when :never then true
+    when :permanent_destroy then PERMANENT_VALUES.include?(param_value(params, :permanently))
+    when :completion then completes_a_submitter?(params)
+    else false
+    end
+  end
+
+  # The payload arrives string-keyed from JSON and symbol-keyed from a test, so
+  # both are asked.
+  def param_value(params, key)
+    return nil unless params.respond_to?(:[])
+
+    value = params[key]
+    value.nil? ? params[key.to_s] : value
+  end
+
+  # Does this payload ask for a submitter to arrive already signed?
+  #
+  # Scanned at any depth, because the API accepts submitters as a bare array,
+  # under `submission:`, under `submissions:` and through `/init` — all four
+  # reach the same builder — but never THROUGH a customer-data key, so only
+  # submitter-shaped nodes are ever asked. The question about a completion key
+  # is the builder's own: `.present?`.
+  def completes_a_submitter?(value)
+    case value
+    when Hash
+      value.any? do |key, nested|
+        name = key.to_s
+
+        next false if CUSTOMER_DATA_KEYS.include?(name)
+        next true if COMPLETION_KEYS.include?(name) && nested.present?
+
+        completes_a_submitter?(nested)
+      end
+    when Array then value.any? { |nested| completes_a_submitter?(nested) }
+    else false
+    end
   end
 
   def console?(controller_path)

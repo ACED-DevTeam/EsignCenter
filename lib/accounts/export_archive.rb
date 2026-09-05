@@ -105,15 +105,54 @@ module Accounts
 
     def write_submissions!(zip, account, state)
       Submission.where(account_id: account.id)
-                .preload(:template, submitters: { documents_attachments: :blob })
+                .preload(:template, documents_attachments: :blob,
+                                    submitters: [{ documents_attachments: :blob },
+                                                 { attachments_attachments: :blob }])
                 .order(:id).find_each do |submission|
         directory = "submissions/#{submission.id}"
         state[:counts]['submissions'] += 1
 
+        write_submission_documents!(zip, submission, directory, state)
         write_completed_documents!(zip, submission, directory, state)
+        write_signer_attachments!(zip, submission, directory, state)
         write_audit_trail!(zip, submission, directory, state)
         report_ungenerated!(submission, directory, state)
         write_json!(zip, "#{directory}/submission.json", submission_json(submission), state)
+      end
+    end
+
+    # The originals the SUBMISSION owns rather than borrows from its template
+    # (review 8, D3). A corrected copy carries its own documents
+    # (SubmittersResubmitController), and so does a submission built from a
+    # one-off upload; nothing else in this archive names them, so an export
+    # without them is short exactly the documents whose only other copy the
+    # purge is about to destroy.
+    def write_submission_documents!(zip, submission, directory, state)
+      submission.documents.each do |attachment|
+        added = write_blob!(zip, unique(state, "#{directory}/original/#{filename_for(attachment)}"),
+                            attachment.blob, state)
+
+        state[:counts]['submission_documents'] += 1 if added
+      end
+    end
+
+    # Everything the SIGNERS put in (review 8, D3): the files they attached to
+    # a file field, and the signature, initials and stamp images their
+    # signature is made of. Filed under the submitter they belong to, because
+    # "who uploaded this" is part of what the file means.
+    #
+    # These are the customer's evidence as much as the signed PDF is, and they
+    # are nowhere else in the zip: `submissions.csv` records a file field as a
+    # LINK into our storage (Submissions::GenerateExportFiles), which is worth
+    # nothing the moment the account is gone.
+    def write_signer_attachments!(zip, submission, directory, state)
+      submission.submitters.sort_by(&:id).each do |submitter|
+        submitter.attachments.each do |attachment|
+          path = "#{directory}/attachments/submitter-#{submitter.id}/#{filename_for(attachment)}"
+          added = write_blob!(zip, unique(state, path), attachment.blob, state)
+
+          state[:counts]['submitter_attachments'] += 1 if added
+        end
       end
     end
 
@@ -437,11 +476,28 @@ module Accounts
       extension.present? ? "#{base}.#{extension}" : base
     end
 
+    # BAD BYTES ARE REPLACED, NEVER RAISED (review 8, C4). `unicode_normalize`
+    # refuses a string that is not valid UTF-8 and `encode` refuses one that is
+    # tagged binary, and the old order asked both of them the question before
+    # anything had scrubbed the bytes — so one filename with a Latin-1 é in it
+    # took the whole export down with an encoding error the customer could do
+    # nothing about. The bytes are read as UTF-8 and scrubbed FIRST now, and
+    # only then normalised: no name is worth failing an account's export for.
+    #
+    # AND THE RESULT IS ALWAYS A NAME. Every character that could make a zip
+    # entry escape its folder is already gone — `/` and `\` are not in SAFE, so
+    # nothing here can be an absolute path or contain a directory step — but
+    # "." and ".." survive the scrub as legal characters and are not names at
+    # all: an entry called ".." is a traversal attempt in every extractor on
+    # earth. A name made only of dots becomes "file".
     def slugify(value)
-      cleaned = value.to_s.unicode_normalize(:nfkd).encode('ASCII', invalid: :replace, undef: :replace, replace: '-')
+      cleaned = value.to_s.dup.force_encoding(Encoding::UTF_8).scrub('-')
+                     .unicode_normalize(:nfkd).encode('ASCII', invalid: :replace, undef: :replace, replace: '-')
                      .gsub(SAFE, '-').squeeze('-').delete_prefix('-').delete_suffix('-')
 
-      cleaned.presence&.first(MAX_NAME) || 'file'
+      return 'file' if cleaned.blank? || cleaned.delete('.').empty?
+
+      cleaned.first(MAX_NAME)
     end
 
     # Two files of one record can genuinely carry the same name — two
