@@ -419,16 +419,41 @@ module Operator
 
     # Blank clears the column (back to the plan default); storage is typed in
     # GB because nobody types 10737418240.
+    #
+    # A FIELD THAT IS NOT A NUMBER IS REFUSED, not read as zero (review 1,
+    # B-L4). `"ten".to_i` is 0, and 0 is a real cap here — it means "this
+    # account may not complete a single document this month" — so a typo used
+    # to save cleanly as the harshest possible limit, with an audit row saying
+    # the operator had chosen it. The form comes back with the sentence
+    # instead and nothing is written.
     def submitted_limits
       values = params.fetch(:limits, {})
 
       AccountLimitOverride::FIELDS.index_with do |field|
-        raw = field == 'storage_bytes' ? values[:storage_gb] : values[field]
+        raw = (field == 'storage_bytes' ? values[:storage_gb] : values[field]).to_s.strip
 
-        next nil if raw.to_s.strip.blank?
+        next nil if raw.blank?
 
-        field == 'storage_bytes' ? (raw.to_f * 1.gigabyte).round : raw.to_i
+        if field == 'storage_bytes'
+          (decimal!(raw, 'storage (GB)') * 1.gigabyte).round
+        else
+          whole_number!(raw, field.humanize.downcase)
+        end
       end
+    end
+
+    # Whole numbers only, and never negative: every field here is a count.
+    def whole_number!(raw, field)
+      raise Refused, t('operator_refused_limit_not_a_number', field:, value: raw) unless /\A\d+\z/.match?(raw)
+
+      raw.to_i
+    end
+
+    # Storage is the one field typed in decimals (1.5 GB).
+    def decimal!(raw, field)
+      raise Refused, t('operator_refused_limit_not_a_number', field:, value: raw) unless /\A\d+(?:\.\d+)?\z/.match?(raw)
+
+      raw.to_f
     end
 
     def save_override!(override, attributes)

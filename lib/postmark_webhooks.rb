@@ -41,6 +41,26 @@ module PostmarkWebhooks
     false
   end
 
+  # AN EVENT THIS ENDPOINT ANSWERS 200 IS AN EVENT WE HAVE KEPT (review 8, D8).
+  #
+  # A webhook can arrive BEFORE the send row it belongs to. The send row is
+  # written by an observer that runs after the message has been handed over
+  # (lib/action_mailer_events_observer.rb), and Postmark can be back with a
+  # bounce before that observer's INSERT commits — so "no matching send event"
+  # is an ordering, not a mistake, and answering 200 and forgetting it lost
+  # real bounces for ever.
+  #
+  # The two designs on the table were "answer 500 so Postmark retries" and
+  # "park it". Retrying loses the event when the send row takes longer than
+  # Postmark's retry schedule and makes a healthy endpoint look broken, so the
+  # event is PARKED (PendingEmailEvent), keyed by the provider's message uuid,
+  # and attributed the moment the send row lands. The message is only ever
+  # parked when it carries a uuid we could match later; a webhook for a
+  # message this application never sent (no metadata at all) is still ignored.
+  #
+  # Parking is followed by an immediate re-check, because the send row can
+  # commit in the instant between the lookup above and the parking INSERT:
+  # without it, that one row would sit parked until the hourly sweep.
   def record!(record)
     type = event_type(record)
 
@@ -48,11 +68,7 @@ module PostmarkWebhooks
 
     send_event = attributed_send(record)
 
-    unless send_event
-      Rails.logger.info('Postmark webhook ignored: no matching send event')
-
-      return { ignored: true }
-    end
+    return park!(record) unless send_event
 
     persist!(record, send_event, type)
 
@@ -61,12 +77,79 @@ module PostmarkWebhooks
     { duplicate: true }
   end
 
-  def attributed_send(record)
+  # Keeps the webhook until its send row exists. A retry of a webhook already
+  # parked is the same event and lands on the unique provider event key, so it
+  # parks once however many times Postmark tries.
+  def park!(record)
+    uuid = message_uuid(record)
+
+    if uuid.blank?
+      Rails.logger.info('Postmark webhook ignored: no message uuid to attribute it by')
+
+      return { ignored: true }
+    end
+
+    PendingEmailEvent.create!(provider_message_id: uuid, provider_event_key: provider_event_key(record), record:)
+
+    # The send row may have landed while we were parking it.
+    attribute_pending!(uuid)
+
+    { parked: true }
+  rescue ActiveRecord::RecordNotUnique
+    { parked: true }
+  end
+
+  # Replays every webhook parked against a message uuid, in arrival order.
+  # Called by the observer as soon as the send rows for that uuid are written,
+  # and by the hourly sweep for anything left behind. A parked event whose send
+  # row STILL cannot be found is left where it is; one that is recorded, or
+  # that turns out to be a duplicate of an event already recorded, is dropped.
+  #
+  # Nothing here may take its caller down: the observer is inside the delivery
+  # path of a message that has already been sent, and the sweep walks many
+  # messages. A replay that fails is reported and left parked for the next one.
+  def attribute_pending!(uuid)
+    PendingEmailEvent.for_message(uuid).each do |pending|
+      record = pending.record
+      type = event_type(record)
+      send_event = type && attributed_send(record)
+
+      next if send_event.nil?
+
+      begin
+        persist!(record, send_event, type)
+      rescue DuplicateEvent
+        nil
+      end
+
+      pending.destroy
+    rescue StandardError => e
+      ErrorReport.error(e)
+    end
+  end
+
+  # The hourly sweep (HousekeepingJob): replay what can now be attributed, and
+  # drop what has waited longer than a send row can take. Answers what it did,
+  # because a rising "dropped" count is the shape of a real bug — a mailer
+  # whose send rows are not being written at all.
+  def sweep_pending!(now: Time.current)
+    PendingEmailEvent.distinct.pluck(:provider_message_id).each { |uuid| attribute_pending!(uuid) }
+
+    { pending: PendingEmailEvent.count, dropped: PendingEmailEvent.expired(now).delete_all }
+  end
+
+  # The uuid our own mailer stamped on the message (ApplicationMailer#
+  # set_message_uuid), which is what ties a webhook to its send rows.
+  def message_uuid(record)
     metadata = record['Metadata']
 
     return unless metadata.is_a?(Hash)
 
-    uuid = metadata['message-uuid'].presence || metadata['message_uuid'].presence
+    metadata['message-uuid'].presence || metadata['message_uuid'].presence
+  end
+
+  def attributed_send(record)
+    uuid = message_uuid(record)
 
     return if uuid.blank?
 

@@ -26,6 +26,12 @@ module ActionMailerEventsObserver
         event_datetime: Time.current
       )
     end
+
+    # Postmark can be back with a bounce before this observer has written the
+    # send row above — it runs after the message has already been handed over.
+    # Anything that arrived early was parked rather than dropped (review 8,
+    # D8), and this is the moment it can be attributed.
+    PostmarkWebhooks.attribute_pending!(message_id)
   rescue StandardError => e
     ErrorReport.error(e)
 

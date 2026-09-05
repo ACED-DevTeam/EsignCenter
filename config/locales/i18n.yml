@@ -1783,6 +1783,7 @@ en: &en
   operator_refused_comp_expiry_required: "A comp always expires. Pick the date it ends."
   operator_refused_comp_expiry_invalid: "That is not a date we can read."
   operator_refused_comp_expiry_past: "The expiry date has to be in the future."
+  operator_refused_limit_not_a_number: "\"%{value}\" is not a number, so the %{field} limit was not saved. Leave a field blank to use the plan default."
   operator_refused_no_subscription: "This account has no subscription row, so there is no plan to revoke."
   operator_notice_suspended: "Account suspended."
   operator_notice_suspension_lifted: "Suspension lifted."

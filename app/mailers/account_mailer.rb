@@ -3,9 +3,9 @@
 # Mail about the account's own existence: it is going to be deleted, it is
 # about to be deleted, somebody changed their mind (D43). English-only copy
 # like BillingMailer and QuotaMailer — these are operational notices from the
-# platform, not localized signer mail. `mail_account` so the interceptor
-# resolves the right outgoing server; no message metadata, so no EmailEvent
-# projection (an account is not an emailable).
+# platform, not localized signer mail. `mail_account` names the account: it
+# resolves the outgoing server AND attributes the send row delivery tracking
+# writes, so a bounced deletion warning is provable (Session 10, review 8 C3).
 #
 # Every notice here is sent as ONE MESSAGE PER PERSON, never one message
 # addressed to all of them. See Broadcast below for why that is not a

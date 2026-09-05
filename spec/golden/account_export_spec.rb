@@ -1084,6 +1084,44 @@ RSpec.describe 'The account export', type: :request do
       expect(build_export!.summary['notified']).to be(true)
     end
 
+    # D5 (review 8). The claim was a read followed by an update with no lock
+    # and no signature, so two workers handed the same export id — a duplicate
+    # enqueue, or a retry that overlapped the attempt it was retrying — both
+    # read `pending`, both wrote `running`, and both then built a zip over one
+    # row, one of them deleting the other's staged blob mid-upload.
+    it 'lets exactly one worker claim an export, and lets its own retry back in' do
+      export = AccountExport.create!(account:, requested_by: admin, status: AccountExport::PENDING)
+
+      first = AccountExportJob.new
+      first.jid = 'worker-one'
+      second = AccountExportJob.new
+      second.jid = 'worker-two'
+
+      expect(first.send(:claim, export.id)).to be_present
+      expect(export.reload.status).to eq(AccountExport::RUNNING)
+      expect(export.attempt_owner).to eq('worker-one')
+
+      # The second worker finds the row taken and does no work at all.
+      expect(second.send(:claim, export.id)).to be_nil
+      expect(export.reload.attempt_owner).to eq('worker-one')
+
+      # A Sidekiq retry of the FIRST job carries the same id, and has to be
+      # able to resume its own half-finished build.
+      claimed_at = export.started_at
+      retry_of_first = AccountExportJob.new
+      retry_of_first.jid = 'worker-one'
+
+      expect(retry_of_first.send(:claim, export.id)).to be_present
+      expect(export.reload.started_at).to be > claimed_at
+    end
+
+    it 'never claims a row that is already finished' do
+      export = AccountExport.create!(account:, requested_by: admin, status: AccountExport::READY)
+
+      expect(AccountExportJob.new.send(:claim, export.id)).to be_nil
+      expect(AccountExportJob.new.send(:claim, export.id + 10_000)).to be_nil
+    end
+
     it 'tells them when it could not be built' do
       # The row is made directly rather than through the door: this example
       # runs the job inline, so a request would have built the zip before the

@@ -236,9 +236,6 @@ module SupportImpersonationGuard
   # that says what is locked and why, the customer's audit log gets a row, and
   # the running count on the session is what the end row reports.
   def refuse_support_impersonation!(state)
-    state['refused_count'] = state['refused_count'].to_i + 1
-    session[SupportImpersonation::SESSION_KEY] = state
-
     record_support_impersonation_refusal!(state)
 
     if json_request?
@@ -375,12 +372,23 @@ module SupportImpersonationGuard
   # One writer for every refusal a support session meets, so the door that
   # said no does not decide whether the customer hears about it. Called by the
   # rule above AND by the CanCan handlers, which used to refuse silently.
+  # THE COUNTER IS RAISED HERE, with the row (review 8, B3). It used to be
+  # raised by the request-rule refusal alone, so a refusal the ABILITY layer
+  # made — the second of the two layers, and the one that stops the doors the
+  # table does not know about — wrote its row and left the total behind. The
+  # end row then told the customer "1 blocked" for a session that had been
+  # turned away five times, which is exactly the number they are entitled to
+  # trust. One writer, one row, one increment.
   def record_support_impersonation_refusal!(state = support_impersonation, extra = {})
     return if state.blank?
+    return if @support_impersonation_refused
 
     # One row per request: whatever else happens to this request, it has now
     # had its say in the customer's log, and the action writer stands down.
     @support_impersonation_refused = true
+
+    state['refused_count'] = state['refused_count'].to_i + 1
+    session[SupportImpersonation::SESSION_KEY] = state
 
     record_support_impersonation_request!('impersonation.refused', state, extra)
   end

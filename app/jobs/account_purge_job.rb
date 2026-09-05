@@ -45,6 +45,15 @@
 class AccountPurgeJob < ApplicationJob
   queue_as :default
 
+  # ENQUEUED ONLY WHEN THE DECISION COMMITTED (review 8, A2). Every door that
+  # starts a purge writes its audit row in a transaction and enqueues this in
+  # the same breath — the operator console's Purge now button, and the nightly
+  # retention sweep. Sidekiq is not in that transaction, so a COMMIT that
+  # failed afterwards left the one irreversible action in the queue with no
+  # record of who asked for it or why. Declared on the job rather than at the
+  # call sites, so a third door added later inherits it.
+  self.enqueue_after_transaction_commit = true
+
   # How many times a file that will not delete is worth retrying. Same count
   # as ApplicationJob's general policy; declared here because the ENDING is
   # different — the block below runs when the last attempt goes.

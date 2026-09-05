@@ -1064,6 +1064,51 @@ RSpec.describe 'Billing page', type: :request do # rubocop:disable RSpec/Multipl
       expect(WebMock).not_to have_requested(:get, %r{api\.stripe\.com/v1/subscriptions/})
     end
 
+    # S4 (Session 6). A bookmarked, mistyped or made-up return URL asks Stripe
+    # about a session it has never heard of. That is not an outage: it used to
+    # meet the controller's Stripe handler, tell the customer the payment
+    # provider was unreachable and page us with an ErrorReport.error. It is the
+    # same answer as a session that turns out to be somebody else's.
+    it 'treats a stale or forged session id as unmatched rather than an outage' do
+      checkout_row!(customer: trialing_subscription['customer'])
+      stub_request(:get, %r{\Ahttps://api\.stripe\.com/v1/checkout/sessions/cs_test_gone})
+        .to_return(status: 404,
+                   body: { error: { type: 'invalid_request_error', code: 'resource_missing',
+                                    message: 'No such checkout.session: cs_test_gone' } }.to_json,
+                   headers: { 'Content-Type' => 'application/json' })
+
+      allow(ErrorReport).to receive(:warning)
+      allow(ErrorReport).to receive(:error)
+
+      get '/settings/billing/return', params: { session_id: 'cs_test_gone' }
+
+      expect(response).to redirect_to('/settings/billing')
+      expect(flash[:alert]).to eq(I18n.t('billing_checkout_unmatched'))
+      expect(flash[:alert]).not_to eq(I18n.t('billing_provider_unreachable'))
+      expect(ErrorReport).to have_received(:warning).with(/could not be matched/, hash_including(:account_id))
+      expect(ErrorReport).not_to have_received(:error)
+      expect(account.reload.account_subscription.stripe_subscription_id).to be_nil
+    end
+
+    # And a Stripe request that is genuinely wrong on our side still surfaces:
+    # only `resource_missing` is a stale bookmark.
+    it 'still reports another invalid-request failure as an outage' do
+      checkout_row!(customer: trialing_subscription['customer'])
+      stub_request(:get, %r{\Ahttps://api\.stripe\.com/v1/checkout/sessions/cs_test_bad})
+        .to_return(status: 400,
+                   body: { error: { type: 'invalid_request_error', code: 'parameter_unknown',
+                                    message: 'Received unknown parameter' } }.to_json,
+                   headers: { 'Content-Type' => 'application/json' })
+
+      allow(ErrorReport).to receive(:error)
+
+      get '/settings/billing/return', params: { session_id: 'cs_test_bad' }
+
+      expect(flash[:alert]).to eq(I18n.t('billing_provider_unreachable'))
+      expect(ErrorReport).to have_received(:error)
+        .with(kind_of(Stripe::InvalidRequestError), hash_including(:account_id))
+    end
+
     it 'refuses a session whose customer is blank, touching no row' do
       row = checkout_row!(customer: 'cus_ours')
       stub_checkout_retrieve('cs_test_blank', reference: account.id.to_s, customer: '')

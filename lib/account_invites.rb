@@ -560,7 +560,7 @@ module AccountInvites
       user = invite.account.users.new(email: invite.email, first_name:, last_name:,
                                       role: invite.role, password:)
       user.skip_confirmation!
-      user.save!
+      save_new_user!(invite, user)
 
       LegalDocuments.record_acceptance!(user, request:, source: LegalAcceptance::INVITE, versions:)
 
@@ -614,6 +614,25 @@ module AccountInvites
     return true if normalize_email(user.email) == normalize_email(invite.email)
 
     raise WrongInvitee, I18n.t('invite_sign_in_as_other_user', email: invite.email)
+  end
+
+  # The check above and the INSERT are not one statement, and nothing outside
+  # this invitation's lock is serialised by it: a registration that commits in
+  # between still collides (review 7, Q2/Q-2/Q6). Both shapes of that collision
+  # — Devise's uniqueness validation, and the unique email index underneath it
+  # when the other row commits after the validation has run — mean one thing,
+  # so both are answered with the same sentence the check above would have
+  # given. Every OTHER validation failure is left alone and still raises: a
+  # password that is too short is the invitee's own to fix, not somebody else
+  # taking their address.
+  def save_new_user!(invite, user)
+    user.save!
+  rescue ActiveRecord::RecordInvalid => e
+    raise unless e.record.errors.of_kind?(:email, :taken)
+
+    raise WrongInvitee, I18n.t('invite_address_now_registered', email: invite.email)
+  rescue ActiveRecord::RecordNotUnique
+    raise WrongInvitee, I18n.t('invite_address_now_registered', email: invite.email)
   end
 
   # The fresh path creates a login, so the address has to still be free when

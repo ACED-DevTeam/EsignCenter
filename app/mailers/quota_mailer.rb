@@ -2,9 +2,12 @@
 
 # Quota and abuse-policy mail to the active admins of a BILLING account.
 # English-only copy, like SettingsMailer: these are operational notices from
-# the platform, not the localized signer-facing mail. `mail_account` so the
-# interceptor resolves the right outgoing server; no message metadata, so no
-# EmailEvent projection (the account itself is not an emailable).
+# the platform, not the localized signer-facing mail. `mail_account` names the
+# account: it resolves the outgoing server AND attributes the send row delivery
+# tracking writes (Session 10, review 8 C3). A bounce or complaint about one of
+# these is recorded against the account and — deliberately — never feeds the
+# automatic sending pause, which is about the mail an account sends its
+# SIGNERS (lib/sending_pause.rb).
 class QuotaMailer < ApplicationMailer
   def completions_warning(account)
     return if prepare(account).blank?

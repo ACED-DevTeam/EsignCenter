@@ -4,9 +4,9 @@
 # here is what happens and when, and here is the one page that fixes it.
 # English-only copy like QuotaMailer and SettingsMailer — these are
 # operational notices from the platform, not localized signer mail.
-# `mail_account` so the interceptor resolves the right outgoing server; no
-# message metadata, so no EmailEvent projection (an account is not an
-# emailable).
+# `mail_account` names the account: it resolves the outgoing server AND
+# attributes the send row delivery tracking writes, so "we suspended them on
+# day 14 and the warning bounced" is answerable (Session 10, review 8 C3).
 class BillingMailer < ApplicationMailer
   # One reminder inside the grace period. `day` is how many days into it we
   # are (BillingLifecycle::DUNNING_DAYS) and `suspends_on` is the date the

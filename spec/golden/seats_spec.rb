@@ -1230,6 +1230,59 @@ RSpec.describe 'Seats and invitations', type: :request do
       expect(response).to have_http_status(:gone)
     end
 
+    # Q2/Q-2/Q6 (review 7). The "is this address free?" check and the INSERT
+    # are not one statement, and this invitation's lock serialises nothing
+    # about a stranger signing themselves up: a registration that commits in
+    # the gap made the acceptance die on the unique email index with "Email
+    # has already been taken" — a validation sentence about a form field the
+    # invitee never filled in, on a page with nowhere to go. Both shapes of
+    # that collision now answer with the sentence the check itself would have
+    # given.
+    it 'answers a sign-up that landed after the check with the collision sentence' do
+      # The competing registration commits AFTER the address check has passed.
+      allow(AccountInvites).to receive(:assert_address_free!).and_wrap_original do |original, invite|
+        original.call(invite).tap { create(:user, account: create(:account), email: invite.email) }
+      end
+
+      expect do
+        AccountInvites.accept!(invite_row, first_name: 'Sam', last_name: 'Rivers',
+                                           password: 'password-123', versions: LegalDocuments.current_versions)
+      end.to raise_error(AccountInvites::WrongInvitee,
+                         I18n.t('invite_address_now_registered', email: invite_row.email))
+
+      expect(invite_row.reload.accepted_at).to be_nil
+    end
+
+    # The same collision one layer lower: the other row lands after Devise's
+    # uniqueness validation has already run, so only the unique index catches
+    # it and the acceptance meets a RecordNotUnique instead.
+    it 'answers the unique index the same way' do
+      allow(AccountInvites).to receive(:assert_address_free!).and_wrap_original do |original, invite|
+        original.call(invite).tap do
+          allow_any_instance_of(User).to receive(:save!)
+            .and_raise(ActiveRecord::RecordNotUnique, 'index_users_on_email')
+        end
+      end
+
+      expect do
+        AccountInvites.accept!(invite_row, first_name: 'Sam', last_name: 'Rivers',
+                                           password: 'password-123', versions: LegalDocuments.current_versions)
+      end.to raise_error(AccountInvites::WrongInvitee,
+                         I18n.t('invite_address_now_registered', email: invite_row.email))
+
+      expect(invite_row.reload.accepted_at).to be_nil
+    end
+
+    # And a failure that is genuinely the invitee's own to fix still reads as
+    # one: translating every validation error into "somebody took your
+    # address" would hide a password that is too short.
+    it 'leaves an ordinary validation failure alone' do
+      expect do
+        AccountInvites.accept!(invite_row, first_name: 'Sam', last_name: 'Rivers', password: 'x',
+                                           versions: LegalDocuments.current_versions)
+      end.to raise_error(ActiveRecord::RecordInvalid, /Password/)
+    end
+
     # The plan shrank while the invitation was in the post: accepting would
     # otherwise hand a one-seat account a second full-access member.
     it 'refuses when the seat it was holding is no longer there' do
@@ -1890,6 +1943,28 @@ RSpec.describe 'Seats and invitations', type: :request do
       # the controller: the equality is re-asserted where the move happens.
       expect { AccountInvites.accept_move!(invite_row, user: mover) }
         .to raise_error(AccountInvites::WrongInvitee, /#{Regexp.escape(invited_email)}/)
+    end
+
+    # Q-1 (review 7). The address the acceptance is checked against is the one
+    # the DATABASE holds when the move happens, not the copy the request was
+    # drawn with: the invitee can change their own email in another tab
+    # between the page and the button, and a seat must never be handed to an
+    # address nobody invited. `user.lock!` inside the invitation's lock is
+    # what re-reads it, so this fails the moment that reload stops happening.
+    it 'refuses on the address the database holds now, not the one it was handed' do
+      holder_account = create(:account)
+      holder = create(:user, :admin, account: holder_account, email: invited_email)
+      invite_row = create(:account_invite, account:, email: invited_email, collision_user: holder)
+
+      # Changed underneath the object the caller is holding.
+      User.where(id: holder.id).update_all(email: unique_email)
+
+      expect(holder.email).to eq(invited_email)
+
+      expect { AccountInvites.accept_move!(invite_row, user: holder) }
+        .to raise_error(AccountInvites::WrongInvitee, /#{Regexp.escape(invited_email)}/)
+      expect(holder.reload.account).to eq(holder_account)
+      expect(invite_row.reload).to be_pending
     end
 
     # B3: an archived login in another account holds the address. Nobody can

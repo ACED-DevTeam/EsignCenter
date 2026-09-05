@@ -35,10 +35,16 @@ module OperatorConfigs
   # Unsetting a key REMOVES the row rather than blanking it: the value column
   # is NOT NULL and ApplicationRecord turns a blank string into nil on its way
   # in, so "no value" has exactly one representation — no row.
+  #
+  # No operator account is refused here exactly as it is in `set!` (review 1,
+  # B-L5). It used to answer quietly, so clearing the alert address on a
+  # deployment that had never been seeded said "Settings saved" having done
+  # nothing at all — and left an audit row claiming the change. The caller
+  # turns this into the "run `rake operator:seed`" sentence.
   def clear!(key)
     operator_account = account
 
-    return if operator_account.nil?
+    raise MissingOperatorAccountError, 'No operator account exists; run `rake operator:seed`' if operator_account.nil?
 
     operator_account.account_configs.find_by(key:)&.destroy!
   end
