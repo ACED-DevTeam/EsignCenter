@@ -53,7 +53,7 @@
             <% if branded %>
               <tr>
                 <td class="ec-pad" style="padding: 24px 32px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
-                  <div style="font-size: 17px; font-weight: 700; letter-spacing: -0.2px; color: #111827;"><%= Docuseal.product_name %></div>
+                  <div data-mail-wordmark style="font-size: 17px; font-weight: 700; letter-spacing: -0.2px; color: #111827;"><%= Docuseal.product_name %></div>
                 </td>
               </tr>
             <% end %>
@@ -65,7 +65,7 @@
             <tr>
               <td class="ec-foot ec-pad" style="padding: 20px 32px 24px; border-top: 1px solid #e5e7eb; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 12px; line-height: 1.5; color: #6b7280;">
                 <% if branded %>
-                  <p style="margin: 0 0 8px;"><%= mail_to Docuseal::SUPPORT_EMAIL %></p>
+                  <p data-mail-support style="margin: 0 0 8px;"><%= mail_to Docuseal::SUPPORT_EMAIL %></p>
                 <% end %>
                 <%= render partial: 'shared/mailer_attribution' %>
               </td>

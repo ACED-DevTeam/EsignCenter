@@ -241,6 +241,7 @@ describe 'Signing Sessions API' do
         completed: 'true',
         esign_consent: 'true',
         esign_consent_version: EsignConsent::VERSION,
+        esign_consent_sender_digest: EsignConsent.sender_digest(submitter),
         timezone: 'America/Chicago',
         values: { field['uuid'] => 'Jane' }
       }

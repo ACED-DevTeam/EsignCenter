@@ -201,18 +201,34 @@ class SubmitterMailer < ApplicationMailer
     Accounts.custom_email_copy(@current_account, preferences, key)
   end
 
+  # The reply-to a template carries for its documents-copy email, read the way
+  # every other piece of custom email copy on this template is read.
+  #
+  # It used to be dug straight out of `template.preferences`, which meant a
+  # reply-to saved while the account was paid stayed on the outgoing mail
+  # forever after a downgrade — while the subject and body beside it in the
+  # same form correctly went back to the defaults. D43 is that a downgrade
+  # makes paid copy INERT and never deletes it: the row stays exactly where
+  # the customer left it, and comes back to life when they pay again.
+  #
+  # A helper of its own so the reply-to resolver can simply call it.
+  def template_documents_copy_reply_to(submitter)
+    custom_email_copy(submitter.template&.preferences, 'documents_copy_email_reply_to')
+  end
+
+  # The one resolver this mailer and the ESIGN disclosure share, so the address
+  # the disclosure tells a signer to write to about withdrawing consent or
+  # asking for paper is the address a reply to their invitation actually
+  # reaches (Submitters::ReplyTo). It answers with a bare address and carries
+  # the chain one step further than this method used to: where a self-signed
+  # document or a no-reply custom address previously left the header off
+  # altogether, the account's first active administrator now gets the reply.
   def build_submitter_reply_to(submitter, email_config: nil, documents_copy_email: nil)
-    reply_to = submitter.preferences['reply_to'].presence
-    reply_to ||= submitter.template&.preferences&.dig('documents_copy_email_reply_to').presence if documents_copy_email
-    reply_to ||= email_config.value['reply_to'].presence if email_config
-
-    if reply_to.blank? && (submitter.submission.created_by_user || submitter.template.author)&.email != submitter.email
-      reply_to = (submitter.submission.created_by_user || submitter.template.author)&.friendly_name&.sub(/\+\w+@/, '@')
-    end
-
-    return nil if reply_to.to_s.match?(NO_REPLY_REGEXP)
-
-    reply_to
+    Submitters::ReplyTo.call(
+      submitter,
+      email_config: email_config || Submitters::ReplyTo::INVITATION,
+      documents_copy_reply_to: documents_copy_email ? template_documents_copy_reply_to(submitter) : nil
+    )
   end
 
   def add_completed_email_attachments!(submitter, with_audit_log: true, with_documents: true)

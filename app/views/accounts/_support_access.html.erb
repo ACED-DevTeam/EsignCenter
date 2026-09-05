@@ -6,7 +6,7 @@
 
     Six columns of table never fitted the settings column, which is 576px wide
     on any screen: at 1440 the last two — Actions and Reason, the two that
-    matter most — sat off the right edge behind a scrollbar nobody looks for
+    matter most — sat off the right edge behind a scroll bar nobody looks for
     (checkpoint 9, D2/4). So each session is a labelled card at every width,
     and nothing is ever cut off. %>
 <% sessions = can?(:administer, current_account) ? SupportImpersonation.recent_for(current_account) : [] %>

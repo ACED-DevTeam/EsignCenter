@@ -311,10 +311,11 @@ module Submissions
                                   format: with_timestamp_seconds ? :detailed : :long, locale: account.locale)} " \
                         "#{TimeUtils.timezone_abbr(timezone, consent_event.event_timestamp)}\n"
                 },
-                # Printed only when the signer did open the PDF, the same way
-                # the verification lines above print only what was passed.
-                consent_event&.data&.dig('pdf_opened') && {
-                  text: "#{I18n.t('esign_consent_pdf_opened')}\n"
+                # An attestation, not a fact: the wording says whose claim it
+                # is. Both answers print, because "did not open it" is
+                # evidence too — silence would read as "not recorded".
+                consent_event && {
+                  text: "#{I18n.t(consent_pdf_line_key(consent_event))}\n"
                 },
                 completed_event.data['ip'] && { text: "IP: #{completed_event.data['ip']}\n" },
                 completed_event.data['sid'] && { text: "#{I18n.t('session_id')}: #{completed_event.data['sid']}\n" },
@@ -544,6 +545,10 @@ module Submissions
       composer.document
     end
 
+    def consent_pdf_line_key(consent_event)
+      consent_event.data['pdf_opened'] ? 'esign_consent_pdf_opened' : 'esign_consent_pdf_not_opened'
+    end
+
     # The ESIGN disclosure each signer agreed to, reproduced word for word at
     # the end of the trail. The audit trail is the evidence a court or a
     # counterparty reads years later, and "they consented to v2" means nothing
@@ -556,7 +561,8 @@ module Submissions
 
       composer.draw_box(divider)
 
-      composer.text(I18n.t('consented_to_electronic_signatures'), font_size: 12, padding: [10, 0, 15, 0])
+      composer.text(TextUtils.maybe_rtl_reverse(I18n.t('consented_to_electronic_signatures')),
+                    font_size: 12, padding: [10, 0, 15, 0])
 
       consent_events.each do |event|
         text = EsignConsent.disclosure_text(version: event.data['version'], locale: event.data['locale'])
@@ -568,39 +574,59 @@ module Submissions
     end
 
     def add_consent_disclosure(composer, submission, event, text, versions_index)
-      composer.text(consent_appendix_heading(submission, event, versions_index),
-                    font: [FONT_NAME, { variant: :bold }], padding: [0, 0, 6, 0],
-                    text_align: I18n.locale.to_s.in?(%w[he ar]) ? :right : :left)
+      add_consent_text(composer, consent_appendix_heading(submission, event, versions_index),
+                       font: [FONT_NAME, { variant: :bold }])
 
       sender_name = event.data['sender_name']
       sender_email = event.data['sender_email']
 
-      # Events written before the disclosure named the sender have nothing to
-      # fill the placeholders with: the template is printed as it stands, and
-      # the note says why it still reads "%{sender_name}".
-      if sender_name.present? && sender_email.present?
-        text = EsignConsent.interpolate(text, sender_name:, sender_email:)
-      else
-        composer.text(I18n.t('esign_consent_sender_not_recorded'), padding: [0, 0, 6, 0])
+      # An event written before the disclosure named the sender has nothing to
+      # fill the placeholders with. A signed PDF must never show a raw
+      # `%{sender_name}`, so plain-English stand-ins go in — the generic word
+      # for the sender and the address that reaches them today — above a note
+      # saying those two details were not recorded with that consent.
+      if sender_name.blank? || sender_email.blank?
+        submitter = submission.submitters.find { |e| e.id == event.submitter_id }
+
+        sender_name = sender_name.presence || I18n.t('esign_consent_the_sender')
+        sender_email = sender_email.presence ||
+                       (submitter && EsignConsent.sender_email(submitter)) || Docuseal::SUPPORT_EMAIL
+
+        add_consent_text(composer, I18n.t('esign_consent_sender_not_recorded'))
       end
 
-      EsignConsent.plain_paragraphs(text).each do |paragraph|
-        composer.text(paragraph, line_spacing: 1.3, padding: [0, 0, 6, 0],
-                                 text_align: paragraph.match?(RTL_REGEXP) ? :right : :left)
+      EsignConsent.disclosure_paragraphs(text, sender_name:, sender_email:).each do |paragraph|
+        add_consent_text(composer, paragraph, line_spacing: 1.3)
       end
     end
 
+    # Every translated string the trail draws goes through maybe_rtl_reverse
+    # (HexaPDF lays glyphs out in logical order and does no bidi of its own),
+    # and RTL text is set flush right — the same handling the signer blocks and
+    # field values above already get.
+    def add_consent_text(composer, text, **style)
+      composer.text(TextUtils.maybe_rtl_reverse(text), padding: [0, 0, 6, 0],
+                                                       text_align: text.match?(RTL_REGEXP) ? :right : :left,
+                                                       **style)
+    end
+
+    # An orphaned consent event — its submitter row gone from the submission —
+    # must not take the whole evidence job down with it: the disclosure it
+    # points at is still worth printing, just without a name on it.
     def consent_appendix_heading(submission, event, versions_index)
-      submitter = submission.submitters.find { |e| e.id == event.submitter_id }
-      versions = versions_index[submitter.id] || []
+      submitter = submission.submitters.find { |e| e.id == event.submitter_id } || event.submitter
+      versions = (submitter && versions_index[submitter.id]) || []
       active_version = versions.find { |v| v.created_at > event.event_timestamp }
       submitter_name = active_version&.name || active_version&.email || active_version&.phone ||
-                       submitter.name || submitter.email || submitter.phone
+                       submitter&.name || submitter&.email || submitter&.phone
 
-      "#{I18n.t('esign_consent_disclosure_title')} — " \
-        "#{I18n.t('esign_consent_version_label', version: event.data['version'])} " \
-        "(#{event.data['locale']}), " \
-        "#{I18n.t('esign_consent_shown_to', submitter_name: TextUtils.maybe_rtl_reverse(submitter_name.to_s))}"
+      heading = "#{I18n.t('esign_consent_disclosure_title')} — " \
+                "#{I18n.t('esign_consent_version_label', version: event.data['version'])} " \
+                "(#{event.data['locale']})"
+
+      return heading if submitter_name.blank?
+
+      "#{heading}, #{I18n.t('esign_consent_shown_to', submitter_name:)}"
     end
 
     def sign_reason

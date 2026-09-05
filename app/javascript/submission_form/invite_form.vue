@@ -35,6 +35,12 @@
       name="esign_consent_pdf_opened"
       :value="esignConsentPdfOpened"
     >
+    <input
+      v-if="esignConsent"
+      type="hidden"
+      name="esign_consent_sender_digest"
+      :value="esignConsentSenderDigest"
+    >
     <div
       v-for="(submitter, index) in [...submitters, ...optionalSubmitters]"
       :key="submitter.uuid"
@@ -149,6 +155,13 @@ export default {
       type: Boolean,
       required: false,
       default: false
+    },
+    // Fingerprint of the sender name and address the disclosure showed; the
+    // server refuses the consent if they have changed since (sent with it).
+    esignConsentSenderDigest: {
+      type: String,
+      required: false,
+      default: ''
     }
   },
   emits: ['success'],

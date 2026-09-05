@@ -25,6 +25,12 @@ RSpec.describe 'ESIGN consent version', type: :request do
     put "/s/#{submitter.slug}", params: { completed: 'true', values: { text_field['uuid'] => 'Jane' }, **consent }
   end
 
+  # Everything a current page sends back with the consent.
+  def current_consent(submitter)
+    { esign_consent: 'true', esign_consent_version: EsignConsent::VERSION,
+      esign_consent_sender_digest: EsignConsent.sender_digest(submitter) }
+  end
+
   describe 'the signing page' do
     it 'tells the form which version it displays and the reload message for a stale one' do
       get "/s/#{submitter.slug}"
@@ -58,15 +64,62 @@ RSpec.describe 'ESIGN consent version', type: :request do
     end
 
     it 'records the consent with the matching version and completes' do
-      complete(submitter, esign_consent: 'true', esign_consent_version: EsignConsent::VERSION)
+      complete(submitter, **current_consent(submitter))
 
       expect(response).to have_http_status(:ok)
       expect(submitter.reload.completed_at).to be_present
       expect(consent_events(submitter).sole.data).to include('version' => EsignConsent::VERSION)
     end
+  end
+
+  # D77 A review: the recorded sender must be the sender the page showed. The
+  # form sends a fingerprint of the name and address it rendered; the server
+  # recomputes it and refuses on a mismatch, exactly as it refuses a stale
+  # version — otherwise a rename while the modal sat open would file one
+  # sender against a disclosure that named another.
+  describe 'the sender the page displayed' do
+    it 'refuses a consent whose sender no longer matches, and takes it after a reload' do
+      stale = current_consent(submitter)
+
+      account.update!(name: 'Renamed Mid-Signing Ltd')
+
+      complete(submitter, **stale)
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body).to eq('error' => 'esign_consent_version_stale')
+      expect(consent_events(submitter)).not_to exist
+      expect(submitter.reload.completed_at).to be_nil
+
+      # The reload shows the new name, and the consent given on it is taken.
+      get "/s/#{submitter.slug}"
+      expect(response.body).to include('Renamed Mid-Signing Ltd')
+
+      complete(submitter, **current_consent(submitter.reload))
+
+      expect(response).to have_http_status(:ok)
+      expect(consent_events(submitter).sole.data)
+        .to include('sender_name' => 'Renamed Mid-Signing Ltd',
+                    'sender_email' => EsignConsent.sender_email(submitter))
+    end
+
+    it 'refuses a consent that carries no sender fingerprint at all' do
+      complete(submitter, esign_consent: 'true', esign_consent_version: EsignConsent::VERSION)
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body).to eq('error' => 'esign_consent_version_stale')
+      expect(consent_events(submitter)).not_to exist
+    end
+
+    it 'puts the fingerprint on the signing page for the form to send back' do
+      get "/s/#{submitter.slug}"
+
+      expect(response.body).to include(EsignConsent.sender_digest(submitter))
+    end
 
     it 'refuses a stale version on the invite request too' do
-      post "/s/#{submitter.slug}/invite", params: { esign_consent: 'true', esign_consent_version: 'v0' }
+      post "/s/#{submitter.slug}/invite",
+           params: { esign_consent: 'true', esign_consent_version: 'v0',
+                     esign_consent_sender_digest: EsignConsent.sender_digest(submitter) }
 
       expect(response).to have_http_status(:unprocessable_content)
       expect(response.parsed_body).to eq('error' => 'esign_consent_version_stale')
@@ -92,19 +145,24 @@ RSpec.describe 'ESIGN consent version', type: :request do
         original.call(*args)
       end
 
-      event = EsignConsent.record!(submitter, request, version: EsignConsent::VERSION)
+      event = EsignConsent.record!(submitter, request, version: EsignConsent::VERSION,
+                                                       sender_digest: EsignConsent.sender_digest(submitter))
 
       expect(Submitter).to have_received(:lock)
       expect(event).to eq(first_event)
       expect(consent_events(submitter).count).to eq(1)
     end
 
-    it 'raises before touching the database for a stale or missing version' do
-      expect { EsignConsent.record!(submitter, request, version: 'v0') }
+    it 'raises before touching the database for a stale version or sender' do
+      digest = EsignConsent.sender_digest(submitter)
+
+      expect { EsignConsent.record!(submitter, request, version: 'v0', sender_digest: digest) }
         .to raise_error(EsignConsent::StaleVersionError)
-      expect { EsignConsent.record!(submitter, request, version: nil) }
+      expect { EsignConsent.record!(submitter, request, version: nil, sender_digest: digest) }
         .to raise_error(EsignConsent::StaleVersionError)
       expect { EsignConsent.record!(submitter, request) }
+        .to raise_error(EsignConsent::StaleVersionError)
+      expect { EsignConsent.record!(submitter, request, version: EsignConsent::VERSION, sender_digest: 'nope') }
         .to raise_error(EsignConsent::StaleVersionError)
 
       expect(consent_events(submitter)).not_to exist

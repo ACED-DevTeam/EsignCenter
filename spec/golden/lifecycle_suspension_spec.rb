@@ -346,6 +346,7 @@ RSpec.describe 'Account suspension', type: :request do # rubocop:disable RSpec/M
     it 'refuses the signing PUT' do
       put "/s/#{submitter.slug}", params: { completed: 'true', esign_consent: 'true',
                                             esign_consent_version: EsignConsent::VERSION,
+                                            esign_consent_sender_digest: EsignConsent.sender_digest(submitter),
                                             values: { text_field(submitter)['uuid'] => 'Jane' } }
 
       expect(response).to have_http_status(:unprocessable_content)

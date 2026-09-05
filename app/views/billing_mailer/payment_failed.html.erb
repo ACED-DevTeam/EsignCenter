@@ -1,6 +1,11 @@
 <p>Hello,</p>
 <% if @day.zero? %>
   <p>We could not take the payment for your EsignCenter subscription. Cards get declined for all sorts of ordinary reasons — an expiry date that has passed, a new card, a bank asking for confirmation.</p>
+<% elsif @late %>
+  <%# The catch-up copy is sent on or after day 14, so it must not quote the
+      day-13 clock it was scheduled against: it retried for the whole grace
+      period, not for 13 days. %>
+  <p>The payment for your EsignCenter subscription was never settled. We retried the card for the whole <%= @grace_days %>-day grace period.</p>
 <% else %>
   <p>The payment for your EsignCenter subscription is still outstanding. We have been retrying it for <%= @day %> days.</p>
 <% end %>
@@ -20,5 +25,4 @@
 <% end %>
 <p>Updating the card takes a minute, and paying lifts everything by itself.</p>
 <p><%= link_to 'Update your payment method', @billing_url %></p>
-<p>Questions? Write to <%= mail_to @support_email %>.</p>
 <p>Thanks,<br>EsignCenter</p>

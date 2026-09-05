@@ -54,7 +54,7 @@ class SubmitFormInviteController < ApplicationController
   # it carries the signer's ESIGN consent the same way a form step does.
   def complete_submitter!(submitter)
     consent_params = params.permit(:esign_consent, :esign_consent_version, :esign_consent_locale,
-                                   :esign_consent_pdf_opened).to_h
+                                   :esign_consent_pdf_opened, :esign_consent_sender_digest).to_h
 
     Submitters::SubmitValues.call(submitter,
                                   ActionController::Parameters.new(completed: 'true', **consent_params),

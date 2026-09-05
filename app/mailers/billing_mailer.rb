@@ -92,7 +92,6 @@ class BillingMailer < ApplicationMailer
 
     @grace_days = BillingLifecycle::PAST_DUE_GRACE_DAYS
     @billing_url = "#{root_url.delete_suffix('/')}/settings/billing"
-    @support_email = Docuseal::SUPPORT_EMAIL
 
     @recipients = account.users.active.admins.pluck(:email)
   end

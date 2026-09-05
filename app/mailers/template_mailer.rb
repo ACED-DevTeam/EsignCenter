@@ -12,4 +12,12 @@ class TemplateMailer < ApplicationMailer
 
     mail(to: email, subject: I18n.t('email_verification'))
   end
+
+  # Deliberately NOT a platform notice, and the mirror image of UserMailer's
+  # decision. This code goes to a SIGNER opening the account's shared link — the
+  # customer's own correspondence with their counterparty — so an account that
+  # has paid for branding removal gets no wordmark and no support address on
+  # it, exactly as with every other signer mail (SubmitterMailer). The
+  # inherited `false` is what we want; it is written down because "verification
+  # code from the platform" reads like a platform notice and is not one.
 end

@@ -201,9 +201,11 @@ RSpec.describe 'Account and user creation matrix', type: :request do
 
     sign_out(:user)
 
+    # The accept form carries the legal-document versions it displayed
+    # (Session 9); without them the door refuses before it creates anybody.
     post "/invites/#{token}", params: { first_name: 'Invited', last_name: 'User',
                                         password: 'golden-password-1', platform_operator: true,
-                                        role: 'superadmin' }
+                                        role: 'superadmin', **LegalDocuments.version_fields }
 
     invited_user = User.find_by!(email: 'golden-invited-injection@example.com')
 

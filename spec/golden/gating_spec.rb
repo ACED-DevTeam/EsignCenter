@@ -777,6 +777,45 @@ RSpec.describe 'Feature gating', type: :request do
       expect(response.body).to include("href=\"#{Docuseal::DOCUSEAL_URL}/start\"")
     end
 
+    # The mail LAYOUT has the same two audiences the branding flag does (D78,
+    # review batch 2). A PLATFORM notice is written by us to the person who
+    # runs the account — a login invitation, a dunning letter — and keeps the
+    # wordmark and the support address whatever the flag says, because the
+    # reader has to recognise who is writing and where to reply. A SIGNER mail
+    # is the customer's own correspondence with their counterparty and loses
+    # both. The "Sent using" line is a third thing, decided only by the flag,
+    # and neither rule touches it.
+    it 'keeps the wordmark and support line on a platform notice under branding removal, and drops both ' \
+       'on signer mail' do
+      create(:account_config, account: paid_account, key: AccountConfig::REMOVE_BRANDING_KEY, value: true)
+
+      expect(Accounts.branding_removed?(paid_account)).to be(true)
+
+      invitation = UserMailer.invitation_email(admin_for(paid_account))
+      notice = Nokogiri::HTML((invitation.html_part || invitation).body.decoded)
+
+      expect(notice.at('[data-mail-wordmark]').text.strip).to eq(Docuseal.product_name)
+      expect(notice.at('[data-mail-support]').text).to include(Docuseal::SUPPORT_EMAIL)
+      # The flag still does its own job on the same mail.
+      expect(notice.text).not_to include('Sent using')
+
+      _submitter, signer_html = invitation_html(paid_account)
+      signer = Nokogiri::HTML(signer_html)
+
+      expect(signer.at('[data-mail-wordmark]')).to be_nil
+      expect(signer.at('[data-mail-support]')).to be_nil
+      expect(signer.text).not_to include('Sent using')
+
+      # And nothing is vacuous: an account without the flag carries all three
+      # on its signer mail.
+      _free_submitter, free_html = invitation_html(free_account)
+      free = Nokogiri::HTML(free_html)
+
+      expect(free.at('[data-mail-wordmark]')).to be_present
+      expect(free.at('[data-mail-support]')).to be_present
+      expect(free.text).to include('Sent using')
+    end
+
     it 'honours the flag in every mailer and page: the verification-code email and the embedded builder page' do
       create(:account_config, account: paid_account, key: AccountConfig::REMOVE_BRANDING_KEY, value: true)
       create(:account_config, account: free_account, key: AccountConfig::REMOVE_BRANDING_KEY, value: true)
@@ -902,6 +941,44 @@ RSpec.describe 'Feature gating', type: :request do
       mail = SubmitterMailer.invitation_email(sent_submitter_for(paid_account))
 
       expect(mail.reply_to).to eq(['contracts@example.com'])
+    end
+
+    # The other half of the reply-to (D78, review batch 2): the one a TEMPLATE
+    # carries for its documents-copy email. It was dug straight out of
+    # `template.preferences` at send time, so a reply-to saved while the
+    # account was paid stayed on the mail forever after a downgrade — while
+    # the subject and body typed into the very same form correctly fell back
+    # to the defaults. D43 says paid copy goes INERT and is never deleted, and
+    # that is what this pins: gone from the letter, still in the row.
+    it 'stops using a template documents-copy reply-to after a downgrade, without deleting it' do
+      template = template_for(paid_account)
+
+      act_as(paid_account)
+      post "/templates/#{template.id}/preferences",
+           params: { template: { preferences: { documents_copy_email_reply_to: 'copies@example.com' } } }
+
+      expect(response).to have_http_status(:ok)
+      expect(template.reload.preferences['documents_copy_email_reply_to']).to eq('copies@example.com')
+
+      # The documents-copy mail only exists once a signer has finished, so a
+      # real signed PDF has to be producible; the same submitter is used twice
+      # so it is generated once.
+      platform_certificate!
+      submitter = sent_submitter_for(paid_account, template:)
+      submitter.update!(completed_at: Time.current)
+
+      paid_mail = SubmitterMailer.documents_copy_email(submitter)
+
+      expect(paid_mail.reply_to).to eq(['copies@example.com'])
+
+      downgrade_to_free!(paid_account)
+
+      free_mail = SubmitterMailer.documents_copy_email(submitter.reload)
+
+      expect(free_mail.reply_to.to_a).not_to include('copies@example.com')
+      # Inert, not purged: the row is exactly where the customer left it and
+      # comes back the moment they pay again.
+      expect(template.reload.preferences['documents_copy_email_reply_to']).to eq('copies@example.com')
     end
 
     it 'refuses the send dialog\'s "save this message to the template" for a free account before anything ' \
