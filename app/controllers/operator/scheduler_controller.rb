@@ -19,7 +19,7 @@ module Operator
     # never names a class, so nothing typed into the form can be constantized.
     RUNNABLE_JOBS = YAML.load_file(Rails.root.join('config/schedule.yml'))
                         .except(HEARTBEAT)
-                        .to_h { |name, entry| [name, entry.fetch('class').constantize] }
+                        .transform_values { |entry| entry.fetch('class').constantize }
                         .freeze
 
     rescue_from Refused, with: :refused
