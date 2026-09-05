@@ -41,6 +41,9 @@ gem 'rouge', require: false
 gem 'rqrcode', require: false
 gem 'ruby-vips'
 gem 'rubyXL', require: false
+# The account export zip (Session 8 phase D). Already here transitively
+# through rubyXL; named explicitly because application code requires it.
+gem 'rubyzip', '~> 3.2', require: false
 gem 'sentry-rails'
 gem 'sentry-ruby'
 gem 'sentry-sidekiq'

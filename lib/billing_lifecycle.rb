@@ -83,8 +83,9 @@ module BillingLifecycle
     account = row.account
 
     if (deadline = suspends_on(row)) && deadline <= now
-      # Past the deadline the reminders are pointless — the thing they warned
-      # about has happened, and the suspension email says so.
+      # A missed day-13 tick still owes the final reminder. Its existing
+      # claim prevents a second mail on later sweeps.
+      send_dunning!(row, account, 13)
       suspend_for_billing!(row, account)
     else
       dunning_step_for(row, now:).each { |day| send_dunning!(row, account, day) }
@@ -561,6 +562,8 @@ module BillingLifecycle
   # for good, and never writing it would ask Stripe to set the same quantity
   # every hour for the rest of the subscription's life.
   def expire_invites!(now: Time.current)
+    revoke_closed_login_invites!(now:)
+
     unreleased_invites(now).distinct.pluck(:account_id).each do |account_id|
       release_invites_for!(account_id, now:)
     rescue StandardError => e
@@ -568,6 +571,24 @@ module BillingLifecycle
     end
 
     nil
+  end
+
+  # Ask the same live-address verdict as acceptance. collision_user_id is
+  # only a historical hint: an address can acquire a holder after the invite.
+  # Revocation drops occupancy; the normal release path settles Stripe and
+  # writes released_at only after success, preserving retries on failure.
+  def revoke_closed_login_invites!(now: Time.current)
+    AccountInvite.pending.where(released_at: nil).find_each do |invite|
+      Quotas.with_creation_lock(invite.account) do
+        invite.with_lock do
+          next unless invite.pending? && AccountInvites.verdict_for(invite) == :closed_login
+
+          invite.update!(revoked_at: now)
+        end
+      end
+    rescue StandardError => e
+      ErrorReport.error(e, account_id: invite.account_id)
+    end
   end
 
   # Every invitation that has stopped holding its seat and has not been

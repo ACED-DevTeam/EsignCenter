@@ -1,0 +1,35 @@
+<%# The bar that never lets an operator forget where they are. Fixed to the top
+    of every layout a signed-in page can render with, high contrast, and with
+    the way out on it — a support session must always be one click from over.
+    Wraps on a narrow screen instead of pushing the page sideways. %>
+<% if signed_in? && support_impersonation? %>
+  <% state = support_impersonation %>
+  <% started_at = SupportImpersonation.started_at(state) %>
+  <div class="bg-amber-400 text-neutral-900 border-b border-amber-500" data-support-impersonation-banner>
+    <div class="max-w-6xl mx-auto px-4 md:px-2 py-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm">
+      <span class="font-bold uppercase tracking-wide whitespace-nowrap">
+        <%= t('support_impersonation_banner_title') %>
+      </span>
+      <span dir="auto" class="min-w-0 break-words">
+        <%= t('support_impersonation_banner_who', account: current_account&.name, email: current_user.email) %>
+      </span>
+      <span class="badge badge-sm border-amber-700 bg-amber-200 text-neutral-900 whitespace-nowrap" data-support-impersonation-mode>
+        <%= SupportImpersonation.mode_label(state['mode']) %>
+      </span>
+      <% if started_at %>
+        <span class="whitespace-nowrap opacity-80" data-support-impersonation-started>
+          <%= t('support_impersonation_banner_started', duration: time_ago_in_words(started_at)) %>
+        </span>
+      <% end %>
+      <span dir="auto" class="min-w-0 break-words opacity-80">
+        <%= t('support_impersonation_banner_reason', reason: state['reason']) %>
+      </span>
+      <span class="ml-auto">
+        <%= button_to t('support_impersonation_end_button'), operator_current_impersonation_path,
+                      method: :delete, data: { turbo: false, support_impersonation_end: true },
+                      form_class: 'inline',
+                      class: 'btn btn-xs btn-neutral text-white whitespace-nowrap' %>
+      </span>
+    </div>
+  </div>
+<% end %>

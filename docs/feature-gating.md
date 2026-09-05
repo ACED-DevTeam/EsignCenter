@@ -75,9 +75,11 @@ same question phrased as "refuse unless allowed" — it raises
 `Entitlements::UpgradeRequired`, which the controllers turn into the refusal
 shapes below.
 
-`delivery_tracking` is declared here so the pricing page can list it, but its
-enforcement (the sent/bounced/opened projection) lands in Session 8; Session 8
-owes that row's test.
+`delivery_tracking` is enforced in the signer event-log modal, newly generated
+audit PDFs, API event arrays and account-export event counts. Free accounts
+keep ordinary signing evidence but tracking rows are filtered out on the
+server; the modal shows an upgrade line. Previously signed PDFs are not rewritten. Postmark events are still recorded for
+every account so abuse protection works on every plan.
 
 ### 1.4 Abilities (`lib/ability.rb`)
 
@@ -159,7 +161,7 @@ never purges):
 | Custom email templates | `PersonalizationSettingsController#create` for the four account-level email templates; `TemplatesPreferencesController#create` for per-template email subject/body (invitation, reminder, documents copy, completed notification, per-signer copy); `SubmissionsController#create` when the send dialog asks to save its message onto the template (`save_message=1`). Read-time: the mailers show default copy to an unentitled account. The reminder wording is read too: `SendSubmitterInvitationReminderEmailJob` asks `SubmitterMailer.invitation_email(submitter, reminder: true)`, which reads the wording in one order, most specific first, subject and body each falling through it on their own: (1) this template's `invitation_reminder_email_subject/body`, (2) the account-level `submitter_invitation_reminder_email` row, (3) the invitation copy of this send — the ad-hoc message typed into the send dialog, then the per-signer copy, then this template's `request_email_*`, (4) the account-level `submitter_invitation_email` row, (5) the stock default. The account-wide reminder wording therefore beats a template's own SIGNATURE-REQUEST wording, and loses only to that template's own REMINDER wording. An account that is no longer paid gets the stock default whatever its rows say. Both places a customer WRITES that wording are on screen: Settings → Personalization → "Signature request reminder email" for the account-level copy, and the reminder row of a template's Preferences dialog for the per-template copy — each offered exactly like the signature-request email beside it (the form when the plan carries the row, the same upgrade banner when it does not) | Redirect + alert |
 | Per-account SMTP | `EmailSmtpSettingsController#create` (as a before-action, so the refusal is not swallowed by the controller's own error handling). Read-time: `MailConfigs.resolve` skips an unentitled account's pin | Redirect + alert; no SMTP row |
 | BCC / documents-copy address | `NotificationsSettingsController#create` for `bcc_emails`; `TemplatesPreferencesController#create` for a template's `bcc_completed`; `Submitters.normalize_preferences` for a per-submission `bcc_completed` (HTML send dialog, `/api/submissions`, signing sessions). Read-time: the completion job collects no BCC addresses for an unentitled account | Redirect + alert / 403 JSON |
-| Delivery tracking | Declared; enforced in Session 8 | — |
+| Delivery tracking | `SubmissionEventsController#index` filters bounce, complaint, open and click timeline rows unless `Entitlements.allowed?(current_account, :delivery_tracking)`. The shared `SubmissionEvents::TRACKING_TYPES` also filters audit PDFs, both API event serializers, and export event counts. Provider ingestion records events on every plan for abuse protection. | 200 modal; free accounts see an upgrade line and no tracking rows |
 
 Signer-page copy (`form_completed_button`, `form_completed_message`), policy
 links and the logo upload stay free. So does *minting* an API token (rotate,
@@ -186,8 +188,8 @@ refusal copy in every declared language.
 
 - **Session 6** — wire the upgrade call-to-action (Phase C's
   `shared/_upgrade_cta`, `data-upgrade-cta`) to the real Checkout link.
-- **Session 8** — enforce `delivery_tracking` when the EmailEvent projection
-  lands, with its row assertion added to the golden spec.
+- **Delivery tracking is complete** — Postmark events project into the signer
+  timeline, with the free/paid/internal assertion in the golden gating spec.
 
 ## 2. What happened to the `Docuseal.multitenant?` branches
 

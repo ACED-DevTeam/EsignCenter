@@ -1,0 +1,48 @@
+<%# What the flag is actually about, in the words of the kind that raised it.
+    A document report shows the reported document and what the reporter said;
+    a complaint or bounce storm shows the email event behind the pause; the
+    three quota warnings show the counts that tripped them. Local: flag. %>
+<% details = flag.details || {} %>
+<div class="text-sm space-y-1" data-flag-detail="<%= flag.kind %>">
+  <% case flag.kind %>
+  <% when 'document_report' %>
+    <% submission = @submissions[flag.subject_id] %>
+    <% if submission %>
+      <p>
+        <span class="text-base-content/70"><%= t('operator_abuse_reported_document') %>:</span>
+        <%= submission.template&.name.presence || t('operator_abuse_deleted_template') %>
+        <span class="text-base-content/70">— <%= t('operator_abuse_submitter_count', count: @submitter_counts.fetch(submission.id, 0)) %></span>
+      </p>
+    <% else %>
+      <p class="text-base-content/70" data-flag-subject-gone><%= t('operator_abuse_subject_gone') %></p>
+    <% end %>
+    <p><span class="text-base-content/70"><%= t('operator_abuse_report_reason') %>:</span> <%= details['reason'] %></p>
+    <% if details['details'].present? %>
+      <p dir="auto" class="break-words"><span class="text-base-content/70"><%= t('operator_abuse_report_details') %>:</span> <%= details['details'] %></p>
+    <% end %>
+    <p class="text-xs text-base-content/70">
+      <%= t('operator_abuse_report_ip') %>: <%= details['ip'].presence || '—' %>
+      <%# The signing link is shown as text and never as a link: opening it
+          from here would put an operator inside a signer's session. %>
+      · <%= t('operator_abuse_report_slug') %>: <span class="font-mono break-all"><%= details['submitter_slug'] %></span>
+    </p>
+  <% when 'complaint', 'bounce_rate' %>
+    <p>
+      <span class="text-base-content/70"><%= t('operator_abuse_email_event') %>:</span>
+      #<%= details['email_event_id'] || '—' %>
+      <% if details['email'].present? %>
+        · <span class="break-all"><%= details['email'] %></span>
+      <% end %>
+      <% if details['bounce_rate'].present? %>
+        · <%= t('operator_abuse_bounce_rate', rate: number_to_percentage(details['bounce_rate'].to_f * 100, precision: 1)) %>
+      <% end %>
+    </p>
+  <% else %>
+    <p class="text-base-content/70">
+      <%= details.map { |key, value| "#{key}: #{value}" }.join(' · ').presence || t('operator_abuse_no_counts') %>
+    </p>
+  <% end %>
+  <% if details['resolution'].present? %>
+    <p dir="auto" class="break-words"><span class="text-base-content/70"><%= t('operator_abuse_resolution') %>:</span> <%= details['resolution'] %></p>
+  <% end %>
+</div>

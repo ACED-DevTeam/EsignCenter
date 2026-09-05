@@ -1,0 +1,17 @@
+<%# A door a support session may not open. Not a 500 and not a silent no-op:
+    the page says what happened, in one sentence, and the customer's audit log
+    has a row saying the same thing. %>
+<div class="max-w-xl mx-auto py-16 text-center space-y-4" data-support-impersonation-refused>
+  <h1 class="text-3xl font-bold"><%= t('support_impersonation_refused_title') %></h1>
+  <p class="text-base-content/70"><%= t('support_impersonation_refused_body') %></p>
+  <% if support_impersonation? %>
+    <p class="text-base-content/70" dir="auto">
+      <%= t('support_impersonation_banner_reason', reason: support_impersonation['reason']) %>
+    </p>
+  <% end %>
+  <div class="flex justify-center gap-2 pt-2">
+    <%= link_to t('back'), root_path, class: 'btn btn-outline' %>
+    <%= button_to t('support_impersonation_end_button'), operator_current_impersonation_path,
+                  method: :delete, data: { turbo: false }, class: 'btn btn-neutral text-white' %>
+  </div>
+</div>

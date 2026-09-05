@@ -236,6 +236,136 @@ module StripeBilling
       raise
     end
 
+    # --- adoption by the operator --------------------------------------------
+
+    # Why the operator console does NOT use link_and_apply! (checkpoint 8,
+    # review 1 H1/H3).
+    #
+    # `link_and_apply!` is the door a WEBHOOK or a Checkout return comes
+    # through, and it is built for those: it decides between two subscriptions,
+    # and that decision can cancel one at Stripe and refund it. An operator
+    # typing an account number into a form must never be able to reach that
+    # path — nor the `apply_current!` branch, which quietly writes Stripe's
+    # current state (paid access and all) onto a row and returns a verdict the
+    # caller then treats as a refusal.
+    #
+    # So adoption is its own operation, and every question it asks is asked
+    # INSIDE the row lock, against Stripe's own answer:
+    #
+    #   * the row must hold NO subscription. Holding this one, or a different
+    #     one, is refused — the row is never repointed here;
+    #   * Stripe must agree the subscription is ours at all (`ours?`);
+    #   * if our own Checkout TAGGED it with an account id, that id must be
+    #     the account being adopted onto. The tag is the only thing that says
+    #     whose a subscription is, and `ours?` — true for anything on our
+    #     price — is the wrong question to ask of "does this belong to THIS
+    #     account";
+    #   * its Stripe CUSTOMER must not belong to somebody else: not to another
+    #     account's row, and not to a different customer than this row already
+    #     holds. A row whose subscription and customer name different people
+    #     sends the Portal, the seat changes and the dunning to the wrong
+    #     object for ever;
+    #   * a subscription that is neither tagged nor on a customer we can place
+    #     is not refused — it is the ordinary "somebody is paying for nothing"
+    #     case — but it needs the operator to say out loud that they mean it
+    #     (`confirm_untagged`), and that acknowledgement is recorded.
+    #
+    # The caller's audit row is written by the block, inside this same lock and
+    # transaction, so a refusal leaves nothing behind and a change cannot exist
+    # without its OperatorEvent.
+    class AdoptionRefused < StandardError
+      attr_reader :reason, :detail
+
+      def initialize(reason, detail = {})
+        @reason = reason
+        @detail = detail
+
+        super("adoption refused: #{reason}")
+      end
+    end
+
+    def adopt!(account_subscription, subscription_id, confirm_untagged: false)
+      raise AdoptionRefused, :no_subscription if subscription_id.blank?
+
+      with_account_lock(account_subscription) do
+        assert_row_free!(account_subscription, subscription_id)
+
+        stripe_subscription = StripeBilling.subscription_for(subscription_id)
+
+        assert_adoptable!(account_subscription, stripe_subscription, subscription_id, confirm_untagged:)
+
+        account_subscription.update!(stripe_subscription_id: subscription_id)
+
+        apply_object!(account_subscription, stripe_subscription, event_at: Time.current)
+
+        yield(stripe_subscription) if block_given?
+
+        account_subscription
+      end
+    rescue ActiveRecord::RecordNotUnique => e
+      # The pre-checks above are made under this row's lock, which is not the
+      # other row's: two operators adopting onto two accounts at the same
+      # instant can still collide on the unique index over the subscription or
+      # the customer. A refusal, never a 500 — nothing was written.
+      raise AdoptionRefused.new(:taken_concurrently, { error: e.class.name })
+    end
+
+    # Read under the lock, from the row as the database has it right now — the
+    # object the caller checked a moment ago may be stale by the time the lock
+    # is granted, which is the whole reason this is here rather than in the
+    # controller.
+    def assert_row_free!(account_subscription, subscription_id)
+      existing = account_subscription.stripe_subscription_id
+
+      return if existing.blank?
+
+      raise AdoptionRefused.new(:already_holds_this, { id: existing }) if existing == subscription_id
+
+      raise AdoptionRefused.new(:already_holds_other, { id: existing })
+    end
+
+    def assert_adoptable!(account_subscription, stripe_subscription, subscription_id, confirm_untagged:)
+      account_id = account_subscription.account_id
+
+      raise AdoptionRefused.new(:not_ours, { id: subscription_id }) \
+        unless SubscriptionPolicy.ours?(stripe_subscription, account_id)
+
+      assert_tag_matches!(stripe_subscription, account_id)
+      assert_customer_free!(account_subscription, stripe_subscription, confirm_untagged:)
+    end
+
+    def assert_tag_matches!(stripe_subscription, account_id)
+      tag = SubscriptionPolicy.tagged_account_id(stripe_subscription)
+
+      return if tag.blank? || tag == account_id.to_s
+
+      raise AdoptionRefused.new(:tagged_elsewhere, { account_id: tag })
+    end
+
+    # Whose customer is this? Three answers, and only one of them is a plain
+    # yes: it is the customer this row already holds; it is a customer another
+    # row holds (refused outright); or it is a customer nobody has, which is
+    # fine but has to be acknowledged when the subscription carries no tag
+    # either.
+    def assert_customer_free!(account_subscription, stripe_subscription, confirm_untagged:)
+      customer_id = SubscriptionSync.customer_id(stripe_subscription).to_s
+      own = account_subscription.stripe_customer_id.to_s
+
+      raise AdoptionRefused, :no_customer if customer_id.blank?
+      return if own.present? && own == customer_id
+
+      raise AdoptionRefused.new(:customer_mismatch, { customer: customer_id, own: }) if own.present?
+
+      taken = AccountSubscription.where(stripe_customer_id: customer_id)
+                                 .where.not(account_id: account_subscription.account_id).pick(:account_id)
+
+      raise AdoptionRefused.new(:customer_taken, { account_id: taken }) if taken
+
+      return if confirm_untagged || SubscriptionPolicy.tagged_account_id(stripe_subscription).present?
+
+      raise AdoptionRefused.new(:needs_confirmation, { customer: customer_id })
+    end
+
     # The debt outlives the rollback that carries the failure out.
     #
     # A refund refused on the ORDINARY duplicate path re-raises, and that
@@ -777,9 +907,93 @@ module StripeBilling
     # marker stands — the duplicate is still cancelled, a person is told,
     # and the only cost of being wrong is their time.
     def duplicate_marker(duplicate, survivor)
+      return StripeBilling::DUPLICATE_CANCEL_MANUAL_MARKER if paused_survivor?(survivor)
       return StripeBilling::DUPLICATE_CANCEL_MARKER if newer_loser?(duplicate, survivor)
 
       StripeBilling::DUPLICATE_CANCEL_MANUAL_MARKER
+    end
+
+    # The one exception to "newer loser → automatic refund" (checkpoint 8,
+    # A3): a survivor whose collection was PAUSED.
+    #
+    # The automatic refund rests on a single claim — every cycle the newer
+    # subscription collected duplicated one the survivor was already billing
+    # for. `pause_collection` breaks exactly that claim: while the survivor
+    # was paused it billed nothing at all, so what the newer subscription
+    # took over that stretch is the only money the customer paid for service
+    # they actually had. Sending it all back would refund the whole period
+    # and leave us having served them for nothing.
+    #
+    # Whether the overlap is genuinely a double charge is then a question
+    # about dates and invoices that only a person can answer, so the case
+    # takes the manual marker: the duplicate is still cancelled, nothing is
+    # refunded on our own initiative, and it is named under "needs manual
+    # review" in the nightly report and on the console's billing tab.
+    #
+    # A pause that has already been lifted counts too — it is the HISTORY
+    # that matters, and a resumed subscription no longer says anything about
+    # itself — so the events we stored at the time are read as well.
+    # WHICH events say a subscription stopped collecting (checkpoint 8, review
+    # 1 / Codex H4).
+    #
+    # Pausing PAYMENT COLLECTION does not raise `customer.subscription.paused`
+    # — Stripe is explicit that those events are about a subscription whose
+    # STATUS is paused, which is a different thing. Setting or clearing
+    # `pause_collection` arrives as an ordinary `customer.subscription.updated`
+    # with the field on the object (set) or named in `previous_attributes`
+    # (cleared). Reading only the paused/resumed events therefore found
+    # nothing, and once the pause was lifted the current object said nothing
+    # either — so a duplicate that had been the only thing collecting was
+    # refunded automatically, which is exactly what A3 exists to stop.
+    #
+    # The status-pause events are still read: a subscription Stripe itself
+    # paused was not collecting either, and every one of these readings only
+    # ever moves a case TOWARDS manual review.
+    COLLECTION_PAUSE_EVENT_TYPES = %w[customer.subscription.updated].freeze
+    STATUS_PAUSE_EVENT_TYPES = %w[customer.subscription.paused customer.subscription.resumed].freeze
+    PAUSE_EVENT_TYPES = (COLLECTION_PAUSE_EVENT_TYPES + STATUS_PAUSE_EVENT_TYPES).freeze
+
+    def paused_survivor?(survivor)
+      return false if survivor.nil?
+      return true if SubscriptionSync.field(survivor, :pause_collection).present?
+
+      paused_in_event_history?(SubscriptionSync.field(survivor, :id).to_s)
+    end
+
+    # Did Stripe ever tell us this subscription had stopped collecting? The
+    # inbox keeps the exact bytes of every delivery, so the answer is in
+    # there; the id is matched inside the payload and then CONFIRMED against
+    # the event's own object, so a substring hit on some other field cannot
+    # decide a money question. Best effort: a database this cannot read is no
+    # reason to fail a cancellation that has already happened at Stripe — and
+    # the direction it fails in is the safe one, because the automatic refund
+    # is only reached when nothing objects.
+    def paused_in_event_history?(subscription_id)
+      return false if subscription_id.blank?
+
+      pattern = "%#{ActiveRecord::Base.sanitize_sql_like(subscription_id)}%"
+
+      StripeEventInbox.where(event_type: PAUSE_EVENT_TYPES).where('payload LIKE ?', pattern).find_each.any? do |row|
+        next false unless SubscriptionSync.field(row.event_object, :id).to_s == subscription_id
+        next true if STATUS_PAUSE_EVENT_TYPES.include?(row.event_type)
+
+        collection_pause?(row)
+      end
+    rescue StandardError => e
+      ErrorReport.error(e)
+
+      false
+    end
+
+    # An update that set `pause_collection`, or one that cleared it — Stripe
+    # names a cleared field in `previous_attributes`, and a cleared pause is
+    # still a pause that happened.
+    def collection_pause?(row)
+      return true if SubscriptionSync.field(row.event_object, :pause_collection).present?
+
+      previous = row.event.dig('data', 'previous_attributes')
+
+      previous.is_a?(Hash) && previous.key?('pause_collection')
     end
 
     # Strictly the newer one, on two timestamps we could actually read. Two
@@ -1290,12 +1504,24 @@ module StripeBilling
     # invoice read is best-effort: it is only here to save the operator a
     # search, and failing to read it must not turn a completed cancellation
     # into a failed event.
+    # Why no refund went out on its own, in the words that fit THIS case: the
+    # ordinary older-loser one, or a survivor whose collection was paused
+    # (A3), where the overlap may not be a double charge at all.
+    OLDER_LOSER_NOTE = 'This one was created BEFORE the subscription that survived, so most of what it ' \
+                       'collected paid for service the customer had. Nothing was refunded automatically — ' \
+                       'manual refund review, by hand in the Stripe dashboard, of at most the part-cycle ' \
+                       'the two overlapped:'
+    PAUSED_SURVIVOR_NOTE = 'The subscription that survived has a paused-collection history, so it was not ' \
+                           'necessarily billing while this one was: what this one collected may be the only ' \
+                           'money the customer paid for the service they had. Nothing was refunded ' \
+                           'automatically — compare the two subscriptions\' invoices by hand in the Stripe ' \
+                           'dashboard and refund only what was genuinely charged twice:'
+
     def manual_refund_note(duplicate_id, survivor)
       survivor_id = SubscriptionSync.field(survivor, :id).presence || 'unknown'
+      opening = paused_survivor?(survivor) ? PAUSED_SURVIVOR_NOTE : OLDER_LOSER_NOTE
 
-      ['This one was created BEFORE the subscription that survived, so most of what it collected paid for ' \
-       'service the customer had. Nothing was refunded automatically — manual refund review, by hand in ' \
-       'the Stripe dashboard, of at most the part-cycle the two overlapped:',
+      [opening,
        "  cancelled:               #{duplicate_id}",
        "  survived:                #{survivor_id} (created #{stripe_time(survivor)})",
        "  its latest paid invoice: #{latest_paid_invoice(duplicate_id)}"].join("\n")

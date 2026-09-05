@@ -23,9 +23,11 @@ class BillingLifecycleJob < ApplicationJob
   queue_as :billing
 
   def perform
-    BillingLifecycle.run_dunning!
-    BillingLifecycle.expire_invites!
-    BillingLifecycle.discard_parked_invites!
-    BillingLifecycle.reconcile_seats!
+    SchedulerStamps.record!('billing_lifecycle') do
+      BillingLifecycle.run_dunning!
+      BillingLifecycle.expire_invites!
+      BillingLifecycle.discard_parked_invites!
+      BillingLifecycle.reconcile_seats!
+    end
   end
 end

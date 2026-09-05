@@ -1,0 +1,104 @@
+<div class="flex-wrap space-y-4 md:flex md:flex-nowrap md:space-y-0 md:space-x-10">
+  <%= render 'operator/shared/nav' %>
+  <div class="md:flex-grow min-w-0">
+    <div class="flex flex-col md:flex-row md:flex-wrap gap-2 md:justify-between md:items-end mb-4">
+      <h1 class="text-4xl font-bold"><%= t('operator_tab_accounts') %></h1>
+    </div>
+
+    <%# One GET form for the search box and every filter, so a filtered view is
+        a URL an operator can bookmark or paste into a ticket. %>
+    <%= form_with url: operator_accounts_path, method: :get, data: { turbo: false }, class: 'card bg-base-100 border border-base-300 mb-5' do %>
+      <div class="card-body p-4 gap-3">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+          <label class="form-control">
+            <span class="label-text mb-1"><%= t('operator_filter_search') %></span>
+            <input type="search" name="q" value="<%= params[:q] %>" class="input input-bordered w-full" autocomplete="off" placeholder="<%= t('operator_filter_search_placeholder') %>">
+          </label>
+          <label class="form-control">
+            <span class="label-text mb-1"><%= t('operator_filter_kind') %></span>
+            <select name="kind" class="select select-bordered w-full">
+              <%= options_for_select([[t('operator_filter_any'), '']] + Account::KINDS.map { |kind| [t("operator_kind_#{kind}"), kind] }, params[:kind]) %>
+            </select>
+          </label>
+          <label class="form-control">
+            <span class="label-text mb-1"><%= t('operator_filter_plan') %></span>
+            <select name="plan" class="select select-bordered w-full">
+              <%= options_for_select([[t('operator_filter_any'), '']] + Operator::AccountsController::PLAN_FILTERS.map { |plan| [t("operator_plan_filter_#{plan}"), plan] }, params[:plan]) %>
+            </select>
+          </label>
+          <label class="form-control">
+            <span class="label-text mb-1"><%= t('operator_filter_state') %></span>
+            <select name="state" class="select select-bordered w-full">
+              <%= options_for_select([[t('operator_filter_any'), '']] + Operator::AccountsController::STATE_FILTERS.map { |state| [t("operator_state_filter_#{state}"), state] }, params[:state]) %>
+            </select>
+          </label>
+        </div>
+        <div class="flex flex-wrap items-end gap-3">
+          <label class="form-control">
+            <span class="label-text mb-1"><%= t('operator_filter_sort') %></span>
+            <select name="sort" class="select select-bordered">
+              <%= options_for_select(Operator::AccountsController::SORTS.map { |sort| [t("operator_sort_#{sort}"), sort] }, params[:sort]) %>
+            </select>
+          </label>
+          <button type="submit" class="btn btn-primary"><%= t('operator_filter_apply') %></button>
+          <%= link_to t('operator_filter_clear'), operator_accounts_path, class: 'btn btn-ghost' %>
+        </div>
+      </div>
+    <% end %>
+
+    <% if @storage_scan_truncated %>
+      <div class="alert items-start bg-base-100 border border-red-400 text-red-400 mb-4" data-storage-scan-truncated>
+        <%= t('operator_storage_scan_truncated', count: OperatorConsole::STORAGE_SCAN_LIMIT) %>
+      </div>
+    <% end %>
+
+    <div class="overflow-x-auto">
+      <table class="table w-full rounded-b-none overflow-hidden">
+        <thead class="bg-base-200">
+          <tr class="text-neutral uppercase">
+            <th><%= t('operator_column_id') %></th>
+            <th><%= t('operator_column_account') %></th>
+            <th><%= t('operator_column_plan') %></th>
+            <th class="text-right"><%= t('operator_column_seats') %></th>
+            <th class="text-right"><%= t('operator_column_this_month') %></th>
+            <th class="text-right"><%= t('operator_column_storage') %></th>
+            <th><%= t('operator_column_state') %></th>
+            <th><%= t('operator_column_activity') %></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% @accounts.each do |account| %>
+            <% usage = @usage[account.id] %>
+            <tr scope="row" data-operator-account-row="<%= account.id %>">
+              <td class="tabular-nums"><%= account.id %></td>
+              <%# Name and kind in one cell: eleven columns did not fit a laptop,
+                  and an operator reading a row wants "who is this" as one thing. %>
+              <td class="min-w-48">
+                <%= link_to account.name, operator_account_path(account), class: 'link font-medium' %>
+                <div class="text-xs text-base-content/70 mt-0.5"><%= t("operator_kind_#{account.account_kind}") %></div>
+              </td>
+              <td><%= render 'operator/accounts/plan_badge', account: account %></td>
+              <td class="text-right tabular-nums"><%= t('operator_of_limit', used: usage.seats_used, limit: usage.limits.seats || t('operator_unlimited_short')) %></td>
+              <%# Completions and sends in one cell: both are "this month", and
+                  two narrow numeric columns cost more width than they earn. %>
+              <td class="text-right tabular-nums whitespace-nowrap">
+                <div><%= t('operator_completed_count', count: usage.completions) %></div>
+                <div class="text-xs text-base-content/70 mt-0.5"><%= t('operator_sent_count', count: usage.sends) %></div>
+              </td>
+              <td class="text-right tabular-nums whitespace-nowrap"><%= number_to_human_size(usage.storage_bytes) %></td>
+              <td><%= render 'operator/accounts/state_badges', account: account, usage: usage, read_only_count: @read_only_counts[account.id] %></td>
+              <td class="whitespace-nowrap text-sm">
+                <div><%= account.last_active_at ? l(account.last_active_at.utc.to_date, format: :short) : '—' %></div>
+                <div class="text-xs text-base-content/70 mt-0.5"><%= t('operator_created_on', date: l(account.created_at.utc.to_date, format: :short)) %></div>
+              </td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+    <% if @accounts.empty? %>
+      <p class="text-base-content/70 mt-6" data-operator-no-accounts><%= t('operator_no_accounts') %></p>
+    <% end %>
+    <%= render 'shared/pagination', pagy: @pagy, items_name: 'accounts' %>
+  </div>
+</div>

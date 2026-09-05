@@ -1,0 +1,22 @@
+<%# What plan the account is on and what the subscription row behind it says.
+    Locals: account. %>
+<% billing = Plans.billing_account(account) %>
+<% plan = Plans.key_for(account) %>
+<% subscription = billing.account_subscription %>
+<div class="flex flex-wrap gap-1 items-center">
+  <span class="badge whitespace-nowrap <%= plan == Plans::FREE ? 'badge-ghost' : 'badge-neutral' %>" data-plan-badge="<%= plan %>">
+    <%= t("operator_plan_#{plan}") %>
+  </span>
+  <% if subscription&.comp_expires_at.present? %>
+    <span class="badge badge-info badge-outline whitespace-nowrap" data-plan-badge="comp"><%= t('operator_plan_comp') %></span>
+  <% end %>
+  <% if subscription&.access_state.present? %>
+    <span class="badge badge-outline whitespace-nowrap" data-access-state="<%= subscription.access_state %>"><%= subscription.access_state %></span>
+  <% end %>
+  <% if subscription&.stripe_status.present? %>
+    <span class="badge badge-outline whitespace-nowrap" data-stripe-status="<%= subscription.stripe_status %>">Stripe: <%= subscription.stripe_status %></span>
+  <% end %>
+  <% if billing.id != account.id %>
+    <span class="badge badge-outline whitespace-nowrap"><%= t('operator_billed_through', id: billing.id) %></span>
+  <% end %>
+</div>

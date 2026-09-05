@@ -4,31 +4,31 @@
 #
 # Table name: account_invites
 #
-#  id                :bigint           not null, primary key
-#  accepted_at       :datetime
-#  email             :string           not null
-#  expires_at        :datetime         not null
+#  id                    :bigint           not null, primary key
+#  accepted_at           :datetime
+#  email                 :string           not null
+#  expires_at            :datetime         not null
 #  payment_pending_until :datetime
-#  pending_quantity  :integer
-#  released_at       :datetime
-#  revoked_at        :datetime
-#  role              :string           not null
-#  token_digest      :string           not null
-#  created_at        :datetime         not null
-#  updated_at        :datetime         not null
-#  account_id        :bigint           not null
-#  collision_user_id :bigint
-#  invited_by_id     :bigint
+#  pending_quantity      :integer
+#  released_at           :datetime
+#  revoked_at            :datetime
+#  role                  :string           not null
+#  token_digest          :string           not null
+#  created_at            :datetime         not null
+#  updated_at            :datetime         not null
+#  account_id            :bigint           not null
+#  collision_user_id     :bigint
+#  invited_by_id         :bigint
 #
 # Indexes
 #
-#  index_account_invites_on_account_id         (account_id)
-#  index_account_invites_on_collision_user_id  (collision_user_id)
-#  index_account_invites_on_email              (email)
-#  index_account_invites_on_expires_at         (expires_at)
-#  index_account_invites_on_invited_by_id      (invited_by_id)
-#  index_account_invites_on_payment_pending_until  (payment_pending_until) WHERE payment_pending_until IS NOT NULL
-#  index_account_invites_on_token_digest       (token_digest) UNIQUE
+#  index_account_invites_on_account_id             (account_id)
+#  index_account_invites_on_collision_user_id      (collision_user_id)
+#  index_account_invites_on_email                  (email)
+#  index_account_invites_on_expires_at             (expires_at)
+#  index_account_invites_on_invited_by_id          (invited_by_id)
+#  index_account_invites_on_payment_pending_until  (payment_pending_until) WHERE (payment_pending_until IS NOT NULL)
+#  index_account_invites_on_token_digest           (token_digest) UNIQUE
 #
 # Foreign Keys
 #

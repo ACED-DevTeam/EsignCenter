@@ -73,6 +73,7 @@ module Submissions
 
     def build_audit_trail(submission)
       account = submission.account
+      visible_events = SubmissionEvents.for_display(submission.submission_events, account:)
       # The public verification page (no login): anyone holding the PDF can
       # confirm the completion date and signer count, never the identities.
       verify_url = Rails.application.routes.url_helpers.verify_url(
@@ -251,7 +252,7 @@ module Submissions
 
         next if submitter.blank?
 
-        submission_events = submission.submission_events.select { |e| e.submitter_id == submitter.id }
+        submission_events = visible_events.select { |e| e.submitter_id == submitter.id }
 
         delegated_event = submission_events.select(&:delegate_form?).max_by(&:event_timestamp)
 
@@ -463,9 +464,7 @@ module Submissions
         [s.id, s.submitter_versions.to_a.sort_by(&:created_at)]
       end
 
-      events_data = submission.submission_events.sort_by(&:event_timestamp).filter_map do |event|
-        next if event.event_type.in?(%w[bounce_email complaint_email])
-
+      events_data = visible_events.sort_by(&:event_timestamp).filter_map do |event|
         submitter = submission.submitters.find { |e| e.id == event.submitter_id }
         versions = submitter_versions_index[submitter.id] || []
         active_version = versions.find { |v| v.created_at > event.event_timestamp }
@@ -502,6 +501,8 @@ module Submissions
             I18n.t('submission_event_names.esign_consent_by_html', version: event.data['version'], submitter_name:)
           elsif event.event_type.include?('send_')
             I18n.t("submission_event_names.#{event.event_type}_to_html", submitter_name:)
+          elsif event.event_type.in?(%w[bounce_email complaint_email])
+            I18n.t("submission_event_names.#{event.event_type}_html", submitter_name:)
           else
             I18n.t("submission_event_names.#{event.event_type}_by_html", submitter_name:)
           end

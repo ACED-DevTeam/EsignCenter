@@ -15,7 +15,14 @@
           <div class="flex w-full space-x-4">
             <% token = current_user.access_token.token %>
             <% obscured_token = current_user.access_token.token.sub(token[5..], '*' * token[5..].size) %>
-            <% if current_account.testing? %>
+            <%# A support session may see that an integration EXISTS and never
+                what its key is: no reveal link, no copy button, no data-token
+                for the masking element to hand back. The reveal door itself is
+                closed server-side (SupportImpersonation::SECRET_CONTROLLERS);
+                this is the page not offering it in the first place. %>
+            <% if support_impersonation? %>
+              <input id="api_key" type="text" value="<%= obscured_token %>" class="input font-mono input-bordered w-full" autocomplete="off" readonly data-support-impersonation-masked-token>
+            <% elsif current_account.testing? %>
               <masked-input class="block w-full" data-token="<%= token %>">
                 <input id="api_key" type="text" value="<%= obscured_token %>" class="input font-mono input-bordered w-full" autocomplete="off" readonly>
               </masked-input>
@@ -30,7 +37,9 @@
               </a>
             <% end %>
           </div>
-          <%= button_to button_title(title: t('rotate'), disabled_with: t('rotate'), icon: svg_icon('reload', class: 'w-6 h-6')), settings_api_index_path, class: 'white-button w-full', data: { turbo_confirm: t('remove_existing_api_token_and_generated_a_new_one_are_you_sure_') } %>
+          <% unless support_impersonation? %>
+            <%= button_to button_title(title: t('rotate'), disabled_with: t('rotate'), icon: svg_icon('reload', class: 'w-6 h-6')), settings_api_index_path, class: 'white-button w-full', data: { turbo_confirm: t('remove_existing_api_token_and_generated_a_new_one_are_you_sure_') } %>
+          <% end %>
         </div>
       </div>
     </div>

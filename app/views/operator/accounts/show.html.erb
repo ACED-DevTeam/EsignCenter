@@ -1,0 +1,18 @@
+<div class="flex-wrap space-y-4 md:flex md:flex-nowrap md:space-y-0 md:space-x-10">
+  <%= render 'operator/shared/nav' %>
+  <div class="md:flex-grow min-w-0 space-y-6">
+    <%= render 'operator/accounts/header' %>
+    <%= render 'operator/accounts/actions' %>
+    <% if @orphans.present? %>
+      <%= render 'operator/accounts/orphans' %>
+    <% end %>
+    <%= render 'operator/accounts/billing' %>
+    <%= render 'operator/accounts/limits' %>
+    <%= render 'operator/accounts/users' %>
+    <%= render 'operator/accounts/invites' %>
+    <%= render 'operator/accounts/abuse' %>
+    <%= render 'operator/accounts/deletion' %>
+    <%= render 'operator/accounts/provisioning' %>
+    <%= render 'operator/accounts/history' %>
+  </div>
+</div>

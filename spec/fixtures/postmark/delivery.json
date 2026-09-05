@@ -1,0 +1,13 @@
+{
+  "MessageID": "883953f4-6105-42a2-a16a-77a8eac79483",
+  "MessageStream": "outbound",
+  "Tag": "submitter_invitation",
+  "Metadata": {
+    "message-uuid": "cf132906-39c6-424d-bba8-2f7ddbe82bbf"
+  },
+  "RecordType": "Delivery",
+  "ServerID": 23,
+  "Recipient": "signer@example.com",
+  "DeliveredAt": "2026-09-04T16:33:54.9070259Z",
+  "Details": "250 2.0.0 Accepted"
+}

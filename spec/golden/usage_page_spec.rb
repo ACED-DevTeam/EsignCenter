@@ -199,6 +199,25 @@ RSpec.describe 'Usage page', type: :request do
     expect(doc.at('[data-usage-upgrade]')).to be_nil
   end
 
+  # Review 1, M2: the fair-use level the operator set for THIS account is the
+  # one the customer is shown, and the one the warning email quotes. Before
+  # this, all three surfaces computed it straight from the constant, so an
+  # operator who raised fair use for a heavy customer left the customer's own
+  # page and their warning email still promising 500 per seat.
+  it 'shows the operator-overridden fair-use level, and mails the same number' do
+    AccountLimitOverride.create!(account: paid_account, fair_use_per_seat: 900)
+
+    act_as(paid_account)
+
+    doc = page
+
+    expect(card(doc, 'completions').text).to include(I18n.t('fair_use_per_seat', count: 900))
+    expect(card(doc, 'completions').text).not_to include(I18n.t('fair_use_per_seat', count: 500))
+
+    expect(Quotas.fair_use_threshold(paid_account)).to eq(1800)
+    expect(QuotaMailer.paid_usage_warning(paid_account).body.encoded).to include('1800')
+  end
+
   # Whichever reason paused sending is the one named, the other is not, and
   # the support address is there either way.
   [%w[complaint bounce_rate], %w[bounce_rate complaint]].each do |reason, other_reason|

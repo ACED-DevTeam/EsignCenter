@@ -2,6 +2,9 @@
 <% submitters_uuids = (@submission.template_submitters || @submission.template.submitters).pluck('uuid') %>
 <%= render 'shared/turbo_modal_large', title: t('event_log') do %>
   <div class="pl-8 pr-4 py-4">
+    <% unless @delivery_tracking %>
+      <%= render 'shared/upgrade_cta', feature: 'Delivery tracking', compact: true, class: 'mb-6' %>
+    <% end %>
     <ol class="relative border-s border-base-300 space-y-6">
       <li class="ml-7">
         <span class="absolute flex items-center justify-center w-7 h-7 rounded-full -start-3.5 ring-8 ring-base-100 text-base-content bg-gray-200">
@@ -21,7 +24,7 @@
         </p>
       </li>
       <% submitter_versions_index = @submission.submitters.preload(:submitter_versions).to_h { |s| [s.id, s.submitter_versions.to_a.sort_by(&:created_at)] } %>
-      <% @submission.submission_events.order(:event_timestamp).each do |event| %>
+      <% @submission_events.each do |event| %>
         <% submitter = @submission.submitters.find { |e| e.id == event.submitter_id } %>
         <% bg_class = event_colors[submitters_uuids.index(submitter.uuid) % event_colors.length] %>
         <% versions = submitter_versions_index[submitter.id] || [] %>

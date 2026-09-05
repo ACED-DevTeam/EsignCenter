@@ -1,0 +1,18 @@
+<div class="flex-wrap space-y-4 md:flex md:flex-nowrap md:space-y-0 md:space-x-10">
+  <%= render 'operator/shared/nav' %>
+  <div class="md:flex-grow min-w-0 space-y-6">
+    <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-2">
+      <div>
+        <h1 class="text-4xl font-bold"><%= t('operator_tab_billing') %></h1>
+        <p class="text-base-content/70 mt-2 max-w-3xl"><%= t('operator_revenue_source_of_truth') %></p>
+      </div>
+      <% if @stripe_dashboard_url %>
+        <%= link_to t('operator_revenue_stripe_dashboard'), @stripe_dashboard_url, target: '_blank', rel: 'noopener', class: 'btn btn-sm btn-outline whitespace-nowrap' %>
+      <% end %>
+    </div>
+
+    <%= render 'operator/billing/revenue' %>
+    <%= render 'operator/billing/reconciliation' %>
+    <%= render 'operator/billing/inbox' %>
+  </div>
+</div>

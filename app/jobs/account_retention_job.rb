@@ -11,8 +11,10 @@ class AccountRetentionJob < ApplicationJob
   queue_as :default
 
   def perform
-    Accounts::Retention.schedule_dormant_warnings!
-    Accounts::Retention.schedule_deletion_reminders!
-    Accounts::Retention.purge_due!
+    SchedulerStamps.record!('account_retention') do
+      Accounts::Retention.schedule_dormant_warnings!
+      Accounts::Retention.schedule_deletion_reminders!
+      Accounts::Retention.purge_due!
+    end
   end
 end

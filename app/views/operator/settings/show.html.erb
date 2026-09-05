@@ -1,0 +1,117 @@
+<div class="flex-wrap space-y-4 md:flex md:flex-nowrap md:space-y-0 md:space-x-10">
+  <%= render 'operator/shared/nav' %>
+  <div class="md:flex-grow min-w-0 space-y-6">
+    <div>
+      <h1 class="text-4xl font-bold"><%= t('operator_tab_settings') %></h1>
+      <p class="text-base-content/70 mt-2 max-w-3xl"><%= t('operator_settings_intro') %></p>
+    </div>
+
+    <div class="card bg-base-100 border border-base-300" data-operator-alert-email>
+      <div class="card-body p-5 gap-3">
+        <h2 class="text-xl font-bold"><%= t('operator_settings_alert_email') %></h2>
+        <p class="text-sm text-base-content/70 max-w-3xl"><%= t('operator_settings_alert_email_hint') %></p>
+        <p class="text-sm">
+          <span class="text-base-content/70"><%= t('operator_settings_alert_current') %>:</span>
+          <span class="font-medium break-all" data-alert-effective><%= @alert_effective %></span>
+          <% if @alert_email.blank? %>
+            <span class="badge badge-sm badge-ghost whitespace-nowrap ml-1" data-alert-fallback><%= t('operator_settings_alert_fallback', address: @alert_fallback) %></span>
+          <% end %>
+        </p>
+        <%= form_with url: operator_settings_path, method: :patch, data: { turbo: false }, class: 'space-y-3 max-w-xl' do %>
+          <label class="form-control">
+            <span class="label-text mb-1"><%= t('operator_settings_alert_email') %></span>
+            <input type="email" name="operator_alert_email" value="<%= @alert_email %>" class="input input-bordered w-full" autocomplete="off" placeholder="<%= @alert_fallback %>">
+            <span class="label-text-alt mt-1"><%= t('operator_settings_alert_blank_hint') %></span>
+          </label>
+          <label class="form-control">
+            <span class="label-text mb-1"><%= t('operator_reason_label') %></span>
+            <textarea name="reason" rows="2" class="textarea textarea-bordered w-full" required minlength="<%= Operator::BaseController::MINIMUM_REASON_LENGTH %>"></textarea>
+          </label>
+          <button type="submit" class="btn btn-primary" data-operator-action="save_settings"><%= t('operator_settings_save') %></button>
+        <% end %>
+      </div>
+    </div>
+
+    <div class="card bg-base-100 border border-base-300" data-operator-deployment>
+      <div class="card-body p-5 gap-4">
+        <h2 class="text-xl font-bold"><%= t('operator_settings_deployment') %></h2>
+        <p class="text-sm text-base-content/70 max-w-3xl"><%= t('operator_settings_deployment_hint') %></p>
+
+        <dl class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 text-sm">
+          <div>
+            <dt class="text-base-content/70"><%= t('operator_settings_registration') %></dt>
+            <dd data-switch="registration">
+              <span class="badge badge-sm badge-outline <%= @registration_enabled ? 'badge-success' : 'badge-ghost' %>">
+                <%= @registration_enabled ? t('operator_settings_on') : t('operator_settings_off') %>
+              </span>
+              <span class="text-xs text-base-content/70 ml-1">REGISTRATION_ENABLED</span>
+            </dd>
+          </div>
+          <div>
+            <dt class="text-base-content/70"><%= t('operator_settings_billing') %></dt>
+            <dd data-switch="billing">
+              <span class="badge badge-sm badge-outline <%= @billing_enabled ? 'badge-success' : 'badge-ghost' %>">
+                <%= @billing_enabled ? t('operator_settings_on') : t('operator_settings_off') %>
+              </span>
+              <span class="text-xs text-base-content/70 ml-1">BILLING_ENABLED</span>
+            </dd>
+          </div>
+          <div>
+            <dt class="text-base-content/70"><%= t('operator_settings_postmark') %></dt>
+            <dd data-switch="postmark">
+              <span class="badge badge-sm badge-outline <%= @postmark_configured ? 'badge-success' : 'badge-ghost' %>">
+                <%= @postmark_configured ? t('operator_settings_configured') : t('operator_settings_not_configured') %>
+              </span>
+            </dd>
+          </div>
+          <div>
+            <dt class="text-base-content/70"><%= t('operator_settings_timeserver') %></dt>
+            <dd class="break-all font-mono text-xs" data-timeserver><%= @timeserver_url.presence || t('operator_settings_not_configured') %></dd>
+          </div>
+          <div class="md:col-span-2">
+            <dt class="text-base-content/70"><%= t('operator_settings_certificate') %></dt>
+            <dd class="break-all font-mono text-xs" data-certificate-fingerprint><%= @certificate_fingerprint.presence || t('operator_settings_no_certificate') %></dd>
+          </div>
+        </dl>
+
+        <div>
+          <h3 class="font-semibold mb-2">
+            <%= t('operator_settings_stripe') %>
+            <% if @stripe_mode %>
+              <span class="badge badge-sm badge-outline whitespace-nowrap ml-1" data-stripe-mode="<%= @stripe_mode %>"><%= @stripe_mode %></span>
+            <% end %>
+          </h3>
+          <div class="overflow-x-auto">
+            <table class="table w-full">
+              <thead class="bg-base-200">
+                <tr class="text-neutral uppercase">
+                  <th><%= t('operator_settings_stripe_key') %></th>
+                  <th><%= t('operator_settings_stripe_present') %></th>
+                  <th><%= t('operator_settings_stripe_shape') %></th>
+                </tr>
+              </thead>
+              <tbody>
+                <% @stripe_status.each do |name, state| %>
+                  <tr data-stripe-key="<%= name %>">
+                    <td class="font-mono text-xs"><%= name %></td>
+                    <td><%= state[:present] ? t('operator_yes') : t('operator_no') %></td>
+                    <td>
+                      <% if !state[:present] %>
+                        <span class="text-base-content/70">—</span>
+                      <% elsif state[:shape_ok] %>
+                        <span class="badge badge-sm badge-success badge-outline"><%= t('operator_settings_shape_ok', prefix: state[:prefix]) %></span>
+                      <% else %>
+                        <span class="badge badge-sm badge-error badge-outline"><%= t('operator_settings_shape_wrong', prefix: state[:prefix]) %></span>
+                      <% end %>
+                    </td>
+                  </tr>
+                <% end %>
+              </tbody>
+            </table>
+          </div>
+          <p class="text-xs text-base-content/70 mt-2"><%= t('operator_settings_no_secrets') %></p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

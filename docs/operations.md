@@ -469,6 +469,8 @@ here when they land. Turnstile and Google OAuth landed with Session 5
 | `TURNSTILE_SECRET_KEY` | **Required when `REGISTRATION_ENABLED=true`** (Session 5) | `lib/turnstile.rb`, `lib/registration_config_guard.rb` | The server-side key used to ask Cloudflare whether a sign-up token is genuine. **Boot refuses to start** in production when sign-up is on and this is unset; at runtime a blank key fails every email sign-up closed (*Please complete the verification*). Never bypassed by any environment setting. |
 | `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` | Optional (Session 5) | `config/initializers/devise.rb`, `lib/registrations.rb`, `lib/registration_config_guard.rb` | The Google OAuth app behind **Continue with Google**. With either unset the button is hidden on the sign-in and sign-up pages and a warning is reported at boot; email sign-up works regardless. Until the Google app is published it runs in Testing mode and only its listed test users can use the button (launch gate 4b). |
 | `POSTMARK_STREAM_PAID`, `POSTMARK_STREAM_FREE` | Optional (Session 5) | `lib/action_mailer_configs_interceptor.rb` (Phase D) | Postmark message-stream ids. When both are set, platform mail for free accounts goes out on the free stream and everything else (paid, internal, operator alerts) on the paid stream, so a spammy free tier cannot hurt paying customers' deliverability. Unset = no stream header, one shared stream. Accounts with their own pinned SMTP server never get the header. |
+| `POSTMARK_WEBHOOK_USERNAME`, `POSTMARK_WEBHOOK_PASSWORD` | Required for delivery webhooks | `lib/postmark_webhooks.rb` | Choose credentials for the webhook URL. These are separate from the SMTP server token. If either is blank, the endpoint returns 503 and records nothing. Wrong or missing credentials return 401. |
+| `POSTMARK_WEBHOOK_IPS` | Optional | `lib/postmark_webhooks.rb` | Comma-separated IP addresses or CIDR ranges allowed to call the webhook. Blank uses `3.134.147.250,50.31.156.6,50.31.156.77,18.217.206.57`. An address outside the list returns 403 even with correct credentials. |
 | `CERTS` | **Gone (Session 4)** | — | The app no longer reads this variable anywhere; a leftover value on the service is inert. Signing identities come from the platform certificate on the operator account (section 8). A code gate fails the build if anything reads `CERTS` again. |
 | `MULTITENANT` | **Must stay unset** | `lib/docuseal.rb`, `config/puma.rb` | Setting it changes tenancy behaviour and stops the embedded Redis/Sidekiq from starting. |
 | `DEMO` | Must stay unset | `lib/docuseal.rb`, mail interceptor | Demo mode captures all mail and adds a demo queue. |
@@ -508,9 +510,78 @@ is an `abuse_flags` row of kind `document_report` on the sending account,
 with the reason, details, reporter IP and browser, and the submission it
 points at. The alert goes to the `operator_alert_email` operator config when
 the Session 8 console has set one, else to the support mailbox
-(`Docuseal::SUPPORT_EMAIL`). Session 8's abuse queue lists these rows next to
-the fair-use, velocity, complaint and bounce flags; until then,
-`AbuseFlag.open.order(:created_at)` in a console is the queue.
+(`Docuseal::SUPPORT_EMAIL`), which is set on the console's **Platform
+settings** tab. The console's **Abuse queue** tab
+(`/operator/abuse`) is where these rows are worked: it lists every flag on
+the platform next to the fair-use, velocity, complaint and bounce ones,
+filters by kind and by account, and carries a badge in the console navigation
+with the number still open.
+
+Two buttons, and they are deliberately separate:
+
+- **Resolve** closes the flag with your reason written onto the row. It
+  changes nothing else — an account whose sending is paused stays paused.
+- **Resume sending** lifts the automatic pause. That also resolves that
+  account's open spam-complaint and bounce-rate flags, because those two
+  flags ARE the pause; every other flag stays open for review.
+
+A reported document shows the template, how many people were asked to sign,
+the reason and free text the reporter gave, and the signing link **as text
+rather than a link** — opening it would put you inside a signer's session.
+
+### 3.3 Postmark delivery webhooks
+
+1. Set `POSTMARK_WEBHOOK_USERNAME` and `POSTMARK_WEBHOOK_PASSWORD` on the
+   EsignCenter service, using a new username and a long random password.
+   Restart the service so it reads them. These are webhook credentials,
+   separate from your Postmark SMTP token.
+2. In Postmark, open **Servers → EsignCenter → Webhooks** (choose each
+   outbound message stream if using separate free and paid streams).
+   Add URL `https://<user>:<pass>@esigncenter.com/webhooks/postmark`, replacing
+   the placeholders with those credentials. URL-encode any special characters.
+3. Tick **Delivery**, **Bounce**, **Spam complaint** and **Open**; leave
+   **Subscription change** on. Do not enable Postmark click tracking: the app
+   already records clicks through its own signature-request links. If a Click
+   webhook is already enabled, its events are kept only in EmailEvent and do
+   not create another signer timeline entry. Enable open tracking on the
+   stream/messages if you want open events. Save and verify the webhook.
+   A verification payload without one of our message UUIDs is acknowledged
+   and ignored; it does not create a customer event.
+4. Send a test signature request and open its event log from a paid or
+   internal account. Delivery is recorded behind the scenes; the existing
+   sent entry remains the visible proof of sending. Permanent signer bounces,
+   complaints and opens appear in the signer timeline; clicks come from the
+   app's own tracking links. Temporary bounces do not show a signer failure.
+
+The optional `POSTMARK_WEBHOOK_IPS` overrides the built-in source IP list
+shown in the manifest. Keep the default unless Postmark announces a change
+or you are testing with a specific trusted range. Do not allow every IP.
+See [Postmark's webhook setup and authentication guide](https://postmarkapp.com/developer/webhooks/webhooks-overview).
+
+The app joins callbacks to the original send using the message UUID in
+Postmark metadata. Delivery records success, hard or inactive bounces record
+permanent failure, other bounces record temporary failure, and opens/clicks
+record engagement. Unsubscribe and manual deactivation are recorded as
+suppression, even when inactive; they do not contribute to the hard-bounce
+pause. A CC/BCC event is retained for abuse protection but cannot appear as
+the signer's event. Unmatched recipients are marked as a recipient mismatch
+and are never projected into the signer timeline. Subscription changes record
+whether Postmark suppressed sending to that address. A callback with no matching send is ignored, and
+repeated callbacks do not duplicate rows or alerts. Only selected fields are
+stored; bounce details are limited to 500 characters, and raw message content
+is never saved from the webhook.
+
+Events are recorded for every plan because abuse protection needs them.
+Only paid and internal accounts see tracking rows in the event-log modal,
+newly generated audit PDFs, API event arrays and account-export event counts;
+free accounts see an upgrade line in the modal. Existing signed PDFs keep
+their original bytes. The webhook commits the event, timeline and pause state
+together: a failed pause write returns 500 and leaves the event available to
+retry. Operator and customer notifications are attempted independently, in
+that order; a notification failure is reported without undoing the pause.
+A complaint pauses customer sending, as does a high hard-bounce rate. Internal accounts are exempt. See
+[Sending pause](quotas-and-limits.md#3-the-sending-pause-abuse-policy)
+for how to investigate and resume sending.
 
 ## 4. Health check and scheduler heartbeat
 
@@ -564,10 +635,36 @@ deploy).
 
 All four are safe to re-run: each decides from the clock and its own dedupe
 counters, so a catch-up run after an outage sends what was missed once, not
-once per missed tick.
+once per missed tick. If the billing sweep first catches up after day 14, it
+sends the missed day-13 reminder alongside the suspension notice, once each.
+It also cancels invitations whose holder can no longer sign in because the
+login or account was closed, then hands the seat back through the normal
+Stripe release process. A failed hand-back stays pending for the next sweep.
 
-**No new environment variables.** Everything above is driven by rows and by
-`config/schedule.yml`; the Stripe manifest in section 3 is unchanged.
+The console's **Scheduler** tab (`/operator/scheduler`) is the same evidence
+on a page: every job in `config/schedule.yml` with its cron line, its queue,
+when it last started and finished, how long it took, whether it worked, the
+error it left if it did not, and when it next fires. Every business job has a
+**Run now** button — it queues the job in the background exactly as its
+scheduled run would (a reason is required and the run is written to the audit
+log). The heartbeat has no button: running it by hand would prove nothing.
+
+To check actual firing evidence in a shell instead, run `SchedulerStamps.all`
+in the Rails console. It returns the latest attempt for each business job:
+start time, finish time, duration in milliseconds, outcome (`ok` or `error`),
+and a short error when one escaped the job. `nil` means no stamp is present. An attempt with a
+start but no finish is still running, or its worker stopped before finishing.
+An `ok` stamp means the job returned normally; check Sentry and operator
+alerts for individual account failures that a sweep handled and continued past.
+
+Business-job stamps are JSON in Redis under
+`esigncenter:scheduler:last_run:<job_name>`. The heartbeat keeps its existing
+`esigncenter:scheduler:last_tick_at` key and is presented in the same shape.
+A fresh heartbeat alone does not prove the business jobs ran. If a stamp is
+old, inspect the job queue and its errors, then run the relevant job manually
+and check the stamp again. Redis loss can erase this evidence. `/up` remains
+unchanged and anonymous; these business-job details are read from the console.
+No additional scheduler environment variables are needed.
 
 ### 4.2 Operator commands for account deletion
 
@@ -996,3 +1093,91 @@ they did not exist. What the operator sees there:
   instead of the platform certificate; it changes nothing for any customer.
 - **Timestamp server** — likewise the operator account's own pin. Customer
   accounts always use `TIMESERVER_URL`; a row saved here does not reach them.
+
+## 9. Support impersonation — looking at a customer's account as one of their people
+
+Sometimes the only way to help is to see what the customer sees. The operator
+console can open a **support session**: you look at their account, signed in as
+one of their people, and you can change almost nothing while you are there.
+
+### 9.1 How to start one
+
+1. Open **Operator → Accounts** and pick the account.
+2. Scroll to **Users** and press **View as this user** on the row you need.
+3. The dialog asks for three things:
+   - **A reason.** At least ten characters, and write it as a sentence — the
+     customer reads this word for word, on their own settings page and in the
+     email we send them.
+   - **The access level.** *Read-only* (the default: look at everything, change
+     nothing) or *Allow document edits* — for fixing a template or a stuck
+     document at the customer's request. Even in edit mode, billing, users,
+     credentials and signing stay locked.
+   - **Your 6-digit authenticator code.** This proves it is really you, right
+     now, rather than a laptop somebody left open. Each code works once; if you
+     have just used one to sign in, wait for the next one.
+4. You land on the customer's dashboard. A yellow bar across the top of every
+   page says whose account you are in, as whom, in which mode, for how long, and
+   why — with an **End session** button on it.
+
+### 9.2 What is locked, always
+
+Even in "Allow document edits" mode, a support session can never:
+
+- **Touch money** — no Checkout, no Customer Portal, no plan change.
+- **Delete the account**, ask for its deletion, or call one off.
+- **Touch credentials** — no password change, no email change, no two-factor
+  enrolment or removal, no API-token rotation. The pages that would *print* a
+  credential are closed outright: the API-token reveal, the MCP tokens page, the
+  webhook signing secret and the SMTP settings. The API page itself still opens,
+  with the token masked, so you can see that an integration exists.
+- **Touch people** — no adding, removing, promoting or parking anybody, and no
+  invitations or seat changes.
+- **Change settings** — account preferences, notifications, personalization,
+  webhooks, e-signature settings and the test-mode toggle are all shut.
+- **Sign anything.** Completing a form, declining, delegating, in-person signing
+  and self-signing are refused, as the person and as anybody else.
+
+A refused action is never silent: the page says *"This action is locked"*, a 403
+goes back, nothing changes, and a line lands in the audit log.
+
+In read-only mode the rule is simpler still — **nothing** that writes works,
+document edits included.
+
+### 9.3 The one-hour limit, and ending a session
+
+The authenticator code proves you are you at the moment you start. It cannot be
+re-asked on every page, so a session simply ends after **60 minutes**: the next
+page you open puts you back on the account's console page with a note saying it
+timed out. You can also end it whenever you like with **End session** on the
+banner, and signing out ends it too. Either way, the exact same audit line is
+written.
+
+Test mode and support sessions never overlap. Starting a support session drops
+test mode first, and test mode cannot be turned on inside a support session.
+
+### 9.4 What the customer sees
+
+- **An email, straight away**, to every administrator of the account: who was
+  viewed as, when, the access level, and the reason you typed — with a line
+  telling them to reply if they did not ask us for help. Our own internal
+  accounts are the only exception: nobody is emailed, and the history is still
+  recorded.
+- **A "Support access" card** on their **Settings → Account** page, listing the
+  last ten sessions with the date, who was viewed as, the access level, how long
+  it lasted and the reason.
+
+### 9.5 Reading the audit log
+
+**Operator → Audit log** (or the History card on the account page) shows three
+kinds of row, filterable by action:
+
+- `impersonation.start` — who opened it, on which account, as whom, why, from
+  which IP, and the access level in the details.
+- `impersonation.refused` — one row per locked door somebody walked into, with
+  the path and the controller action. A handful is normal (a click on a settings
+  page); a long run of them is worth asking about.
+- `impersonation.end` — how it ended (`operator`, `sign_out` or `timeout`), how
+  many seconds it lasted, and how many refusals it collected.
+
+Every row is written inside the transaction that made the change, so there is no
+support session anywhere in this application without these rows behind it.

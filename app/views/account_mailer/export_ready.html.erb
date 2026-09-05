@@ -1,0 +1,7 @@
+<p>Hello,</p>
+<p>The export of your EsignCenter account, <strong><%= @current_account.name %></strong>, is ready to download.</p>
+<p>It is a single zip file (<%= @size %>) holding your uploaded documents, every completed signed document, the audit trails, your templates, a CSV of all your submissions, and a manifest listing every file with its checksum.</p>
+<p><strong><%= link_to 'Download your export', @export_url %></strong></p>
+<p>You will be asked to sign in first — the file is never linked to directly. The download stays available for <%= @days %> days, until <strong><%= @expires_on %></strong>, and is then deleted automatically. You can always ask for a new one.</p>
+<p>Questions? Write to <%= mail_to @support_email %>.</p>
+<p>Thanks,<br>EsignCenter</p>

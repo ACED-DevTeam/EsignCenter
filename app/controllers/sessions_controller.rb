@@ -17,6 +17,19 @@ class SessionsController < Devise::SessionsController
     super
   end
 
+  # Signing out ends a support session too, and ends it PROPERLY: the audit row
+  # that says how long an operator was inside a customer's account is written
+  # here, before Warden clears the session, because afterwards there is nothing
+  # left to write it from. Belt and braces with the sign-out itself — Warden
+  # resets the session, so the impersonation cookie cannot survive either way.
+  def destroy
+    state = support_impersonation
+
+    end_support_impersonation!(state, ended_by: 'sign_out') if state.present? && true_user.present?
+
+    super
+  end
+
   private
 
   def after_sign_in_path_for(...)

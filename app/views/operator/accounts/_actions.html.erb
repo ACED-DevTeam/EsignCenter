@@ -1,0 +1,53 @@
+<%# The action bar. Only the actions that could actually work are drawn: an
+    account that is not suspended has no "lift suspension", and a purge claim
+    that is minutes old has no "release" — the release un-freezes an account
+    whose rows may be half-deleted, so it is never offered as a first move. %>
+<% stale_claim = @account.purge_started_at.present? && !@account.purged? &&
+                 @account.purge_started_at <= Operator::AccountsController::STALE_CLAIM_AFTER.ago %>
+<div class="card bg-base-100 border border-base-300" data-operator-actions>
+  <div class="card-body p-5 gap-3">
+    <h2 class="text-xl font-bold"><%= t('operator_actions_title') %></h2>
+    <% unless @account.customer? %>
+      <p class="text-sm text-base-content/70" data-operator-actions-refused>
+        <%= t('operator_refused_platform_account', kind: @account.account_kind) %>
+      </p>
+    <% end %>
+    <div class="flex flex-wrap gap-2 items-center">
+      <% if @account.customer? %>
+        <% if @account.suspended_at.blank? %>
+          <%= render 'operator/accounts/action_modal', key: 'suspend', url: suspend_operator_account_path(@account),
+                                                       label: t('operator_action_suspend'), hint: t('operator_action_suspend_hint'),
+                                                       button_class: 'btn-outline btn-error', confirm_class: 'btn-error' %>
+        <% elsif @account.suspension_reason.to_s == 'operator' %>
+          <%= render 'operator/accounts/action_modal', key: 'lift_suspension', url: lift_suspension_operator_account_path(@account),
+                                                       label: t('operator_action_lift_suspension'), hint: t('operator_action_lift_suspension_hint') %>
+        <% end %>
+        <% if @pause_at.present? %>
+          <%= render 'operator/accounts/action_modal', key: 'resume_sending', url: resume_sending_operator_account_path(@account),
+                                                       label: t('operator_action_resume_sending'), hint: t('operator_action_resume_sending_hint') %>
+        <% end %>
+        <% if @account.pending_deletion? %>
+          <%= render 'operator/accounts/action_modal', key: 'cancel_deletion', url: cancel_deletion_operator_account_path(@account),
+                                                       label: t('operator_action_cancel_deletion'), hint: t('operator_action_cancel_deletion_hint') %>
+        <% end %>
+        <% unless @account.purged? %>
+          <%= render 'operator/accounts/action_modal', key: 'purge', url: purge_operator_account_path(@account),
+                                                       label: t('operator_action_purge'), hint: t('operator_action_purge_hint'),
+                                                       extra_field: 'confirm_name',
+                                                       button_class: 'btn-outline btn-error', confirm_class: 'btn-error' %>
+        <% end %>
+      <% end %>
+      <% if stale_claim %>
+        <%= render 'operator/accounts/action_modal', key: 'release_purge_claim', url: release_purge_claim_operator_account_path(@account),
+                                                     label: t('operator_action_release_claim'), hint: t('operator_action_release_claim_hint'),
+                                                     button_class: 'btn-outline btn-warning', confirm_class: 'btn-warning' %>
+      <% end %>
+      <%= link_to t('operator_action_orphan_check'), orphans_operator_account_path(@account), class: 'btn btn-sm btn-ghost', data: { operator_action: 'orphans' } %>
+    </div>
+    <% if @account.suspended_at? && @account.suspension_reason.to_s != 'operator' %>
+      <p class="text-sm text-base-content/70" data-suspension-not-liftable>
+        <%= t("operator_refused_suspension_#{@account.suspension_reason}", default: t('operator_refused_suspension_other')) %>
+      </p>
+    <% end %>
+  </div>
+</div>

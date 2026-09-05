@@ -4,17 +4,18 @@
 #
 # Table name: email_events
 #
-#  id             :bigint           not null, primary key
-#  data           :text             not null
-#  email          :string           not null
-#  emailable_type :string           not null
-#  event_datetime :datetime         not null
-#  event_type     :string           not null
-#  tag            :string           not null
-#  created_at     :datetime         not null
-#  account_id     :bigint           not null
-#  emailable_id   :bigint           not null
-#  message_id     :string           not null
+#  id                 :bigint           not null, primary key
+#  data               :text             not null
+#  email              :string           not null
+#  emailable_type     :string           not null
+#  event_datetime     :datetime         not null
+#  event_type         :string           not null
+#  provider_event_key :string
+#  tag                :string           not null
+#  created_at         :datetime         not null
+#  account_id         :bigint           not null
+#  emailable_id       :bigint           not null
+#  message_id         :string           not null
 #
 # Indexes
 #
@@ -23,6 +24,7 @@
 #  index_email_events_on_email_event_types              (email) WHERE ((event_type)::text = ANY (ARRAY[('bounce'::character varying)::text, ('soft_bounce'::character varying)::text, ('permanent_bounce'::character varying)::text, ('complaint'::character varying)::text, ('soft_complaint'::character varying)::text]))
 #  index_email_events_on_emailable                      (emailable_type,emailable_id)
 #  index_email_events_on_message_id                     (message_id)
+#  index_email_events_on_provider_event_key             (provider_event_key) UNIQUE WHERE (provider_event_key IS NOT NULL)
 #
 # Foreign Keys
 #

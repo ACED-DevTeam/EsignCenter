@@ -4,16 +4,19 @@
 #
 # Table name: account_limit_overrides
 #
-#  id                    :bigint           not null, primary key
-#  completions_per_month :integer
-#  in_flight             :integer
-#  note                  :string
-#  seats                 :integer
-#  sends_per_month       :integer
-#  storage_bytes         :bigint
-#  created_at            :datetime         not null
-#  updated_at            :datetime         not null
-#  account_id            :bigint           not null
+#  id                     :bigint           not null, primary key
+#  completions_per_month  :integer
+#  fair_use_per_seat      :integer
+#  in_flight              :integer
+#  in_flight_per_seat     :integer
+#  note                   :string
+#  seats                  :integer
+#  sends_per_day_per_seat :integer
+#  sends_per_month        :integer
+#  storage_bytes          :bigint
+#  created_at             :datetime         not null
+#  updated_at             :datetime         not null
+#  account_id             :bigint           not null
 #
 # Indexes
 #
@@ -28,10 +31,16 @@
 # Written by `rake operator:limits` today and by the Session 8 console later;
 # no HTTP path writes it.
 class AccountLimitOverride < ApplicationRecord
-  FIELDS = %w[completions_per_month sends_per_month in_flight seats storage_bytes].freeze
+  # Every number the operator can move, in the order the console shows them:
+  # the five free-plan CAPS first, then the three paid-plan per-seat WARN
+  # thresholds (Session 8). A field added here appears on the console form and
+  # in `rake operator:limits` with no further wiring; Quotas.limits_for merges
+  # the whole list, so a present column always wins over the plan default.
+  CAP_FIELDS = %w[completions_per_month sends_per_month in_flight seats storage_bytes].freeze
+  PAID_SIGNAL_FIELDS = %w[fair_use_per_seat sends_per_day_per_seat in_flight_per_seat].freeze
+  FIELDS = (CAP_FIELDS + PAID_SIGNAL_FIELDS).freeze
 
   belongs_to :account
 
-  validates :completions_per_month, :sends_per_month, :in_flight, :seats, :storage_bytes,
-            numericality: { only_integer: true, greater_than_or_equal_to: 0 }, allow_nil: true
+  validates(*FIELDS.map(&:to_sym), numericality: { only_integer: true, greater_than_or_equal_to: 0 }, allow_nil: true)
 end

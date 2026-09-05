@@ -1048,6 +1048,56 @@ RSpec.describe 'Quotas', type: :request do # rubocop:disable RSpec/MultipleDescr
       expect(AbuseFlag.where(account: paid_account, kind: 'fair_use_review').count).to eq(1)
     end
 
+    # Session 8: the three PAID warn thresholds are per-account overridable
+    # too. They are not caps — nothing they touch ever refuses a creation
+    # (D42) — but until now an operator could only move them by editing a
+    # constant and deploying, so a customer with one seat and a genuine
+    # mail-merge season produced a flag a night that nobody could turn off.
+    # Absent column → the constant; present column → the operator's number.
+    it 'reads the paid warn thresholds from the constants when no override is set' do
+      limits = Quotas.limits_for(paid_account)
+
+      expect(limits.fair_use_per_seat).to eq(Quotas::Limits::PAID_COMPLETIONS_REVIEW_PER_SEAT)
+      expect(limits.sends_per_day_per_seat).to eq(Quotas::Limits::PAID_SENDS_PER_DAY_PER_SEAT)
+      expect(limits.in_flight_per_seat).to eq(Quotas::Limits::PAID_IN_FLIGHT_PER_SEAT)
+
+      # A free account has no paid thresholds at all, and an internal one has
+      # nothing whatsoever.
+      expect(Quotas.limits_for(free_account).fair_use_per_seat).to be_nil
+      expect(Quotas.limits_for(internal_account).to_h.values).to all(be_nil)
+    end
+
+    it 'raises the fair-use, velocity and open-document flags at an operator override instead', sidekiq: :inline do
+      AccountLimitOverride.create!(account: paid_account, fair_use_per_seat: 1,
+                                   sends_per_day_per_seat: 1, in_flight_per_seat: 1)
+
+      limits = Quotas.limits_for(paid_account.reload)
+
+      expect(limits.fair_use_per_seat).to eq(1)
+      expect(limits.sends_per_day_per_seat).to eq(1)
+      expect(limits.in_flight_per_seat).to eq(1)
+
+      template = text_template_for(paid_account, attachment_count: 0,
+                                                 preferences: { 'completed_notification_email_enabled' => false,
+                                                                'documents_copy_email_enabled' => false })
+      template.update!(fields: [{ 'uuid' => SecureRandom.uuid, 'submitter_uuid' => template.submitters.first['uuid'],
+                                  'name' => 'Name', 'type' => 'text', 'required' => true, 'areas' => [] }])
+
+      # One real completion is now past a fair-use level of 1 × 1 seat, and
+      # the two open documents left behind are past a velocity and an
+      # open-document level of 1 each.
+      complete_one!(paid_account, template:)
+      send_one(paid_account, template:)
+      send_one(paid_account, template:)
+
+      expect(Quotas.completions_this_month(paid_account)).to eq(1)
+      expect(Quotas.sends_today(paid_account)).to eq(3)
+      expect(Quotas.in_flight(paid_account)).to eq(2)
+      expect(AbuseFlag.where(account: paid_account, kind: 'fair_use_review').count).to eq(1)
+      expect(AbuseFlag.where(account: paid_account, kind: 'send_velocity').count).to eq(1)
+      expect(AbuseFlag.where(account: paid_account, kind: 'in_flight').count).to eq(1)
+    end
+
     it 'flags a 1-seat paid account once a day past 50 open documents and 200 sends, on the link and resubmit paths',
        sidekiq: :inline do
       template = text_template_for(paid_account, shared_link: true, attachment_count: 0,

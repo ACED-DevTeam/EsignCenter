@@ -1,0 +1,92 @@
+<%# Plan and billing, read-only. The manual grant and revoke live in the
+    Limits & comp card below; nothing here writes anything.
+    Stripe ids link into the dashboard in the mode this deployment's SECRET
+    KEY is in — the key itself is never rendered, only which side of Stripe it
+    points at. No configured mode means no link rather than a wrong one. %>
+<div class="card bg-base-100 border border-base-300" data-operator-billing>
+  <div class="card-body p-5 gap-3">
+    <h2 class="text-xl font-bold"><%= t('operator_billing_title') %></h2>
+    <%= render 'operator/accounts/plan_badge', account: @account %>
+    <% if @subscription.nil? %>
+      <p class="text-sm text-base-content/70" data-no-subscription><%= t('operator_billing_no_subscription') %></p>
+    <% else %>
+      <dl class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-1 text-sm">
+        <div>
+          <dt class="text-base-content/70"><%= t('operator_billing_access_state') %></dt>
+          <dd data-access-state-value><%= @subscription.access_state %></dd>
+        </div>
+        <div>
+          <dt class="text-base-content/70"><%= t('operator_billing_stripe_status') %></dt>
+          <dd><%= @subscription.stripe_status.presence || '—' %></dd>
+        </div>
+        <div>
+          <dt class="text-base-content/70"><%= t('operator_billing_row_status') %></dt>
+          <dd><%= @subscription.status.presence || '—' %></dd>
+        </div>
+        <div>
+          <dt class="text-base-content/70"><%= t('operator_billing_quantity') %></dt>
+          <dd class="tabular-nums"><%= @subscription.quantity %></dd>
+        </div>
+        <div>
+          <dt class="text-base-content/70"><%= t('operator_billing_period') %></dt>
+          <dd>
+            <%= @subscription.current_period_start ? l(@subscription.current_period_start.utc.to_date, format: :long) : '—' %>
+            &ndash;
+            <%= @subscription.current_period_end ? l(@subscription.current_period_end.utc.to_date, format: :long) : '—' %>
+          </dd>
+        </div>
+        <div>
+          <dt class="text-base-content/70"><%= t('operator_billing_trial') %></dt>
+          <dd><%= @subscription.trial_end ? l(@subscription.trial_end.utc.to_date, format: :long) : '—' %></dd>
+        </div>
+        <div>
+          <dt class="text-base-content/70"><%= t('operator_billing_cancel_at_period_end') %></dt>
+          <dd><%= @subscription.cancel_at_period_end ? t('operator_yes') : t('operator_no') %></dd>
+        </div>
+        <div>
+          <dt class="text-base-content/70"><%= t('operator_billing_ended_at') %></dt>
+          <dd><%= @subscription.ended_at ? l(@subscription.ended_at.utc, format: :short) : '—' %></dd>
+        </div>
+        <%# Which of the customer's own billing doors would open right now. The
+            same three questions BillingSettingsController asks: the switch, an
+            account that bills for itself, and no deletion pending — plus, for
+            the portal, a Stripe customer to send them to. %>
+        <div>
+          <dt class="text-base-content/70"><%= t('operator_billing_checkout_door') %></dt>
+          <dd data-checkout-door><%= @checkout_available ? t('operator_billing_door_open') : t('operator_billing_door_closed') %></dd>
+        </div>
+        <div>
+          <dt class="text-base-content/70"><%= t('operator_billing_portal_door') %></dt>
+          <dd data-portal-door><%= @portal_available ? t('operator_billing_door_open') : t('operator_billing_door_closed') %></dd>
+        </div>
+        <div>
+          <dt class="text-base-content/70"><%= t('operator_billing_comp_expires') %></dt>
+          <dd data-comp-expires-at><%= @subscription.comp_expires_at ? l(@subscription.comp_expires_at.utc, format: :short) : '—' %></dd>
+        </div>
+      </dl>
+      <% if @subscription.refund_owed_subscription_id.present? %>
+        <p class="text-sm text-error" data-refund-owed>
+          <%= t('operator_billing_refund_owed', id: @subscription.refund_owed_subscription_id) %>
+        </p>
+      <% end %>
+      <div class="flex flex-wrap gap-x-6 gap-y-1 text-sm">
+        <% { customer: @subscription.stripe_customer_id, subscription: @subscription.stripe_subscription_id,
+             price: @subscription.stripe_price_id, product: @subscription.stripe_product_id }.each do |object, id| %>
+          <% next if id.blank? %>
+          <% url = OperatorConsole.stripe_dashboard_url(object, id) %>
+          <span>
+            <span class="text-base-content/70"><%= t("operator_billing_stripe_#{object}") %>:</span>
+            <% if url %>
+              <%= link_to id, url, target: '_blank', rel: 'noopener', class: 'link', data: { stripe_link: object } %>
+            <% else %>
+              <span class="font-mono" data-stripe-id="<%= object %>"><%= id %></span>
+            <% end %>
+          </span>
+        <% end %>
+      </div>
+      <p class="text-sm text-base-content/70" data-checkout-availability>
+        <%= Plans::Manual.checkout_in_flight?(@subscription) ? t('operator_billing_checkout_in_flight') : t('operator_billing_checkout_idle') %>
+      </p>
+    <% end %>
+  </div>
+</div>

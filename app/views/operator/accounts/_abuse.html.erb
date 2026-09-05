@@ -1,0 +1,48 @@
+<%# What the platform has flagged about this account and whether its sending
+    is stopped. Resolving a flag is the abuse queue's job, never this page's:
+    "Resume sending" here lifts the pause and the pause's own flags with it
+    (SendingPause.resume!), and everything else stays open for review in the
+    queue, which is linked at the foot of this card. %>
+<div class="card bg-base-100 border border-base-300" data-operator-abuse>
+  <div class="card-body p-5 gap-3">
+    <h2 class="text-xl font-bold"><%= t('operator_abuse_title') %></h2>
+    <p class="text-sm" data-sending-pause-state>
+      <% if @pause_at.present? %>
+        <span class="badge badge-warning badge-outline whitespace-nowrap mr-1"><%= t('operator_abuse_paused') %></span>
+        <%= t('operator_abuse_paused_since', date: l(@pause_at.utc, format: :short),
+                                             reason: t("sending_pause_reason_#{@pause_reason}", default: @pause_reason.to_s)) %>
+      <% else %>
+        <%= t('operator_abuse_not_paused') %>
+      <% end %>
+    </p>
+    <% if @flags.empty? %>
+      <p class="text-sm text-base-content/70" data-no-abuse-flags><%= t('operator_abuse_no_flags') %></p>
+    <% else %>
+      <div class="overflow-x-auto">
+        <table class="table w-full">
+          <thead class="bg-base-200">
+            <tr class="text-neutral uppercase">
+              <th><%= t('operator_abuse_kind') %></th>
+              <th><%= t('operator_abuse_period') %></th>
+              <th><%= t('operator_abuse_details') %></th>
+              <th><%= t('operator_column_created') %></th>
+            </tr>
+          </thead>
+          <tbody>
+            <% @flags.each do |flag| %>
+              <tr data-operator-abuse-row="<%= flag.id %>">
+                <td><span class="badge badge-error badge-outline whitespace-nowrap"><%= flag.kind %></span></td>
+                <td class="whitespace-nowrap"><%= flag.period.presence || '—' %></td>
+                <td class="text-sm break-all"><%= flag.details.to_json %></td>
+                <td class="whitespace-nowrap text-sm"><%= l(flag.created_at.utc, format: :short) %></td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+    <% end %>
+    <p class="text-sm">
+      <%= link_to t('operator_abuse_queue_link'), operator_abuse_path, class: 'link' %>
+    </p>
+  </div>
+</div>

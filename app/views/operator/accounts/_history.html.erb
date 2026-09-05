@@ -1,0 +1,15 @@
+<%# The last twenty things an operator did to this account. The full log, with
+    filters and pagination, is the Audit log tab. %>
+<div class="card bg-base-100 border border-base-300" data-operator-history>
+  <div class="card-body p-5 gap-3">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <h2 class="text-xl font-bold"><%= t('operator_history_title') %></h2>
+      <%= link_to t('operator_history_full_log'), operator_events_path(account_id: @account.id), class: 'link text-sm' %>
+    </div>
+    <% if @events.empty? %>
+      <p class="text-sm text-base-content/70" data-no-operator-events><%= t('operator_history_none') %></p>
+    <% else %>
+      <%= render 'operator/events/table', events: @events %>
+    <% end %>
+  </div>
+</div>

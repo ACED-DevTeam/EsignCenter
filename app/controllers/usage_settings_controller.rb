@@ -29,6 +29,9 @@ class UsageSettingsController < ApplicationController
 
     return unless @plan == Plans::PAID
 
-    @fair_use = Quotas::Limits::PAID_COMPLETIONS_REVIEW_PER_SEAT * (@limits.seats || 1)
+    # Both from the quota engine, so an operator's per-account override of the
+    # fair-use level is the number the customer is shown too (review 1, M2).
+    @fair_use = Quotas.fair_use_threshold(@billing)
+    @fair_use_per_seat = Quotas.fair_use_per_seat(@billing)
   end
 end

@@ -2,8 +2,17 @@
 
 module SubmissionEvents
   TRACKING_PARAM_LENGTH = 6
+  TRACKING_TYPES = %w[bounce_email complaint_email open_email click_email].freeze
 
   module_function
+
+  # Shared by customer renderers, including signed PDFs and API event arrays.
+  # Recording remains unconditional: abuse protection needs every event.
+  def for_display(events, account:)
+    return events if Entitlements.allowed?(account, :delivery_tracking)
+
+    events.reject { |event| TRACKING_TYPES.include?(event.event_type) }
+  end
 
   def build_tracking_param(submitter, event_type = 'click_email')
     Base64.urlsafe_encode64(

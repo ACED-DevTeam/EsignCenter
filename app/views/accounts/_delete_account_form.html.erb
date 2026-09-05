@@ -18,11 +18,18 @@
     <li><%= t('account_deletion_bullet_email') %></li>
     <li><%= t('account_deletion_bullet_verify') %></li>
   </ul>
+  <%# "Export first" is a real door now (Session 8 phase D): one zip with
+      everything in it, built in the background. Read here rather than passed
+      in, so the card tells the truth wherever the modal is rendered from. %>
+  <% ready_export = Accounts::Exports.latest(current_account)&.then { |e| e if e.downloadable? } %>
   <div class="border rounded-xl p-3 space-y-1">
     <p class="font-semibold text-sm"><%= t('account_deletion_export_headline') %></p>
     <p class="text-sm"><%= t('account_deletion_export_hint', date: purge_date) %></p>
+    <% if ready_export %>
+      <p class="text-sm" data-account-export-ready><%= t('account_deletion_export_ready', date: Accounts::Deletion.format_date(ready_export.created_at)) %></p>
+    <% end %>
     <p class="text-sm">
-      <%= link_to t('account_deletion_export_link'), templates_path, class: 'link font-semibold' %>
+      <%= link_to t('account_deletion_export_button'), settings_account_export_path, class: 'link font-semibold' %>
     </p>
   </div>
   <%= form_for '', url: settings_account_path, method: :delete, html: { autocomplete: 'off', class: 'space-y-4' } do |f| %>

@@ -9,8 +9,7 @@
 # this file unmodified. The only thing here that says "paid" is the account
 # factory's :paid trait — Session 5 re-points that trait, not this file.
 #
-# delivery_tracking is a declared paid-only row whose enforcement lands with
-# the EmailEvent projection in Session 8; its assertion is owed there.
+# Delivery tracking is enforced by filtering the signer event log on the server.
 RSpec.describe 'Feature gating', type: :request do
   # Eager, so account setup (the paid stub row included) never lands inside a
   # `change(AccountConfig, :count)` block.
@@ -1234,6 +1233,52 @@ RSpec.describe 'Feature gating', type: :request do
 
       Entitlements::HIDDEN.each do |feature|
         expect(Ability.new(admin_for(internal_account)).can?(:use, feature)).to be(false), feature.to_s
+      end
+    end
+  end
+
+  describe 'Delivery tracking' do
+    let(:timeline_types) { %w[send_email bounce_email open_email complaint_email click_email] }
+
+    %i[free paid internal].each do |plan|
+      it "#{plan} filters API event arrays and export event counts at serialization" do
+        account = public_send("#{plan}_account")
+        submitter = sent_submitter_for(account)
+        timeline_types.each { |type| SubmissionEvent.create!(submitter:, event_type: type) }
+        expected = plan == :free ? ['send_email'] : timeline_types
+
+        signer_json = Submitters::SerializeForApi.call(submitter, with_events: true, with_documents: false,
+                                                                  with_values: false)
+        submission_json = Submissions::SerializeForApi.call(submitter.submission, with_documents: false,
+                                                                                  with_values: false)
+
+        expect(signer_json.fetch('submission_events').pluck('event_type')).to match_array(expected)
+        expect(submission_json.fetch('submission_events').pluck('event_type')).to match_array(expected)
+        expect(Accounts::ExportArchive.submission_json(submitter.submission).fetch('events').keys)
+          .to match_array(expected)
+      end
+
+      it "#{plan} sees only the timeline rows its plan allows" do
+        account = public_send("#{plan}_account")
+        submitter = sent_submitter_for(account)
+        create(:email_event, account:, emailable: submitter, event_type: 'send', email: submitter.email)
+        timeline_types.each do |type|
+          SubmissionEvent.create!(submitter:, event_type: type, data: { email: submitter.email })
+        end
+        act_as(account)
+
+        get "/submissions/#{submitter.submission_id}/events"
+
+        expect(response).to have_http_status(:ok)
+        expect(response.body).to include('Email sent')
+        tracking_labels = ['Email bounced', 'Email opened', 'Spam complaint', 'Email link clicked']
+        if plan == :free
+          expect(response.body).not_to include(*tracking_labels)
+          expect(response.body).to include(html_refusal, 'data-upgrade-cta')
+        else
+          expect(response.body).to include(*tracking_labels)
+          expect(response.body).not_to include(html_refusal, 'data-upgrade-cta')
+        end
       end
     end
   end

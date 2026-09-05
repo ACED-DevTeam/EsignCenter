@@ -1065,6 +1065,28 @@ RSpec.describe 'Seats and invitations', type: :request do
       expect(row.reload.quantity).to eq(1)
     end
 
+    %i[user account].each do |closed|
+      it "releases the seat when a collision holder's #{closed} is archived after invitation" do
+        row = stripe_paid!(account, seats: 2)
+        holder = create(:user)
+        invite_row = create(:account_invite, account:, email: holder.email, collision_user: holder)
+        expect(Accounts.seat_occupancy(account)).to eq(2)
+
+        (closed == :user ? holder : holder.account).update!(archived_at: Time.current)
+        stub_subscription_update(subscription_a, quantity: 1)
+        stub_subscription_reread(subscription_a, quantity: 1)
+
+        2.times { BillingLifecycle.expire_invites! }
+
+        expect(invite_row.reload.released_at).to be_present
+        expect(invite_row.revoked_at).to be_present
+        expect(Accounts.seat_occupancy(account)).to eq(1)
+        expect(row.reload.quantity).to eq(1)
+        expect(WebMock).to have_requested(:post, "https://api.stripe.com/v1/subscriptions/#{subscription_a}")
+          .with(body: hash_including('proration_behavior' => 'none')).once
+      end
+    end
+
     it 'sweeps a cancelled invitation whose hand-back failed at the time' do
       row = stripe_paid!(account, seats: 2)
       invite_row = create(:account_invite, account:)
@@ -1326,6 +1348,9 @@ RSpec.describe 'Seats and invitations', type: :request do
       anonymous!
       complete!(submission.submitters.sole)
 
+      email_event = create(:email_event, account: other_account, emailable: submission.submitters.sole,
+                                         event_type: 'send', email: submission.submitters.sole.email)
+
       completed = CompletedSubmitter.where(account_id: other_account.id)
       verified = VerifiedDocument.where(account_id: other_account.id)
 
@@ -1346,6 +1371,7 @@ RSpec.describe 'Seats and invitations', type: :request do
       expect(template.reload.account).to eq(account)
       expect(submission.reload.account).to eq(account)
       expect(submission.submitters.sole.reload.account_id).to eq(account.id)
+      expect(email_event.reload.account).to eq(account)
       expect(other_account.reload.archived_at).to be_present
       expect(invite_row.reload.accepted_at).to be_present
 

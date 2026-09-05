@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_04_060000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_05_110000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gin"
   enable_extension "pg_catalog.plpgsql"
@@ -70,6 +70,22 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_04_060000) do
     t.index ["account_id"], name: "index_account_counters_on_account_id"
   end
 
+  create_table "account_exports", force: :cascade do |t|
+    t.bigint "account_id", null: false
+    t.datetime "created_at", null: false
+    t.text "error"
+    t.datetime "expires_at"
+    t.datetime "finished_at"
+    t.bigint "requested_by_id"
+    t.datetime "started_at"
+    t.string "status", default: "pending", null: false
+    t.jsonb "summary", default: {}, null: false
+    t.datetime "updated_at", null: false
+    t.index ["account_id", "created_at"], name: "index_account_exports_on_account_id_and_created_at"
+    t.index ["account_id"], name: "index_account_exports_on_account_id"
+    t.index ["requested_by_id"], name: "index_account_exports_on_requested_by_id"
+  end
+
   create_table "account_invites", force: :cascade do |t|
     t.datetime "accepted_at"
     t.bigint "account_id", null: false
@@ -98,9 +114,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_04_060000) do
     t.bigint "account_id", null: false
     t.integer "completions_per_month"
     t.datetime "created_at", null: false
+    t.integer "fair_use_per_seat"
     t.integer "in_flight"
+    t.integer "in_flight_per_seat"
     t.string "note"
     t.integer "seats"
+    t.integer "sends_per_day_per_seat"
     t.integer "sends_per_month"
     t.bigint "storage_bytes"
     t.datetime "updated_at", null: false
@@ -132,6 +151,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_04_060000) do
     t.string "access_state", null: false
     t.bigint "account_id", null: false
     t.boolean "cancel_at_period_end", default: false, null: false
+    t.datetime "comp_expires_at"
     t.datetime "created_at", null: false
     t.datetime "current_period_end"
     t.datetime "current_period_start"
@@ -152,6 +172,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_04_060000) do
     t.datetime "trial_used_at"
     t.datetime "updated_at", null: false
     t.index ["account_id"], name: "index_account_subscriptions_on_account_id", unique: true
+    t.index ["comp_expires_at"], name: "index_account_subscriptions_on_comp_expires_at", where: "(comp_expires_at IS NOT NULL)"
     t.index ["stripe_customer_id"], name: "index_account_subscriptions_on_stripe_customer_id", unique: true, where: "(stripe_customer_id IS NOT NULL)"
     t.index ["stripe_subscription_id"], name: "index_account_subscriptions_on_stripe_subscription_id", unique: true, where: "(stripe_subscription_id IS NOT NULL)"
   end
@@ -330,12 +351,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_04_060000) do
     t.datetime "event_datetime", null: false
     t.string "event_type", null: false
     t.string "message_id", null: false
+    t.string "provider_event_key"
     t.string "tag", null: false
     t.index ["account_id", "event_datetime"], name: "index_email_events_on_account_id_and_event_datetime"
     t.index ["email"], name: "index_email_events_on_email"
     t.index ["email"], name: "index_email_events_on_email_event_types", where: "((event_type)::text = ANY (ARRAY[('bounce'::character varying)::text, ('soft_bounce'::character varying)::text, ('permanent_bounce'::character varying)::text, ('complaint'::character varying)::text, ('soft_complaint'::character varying)::text]))"
     t.index ["emailable_type", "emailable_id"], name: "index_email_events_on_emailable"
     t.index ["message_id"], name: "index_email_events_on_message_id"
+    t.index ["provider_event_key"], name: "index_email_events_on_provider_event_key", unique: true, where: "(provider_event_key IS NOT NULL)"
   end
 
   create_table "email_messages", force: :cascade do |t|
@@ -435,6 +458,24 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_04_060000) do
     t.string "uid", null: false
     t.datetime "updated_at", null: false
     t.index ["uid"], name: "index_oauth_applications_on_uid", unique: true
+  end
+
+  create_table "operator_events", force: :cascade do |t|
+    t.bigint "account_id"
+    t.string "action", null: false
+    t.datetime "created_at", null: false
+    t.jsonb "details", default: {}, null: false
+    t.string "ip"
+    t.bigint "operator_user_id"
+    t.text "reason"
+    t.bigint "subject_id"
+    t.string "subject_type"
+    t.index ["account_id", "created_at"], name: "index_operator_events_on_account_id_and_created_at"
+    t.index ["account_id"], name: "index_operator_events_on_account_id"
+    t.index ["action"], name: "index_operator_events_on_action"
+    t.index ["operator_user_id", "created_at"], name: "index_operator_events_on_operator_user_id_and_created_at"
+    t.index ["operator_user_id"], name: "index_operator_events_on_operator_user_id"
+    t.index ["subject_type", "subject_id"], name: "index_operator_events_on_subject_type_and_subject_id"
   end
 
   create_table "provisioning_events", force: :cascade do |t|
@@ -746,6 +787,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_04_060000) do
   add_foreign_key "account_accesses", "accounts"
   add_foreign_key "account_configs", "accounts"
   add_foreign_key "account_counters", "accounts"
+  add_foreign_key "account_exports", "accounts"
+  add_foreign_key "account_exports", "users", column: "requested_by_id", on_delete: :nullify
   add_foreign_key "account_invites", "accounts"
   add_foreign_key "account_invites", "users", column: "collision_user_id", on_delete: :nullify
   add_foreign_key "account_invites", "users", column: "invited_by_id", on_delete: :nullify
@@ -773,6 +816,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_04_060000) do
   add_foreign_key "oauth_access_grants", "users", column: "resource_owner_id"
   add_foreign_key "oauth_access_tokens", "oauth_applications", column: "application_id"
   add_foreign_key "oauth_access_tokens", "users", column: "resource_owner_id"
+  add_foreign_key "operator_events", "accounts"
+  add_foreign_key "operator_events", "users", column: "operator_user_id", on_delete: :nullify
   add_foreign_key "provisioning_events", "accounts"
   add_foreign_key "submission_events", "accounts"
   add_foreign_key "submission_events", "submissions"

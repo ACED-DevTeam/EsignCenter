@@ -419,6 +419,10 @@ RSpec.describe 'Account suspension', type: :request do # rubocop:disable RSpec/M
         'accounts#destroy' => 'requesting deletion is how a frozen account leaves',
         'accounts#cancel_deletion' => 'changing your mind about leaving must never be the door that is shut',
         'accounts#deletion_code' => 'the second way to confirm leaving; it emails the admin a code and writes nothing',
+        # Session 8 phase D. Taking your data with you is the other half of
+        # being allowed to leave: a frozen account can still ask for the zip
+        # of everything, and the download door is a GET.
+        'account_exports#create' => 'asking for an export of your own data is never the door that is shut',
         'profile#update_contact' => 'their own name and email are theirs',
         'profile#update_password' => 'their own password is theirs',
         'mfa_setup#create' => 'their own two-factor enrolment; a security door, not an account write',
@@ -441,7 +445,34 @@ RSpec.describe 'Account suspension', type: :request do # rubocop:disable RSpec/M
         'timestamp_server#create' => 'require_operator_access!',
         'esign_settings#create' => 'require_operator_access!',
         'esign_settings#update' => 'require_operator_access!',
-        'esign_settings#destroy' => 'require_operator_access!'
+        'esign_settings#destroy' => 'require_operator_access!',
+        # The Session 8 operator console. Every one of these acts on an account
+        # the OPERATOR picked, never on the acting user's own, and the whole
+        # namespace is behind Operator::BaseController's prepended gate — so a
+        # customer administrator, suspended or not, has no route to any of them
+        # (spec/golden/operator_console_spec.rb drives that for real).
+        'operator/accounts#suspend' => 'require_operator_access!',
+        'operator/accounts#lift_suspension' => 'require_operator_access!',
+        'operator/accounts#resume_sending' => 'require_operator_access!',
+        'operator/accounts#cancel_deletion' => 'require_operator_access!',
+        'operator/accounts#purge' => 'require_operator_access!',
+        'operator/accounts#release_purge_claim' => 'require_operator_access!',
+        'operator/accounts#comp_grant' => 'require_operator_access!',
+        'operator/accounts#comp_revoke' => 'require_operator_access!',
+        'operator/accounts#limits' => 'require_operator_access!',
+        # Session 8 phase B2: the abuse queue, the Stripe inbox and adoption,
+        # the scheduler and the platform settings. Same gate, same reasoning —
+        # none of them acts on the acting user's own account.
+        'operator/abuse_flags#resolve' => 'require_operator_access!',
+        'operator/abuse_flags#resume_sending' => 'require_operator_access!',
+        'operator/billing#retry_event' => 'require_operator_access!',
+        'operator/billing#adopt' => 'require_operator_access!',
+        'operator/scheduler#run_now' => 'require_operator_access!',
+        'operator/settings#update' => 'require_operator_access!',
+        # Session 8 phase C: starting and ending a support session. Both act on
+        # an account the OPERATOR picked and both are behind the same gate.
+        'operator/impersonations#create' => 'require_operator_access!',
+        'operator/impersonations#destroy' => 'require_operator_access!'
       }
     end
 
@@ -482,7 +513,7 @@ RSpec.describe 'Account suspension', type: :request do # rubocop:disable RSpec/M
       %w[start_form start_form_email_2fa_send submit_form submit_form_decline submit_form_delegate
          submit_form_invite submit_form_email_2fas send_submission_email verify reports
          sessions registrations passwords confirmations omniauth_callbacks invitations
-         stripe_webhooks invites mcp setup embed_template_builder
+         stripe_webhooks postmark_webhooks invites mcp setup embed_template_builder
          active_storage/direct_uploads active_storage/disk]
     end
 
@@ -919,6 +950,21 @@ RSpec.describe 'Billing dunning', type: :request do
     expect(account.suspension_reason).to eq('billing')
     expect(mails_titled(suspended_subject).size).to eq(1)
     expect(AccountStates.read_only?(account)).to be(true)
+  end
+
+  it 'catches up a missed final reminder at day 15 and suspends, each mail exactly once', sidekiq: :inline do
+    subscription.update!(access_state: 'past_due', past_due_since: 15.days.ago)
+
+    # Delivered mail is the proof (a method spy would count the inline
+    # delivery job's own call to the mailer as a second send).
+    2.times { BillingLifecycle.run_dunning! }
+
+    expect(account.reload.suspended_at).to be_present
+    expect(account.suspension_reason).to eq('billing')
+    expect(mails_titled(last_warning).size).to eq(1)
+    expect(mails_titled(suspended_subject).size).to eq(1)
+    expect(mails_titled(first_notice)).to be_empty
+    expect(mails_titled(reminder)).to be_empty
   end
 
   # Review 7, A4. The dedupe counter used to be spent BEFORE the mail was

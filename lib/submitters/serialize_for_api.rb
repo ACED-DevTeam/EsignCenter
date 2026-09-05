@@ -38,7 +38,7 @@ module Submitters
       end
 
       additional_attrs['preferences'] = submitter.preferences.except('default_values')
-      additional_attrs['submission_events'] = serialize_events(submitter.submission_events) if with_events
+      additional_attrs['submission_events'] = serialize_events(submitter) if with_events
 
       additional_attrs['role'] =
         (submitter.submission.template_submitters ||
@@ -52,8 +52,8 @@ module Submitters
       submitter.as_json(SERIALIZE_PARAMS).merge(additional_attrs)
     end
 
-    def serialize_events(events)
-      events.map do |event|
+    def serialize_events(record)
+      SubmissionEvents.for_display(record.submission_events, account: record.account).map do |event|
         event.as_json(only: %i[id submitter_id event_type event_timestamp])
              .merge('data' => event.data.slice('reason', 'firstname', 'lastname', 'method', 'country', 'idcode',
                                                'version', 'locale', 'disclosure_sha256'))

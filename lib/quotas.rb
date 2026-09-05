@@ -43,7 +43,16 @@ module Quotas
   # longer, so a late apply never hands anybody extra free allowance.
   DOWNGRADE_AT_KEY = 'downgrade_applied_at'
 
-  LimitSet = Struct.new(:completions_per_month, :sends_per_month, :in_flight, :seats, :storage_bytes)
+  # Every number an account's plan gives it, after the operator's overrides.
+  #
+  # The first five are CAPS: a free account is refused when it crosses one.
+  # The last three are the paid plan's PER-SEAT warn thresholds — fair use,
+  # daily send velocity, open documents — which never refuse anything (D42)
+  # and only decide when an AbuseFlag is raised for the operator to look at.
+  # They live in the same struct because they are overridden the same way and
+  # an operator asking "what are this account's numbers?" means all eight.
+  LimitSet = Struct.new(:completions_per_month, :sends_per_month, :in_flight, :seats, :storage_bytes,
+                        :fair_use_per_seat, :sends_per_day_per_seat, :in_flight_per_seat)
 
   class LimitReached < StandardError
     REASONS = %i[completions sends in_flight sending_paused suspended].freeze
@@ -115,7 +124,10 @@ module Quotas
     when Plans::PAID
       seats = billing.account_subscription.quantity
 
-      LimitSet.new(seats:, storage_bytes: Limits::PAID_STORAGE_BYTES_PER_SEAT * seats)
+      LimitSet.new(seats:, storage_bytes: Limits::PAID_STORAGE_BYTES_PER_SEAT * seats,
+                   fair_use_per_seat: Limits::PAID_COMPLETIONS_REVIEW_PER_SEAT,
+                   sends_per_day_per_seat: Limits::PAID_SENDS_PER_DAY_PER_SEAT,
+                   in_flight_per_seat: Limits::PAID_IN_FLIGHT_PER_SEAT)
     else
       LimitSet.new
     end
@@ -362,9 +374,24 @@ module Quotas
 
   # Fair use for a paid account: an email at 80% of 500 × seats, a review
   # flag at 100%. Neither blocks anything.
+  # The fair-use REVIEW level for a paid account: the per-seat number this
+  # account actually has (an operator's override, or the constant when there
+  # is none) times its seats.
+  #
+  # One answer, asked for by name, because three surfaces quote this number —
+  # the flag this engine raises, the warning email, and the customer's own
+  # usage page — and an operator who raises fair use for a heavy customer must
+  # not leave two of them still promising 500 (review 1, M2).
+  def fair_use_per_seat(account)
+    limits_for(account).fair_use_per_seat || Limits::PAID_COMPLETIONS_REVIEW_PER_SEAT
+  end
+
+  def fair_use_threshold(account)
+    fair_use_per_seat(account) * (limits_for(account).seats || 1)
+  end
+
   def paid_completion_signals(billing)
-    seats = limits_for(billing).seats || 1
-    threshold = Limits::PAID_COMPLETIONS_REVIEW_PER_SEAT * seats
+    threshold = fair_use_threshold(billing)
     used = completions_this_month(billing)
 
     if used >= (threshold * Limits::WARNING_FRACTION).ceil &&
@@ -385,14 +412,17 @@ module Quotas
 
     return unless Plans.key_for(billing) == Plans::PAID
 
-    seats = limits_for(billing).seats || 1
+    limits = limits_for(billing)
+    seats = limits.seats || 1
     day = AccountCounters.day_period
+    sends_threshold = (limits.sends_per_day_per_seat || Limits::PAID_SENDS_PER_DAY_PER_SEAT) * seats
+    in_flight_threshold = (limits.in_flight_per_seat || Limits::PAID_IN_FLIGHT_PER_SEAT) * seats
 
-    if (sends = sends_today(billing)) > Limits::PAID_SENDS_PER_DAY_PER_SEAT * seats
+    if (sends = sends_today(billing)) > sends_threshold
       AbuseFlags.record!(billing, 'send_velocity', period: day, details: { sends_today: sends, seats: })
     end
 
-    if (open = in_flight(billing)) > Limits::PAID_IN_FLIGHT_PER_SEAT * seats
+    if (open = in_flight(billing)) > in_flight_threshold
       AbuseFlags.record!(billing, 'in_flight', period: day, details: { in_flight: open, seats: })
     end
 

@@ -49,7 +49,7 @@
       <% else %>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <%# Fair-use note (paid only) plus the D73 lineage sentence every plan needs: a corrected resend of a signed document is never counted twice. %>
-          <% completions_hint = [(@fair_use ? t('fair_use_per_seat', count: Quotas::Limits::PAID_COMPLETIONS_REVIEW_PER_SEAT) : nil), t('usage_resend_note')].compact.join(' ') %>
+          <% completions_hint = [(@fair_use ? t('fair_use_per_seat', count: @fair_use_per_seat) : nil), t('usage_resend_note')].compact.join(' ') %>
           <% storage_limit_text = @limits.storage_bytes ? number_to_human_size(@limits.storage_bytes) : nil %>
           <%= render 'usage_settings/meter',
                      key: 'completions',

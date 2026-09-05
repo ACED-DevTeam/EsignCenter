@@ -53,8 +53,43 @@ module StripeBilling
       STATE_BY_STRIPE_STATUS.fetch(status, 'cancelled')
     end
 
+    # How apply_vanished! marks its object, so the missing-price warning in
+    # apply! stays silent for it: a subscription Stripe no longer has is not a
+    # price migration nobody told us about.
+    VANISHED_KEY = 'esigncenter_vanished'
+
+    def vanished?(stripe_subscription)
+      truthy?(field(stripe_subscription, VANISHED_KEY))
+    end
+
+    # A subscription Stripe no longer has (checkpoint 8, C5).
+    #
+    # `subscriptions.retrieve` answers 404 for a subscription that has been
+    # deleted outright at Stripe rather than cancelled — and the row that
+    # named it kept whatever access state it was last given, forever, because
+    # every sweep filed the 404 as one more transient error. There is nothing
+    # to fetch and nothing to compare, but there IS a fact: the subscription
+    # is over. So the row takes the ordinary cancelled transition through the
+    # ordinary apply path — the state table's `cancelled` row, which is free
+    # access, a D43 prospective free month starting now, and no purge — from
+    # a subscription object that says exactly the one thing we know.
+    #
+    # Not hand-written Stripe data: `canceled` is the status Stripe itself
+    # uses for a subscription that is over, and every other column the apply
+    # path touches falls back to what the row already holds.
+    def apply_vanished!(account_subscription)
+      apply!(account_subscription,
+             { 'id' => account_subscription.stripe_subscription_id,
+               'object' => 'subscription',
+               'status' => 'canceled',
+               'customer' => account_subscription.stripe_customer_id,
+               VANISHED_KEY => true })
+    end
+
     def apply!(account_subscription, stripe_subscription)
-      report_missing_price(account_subscription, stripe_subscription) if price_item(stripe_subscription).nil?
+      if price_item(stripe_subscription).nil? && !vanished?(stripe_subscription)
+        report_missing_price(account_subscription, stripe_subscription)
+      end
 
       live_on_a_dead_account = barred?(account_subscription) && paid_state?(stripe_subscription)
 

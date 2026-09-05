@@ -1,0 +1,5 @@
+<p>Hello,</p>
+<p>We could not build the export of your EsignCenter account, <strong><%= @current_account.name %></strong>.</p>
+<p>Nothing in your account has been changed, and nothing has been lost. You can try again from the <%= link_to 'export page', @export_url %>.</p>
+<p>If it fails again, write to <%= mail_to @support_email %> and we will look into it for you.</p>
+<p>Thanks,<br>EsignCenter</p>

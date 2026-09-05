@@ -1,0 +1,90 @@
+<%# The account's export page. One card per state, and exactly the one action
+    that state allows. The page is deliberately still here — and still
+    working — for a suspended account and one that has asked to be deleted:
+    taking your data with you is the promise the 90-day window rests on. %>
+<% export = @export %>
+<% building = export&.in_progress? %>
+<% request_label = case export&.status
+                   when AccountExport::READY then t('account_export_new_button')
+                   when AccountExport::FAILED then t('account_export_retry_button')
+                   else t('account_export_request_button')
+                   end %>
+<div class="flex-wrap space-y-4 md:flex md:flex-nowrap md:space-y-0 md:space-x-10">
+  <%= render 'shared/settings_nav' %>
+  <div class="md:flex-grow">
+    <div class="max-w-2xl" data-account-export-state="<%= export&.status || 'none' %>">
+      <% if building %>
+        <%# A build takes minutes on a large account, so the page brings itself
+            back rather than asking the reader to press reload. %>
+        <meta http-equiv="refresh" content="15">
+      <% end %>
+      <h1 class="text-4xl font-bold mb-2"><%= t('export') %></h1>
+      <p class="text-base-content/70 mb-5" dir="auto"><%= t('account_export_page_intro') %></p>
+
+      <% if current_account.pending_deletion? %>
+        <div class="alert items-start bg-base-100 border border-base-300 mb-5" data-account-export-banner="pending_deletion">
+          <%= svg_icon('info_circle', class: 'stroke-current shrink-0 h-6 w-6 mt-0.5') %>
+          <p dir="auto" class="text-sm"><%= t('account_export_pending_deletion_hint') %></p>
+        </div>
+      <% end %>
+
+      <div class="card bg-base-200 border border-base-300 mb-5">
+        <div class="card-body p-5 gap-3">
+          <% case export&.status %>
+          <% when AccountExport::PENDING, AccountExport::RUNNING %>
+            <p class="font-semibold" dir="auto"><%= t('account_export_building_headline') %></p>
+            <p class="text-sm text-base-content/70" dir="auto"><%= t('account_export_building_hint') %></p>
+            <span class="loading loading-dots loading-md" data-account-export-spinner></span>
+          <% when AccountExport::READY %>
+            <p class="font-semibold" dir="auto"><%= t('account_export_ready_headline', date: Accounts::Deletion.format_date(export.created_at)) %></p>
+            <dl class="grid grid-cols-1 sm:grid-cols-[auto_1fr] gap-x-6 gap-y-1 text-sm tabular-nums">
+              <dt class="text-base-content/70"><%= t('account_export_summary_size') %></dt>
+              <dd><%= number_to_human_size(export.total_bytes) %></dd>
+              <dt class="text-base-content/70"><%= t('account_export_summary_templates') %></dt>
+              <dd><%= export.counts['templates'].to_i %></dd>
+              <dt class="text-base-content/70"><%= t('account_export_summary_submissions') %></dt>
+              <dd><%= export.counts['submissions'].to_i %></dd>
+              <dt class="text-base-content/70"><%= t('account_export_summary_documents') %></dt>
+              <dd><%= export.counts['completed_documents'].to_i %></dd>
+            </dl>
+            <% missing = Array.wrap(export.summary['missing']) %>
+            <% if missing.any? %>
+              <p class="text-sm text-amber-600" dir="auto" data-account-export-missing><%= t('account_export_missing_hint', count: missing.size) %></p>
+            <% end %>
+            <p class="text-sm text-base-content/70" dir="auto"><%= t('account_export_ready_expires', date: Accounts::Deletion.format_date(export.expires_at)) %></p>
+            <%= link_to t('account_export_download_button'), settings_account_export_download_path(export), class: 'btn btn-primary', data: { account_export_download: true } %>
+          <% when AccountExport::FAILED %>
+            <p class="font-semibold text-red-500" dir="auto"><%= t('account_export_failed_headline') %></p>
+            <p class="text-sm text-base-content/70" dir="auto"><%= t('account_export_failed_hint') %></p>
+            <% if export.error.present? %>
+              <p class="text-xs text-base-content/60 break-all" dir="auto" data-account-export-error><%= export.error %></p>
+            <% end %>
+          <% when AccountExport::EXPIRED %>
+            <p class="font-semibold" dir="auto"><%= t('account_export_expired_headline') %></p>
+          <% else %>
+            <p class="font-semibold" dir="auto"><%= t('account_export_none_headline') %></p>
+          <% end %>
+
+          <% unless building %>
+            <%= button_to request_label, settings_account_export_path, method: :post, class: 'btn btn-neutral', form: { data: { account_export_request: true } } %>
+          <% end %>
+          <p class="text-xs text-base-content/60" dir="auto"><%= t('account_export_remaining_today', remaining: @remaining_today, limit: @limit_per_day) %></p>
+        </div>
+      </div>
+
+      <div class="card bg-base-100 border border-base-300">
+        <div class="card-body p-5 gap-2">
+          <p class="font-semibold" dir="auto"><%= t('account_export_contents_headline') %></p>
+          <ul class="list-disc list-outside pl-5 space-y-1 text-sm">
+            <li><%= t('account_export_contents_templates') %></li>
+            <li><%= t('account_export_contents_completed') %></li>
+            <li><%= t('account_export_contents_audit') %></li>
+            <li><%= t('account_export_contents_data') %></li>
+            <li><%= t('account_export_contents_manifest') %></li>
+          </ul>
+          <p class="text-sm text-base-content/70" dir="auto"><%= t('account_export_expiry_hint', days: @ttl_days, limit: @limit_per_day) %></p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

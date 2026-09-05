@@ -1,0 +1,40 @@
+<%# The 90-day clock and everything that has been stamped on it. The actions
+    that change any of this are in the action bar at the top of the page. %>
+<div class="card bg-base-100 border border-base-300" data-operator-deletion>
+  <div class="card-body p-5 gap-3">
+    <h2 class="text-xl font-bold"><%= t('operator_deletion_title') %></h2>
+    <dl class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-1 text-sm">
+      <div>
+        <dt class="text-base-content/70"><%= t('operator_deletion_requested_at') %></dt>
+        <dd data-deletion-requested-at><%= @account.deletion_requested_at ? l(@account.deletion_requested_at.utc, format: :short) : '—' %></dd>
+      </div>
+      <div>
+        <dt class="text-base-content/70"><%= t('operator_deletion_scheduled_for') %></dt>
+        <dd data-purge-scheduled-for><%= @account.purge_scheduled_for ? l(@account.purge_scheduled_for.utc, format: :short) : '—' %></dd>
+      </div>
+      <div>
+        <dt class="text-base-content/70"><%= t('operator_deletion_claimed_at') %></dt>
+        <dd data-purge-started-at><%= @account.purge_started_at ? l(@account.purge_started_at.utc, format: :short) : '—' %></dd>
+      </div>
+      <div>
+        <dt class="text-base-content/70"><%= t('operator_deletion_purged_at') %></dt>
+        <dd data-purged-at><%= @account.purged_at ? l(@account.purged_at.utc, format: :short) : '—' %></dd>
+      </div>
+      <div>
+        <dt class="text-base-content/70"><%= t('operator_deletion_archived_at') %></dt>
+        <dd><%= @account.archived_at ? l(@account.archived_at.utc, format: :short) : '—' %></dd>
+      </div>
+      <div>
+        <dt class="text-base-content/70"><%= t('operator_deletion_dormant_warning') %></dt>
+        <dd data-dormant-warning>
+          <% if @account.dormant_warning_sent_at %>
+            <%= t('operator_deletion_dormant_warning_value', sent: l(@account.dormant_warning_sent_at.utc.to_date, format: :long),
+                                                             about: @account.dormant_warning_for ? l(@account.dormant_warning_for.utc.to_date, format: :long) : '—') %>
+          <% else %>
+            —
+          <% end %>
+        </dd>
+      </div>
+    </dl>
+  </div>
+</div>

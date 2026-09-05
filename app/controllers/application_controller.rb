@@ -7,6 +7,7 @@ class ApplicationController < ActionController::Base
   include Pagy::Method
   include OperatorAccess
   include AccountActivityStamp
+  include SupportImpersonationGuard
 
   check_authorization unless: :devise_controller?
 
@@ -14,6 +15,11 @@ class ApplicationController < ActionController::Base
   before_action :sign_in_for_demo, if: -> { Docuseal.demo? }
   before_action :maybe_redirect_to_setup, unless: :signed_in?
   before_action :authenticate_user!, unless: :devise_controller?
+  # Support impersonation (Session 8 phase C). Declared for EVERY controller,
+  # including the ones that skip authentication: the doors a support session
+  # must not open include the signer's own public slug URLs, and a rule that
+  # only ran on authenticated controllers would leave them open.
+  before_action :enforce_support_impersonation!
 
   before_action :set_csp, if: -> { request.get? && !request.headers['HTTP_X_TURBO'] }
 
@@ -78,6 +84,14 @@ class ApplicationController < ActionController::Base
     super
 
     record_account_activity!
+  end
+
+  # CanCan's own `current_ability`, plus the one fact it cannot see for
+  # itself: whether the person acting is really an operator inside somebody
+  # else's account, and in which mode. Read-only means the same layer a frozen
+  # account gets; both modes lose the forbidden families outright.
+  def current_ability
+    @current_ability ||= Ability.new(current_user, support_impersonation: support_impersonation_mode)
   end
 
   def impersonate_user(user)

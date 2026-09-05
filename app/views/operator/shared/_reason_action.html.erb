@@ -1,0 +1,23 @@
+<%# One console action anywhere but the account page: a button, and behind it
+    a dialog that asks for the reason before it will do anything. Same shape
+    as the account page's action modal — the reason is what the audit log
+    shows the next person who asks. Locals: key, url, label, hint; optional
+    button_class. %>
+<% uuid = "operator_console_action_#{key}" %>
+<modal-button data-target="<%= uuid %>" class="flex">
+  <button class="btn btn-sm <%= local_assigns.fetch(:button_class, 'btn-outline') %>" data-operator-action="<%= key %>">
+    <%= label %>
+  </button>
+</modal-button>
+<%= render 'shared/html_modal', title: label, uuid: uuid do %>
+  <%= form_with url: url, method: :post, data: { turbo: false }, class: 'space-y-4' do %>
+    <p class="text-sm text-base-content/70"><%= hint %></p>
+    <label class="form-control">
+      <span class="label-text mb-1"><%= t('operator_reason_label') %></span>
+      <textarea name="reason" rows="3" class="textarea textarea-bordered w-full" required minlength="<%= Operator::BaseController::MINIMUM_REASON_LENGTH %>"></textarea>
+    </label>
+    <div class="flex justify-end gap-2">
+      <button type="submit" class="btn btn-primary"><%= label %></button>
+    </div>
+  <% end %>
+<% end %>

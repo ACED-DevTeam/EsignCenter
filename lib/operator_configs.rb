@@ -32,6 +32,17 @@ module OperatorConfigs
     fetch(key) == true
   end
 
+  # Unsetting a key REMOVES the row rather than blanking it: the value column
+  # is NOT NULL and ApplicationRecord turns a blank string into nil on its way
+  # in, so "no value" has exactly one representation — no row.
+  def clear!(key)
+    operator_account = account
+
+    return if operator_account.nil?
+
+    operator_account.account_configs.find_by(key:)&.destroy!
+  end
+
   def set!(key, value)
     operator_account = account
 

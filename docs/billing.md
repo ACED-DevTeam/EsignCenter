@@ -417,11 +417,40 @@ every subscription the app thinks it has, straight from Stripe:
 - a live subscription that is **not ours** is left alone and named in the
   summary; a live one of ours that no row links to is named too (somebody may
   be paying for nothing — adopting it is a decision for a person);
-- inbox rows still unprocessed 15 minutes after they were claimed, and failed
-  rows with retries left, are queued again;
+- a subscription Stripe **no longer has** (a 404 with Stripe's own
+  `resource_missing` code, which is a subscription deleted outright rather
+  than cancelled) takes the ordinary cancelled transition: free access, a
+  free month that starts now, no purge. It used to be filed as one more
+  transient error every night, so the row kept paid access for ever with
+  nothing paying for it. Any *other* Stripe failure on that row is still
+  transient and is retried tomorrow;
+- a duplicate that would normally be refunded automatically is sent to
+  **manual review** instead when the subscription that survived has a
+  paused-collection history — it is paused right now, or Stripe told us it
+  was paused or resumed at some point. A paused survivor was not billing, so
+  what the duplicate collected may be the only money the customer ever paid
+  for the service they had, and refunding all of it would be wrong. It is
+  still cancelled; the money becomes a person's decision;
+- inbox rows still unprocessed 15 minutes after they were stored, and failed
+  rows with retries left that nothing has touched for half an hour, are
+  queued again. The half-hour matters: a `failed` row is how the job hands an
+  event back before Sidekiq's own retry chain picks it up again, so
+  re-queuing it sooner would start a second worker racing the first;
 - a Stripe error on one account never stops the sweep;
+- the whole row-by-row pass runs under a **20-minute wall-clock budget**. When
+  it runs out the sweep stops, records the row it reached, and the next
+  night carries on after that row — so a platform too big for one night is
+  swept a slice at a time instead of having its first few hundred accounts
+  swept every night and the rest never. The summary says so out loud;
 - at the end, if anything at all needed fixing, the operator gets **one**
-  email with the counts. Never one per account.
+  email with the counts. Never one per account. The same report is kept for a
+  week and rendered on the operator console's **Revenue** tab, where the
+  "live subscriptions linked to no row" list carries an **Adopt** form: type
+  the account and a reason and the subscription is re-read from Stripe and
+  linked through the same door a Checkout return uses. It refuses an
+  internal or operator account, one pending deletion or already purged, an
+  account that already holds a different subscription, and a subscription
+  another account already holds.
 
 Rows the operator granted by hand (`rake plans:grant`) are marked `manual` and
 are never touched by this job. Nor are rows on internal or operator accounts,
@@ -576,11 +605,30 @@ writes (`Billing account is #12 (parent of #34)`). Internal and operator
 accounts are refused — they are the platform and never bill. A hand-granted
 row is marked `manual` and the nightly Stripe sweep leaves it alone.
 
+The operator console has the same two buttons on an account's page (Grant paid
+plan / Revoke plan) and takes exactly this code path, with two additions:
+
+- **A console grant is a comp and always expires.** The form makes the expiry
+  date required, and `CompExpiryJob` (hourly, at :45, on the billing queue)
+  revokes the plan down this same path once the date passes — so a "two-week
+  pilot" cannot still be running eight months later. The date lives in
+  `account_subscriptions.comp_expires_at`; NULL means the row is not a comp.
+  The rake task may still grant without one.
+- **Every grant and revoke writes an audit row** (`operator_events`) naming
+  the operator, the reason they typed and the address they did it from. A comp
+  that expires on the clock writes one too, with no operator on it — the
+  console shows that as "the system".
+
 **An account with a live Stripe subscription is refused by both tasks.** A
 local revoke would not stop the card being charged and the next webhook would
 undo it; a local grant would take a paying account out of the nightly sweep.
 Cancel it at Stripe instead — the Customer Portal or the dashboard — and the
-webhook downgrades the account. "Live" means exactly one thing here: the raw
+webhook downgrades the account. **An account with a Stripe checkout in
+progress is refused too**: a started Checkout leaves a row holding the Stripe
+customer and nothing else, and a grant written over it would be silently
+overwritten by the webhook that finishes the purchase a minute later. Wait for
+it to land (or for Stripe's own 24-hour session deadline to pass) and try
+again. "Live" means exactly one thing here: the raw
 Stripe status last seen. A `manual` row is always the operator's to revoke or
 re-grant, whatever stale ids it still carries, and granting over a **dead**
 Stripe subscription clears its subscription id and status (the customer id

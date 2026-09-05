@@ -1,0 +1,58 @@
+<%# How this account came into existence, and everybody who has moved in or
+    out of it — the two questions "where did account 412 come from / go?"
+    that nothing else in the app can answer months later. %>
+<div class="card bg-base-100 border border-base-300" data-operator-provisioning>
+  <div class="card-body p-5 gap-4">
+    <h2 class="text-xl font-bold"><%= t('operator_provisioning_title') %></h2>
+    <div>
+      <h3 class="font-semibold mb-2"><%= t('operator_provisioning_events') %></h3>
+      <% if @provisioning_events.empty? %>
+        <p class="text-sm text-base-content/70" data-no-provisioning-events><%= t('operator_provisioning_none') %></p>
+      <% else %>
+        <div class="overflow-x-auto">
+          <table class="table w-full">
+            <thead class="bg-base-200">
+              <tr class="text-neutral uppercase">
+                <th><%= t('email') %></th>
+                <th><%= t('operator_provisioning_idempotency_key') %></th>
+                <th><%= t('operator_provisioning_webhook') %></th>
+                <th><%= t('operator_column_created') %></th>
+              </tr>
+            </thead>
+            <tbody>
+              <% @provisioning_events.each do |event| %>
+                <tr data-operator-provisioning-row="<%= event.id %>">
+                  <td dir="auto" class="break-all"><%= event.email %></td>
+                  <td class="font-mono text-xs break-all"><%= event.idempotency_key.presence || '—' %></td>
+                  <td class="tabular-nums"><%= event.webhook_url_id || '—' %></td>
+                  <td class="whitespace-nowrap text-sm"><%= l(event.created_at.utc, format: :short) %></td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
+      <% end %>
+    </div>
+    <div>
+      <h3 class="font-semibold mb-2"><%= t('operator_provisioning_moves') %></h3>
+      <% moves = @moves_in.map { |move| [:in, move] } + @moves_out.map { |move| [:out, move] } %>
+      <% if moves.empty? %>
+        <p class="text-sm text-base-content/70" data-no-account-moves><%= t('operator_provisioning_no_moves') %></p>
+      <% else %>
+        <ul class="text-sm space-y-1">
+          <% moves.each do |direction, move| %>
+            <li data-account-move="<%= move.id %>">
+              <span class="badge badge-outline whitespace-nowrap mr-1"><%= t("operator_move_#{direction}") %></span>
+              <%= move.user&.email %>
+              &mdash;
+              <%= link_to "##{move.from_account_id}", operator_account_path(move.from_account_id), class: 'link' %>
+              &rarr;
+              <%= link_to "##{move.to_account_id}", operator_account_path(move.to_account_id), class: 'link' %>
+              <span class="text-base-content/70"><%= l(move.created_at.utc, format: :short) %></span>
+            </li>
+          <% end %>
+        </ul>
+      <% end %>
+    </div>
+  </div>
+</div>

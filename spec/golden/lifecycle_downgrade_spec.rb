@@ -1038,7 +1038,17 @@ RSpec.describe 'Deleting an account', type: :request do
         user_ids: User.where(account_id: family_ids).ids,
         submitter_ids: Submitter.where(account_id: family_ids).ids,
         webhook_event_ids: WebhookEvent.where(account_id: family_ids).ids,
-        attachment_ids: ActiveStorage::Attachment.where(record_type: 'Template', record_id: template_ids).ids }
+        attachment_ids: attachment_ids_for(template_ids, family_ids) }
+    end
+
+    # Template documents AND the account export zip (Session 8 phase D): an
+    # export attachment holds a copy of everything in the account, so the
+    # purge has to take its file as surely as it takes a template's.
+    def attachment_ids_for(template_ids, family_ids)
+      export_ids = AccountExport.where(account_id: family_ids).select(:id)
+
+      ActiveStorage::Attachment.where(record_type: 'Template', record_id: template_ids).ids +
+        ActiveStorage::Attachment.where(record_type: 'AccountExport', record_id: export_ids).ids
     end
 
     def populate_documents!(submitter)
@@ -1081,6 +1091,13 @@ RSpec.describe 'Deleting an account', type: :request do
       create(:encrypted_config, account:, key: EncryptedConfig::ESIGN_CERTS_KEY, value: { 'cert' => 'x' })
       create(:account_config, account:, key: AccountConfig::ALLOW_TO_DECLINE_KEY, value: true)
       ProvisioningEvent.create!(account:, email: admin.email)
+
+      # A finished account export, with its zip really attached: the row is in
+      # the inventory and the file is in the attachment walk.
+      export = AccountExport.create!(account:, requested_by: admin, status: AccountExport::READY,
+                                     expires_at: 7.days.from_now, summary: { 'total_bytes' => 3 })
+      export.archive.attach(io: StringIO.new('zip'), filename: 'account-export.zip',
+                            content_type: 'application/zip')
     end
 
     def populate_user_rows!(member)
@@ -1159,6 +1176,7 @@ RSpec.describe 'Deleting an account', type: :request do
         'webhook_urls' => by_account.call(WebhookUrl),
         'abuse_flags' => by_account.call(AbuseFlag),
         'account_counters' => by_account.call(AccountCounter),
+        'account_exports' => by_account.call(AccountExport),
         'account_limit_overrides' => by_account.call(AccountLimitOverride),
         'account_accesses' => by_account.call(AccountAccess),
         'account_invites' => by_account.call(AccountInvite),

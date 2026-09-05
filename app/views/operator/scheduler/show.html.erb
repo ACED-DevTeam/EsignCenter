@@ -1,0 +1,78 @@
+<div class="flex-wrap space-y-4 md:flex md:flex-nowrap md:space-y-0 md:space-x-10">
+  <%= render 'operator/shared/nav' %>
+  <div class="md:flex-grow min-w-0 space-y-6">
+    <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-2">
+      <div>
+        <h1 class="text-4xl font-bold"><%= t('operator_tab_scheduler') %></h1>
+        <p class="text-base-content/70 mt-2 max-w-3xl"><%= t('operator_scheduler_intro') %></p>
+      </div>
+      <%= link_to t('operator_background_jobs'), '/jobs', class: 'btn btn-sm btn-outline whitespace-nowrap' %>
+    </div>
+
+    <p class="text-xs text-base-content/70" data-cron-source="<%= @cron_source %>">
+      <%= t("operator_scheduler_cron_source_#{@cron_source}") %>
+    </p>
+
+    <% if @stamps_unavailable %>
+      <div class="alert items-start bg-base-100 border border-red-400 text-red-400" data-stamps-unavailable>
+        <%= t('operator_scheduler_stamps_unavailable') %>
+      </div>
+    <% end %>
+
+    <div class="space-y-4">
+      <% @rows.each do |row| %>
+        <% stamp = row[:stamp] %>
+        <% outcome = stamp && stamp['outcome'] %>
+        <div class="card bg-base-100 border <%= outcome == 'error' ? 'border-red-400' : 'border-base-300' %>" data-scheduler-row="<%= row[:name] %>">
+          <div class="card-body p-5 gap-3">
+            <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+              <div class="min-w-0">
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class="font-semibold"><%= row[:name] %></span>
+                  <span class="badge badge-sm badge-outline font-mono whitespace-nowrap" data-scheduler-cron><%= row[:cron] %></span>
+                  <span class="badge badge-sm badge-ghost whitespace-nowrap"><%= row[:queue] %></span>
+                  <% if outcome %>
+                    <span class="badge badge-sm badge-outline whitespace-nowrap <%= outcome == 'error' ? 'badge-error' : 'badge-success' %>" data-scheduler-outcome="<%= outcome %>">
+                      <%= t("operator_scheduler_outcome_#{outcome}") %>
+                    </span>
+                  <% else %>
+                    <span class="badge badge-sm badge-outline whitespace-nowrap" data-scheduler-outcome="never"><%= t('operator_scheduler_never_ran') %></span>
+                  <% end %>
+                </div>
+                <p class="text-sm text-base-content/70 mt-1"><%= row[:description] %></p>
+              </div>
+              <% unless row[:heartbeat] %>
+                <%= render 'operator/shared/reason_action',
+                           key: "run_#{row[:name]}",
+                           url: operator_run_scheduler_job_path(job: row[:name]),
+                           label: t('operator_scheduler_run_now'),
+                           hint: t('operator_scheduler_run_now_hint') %>
+              <% end %>
+            </div>
+            <dl class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-4 gap-y-1 text-sm">
+              <div>
+                <dt class="text-base-content/70"><%= t('operator_scheduler_last_started') %></dt>
+                <dd class="tabular-nums"><%= stamp && stamp['started_at'] ? stamp['started_at'] : '—' %></dd>
+              </div>
+              <div>
+                <dt class="text-base-content/70"><%= t('operator_scheduler_finished') %></dt>
+                <dd class="tabular-nums"><%= stamp && stamp['finished_at'] ? stamp['finished_at'] : '—' %></dd>
+              </div>
+              <div>
+                <dt class="text-base-content/70"><%= t('operator_scheduler_duration') %></dt>
+                <dd class="tabular-nums"><%= stamp && stamp['duration_ms'] ? t('operator_scheduler_duration_ms', ms: stamp['duration_ms']) : '—' %></dd>
+              </div>
+              <div>
+                <dt class="text-base-content/70"><%= t('operator_scheduler_next_run') %></dt>
+                <dd class="tabular-nums" data-scheduler-next-run><%= row[:next_run] ? l(row[:next_run], format: :short) : '—' %></dd>
+              </div>
+            </dl>
+            <% if stamp && stamp['error'].present? %>
+              <pre class="text-xs bg-base-200 rounded p-2 overflow-x-auto whitespace-pre-wrap" data-scheduler-error><%= stamp['error'] %></pre>
+            <% end %>
+          </div>
+        </div>
+      <% end %>
+    </div>
+  </div>
+</div>
