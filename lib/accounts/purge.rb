@@ -1015,7 +1015,12 @@ module Accounts
     # AccountExport is one of the census owners — and this takes only the rows
     # that are left afterwards.
     def delete_account_exports!(account)
-      AccountExport.where(account_id: account.id).delete_all
+      AccountExport.where(account_id: account.id).find_each do |export|
+        export.with_lock do
+          Accounts::Retention.discard_export_archive!(export)
+          export.destroy!
+        end
+      end
 
       nil
     end

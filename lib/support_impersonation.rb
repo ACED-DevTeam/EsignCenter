@@ -423,6 +423,22 @@ module SupportImpersonation
     end
   end
 
+  def audit_path(request)
+    pattern = request.route_uri_pattern
+
+    return "#{request.controller_class.controller_path}##{request.path_parameters[:action]}" if pattern.blank?
+
+    pattern.sub('(.:format)', '').gsub(/[:*]([a-z_]+)/) do
+      key = Regexp.last_match(1)
+
+      if %w[slug token signed_uuid signed_key signed_id encoded_key].include?(key)
+        '[FILTERED]'
+      else
+        request.path_parameters[key.to_sym].to_s
+      end
+    end
+  end
+
   def console?(controller_path)
     controller_path.to_s.start_with?(CONSOLE_PREFIX)
   end
