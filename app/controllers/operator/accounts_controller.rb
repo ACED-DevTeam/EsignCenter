@@ -97,17 +97,7 @@ module Operator
     def resume_sending
       reason = required_reason
 
-      assert_actionable!(@account)
-
-      paused_at, = SendingPause.state(@account)
-
-      raise Refused, t('operator_refused_not_paused') if paused_at.blank?
-
-      ApplicationRecord.transaction do
-        SendingPause.resume!(@account)
-
-        record!('sending.resume', reason:, details: { was_paused_at: paused_at.iso8601 })
-      end
+      resume_sending!(@account, reason:)
 
       redirect_to operator_account_path(@account), notice: t('operator_notice_sending_resumed')
     end
@@ -381,11 +371,7 @@ module Operator
     def refused(error)
       @account ||= find_account!
 
-      flash.now[:alert] = error.message
-
-      load_account_detail
-
-      render :show, status: :unprocessable_content
+      refused_page(error, :show) { load_account_detail }
     end
 
     def assert_operator_suspension!
@@ -466,10 +452,6 @@ module Operator
       raise Refused, t('operator_refused_comp_expiry_past') if expires_at <= Time.current
 
       expires_at
-    end
-
-    def record!(action, reason:, subject: nil, details: {})
-      OperatorEvents.record!(operator: true_user, action:, account: @account, subject:, reason:, details:, request:)
     end
   end
 end

@@ -5069,36 +5069,33 @@ RSpec.describe 'Stripe billing', type: :request do # rubocop:disable RSpec/Multi
       Rails.env = original
     end
 
-    it 'refuses to boot production with a key missing' do
-      ENV['STRIPE_PORTAL_CONFIGURATION_ID'] = nil
-      Rails.env = 'production'
-
-      expect { described_class.check! }
-        .to raise_error(/STRIPE_PORTAL_CONFIGURATION_ID is not set/)
-    end
-
-    it 'refuses to boot production with a value that is not the thing it names' do
-      ENV['STRIPE_WEBHOOK_SECRET'] = 'sk_test_oops'
-      ENV['STRIPE_SECRET_KEY'] = 'sk_live_realkey'
-      Rails.env = 'production'
-
-      expect { described_class.check! }
-        .to raise_error(/STRIPE_WEBHOOK_SECRET does not look like a Stripe value.*whsec_/)
-    end
-
-    it 'refuses to run production against a test key' do
-      Rails.env = 'production'
-
-      expect { described_class.check! }.to raise_error(/STRIPE_SECRET_KEY must be a live key.*in production/)
-    end
-
+    # Four ways to fail the same gate, one example each. The baseline
+    # environment is re-seeded per example by spec/support/stripe_test_account.rb,
+    # so a row that names nothing is starting from the good test configuration
+    # — which is what makes "a test key in production" a row with no setup.
+    #
     # A key that is neither sk_live_ nor sk_test_ has no mode at all, and
     # "not obviously a test key" was enough to boot production on it.
-    it 'refuses to boot production on a key that is neither live nor test' do
-      ENV['STRIPE_SECRET_KEY'] = 'sk_invalid'
-      Rails.env = 'production'
+    [
+      ['refuses to boot production with a key missing',
+       { 'STRIPE_PORTAL_CONFIGURATION_ID' => nil },
+       /STRIPE_PORTAL_CONFIGURATION_ID is not set/],
+      ['refuses to boot production with a value that is not the thing it names',
+       { 'STRIPE_WEBHOOK_SECRET' => 'sk_test_oops', 'STRIPE_SECRET_KEY' => 'sk_live_realkey' },
+       /STRIPE_WEBHOOK_SECRET does not look like a Stripe value.*whsec_/],
+      ['refuses to run production against a test key',
+       {},
+       /STRIPE_SECRET_KEY must be a live key.*in production/],
+      ['refuses to boot production on a key that is neither live nor test',
+       { 'STRIPE_SECRET_KEY' => 'sk_invalid' },
+       /STRIPE_SECRET_KEY must be a live key.*in production/]
+    ].each do |description, env, message|
+      it description do
+        env.each { |name, value| ENV[name] = value }
+        Rails.env = 'production'
 
-      expect { described_class.check! }.to raise_error(/STRIPE_SECRET_KEY must be a live key.*in production/)
+        expect { described_class.check! }.to raise_error(message)
+      end
     end
 
     # G8: the browser and the server must be on the same Stripe account; a

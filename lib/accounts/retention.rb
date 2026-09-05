@@ -153,20 +153,26 @@ module Accounts
     # `downloadable?` all the same — and the next night's sweep finds it again
     # and tries once more.
     def expire_ready_exports!(now: Time.current)
-      AccountExport.where(status: AccountExport::READY).where(expires_at: ..now).find_each do |export|
+      each_export(AccountExport.where(status: AccountExport::READY).where(expires_at: ..now)) do |export|
         discard_export_archive!(export)
         export.update_columns(status: AccountExport::EXPIRED, updated_at: Time.current)
-      rescue StandardError => e
-        ErrorReport.error(e, account_id: export.account_id, account_export_id: export.id)
       end
-
-      nil
     end
 
     def purge_failed_export_files!(now: Time.current)
-      AccountExport.where(status: AccountExport::FAILED)
-                   .where(created_at: ...(now - Exports::FAILED_RETENTION)).find_each do |export|
+      each_export(AccountExport.where(status: AccountExport::FAILED)
+                               .where(created_at: ...(now - Exports::FAILED_RETENTION))) do |export|
         discard_export_archive!(export)
+      end
+    end
+
+    # One export's problem is reported against that export and never stops the
+    # rest of the sweep — the same rule the account sweeps above follow, and
+    # the reason a single unreadable file cannot leave every other customer's
+    # zip sitting past its seven days.
+    def each_export(scope)
+      scope.find_each do |export|
+        yield export
       rescue StandardError => e
         ErrorReport.error(e, account_id: export.account_id, account_export_id: export.id)
       end

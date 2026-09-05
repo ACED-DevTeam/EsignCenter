@@ -80,5 +80,51 @@ module Operator
 
       reason
     end
+
+    # Every console mutation's audit row, written from INSIDE the transaction
+    # that makes the change — so a rolled-back change takes its line with it,
+    # and a change that lands cannot land without one. One writer, because a
+    # tab with its own copy of this is a tab that can quietly stop naming the
+    # operator, or the account, or where the request came from.
+    #
+    # `account:` defaults to the account the page loaded, which is what the
+    # per-account tab acts on; the tabs that work across accounts (abuse,
+    # billing) name theirs on every call.
+    def record!(action, reason:, account: @account, subject: nil, details: {})
+      OperatorEvents.record!(operator: true_user, action:, account:, subject:, reason:, details:, request:)
+    end
+
+    # A refusal is answered by the SAME page, with the reason on it, and a 422
+    # because nothing was changed: the transaction the refusal was raised
+    # inside has already rolled back. Never a 500 and never a silent no-op.
+    # The block is how that particular tab loads itself again.
+    def refused_page(error, template)
+      flash.now[:alert] = error.message
+
+      yield
+
+      render template, status: :unprocessable_content
+    end
+
+    # Lifting the automatic abuse pause, offered from two places — the account
+    # page and the abuse queue — and therefore written once. The three guards
+    # are the door: an internal account is readable but never actionable, and
+    # an account that is not paused has nothing to lift. The resume and its
+    # audit row are one transaction; SendingPause.resume! resolves the open
+    # complaint / bounce_rate flags under the same lock.
+    def resume_sending!(account, reason:, details: {})
+      assert_actionable!(account)
+
+      paused_at, = SendingPause.state(account)
+
+      raise Refused, I18n.t('operator_refused_not_paused') if paused_at.blank?
+
+      ApplicationRecord.transaction do
+        SendingPause.resume!(account)
+
+        record!('sending.resume', account:, reason:,
+                                  details: { was_paused_at: paused_at.iso8601 }.merge(details))
+      end
+    end
   end
 end

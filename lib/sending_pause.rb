@@ -14,6 +14,12 @@ module SendingPause
   REASONS = %w[complaint bounce_rate].freeze
   FLAG_KINDS = %w[complaint bounce_rate].freeze
 
+  # Every event type that can feed the automatic pause, derived from the two
+  # lists above rather than restated. A caller that keeps its own copy of this
+  # is a caller that stops feeding the pause the day a spelling is added here
+  # and nobody remembers the second list (review 1, A-L2).
+  PAUSE_EVENTS = (COMPLAINT_EVENTS + HARD_BOUNCE_EVENTS).freeze
+
   module_function
 
   # Reads the column fresh rather than the object's copy: the account a
@@ -101,6 +107,13 @@ module SendingPause
     end
 
     billing
+  end
+
+  # Is this event type one the pause cares about at all? Asked by the Postmark
+  # webhook before it opens the pause path, so the webhook does not have to
+  # know which spellings count.
+  def pause_trigger?(event_type)
+    PAUSE_EVENTS.include?(event_type.to_s)
   end
 
   # Called with an EmailEvent after it is recorded.
