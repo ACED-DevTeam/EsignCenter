@@ -485,6 +485,7 @@ RSpec.describe 'Account suspension', type: :request do # rubocop:disable RSpec/M
         account_invites#create account_invites#destroy account_invites#resend
         api_settings#create
         email_smtp_settings#create email_smtp_settings#destroy
+        first_completion_prompts#destroy
         mcp_settings#create mcp_settings#destroy
         notifications_settings#create
         personalization_settings#create personalization_logo#create personalization_logo#destroy
@@ -563,6 +564,10 @@ RSpec.describe 'Account suspension', type: :request do # rubocop:disable RSpec/M
         },
         [:post, '/account_custom_fields'] => { name: 'While suspended' },
         [:post, '/settings/api'] => {},
+        # Session 10: putting away the first-completion upgrade banner is an
+        # ordinary write on an AccountConfig, and the frozen layer closes it
+        # like every other one.
+        [:delete, '/first_completion_prompt'] => {},
         [:post, '/settings/email'] => { encrypted_config: { value: { 'host' => 'smtp.example.com' } } },
         [:post, '/settings/mcp'] => { mcp_token: { name: 'While suspended' } },
         [:delete, "/settings/mcp/#{token.id}"] => {},

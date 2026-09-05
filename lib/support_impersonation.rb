@@ -174,6 +174,10 @@ module SupportImpersonation
     'user_signatures' => :forbidden,   # their saved signature
     'user_initials' => :forbidden,     # their saved initials
     'user_configs' => :forbidden,      # their own UI preferences
+    # Dismissing the customer's own upgrade banner: an ordinary customer
+    # write, and one nobody helping them should make on their behalf. The
+    # dashboards it sits on stay readable either way.
+    'first_completion_prompts' => :forbidden,
 
     # --- signing: never, in any mode, for any verb ---------------------------
     # Keyed by the controller's RUNTIME `controller_path`, which is what the

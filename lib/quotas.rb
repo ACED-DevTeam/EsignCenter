@@ -348,10 +348,36 @@ module Quotas
     billing = Plans.billing_account(account)
 
     case Plans.key_for(billing)
-    when Plans::FREE then free_completion_warning(billing)
+    when Plans::FREE
+      arm_first_completion_prompt(billing)
+      free_completion_warning(billing)
     when Plans::PAID then paid_completion_signals(billing)
     end
 
+    nil
+  end
+
+  # The one-time "your first document is signed" nudge (D50), armed here and
+  # rendered as a dismissible banner on the dashboards.
+  #
+  # FIRST EVER, not first this month: the count is over the whole of the
+  # billing account's history, so the banner cannot come back at a month
+  # rollover, and an account that paid for a while and then dropped back to
+  # free is never asked again — by then its count is long past one. Written
+  # only when the row does not exist, so a dismissal is never undone.
+  def arm_first_completion_prompt(billing)
+    return unless CompletedSubmitter.where(account_id: billing.id).one?
+
+    config = billing.account_configs.find_or_initialize_by(
+      key: AccountConfig::FIRST_COMPLETION_UPGRADE_PROMPT_KEY
+    )
+
+    return if config.persisted?
+
+    config.update!(value: { 'shown_at' => Time.current.utc.iso8601 })
+  rescue ActiveRecord::RecordNotUnique
+    # Two signers finishing the account's first two documents at the same
+    # moment: one of them wrote the row, which is exactly the outcome wanted.
     nil
   end
 

@@ -91,7 +91,57 @@ In production the app **refuses to boot** with the switch on and the
 Turnstile keys missing (an open door that could never let anyone in). Missing
 Google credentials only hide the button and log a warning.
 
-## 5. What signing up records
+## 5. Starter templates
+
+A brand-new account is not an empty shelf. The moment a customer account is
+created by either self-serve door — the email form or the Google button — four
+ready-made documents are put into it in the background:
+
+- **Mutual Non-Disclosure Agreement** — two parties agree to keep each other's
+  information private before working together.
+- **Freelance Service Agreement** — a client and a freelancer agree the work,
+  the fee and the start date.
+- **Photo & Video Release** — one person gives permission for photos, video
+  and audio of them to be used.
+- **Personal Property Bill of Sale** — a seller and a buyer record the item,
+  the price and the date it changed hands.
+
+Each one is a real template with its signers and its fill-in blanks already
+placed, so it can be sent for signature straight away. Each carries a short
+italic line, *Starter template — review before use*: they are sensible
+starting points, not legal advice, and they are meant to be edited.
+
+Rules worth knowing:
+
+- Only the two self-serve doors seed. Accepting a team invitation joins an
+  account that already exists, so nothing is added; provisioned, internal and
+  operator accounts never get them.
+- They are seeded **once**. An account that deletes all four does not get them
+  back, and an account that already holds a template of its own is left alone.
+- They cost nothing — see **[docs/quotas-and-limits.md](quotas-and-limits.md)**.
+- If seeding fails for any reason (a storage problem, say), the sign-up itself
+  is unaffected: the person still has their account, and the problem is
+  reported to the operator.
+
+### The first-run checklist
+
+For 30 days after sign-up, the top of the dashboard shows a three-step card —
+*Choose a document*, *Add a signer*, *Send it* — with each step ticked off from
+the real data as the work is done, however it was done (dashboard, API or a
+share link). It disappears by itself once all three are done, and anybody can
+put it away sooner with the **×**. Each person on the account dismisses it for
+themselves.
+
+### After the first signed document
+
+The first time a free account's very first document is signed, a one-time
+banner appears on the dashboard for that account's administrators: *Your first
+document is signed*, with a sentence about what the paid plan adds and a button
+to the billing page. It is written once, ever — dismissing it puts it away for
+the whole account, and it never comes back at a month rollover or after a
+change of plan.
+
+## 6. What signing up records
 
 Both sign-up doors — email + password, and Continue with Google — write down
 that the person agreed to the **Terms of Service** and the **Privacy Policy**,
