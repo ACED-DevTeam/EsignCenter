@@ -59,6 +59,10 @@ import ConfirmUpload from './elements/confirm_upload'
 // Account, Session 7 Phase C) is the first place in the authenticated app
 // that needs one, so the same element is registered here too.
 import ModalButton from './elements/modal_button'
+// The public marketing pages (Session 9): reveal-on-scroll sections and the
+// header's phone menu. Both are inert without JavaScript on purpose.
+import RevealOnScroll from './elements/reveal_on_scroll'
+import MarketingMenu from './elements/marketing_menu'
 
 import * as TurboInstantClick from './lib/turbo_instant_click'
 
@@ -152,6 +156,8 @@ safeRegisterElement('bar-chart', BarChart)
 safeRegisterElement('field-condition', FieldCondition)
 safeRegisterElement('confirm-upload', ConfirmUpload)
 safeRegisterElement('modal-button', ModalButton)
+safeRegisterElement('reveal-on-scroll', RevealOnScroll)
+safeRegisterElement('marketing-menu', MarketingMenu)
 
 safeRegisterElement('template-builder', class extends HTMLElement {
   connectedCallback () {

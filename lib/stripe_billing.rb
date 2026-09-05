@@ -86,6 +86,11 @@ module StripeBilling
   PRICE_CURRENCY = 'usd'
   PRICE_INTERVAL = 'month'
 
+  # The same price in whole dollars, for every page that prints it (billing
+  # settings, the operator console, the public pricing page). Derived from the
+  # cents above so there is exactly one number to change.
+  PRICE_PER_SEAT_USD = PRICE_UNIT_AMOUNT / 100
+
   TRIAL_PERIOD_DAYS = 14
 
   # Written into `cancellation_details.comment` of every subscription THIS

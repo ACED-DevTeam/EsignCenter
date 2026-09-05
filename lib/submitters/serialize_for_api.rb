@@ -56,7 +56,8 @@ module Submitters
       SubmissionEvents.for_display(record.submission_events, account: record.account).map do |event|
         event.as_json(only: %i[id submitter_id event_type event_timestamp])
              .merge('data' => event.data.slice('reason', 'firstname', 'lastname', 'method', 'country', 'idcode',
-                                               'version', 'locale', 'disclosure_sha256'))
+                                               'version', 'locale', 'disclosure_sha256',
+                                               'sender_name', 'sender_email', 'pdf_opened'))
       end
     end
   end

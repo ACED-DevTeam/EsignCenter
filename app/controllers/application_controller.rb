@@ -127,6 +127,13 @@ class ApplicationController < ActionController::Base
     I18n.with_locale(locale, &)
   end
 
+  # The public marketing and legal pages are English-only by decision: a
+  # visitor is never shown a French-labelled English page, and the legal
+  # texts are the bytes the acceptance rows are hashed against.
+  def with_english(&)
+    I18n.with_locale(:en, &)
+  end
+
   def with_browser_locale(&)
     return yield if I18n.locale != :'en-US' && I18n.locale != :en
 

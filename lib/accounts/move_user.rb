@@ -38,8 +38,16 @@ module Accounts
     #   * webhook_urls, encrypted_configs, account_configs, abuse_flags,
     #     counters, limit overrides, the subscription — configuration and
     #     policy belong to the account, not to the person.
+    #   * legal_acceptances DO move (Session 9 phase A, review 1). The row is
+    #     the person's agreement to the Terms and the Privacy Policy, and it
+    #     belongs to the person rather than to the company they were in when
+    #     they made it — leaving it behind would strand it under an account
+    #     that is about to be archived and purged, taking the only record of
+    #     what they agreed to with it. Moved by account like everything else
+    #     here, which is right: a move is only ever offered to somebody who is
+    #     alone in their account.
     MOVED_TABLES = [Template, TemplateSharing, TemplateVersion, Submission, Submitter, SubmissionEvent,
-                    DocumentMetadata, EmailMessage, EmailEvent, SearchEntry].freeze
+                    DocumentMetadata, EmailMessage, EmailEvent, SearchEntry, LegalAcceptance].freeze
 
     module_function
 

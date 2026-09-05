@@ -79,6 +79,19 @@
           <%= f.label :password, t('password'), class: 'label font-medium mb-1' %>
           <%= f.password_field :password, required: true, minlength: 6, autocomplete: 'new-password', class: 'base-input w-full' %>
         </div>
+        <%# The versions of the two documents this page is showing, sent back
+            with the form for the same reason the sign-up form sends them: an
+            invitation link is good for a week, and the wording can change
+            inside it. %>
+        <% LegalDocuments.version_fields.each do |field, value| %>
+          <%= hidden_field_tag field, value %>
+        <% end %>
+        <%# Accepting creates a login, so the same sentence the sign-up form
+            carries belongs here, in the same words and with the same links
+            (LegalDocuments records the agreement on this path too). %>
+        <p class="text-center text-sm text-base-content/70 mb-4" dir="auto">
+          <%= t('by_creating_an_account_you_agree_to_html', terms: link_to(t('terms_of_service'), '/terms', class: 'link link-hover'), privacy: link_to(t('privacy_policy'), '/privacy', class: 'link link-hover')) %>
+        </p>
         <%= f.button button_title(title: t('invite_accept_button', team: @account.name)), class: 'base-button w-full' %>
       <% end %>
     <% end %>

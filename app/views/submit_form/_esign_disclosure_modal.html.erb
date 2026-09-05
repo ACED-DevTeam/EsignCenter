@@ -1,6 +1,6 @@
 <%= render 'shared/html_modal', title: t('esign_consent_disclosure_title'), uuid: 'esign_disclosure_modal' do %>
   <div class="space-y-3 text-sm md:text-base leading-relaxed" dir="auto">
-    <%= t('esign_consent_disclosure_body_html') %>
+    <%= EsignConsent.disclosure_html(submitter) %>
   </div>
   <p class="mt-4 text-sm text-base-content/60" dir="auto">
     <%= t('esign_consent_version_label', version: EsignConsent::VERSION) %> · <%= l(EsignConsent::EFFECTIVE_DATE, format: :long) %>

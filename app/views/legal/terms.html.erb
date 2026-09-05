@@ -1,0 +1,22 @@
+<% content_for(:html_title, "Terms of Service | #{Docuseal.product_name}") %>
+<% content_for(:html_description, "The agreement between you and #{Docuseal.product_name}: what the free and paid plans include, how billing works, what happens to your documents, and what we are and are not responsible for.") %>
+<%# Marketing and legal pages are meant to be found (shared/_meta.html.erb). %>
+<% content_for(:indexable, true) %>
+<% content_for(:canonical_url, terms_url) %>
+<%= render 'legal/document',
+           document: :terms,
+           title: 'Terms of Service',
+           summary: [
+             "The free plan is free permanently: #{Quotas::Limits::FREE_COMPLETIONS_PER_MONTH} completed documents a month, " \
+             "#{Quotas::Limits::FREE_SENDS_PER_MONTH} sends and one user. The paid plan is " \
+             "$#{BillingSettingsController::PRICE_PER_SEAT_USD} per person per month, after a " \
+             "#{StripeBilling::TRIAL_PERIOD_DAYS}-day free trial.",
+             'We never delete your documents because you downgraded, cancelled or missed a payment. ' \
+             'An account behind on payment goes read-only, not away.',
+             'You are responsible for the documents you send and for the people you send them to. ' \
+             'We provide the tool and the record; we do not read or approve what you send.',
+             "Deleting your account is a #{Accounts::Deletion::WINDOW_DAYS}-day decision you can reverse at any point, " \
+             'and everything is exportable throughout.',
+             "#{LegalDocuments::GOVERNING_LAW_STATE} law governs this agreement, and our total liability " \
+             'is capped at what you have paid us in the previous twelve months.'
+           ] %>

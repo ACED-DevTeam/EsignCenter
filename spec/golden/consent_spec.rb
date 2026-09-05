@@ -20,10 +20,15 @@
 # an `api_complete_form` event instead. See docs/esign-consent.md.
 
 module ConsentSpecSupport
+  # The literal placeholder, spelled out so rubocop does not read it as a
+  # format token: an interpolated disclosure must never still contain it.
+  SENDER_PLACEHOLDER = ['%', '{sender_name}'].join.freeze
   BASE_LOCALES = %w[en es it fr pt de pl uk cs he nl ar ko ja].freeze
   CONSENT_KEYS = %w[esign_consent_checkbox_label esign_consent_disclosure_link esign_consent_disclosure_title
                     esign_consent_disclosure_body_html esign_consent_version_label esign_consent_required
-                    esign_consent_version_stale consented_to_electronic_signatures close
+                    esign_consent_version_stale esign_consent_view_pdf esign_consent_open_pdf_first
+                    esign_consent_shown_to esign_consent_sender_not_recorded esign_consent_pdf_opened
+                    consented_to_electronic_signatures close
                     submission_event_names.esign_consent_by_html].freeze
 end
 
@@ -81,8 +86,9 @@ RSpec.describe 'ESIGN consent', type: :request do
   # The consent always travels with the version the form displayed
   # (consent_version_spec proves a missing or stale version is refused) and
   # the locale it was displayed in.
-  def consent_params(locale: 'en')
-    { esign_consent: 'true', esign_consent_version: EsignConsent::VERSION, esign_consent_locale: locale }
+  def consent_params(locale: 'en', pdf_opened: 'true')
+    { esign_consent: 'true', esign_consent_version: EsignConsent::VERSION, esign_consent_locale: locale,
+      esign_consent_pdf_opened: pdf_opened }
   end
 
   def completion_params(submitter, esign_consent: nil)
@@ -113,21 +119,25 @@ RSpec.describe 'ESIGN consent', type: :request do
     expect(submitter.submission_events.where(event_type: %w[complete_form esign_consent])).not_to exist
   end
 
-  def expect_completed_with_consent(submitter, locale: 'en')
+  def expect_completed_with_consent(submitter, locale: 'en', pdf_opened: true)
     expect(response).to have_http_status(:ok)
     expect(submitter.reload.completed_at).to be_present
     expect(submitter.submission_events.where(event_type: 'complete_form').count).to eq(1)
     expect(consent_events(submitter).count).to eq(1)
-    expect_consent_data(consent_events(submitter).sole.data, locale:)
+    expect_consent_data(consent_events(submitter).sole.data, locale:, pdf_opened:)
   end
 
   # The event names the exact text the signer agreed to: version, locale and
-  # the digest of the disclosure body in that locale, which must be the one
-  # EsignConsent recomputes from the locale data (a later verifier's check).
-  def expect_consent_data(data, locale:)
-    expect(data).to include('version' => 'v1', 'locale' => locale)
+  # the digest of the disclosure TEMPLATE in that locale, which must be the one
+  # EsignConsent recomputes from the locale data (a later verifier's check),
+  # plus the sender details the template was filled in with (server-side) and
+  # the browser's claim about the PDF link.
+  def expect_consent_data(data, locale:, pdf_opened: true)
+    expect(data).to include('version' => EsignConsent::VERSION, 'locale' => locale, 'pdf_opened' => pdf_opened)
+    expect(data['sender_name']).to be_present
+    expect(data['sender_email']).to match(/\A[^@\s]+@[^@\s]+\z/)
     expect(data['disclosure_sha256']).to match(/\A\h{64}\z/)
-    expect(data['disclosure_sha256']).to eq(EsignConsent.disclosure_sha256(version: 'v1', locale:))
+    expect(data['disclosure_sha256']).to eq(EsignConsent.disclosure_sha256(version: EsignConsent::VERSION, locale:))
     expect(data['ip']).to be_present
   end
 
@@ -163,7 +173,7 @@ RSpec.describe 'ESIGN consent', type: :request do
   end
 
   # The per-signer audit line for a consent given at `time`
-  # ("Consented to electronic signatures (v1, en): September 01, 2026 10:00").
+  # ("Consented to electronic signatures (v2, en): September 01, 2026 10:00").
   def consent_line(time, locale: 'en')
     pdf_phrase("#{I18n.t('consented_to_electronic_signatures')} (#{EsignConsent::VERSION}, #{locale}): " \
                "#{I18n.l(time.in_time_zone(account.timezone), format: :long, locale: account.locale)}")
@@ -458,8 +468,9 @@ RSpec.describe 'ESIGN consent', type: :request do
       french = Digest::SHA256.hexdigest(I18n.t('esign_consent_disclosure_body_html', locale: :fr))
 
       expect(data['disclosure_sha256']).to eq(french)
-      expect(data['disclosure_sha256']).not_to eq(EsignConsent.disclosure_sha256(version: 'v1', locale: 'en'))
-      expect(EsignConsent.disclosure_text(version: 'v1', locale: 'fr'))
+      expect(data['disclosure_sha256']).not_to eq(EsignConsent.disclosure_sha256(version: EsignConsent::VERSION,
+                                                                                 locale: 'en'))
+      expect(EsignConsent.disclosure_text(version: EsignConsent::VERSION, locale: 'fr'))
         .to eq(I18n.t('esign_consent_disclosure_body_html', locale: :fr))
     end
 
@@ -485,25 +496,49 @@ RSpec.describe 'ESIGN consent', type: :request do
     end
 
     # A superseded disclosure lives under `esign_disclosure_archive.<version>`
-    # (docs §6); the archive is empty today, so a stand-in text is stored for
-    # the example and removed again.
+    # (docs §6). v1 is really archived there (the example below reads it back);
+    # this one proves the mechanism for a version that never shipped, with a
+    # stand-in text stored for the example and removed again — only the v0 key,
+    # so the real v1 archive survives the cleanup.
     it 'reads a superseded disclosure from the archive scope and fingerprints it' do
       I18n.backend.store_translations(:en, esign_disclosure_archive: { v0: '<p>old</p>' })
 
       expect(EsignConsent.disclosure_text(version: 'v0', locale: 'en')).to eq('<p>old</p>')
       expect(EsignConsent.disclosure_sha256(version: 'v0', locale: 'en')).to eq(Digest::SHA256.hexdigest('<p>old</p>'))
       expect(EsignConsent.disclosure_text(version: 'v0', locale: 'fr')).to be_nil
-      expect(EsignConsent.disclosure_text(version: 'v1', locale: 'en')).not_to eq('<p>old</p>')
+      expect(EsignConsent.disclosure_text(version: EsignConsent::VERSION, locale: 'en')).not_to eq('<p>old</p>')
     ensure
-      I18n.backend.translations[:en].delete(:esign_disclosure_archive)
+      I18n.backend.translations[:en][:esign_disclosure_archive]&.delete(:v0)
       expect(EsignConsent.disclosure_text(version: 'v0', locale: 'en')).to be_nil
+      expect(EsignConsent.disclosure_text(version: 'v1', locale: 'en')).to be_present
+    end
+
+    # v1 is the launch disclosure, superseded on 2026-09-05 (docs §6). Its text
+    # has to stay readable for every locale a v1 consent could have been given
+    # in, or the events on record stop being answerable.
+    it 'reads the archived v1 disclosure back for every base locale, with a digest' do
+      ConsentSpecSupport::BASE_LOCALES.each do |locale|
+        text = EsignConsent.disclosure_text(version: 'v1', locale:)
+
+        expect(text).to be_present, locale
+        expect(text).to start_with('<p>'), locale
+        expect(text).not_to eq(EsignConsent.disclosure_text(version: EsignConsent::VERSION, locale:)), locale
+        expect(EsignConsent.disclosure_sha256(version: 'v1', locale:))
+          .to eq(Digest::SHA256.hexdigest(text)), locale
+      end
+
+      # The archive never shadows the live key, in either direction.
+      expect(EsignConsent.disclosure_text(version: 'v1', locale: 'fr'))
+        .to eq(I18n.t('esign_disclosure_archive.v1', locale: :fr))
+      expect(I18n.t('esign_consent_disclosure_body_html', locale: :fr))
+        .to eq(EsignConsent.disclosure_text(version: EsignConsent::VERSION, locale: 'fr'))
     end
 
     it 'has no digest for a version and locale that were never published' do
       expect(EsignConsent.disclosure_text(version: 'v0', locale: 'en')).to be_nil
       expect(EsignConsent.disclosure_sha256(version: 'v0', locale: 'en')).to be_nil
-      expect(EsignConsent.disclosure_sha256(version: 'v1', locale: 'xx')).to be_nil
-      expect(EsignConsent.disclosure_sha256(version: '../v1', locale: 'en')).to be_nil
+      expect(EsignConsent.disclosure_sha256(version: EsignConsent::VERSION, locale: 'xx')).to be_nil
+      expect(EsignConsent.disclosure_sha256(version: '../v2', locale: 'en')).to be_nil
     end
 
     it 'exposes the consent version, locale and disclosure digest through the API event data' do
@@ -520,8 +555,116 @@ RSpec.describe 'ESIGN consent', type: :request do
       event = response.parsed_body['submission_events'].find { |e| e['event_type'] == 'esign_consent' }
 
       expect(event).to be_present
-      expect(event['data']).to eq('version' => 'v1', 'locale' => 'en',
-                                  'disclosure_sha256' => EsignConsent.disclosure_sha256(version: 'v1', locale: 'en'))
+      expect(event['data'])
+        .to eq('version' => EsignConsent::VERSION, 'locale' => 'en',
+               'disclosure_sha256' => EsignConsent.disclosure_sha256(version: EsignConsent::VERSION, locale: 'en'),
+               'sender_name' => paid_account.name,
+               'sender_email' => admin_for(paid_account).email,
+               'pdf_opened' => true)
+    end
+  end
+
+  # D77 A: the disclosure names the sender and links to the document itself.
+  describe 'the sender named in the disclosure' do
+    it 'fills the modal with the sending account and a reply-to address, escaped' do
+      account.update!(name: 'Acme <Legal> Ltd')
+      submitter = emailed_submitter_for(account)
+
+      get "/s/#{submitter.slug}"
+
+      expect(response).to have_http_status(:ok)
+
+      body = response.body
+
+      expect(body).to include(ERB::Util.html_escape('Acme <Legal> Ltd'))
+      expect(body).to include(admin_for(account).email)
+      expect(body).not_to include(ConsentSpecSupport::SENDER_PLACEHOLDER)
+      expect(body).not_to include('<Legal>')
+    end
+
+    it 'prefers the signer\'s reply-to address and never a no-reply one' do
+      submitter = emailed_submitter_for(account)
+
+      expect(EsignConsent.sender_email(submitter)).to eq(admin_for(account).email)
+
+      submitter.update!(preferences: { 'reply_to' => 'Contracts <contracts@acme.example>' })
+      expect(EsignConsent.sender_email(submitter.reload)).to eq('contracts@acme.example')
+
+      submitter.update!(preferences: { 'reply_to' => 'no-reply@acme.example' })
+      expect(EsignConsent.sender_email(submitter.reload)).to eq(admin_for(account).email)
+    end
+
+    it 'records the sender as shown and the browser\'s PDF claim, false included' do
+      submitter = emailed_submitter_for(account)
+
+      put "/s/#{submitter.slug}",
+          params: completion_params(submitter).merge(consent_params(pdf_opened: 'false'))
+
+      expect_completed_with_consent(submitter, pdf_opened: false)
+      expect(consent_events(submitter).sole.data)
+        .to include('sender_name' => account.name, 'sender_email' => admin_for(account).email)
+    end
+  end
+
+  describe 'the document PDF door (/s/:slug/document.pdf)' do
+    it 'serves the unsigned original inline for the slug and 404s for an unknown one' do
+      submitter = emailed_submitter_for(account)
+
+      get "/s/#{submitter.slug}/document.pdf"
+
+      expect(response).to have_http_status(:ok)
+      expect(response.media_type).to eq('application/pdf')
+      expect(response.headers['Content-Disposition']).to start_with('inline')
+      expect(response.body[0, 5]).to eq('%PDF-')
+
+      get '/s/does-not-exist/document.pdf'
+
+      expect(response).to have_http_status(:not_found)
+    end
+
+    # The signing page itself refuses until the emailed code is entered; the
+    # document door has to refuse on the same terms or it would route around it.
+    it 'refuses an email-2FA protected document until the code has been verified' do
+      template = text_template_for(account)
+      template.update!(preferences: { 'require_email_2fa' => true })
+      submitter = emailed_submitter_for(account, template:)
+
+      get "/s/#{submitter.slug}/document.pdf"
+      expect(response).to have_http_status(:not_found)
+
+      code = EmailVerificationCodes.generate([submitter.email.downcase.strip, submitter.slug].join(':'))
+      post '/submit_form_email_2fa', params: { submitter_slug: submitter.slug, one_time_code: code }
+
+      get "/s/#{submitter.slug}/document.pdf"
+      expect(response).to have_http_status(:ok)
+      expect(response.media_type).to eq('application/pdf')
+    end
+
+    # The builder's dry run shows the same gate, so its link has to answer too.
+    it 'serves the template copy to the sender and refuses another account' do
+      template = text_template_for(account)
+
+      act_as(account)
+      get "/templates/#{template.id}/form_document.pdf"
+
+      expect(response).to have_http_status(:ok)
+      expect(response.media_type).to eq('application/pdf')
+
+      act_as(paid_account)
+      get "/templates/#{template.id}/form_document.pdf"
+
+      expect(response).not_to have_http_status(:ok)
+    end
+
+    it 'hands the signing form the link and the two gate strings' do
+      submitter = emailed_submitter_for(account)
+
+      get "/s/#{submitter.slug}"
+
+      expect(esign_consent_contract)
+        .to include('pdf_url' => "/s/#{submitter.slug}/document.pdf",
+                    'view_pdf_text' => I18n.t('esign_consent_view_pdf'),
+                    'open_pdf_first' => I18n.t('esign_consent_open_pdf_first'))
     end
   end
 
@@ -567,20 +710,25 @@ RSpec.describe 'ESIGN consent', type: :request do
   describe 'locales' do
     it 'resolves every consent string in every declared locale, translated for non-English ones' do
       english = %w[esign_consent_checkbox_label esign_consent_disclosure_body_html
-                   esign_consent_version_stale].index_with do |key|
+                   esign_consent_version_stale esign_consent_view_pdf
+                   esign_consent_open_pdf_first esign_consent_pdf_opened
+                   esign_consent_shown_to esign_consent_sender_not_recorded].index_with do |key|
         I18n.t(key, locale: :en)
       end
 
       I18n.available_locales.each do |locale|
         ConsentSpecSupport::CONSENT_KEYS.each do |key|
-          value = I18n.t(key, locale:, fallback: false, raise: true, version: 'v1', submitter_name: 'Jane')
+          value = I18n.t(key, locale:, fallback: false, raise: true, version: EsignConsent::VERSION,
+                              submitter_name: 'Jane', sender_name: 'Acme Ltd',
+                              sender_email: 'acme@example.com', product_name: Docuseal.product_name)
 
           expect(value).to be_a(String), "#{locale} #{key}"
           expect(value).to be_present, "#{locale} #{key}"
         end
 
-        expect(I18n.t('submission_event_names.esign_consent_by_html', locale:, version: 'v1', submitter_name: 'J'))
-          .to match(%r{<b>.*v1.*</b>.*J}), locale.to_s
+        expect(I18n.t('submission_event_names.esign_consent_by_html', locale:, version: EsignConsent::VERSION,
+                                                                      submitter_name: 'J'))
+          .to match(%r{<b>.*#{EsignConsent::VERSION}.*</b>.*J}o), locale.to_s
         expect { I18n.l(EsignConsent::EFFECTIVE_DATE, format: :long, locale:) }.not_to raise_error, locale.to_s
 
         next if locale.to_s.start_with?('en')
@@ -630,6 +778,43 @@ RSpec.describe 'ESIGN consent', type: :request do
             expect(text).to match(pdf_phrase(label))
           end
         end
+      end
+    end
+
+    # A3.2: the audit trail carries the disclosure itself, so the evidence does
+    # not depend on anyone still having the product to look the text up in.
+    %w[en he ja].each do |locale|
+      it "reproduces the #{locale} disclosure in the audit trail appendix" do
+        platform_certificate!
+        account.update!(locale:, name: 'Acme Ltd')
+        submitter = emailed_submitter_for(account)
+
+        put "/s/#{submitter.slug}", params: completion_params(submitter).merge(consent_params(locale:))
+
+        expect(response).to have_http_status(:ok), locale
+
+        text = pdf_text(submitter.submission.reload.audit_trail.download)
+
+        expect(text).to match(pdf_phrase(I18n.t('esign_consent_disclosure_title', locale:))), locale
+        expect(text).to match(pdf_phrase(I18n.t('esign_consent_shown_to',
+                                                submitter_name: submitter.name || submitter.email,
+                                                locale:))), locale
+        # The first and the last paragraph of the disclosure, with the sender
+        # filled in — the whole text is between them.
+        paragraphs = EsignConsent.plain_paragraphs(
+          EsignConsent.interpolate(EsignConsent.disclosure_text(version: EsignConsent::VERSION, locale:),
+                                   sender_name: 'Acme Ltd', sender_email: admin_for(account).email)
+        )
+
+        expect(paragraphs.size).to eq(9), locale
+        [paragraphs.first, paragraphs.last].each do |paragraph|
+          expect(text).to match(pdf_phrase(paragraph.first(60))), "#{locale}: #{paragraph.first(60)}"
+        end
+
+        expect(text).not_to include(ConsentSpecSupport::SENDER_PLACEHOLDER), locale
+        expect(text).not_to match(/translation missing/i), locale
+        # The one client attestation, printed as its own line in the signer block.
+        expect(text).to match(pdf_phrase(I18n.t('esign_consent_pdf_opened', locale:))), locale
       end
     end
 

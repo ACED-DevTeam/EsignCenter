@@ -1,0 +1,116 @@
+# Superseded ESIGN disclosure texts, kept so a consent event recorded under an
+# older version can still be read back word for word (docs/esign-consent.md §6).
+# Never edit these strings: EsignConsent.disclosure_sha256 fingerprints them, and
+# every v1 consent event on record carries that fingerprint.
+en:
+  esign_disclosure_archive:
+    v1: |-
+      <p>By checking the box, you agree to use electronic records and electronic signatures for this document instead of paper and ink. You agree that your electronic signature has the same legal effect as your handwritten signature. A copy of the completed document will be available to you electronically, and the sender can also provide one on request.</p>
+      <p><strong>What you need.</strong> A current web browser, an internet connection and software that can open PDF files. If you can read this page, your device meets these requirements.</p>
+      <p><strong>Withdrawing consent.</strong> You may withdraw your consent at any time before you complete the document by not signing it and letting the sender know. Withdrawing consent does not affect documents you have already signed.</p>
+      <p><strong>Paper copies.</strong> You may request a paper copy of this document at any time by contacting the sender.</p>
+      <p><strong>What we record.</strong> Your agreement is recorded together with the date, time and internet (IP) address from which you gave it, and it appears in the document's audit trail.</p>
+es:
+  esign_disclosure_archive:
+    v1: |-
+      <p>Al marcar la casilla, acepta usar registros y firmas electrónicos para este documento en lugar de papel y tinta. Acepta que su firma electrónica tiene el mismo efecto legal que su firma manuscrita. Una copia del documento completado estará disponible para usted por medios electrónicos, y el remitente también puede facilitarle una si la solicita.</p>
+      <p><strong>Lo que necesita.</strong> Un navegador web actual, conexión a internet y un programa que pueda abrir archivos PDF. Si puede leer esta página, su dispositivo cumple estos requisitos.</p>
+      <p><strong>Retirar el consentimiento.</strong> Puede retirar su consentimiento en cualquier momento antes de completar el documento: basta con no firmarlo e informar al remitente. Retirar el consentimiento no afecta a los documentos que ya haya firmado.</p>
+      <p><strong>Copias en papel.</strong> Puede solicitar una copia en papel de este documento en cualquier momento poniéndose en contacto con el remitente.</p>
+      <p><strong>Lo que registramos.</strong> Su aceptación se registra junto con la fecha, la hora y la dirección de internet (IP) desde la que la otorgó, y aparece en el registro de auditoría del documento.</p>
+it:
+  esign_disclosure_archive:
+    v1: |-
+      <p>Selezionando la casella, accetti di utilizzare documenti e firme elettronici per questo documento al posto di carta e inchiostro. Accetti che la tua firma elettronica abbia lo stesso effetto legale della tua firma autografa. Una copia del documento completato sarà disponibile per te in formato elettronico e il mittente può fornirtene una anche su richiesta.</p>
+      <p><strong>Cosa ti serve.</strong> Un browser web aggiornato, una connessione a internet e un programma in grado di aprire file PDF. Se riesci a leggere questa pagina, il tuo dispositivo soddisfa questi requisiti.</p>
+      <p><strong>Revoca del consenso.</strong> Puoi revocare il consenso in qualsiasi momento prima di completare il documento, semplicemente non firmandolo e informando il mittente. La revoca non riguarda i documenti che hai già firmato.</p>
+      <p><strong>Copie cartacee.</strong> Puoi richiedere in qualsiasi momento una copia cartacea di questo documento contattando il mittente.</p>
+      <p><strong>Cosa registriamo.</strong> Il tuo consenso viene registrato insieme a data, ora e indirizzo internet (IP) da cui è stato prestato, e compare nel registro di audit del documento.</p>
+fr:
+  esign_disclosure_archive:
+    v1: |-
+      <p>En cochant la case, vous acceptez d'utiliser des documents et des signatures électroniques pour ce document, à la place du papier et de l'encre. Vous acceptez que votre signature électronique ait le même effet juridique que votre signature manuscrite. Une copie du document finalisé sera à votre disposition par voie électronique, et l'expéditeur peut également vous en fournir une sur demande.</p>
+      <p><strong>Ce dont vous avez besoin.</strong> Un navigateur web récent, une connexion internet et un logiciel capable d'ouvrir les fichiers PDF. Si vous pouvez lire cette page, votre appareil répond à ces exigences.</p>
+      <p><strong>Retrait du consentement.</strong> Vous pouvez retirer votre consentement à tout moment avant de finaliser le document, en ne le signant pas et en prévenant l'expéditeur. Le retrait n'affecte pas les documents que vous avez déjà signés.</p>
+      <p><strong>Copies papier.</strong> Vous pouvez demander à tout moment une copie papier de ce document en contactant l'expéditeur.</p>
+      <p><strong>Ce que nous enregistrons.</strong> Votre accord est enregistré avec la date, l'heure et l'adresse internet (IP) depuis laquelle vous l'avez donné, et il figure dans la piste d'audit du document.</p>
+pt:
+  esign_disclosure_archive:
+    v1: |-
+      <p>Ao marcar a caixa, concorda em utilizar registos e assinaturas eletrónicos para este documento, em vez de papel e tinta. Concorda que a sua assinatura eletrónica tem o mesmo efeito legal que a sua assinatura manuscrita. Uma cópia do documento concluído ficará disponível para si por via eletrónica, e o remetente também pode fornecer-lhe uma a pedido.</p>
+      <p><strong>O que precisa.</strong> Um navegador web atual, uma ligação à internet e um programa capaz de abrir ficheiros PDF. Se consegue ler esta página, o seu dispositivo cumpre estes requisitos.</p>
+      <p><strong>Retirar o consentimento.</strong> Pode retirar o seu consentimento a qualquer momento antes de concluir o documento, bastando não o assinar e informar o remetente. A retirada não afeta os documentos que já assinou.</p>
+      <p><strong>Cópias em papel.</strong> Pode solicitar a qualquer momento uma cópia em papel deste documento contactando o remetente.</p>
+      <p><strong>O que registamos.</strong> O seu consentimento é registado juntamente com a data, a hora e o endereço de internet (IP) a partir do qual foi dado, e consta do registo de auditoria do documento.</p>
+de:
+  esign_disclosure_archive:
+    v1: |-
+      <p>Mit dem Setzen des Häkchens stimmen Sie zu, für dieses Dokument elektronische Dokumente und elektronische Signaturen anstelle von Papier und Tinte zu verwenden. Sie stimmen zu, dass Ihre elektronische Signatur dieselbe rechtliche Wirkung hat wie Ihre handschriftliche Unterschrift. Eine Kopie des fertigen Dokuments steht Ihnen elektronisch zur Verfügung, und der Absender kann Ihnen auf Anfrage ebenfalls eine bereitstellen.</p>
+      <p><strong>Was Sie benötigen.</strong> Einen aktuellen Webbrowser, eine Internetverbindung und ein Programm, das PDF-Dateien öffnen kann. Wenn Sie diese Seite lesen können, erfüllt Ihr Gerät diese Anforderungen.</p>
+      <p><strong>Widerruf der Zustimmung.</strong> Sie können Ihre Zustimmung jederzeit vor dem Abschluss des Dokuments widerrufen, indem Sie es nicht unterschreiben und den Absender informieren. Der Widerruf betrifft keine Dokumente, die Sie bereits unterschrieben haben.</p>
+      <p><strong>Papierkopien.</strong> Sie können jederzeit eine Papierkopie dieses Dokuments anfordern, indem Sie sich an den Absender wenden.</p>
+      <p><strong>Was wir aufzeichnen.</strong> Ihre Zustimmung wird zusammen mit Datum, Uhrzeit und der Internetadresse (IP) aufgezeichnet, von der aus Sie sie erteilt haben, und erscheint im Prüfprotokoll des Dokuments.</p>
+pl:
+  esign_disclosure_archive:
+    v1: |-
+      <p>Zaznaczając pole, zgadzasz się na korzystanie z dokumentów i podpisów elektronicznych w odniesieniu do tego dokumentu zamiast papieru i długopisu. Zgadzasz się, że Twój podpis elektroniczny ma taki sam skutek prawny jak Twój podpis odręczny. Kopia gotowego dokumentu będzie dla Ciebie dostępna drogą elektroniczną, a nadawca może również przekazać Ci ją na życzenie.</p>
+      <p><strong>Czego potrzebujesz.</strong> Aktualnej przeglądarki internetowej, połączenia z internetem oraz programu otwierającego pliki PDF. Jeśli możesz przeczytać tę stronę, Twoje urządzenie spełnia te wymagania.</p>
+      <p><strong>Wycofanie zgody.</strong> Możesz wycofać zgodę w dowolnym momencie przed ukończeniem dokumentu – wystarczy go nie podpisywać i poinformować nadawcę. Wycofanie zgody nie dotyczy dokumentów, które już zostały podpisane.</p>
+      <p><strong>Kopie papierowe.</strong> W każdej chwili możesz poprosić o papierową kopię tego dokumentu, kontaktując się z nadawcą.</p>
+      <p><strong>Co rejestrujemy.</strong> Twoja zgoda jest zapisywana wraz z datą, godziną i adresem internetowym (IP), z którego została udzielona, i pojawia się w dzienniku audytu dokumentu.</p>
+uk:
+  esign_disclosure_archive:
+    v1: |-
+      <p>Установлюючи прапорець, ви погоджуєтеся використовувати для цього документа електронні документи та електронні підписи замість паперу й чорнила. Ви погоджуєтеся, що ваш електронний підпис має таку саму юридичну силу, як і ваш власноручний підпис. Копія завершеного документа буде доступна вам в електронному вигляді, а відправник також може надати її на ваш запит.</p>
+      <p><strong>Що вам потрібно.</strong> Сучасний веббраузер, підключення до інтернету та програма, яка відкриває файли PDF. Якщо ви можете прочитати цю сторінку, ваш пристрій відповідає цим вимогам.</p>
+      <p><strong>Відкликання згоди.</strong> Ви можете відкликати згоду в будь-який момент до завершення документа: просто не підписуйте його та повідомте відправника. Відкликання не стосується документів, які ви вже підписали.</p>
+      <p><strong>Паперові копії.</strong> Ви можете будь-коли запросити паперову копію цього документа, звернувшись до відправника.</p>
+      <p><strong>Що ми записуємо.</strong> Ваша згода фіксується разом із датою, часом та інтернет-адресою (IP), з якої її було надано, і відображається в журналі аудиту документа.</p>
+cs:
+  esign_disclosure_archive:
+    v1: |-
+      <p>Zaškrtnutím políčka souhlasíte s tím, že pro tento dokument budou místo papíru a inkoustu použity elektronické dokumenty a elektronické podpisy. Souhlasíte s tím, že váš elektronický podpis má stejné právní účinky jako váš vlastnoruční podpis. Kopie dokončeného dokumentu vám bude k dispozici elektronicky a odesílatel vám ji může na požádání rovněž poskytnout.</p>
+      <p><strong>Co potřebujete.</strong> Aktuální webový prohlížeč, připojení k internetu a program, který otevře soubory PDF. Pokud dokážete přečíst tuto stránku, vaše zařízení tyto požadavky splňuje.</p>
+      <p><strong>Odvolání souhlasu.</strong> Souhlas můžete kdykoli před dokončením dokumentu odvolat tak, že dokument nepodepíšete a informujete odesílatele. Odvolání se netýká dokumentů, které jste již podepsali.</p>
+      <p><strong>Papírové kopie.</strong> O papírovou kopii tohoto dokumentu můžete kdykoli požádat odesílatele.</p>
+      <p><strong>Co zaznamenáváme.</strong> Váš souhlas je zaznamenán spolu s datem, časem a internetovou adresou (IP), ze které byl udělen, a je uveden v auditní stopě dokumentu.</p>
+he:
+  esign_disclosure_archive:
+    v1: |-
+      <p>בסימון התיבה, את/ה מסכים/ה להשתמש במסמך זה ברשומות אלקטרוניות ובחתימות אלקטרוניות במקום נייר ועט. את/ה מסכים/ה שלחתימה האלקטרונית שלך יש אותו תוקף משפטי כמו לחתימה בכתב ידך. עותק של המסמך שהושלם יהיה זמין לך באופן אלקטרוני, והשולח יכול גם לספק לך עותק לפי בקשה.</p>
+      <p><strong>מה נדרש.</strong> דפדפן עדכני, חיבור לאינטרנט ותוכנה שיכולה לפתוח קובצי PDF. אם ניתן לקרוא דף זה, המכשיר שלך עומד בדרישות אלה.</p>
+      <p><strong>ביטול ההסכמה.</strong> ניתן לבטל את ההסכמה בכל עת לפני השלמת המסמך, על ידי אי-חתימה עליו ויידוע השולח. ביטול ההסכמה אינו משפיע על מסמכים שכבר נחתמו.</p>
+      <p><strong>עותקים מודפסים.</strong> ניתן לבקש עותק מודפס של מסמך זה בכל עת בפנייה לשולח.</p>
+      <p><strong>מה אנחנו מתעדים.</strong> ההסכמה שלך נרשמת יחד עם התאריך, השעה וכתובת האינטרנט (IP) שממנה ניתנה, ומופיעה ביומן הביקורת של המסמך.</p>
+nl:
+  esign_disclosure_archive:
+    v1: |-
+      <p>Door het vakje aan te vinken gaat u ermee akkoord om voor dit document elektronische documenten en elektronische handtekeningen te gebruiken in plaats van papier en pen. U gaat ermee akkoord dat uw elektronische handtekening dezelfde rechtsgeldigheid heeft als uw handgeschreven handtekening. Een kopie van het voltooide document is elektronisch voor u beschikbaar, en de afzender kan u er op verzoek ook een verstrekken.</p>
+      <p><strong>Wat u nodig heeft.</strong> Een actuele webbrowser, een internetverbinding en software waarmee u PDF-bestanden kunt openen. Als u deze pagina kunt lezen, voldoet uw apparaat aan deze eisen.</p>
+      <p><strong>Toestemming intrekken.</strong> U kunt uw toestemming op elk moment vóór het voltooien van het document intrekken door het niet te ondertekenen en de afzender hiervan op de hoogte te stellen. Intrekken heeft geen gevolgen voor documenten die u al heeft ondertekend.</p>
+      <p><strong>Papieren kopieën.</strong> U kunt op elk moment een papieren kopie van dit document aanvragen door contact op te nemen met de afzender.</p>
+      <p><strong>Wat wij vastleggen.</strong> Uw akkoord wordt vastgelegd samen met de datum, het tijdstip en het internetadres (IP) van waaruit u het heeft gegeven, en verschijnt in het audittrail van het document.</p>
+ar:
+  esign_disclosure_archive:
+    v1: |-
+      <p>بتحديد المربع، فإنك توافق على استخدام السجلات الإلكترونية والتوقيعات الإلكترونية لهذا المستند بدلاً من الورق والحبر. وتوافق على أن لتوقيعك الإلكتروني الأثر القانوني نفسه الذي لتوقيعك بخط اليد. ستكون نسخة من المستند المكتمل متاحة لك إلكترونيًا، ويمكن للمرسل أيضًا تزويدك بنسخة عند الطلب.</p>
+      <p><strong>ما تحتاج إليه.</strong> متصفح ويب حديث، واتصال بالإنترنت، وبرنامج يمكنه فتح ملفات PDF. إذا كان بإمكانك قراءة هذه الصفحة، فإن جهازك يستوفي هذه المتطلبات.</p>
+      <p><strong>سحب الموافقة.</strong> يمكنك سحب موافقتك في أي وقت قبل إكمال المستند بعدم توقيعه وإبلاغ المرسل. لا يؤثر سحب الموافقة على المستندات التي وقعتها بالفعل.</p>
+      <p><strong>النسخ الورقية.</strong> يمكنك طلب نسخة ورقية من هذا المستند في أي وقت عبر التواصل مع المرسل.</p>
+      <p><strong>ما نسجله.</strong> يتم تسجيل موافقتك مع التاريخ والوقت وعنوان الإنترنت (IP) الذي منحتها منه، وتظهر في سجل التدقيق الخاص بالمستند.</p>
+ko:
+  esign_disclosure_archive:
+    v1: |-
+      <p>확인란을 선택하면 이 문서에 종이와 잉크 대신 전자 기록과 전자 서명을 사용하는 데 동의하게 됩니다. 귀하는 귀하의 전자 서명이 자필 서명과 동일한 법적 효력을 가진다는 데 동의합니다. 완료된 문서의 사본은 전자적으로 확인하실 수 있으며, 요청하시면 발신자가 사본을 제공해 드릴 수도 있습니다.</p>
+      <p><strong>필요한 것.</strong> 최신 웹 브라우저, 인터넷 연결, PDF 파일을 열 수 있는 프로그램입니다. 이 페이지를 읽을 수 있다면 귀하의 기기는 이 요건을 충족합니다.</p>
+      <p><strong>동의 철회.</strong> 문서를 완료하기 전에는 언제든지 서명하지 않고 발신자에게 알리는 방법으로 동의를 철회할 수 있습니다. 동의 철회는 이미 서명한 문서에는 영향을 미치지 않습니다.</p>
+      <p><strong>종이 사본.</strong> 발신자에게 연락하여 언제든지 이 문서의 종이 사본을 요청할 수 있습니다.</p>
+      <p><strong>기록되는 내용.</strong> 귀하의 동의는 동의한 날짜, 시간, 인터넷(IP) 주소와 함께 기록되며 문서의 감사 추적에 표시됩니다.</p>
+ja:
+  esign_disclosure_archive:
+    v1: |-
+      <p>チェックボックスをオンにすると、この文書について紙とインクの代わりに電子記録および電子署名を使用することに同意したことになります。お客様は、お客様の電子署名が手書きの署名と同じ法的効力を持つことに同意します。完成した文書の写しは電子的にご利用いただけるほか、ご要望に応じて送信者から提供を受けることもできます。</p>
+      <p><strong>必要なもの。</strong> 最新のウェブブラウザ、インターネット接続、PDFファイルを開けるソフトウェアです。このページを読めていれば、お使いの端末はこれらの要件を満たしています。</p>
+      <p><strong>同意の撤回。</strong> 文書を完了する前であれば、署名せずに送信者に連絡することで、いつでも同意を撤回できます。同意の撤回は、すでに署名した文書には影響しません。</p>
+      <p><strong>紙のコピー。</strong> 送信者に連絡すれば、いつでもこの文書の紙のコピーを請求できます。</p>
+      <p><strong>記録される内容。</strong> お客様の同意は、同意した日時およびインターネット（IP）アドレスとともに記録され、文書の監査証跡に表示されます。</p>

@@ -16,12 +16,28 @@ time they open a document they have not yet agreed on:
   ticked. Trying to complete another way (for example pressing Enter) shows
   "Please agree to use electronic records and signatures to continue." next to
   the box and moves focus to it.
-- The **Electronic Signature Disclosure** link opens a short plain-English
-  notice: consent to electronic records and signatures for this document, what
-  hardware/software is needed, how to withdraw consent before completing (do
-  not sign; tell the sender), how to ask for a paper copy (contact the sender),
-  and that the agreement is recorded with date, time and IP address. The notice
-  ends with its version and effective date.
+- The **Electronic Signature Disclosure** link opens a plain-English notice
+  covering everything 15 U.S.C. §7001(c) asks for: consent to electronic
+  records and signatures for this document only, **who sent it** (the sending
+  account's name and an email address that reaches them), that a copy will be
+  available electronically, what hardware and software are needed, how to keep
+  a copy, how to withdraw consent before completing (do not sign; tell the
+  sender at that address — free, and the sender then has to arrange paper),
+  how to ask for a paper copy and who may charge for it, how to change the
+  email address documents are sent to, and what is recorded. The notice ends
+  with its version and effective date.
+- Next to the checkbox is a **View this document as a PDF** link. It opens the
+  unsigned original — the same pages the form is showing — in a new tab, and
+  **the checkbox stays disabled until it has been used once**, with the hint
+  "Open the document as a PDF before you agree." underneath. That is the
+  §7001(c) "confirm your device can display the record" step: the signer
+  proves to themselves that they can open a PDF before agreeing to be sent
+  one. The link is served by `GET /s/:slug/document.pdf`
+  (`SubmitFormDocumentController`), keyed on the signing slug and behind the
+  same email/link 2FA gate as the signing page itself. In the builder's form
+  preview the same link answers off the template
+  (`GET /templates/:id/form_document.pdf`), because the preview's signer
+  record is never saved.
 - Once the box is ticked and the form sends its first request, the agreement is
   saved and the checkbox disappears for the rest of that signer's steps — and
   it does not appear again for that person, even if they reopen their link
@@ -51,7 +67,7 @@ Ticking the box creates **one** `esign_consent` event per person on the
 signer (`submission_events`) — one for the original signer and, after a
 delegation, one more for the person the form was handed to — stamped with:
 
-- `version` — the disclosure version the signer saw (`v1` today),
+- `version` — the disclosure version the signer saw (`v2` today),
 - `locale` — the language the disclosure was shown in (`en`, `fr`, ... — the
   page sends back the locale it rendered; if it sends none, or one the
   product does not speak, the request's locale is recorded instead). The
@@ -59,11 +75,29 @@ delegation, one more for the person the form was handed to — stamped with:
   from: the page sends it, and the fallback is the browser locale the
   signing page was rendered under — the server cannot prove which language
   the person actually read,
-- `disclosure_sha256` — the SHA-256 fingerprint of the disclosure text in
-  that version and language. The server computes it from its own locale data
-  when the event is written; nothing about the text comes from the browser.
-  `EsignConsent.disclosure_sha256(version:, locale:)` recomputes it, so a
-  later reader can prove the archived text is the one the signer saw,
+- `disclosure_sha256` — the SHA-256 fingerprint of the disclosure **template**
+  in that version and language: the locale string with its `%{sender_name}`,
+  `%{sender_email}` and `%{product_name}` placeholders still in it, not the
+  filled-in words on screen. One fingerprint per version and language
+  therefore answers "which disclosure was this?", and the parts that differ
+  from sender to sender are the two fields below. The server computes it from
+  its own locale data when the event is written; nothing about the text comes
+  from the browser. `EsignConsent.disclosure_sha256(version:, locale:)`
+  recomputes it, so a later reader can prove the archived text is the one the
+  signer saw,
+- `sender_name` — the sending account's name, as the disclosure showed it,
+- `sender_email` — the address the disclosure told the signer to write to
+  (withdrawing consent, asking for paper). It is where a reply to that
+  signer's invitation email would land, resolved exactly as the invitation
+  email's reply-to is: the reply-to set on the signer, then the account's
+  custom invitation-email reply-to, then the person who sent the document,
+  then the account's first active administrator — skipping any no-reply
+  address. Both fields are read off the server's own records, never sent by
+  the browser,
+- `pdf_opened` — `true` or `false`: whether the signer used the "View this
+  document as a PDF" link before ticking the box. This is the **one** field on
+  the event the browser asserts. A browser can post anything, so it is stored
+  and printed as what it is: the page's own claim, not a server-side proof,
 - `ip`, `ua` (browser user agent), `sid` (session) — the same tracking data
   every signing event carries — and `uid`, the user id, when the person who
   consented was signed in to the dashboard (the sender signing their own
@@ -98,17 +132,29 @@ delegation.
 ## 4. Where it shows
 
 - **Audit trail PDF** — each signer's block shows
-  "Consented to electronic signatures (v1, fr): <date and time>" — the
-  version and the language the signer read the disclosure in — and the event
-  log lists "**Consented to electronic signatures (v1)** by <signer>". The
-  audit trail itself is written in the language of the last signer's
-  `metadata.lang` when the sender set one, otherwise in the account's
-  language.
+  "Consented to electronic signatures (v2, fr): <date and time>" — the
+  version and the language the signer read the disclosure in — followed by
+  "Document opened as a PDF" when the page reported that the signer used the
+  PDF link (nothing when it did not, the same way the verification lines above
+  it print only what happened). The event log lists "**Consented to electronic
+  signatures (v2)** by <signer>". The audit trail itself is written in the
+  language of the last signer's `metadata.lang` when the sender set one,
+  otherwise in the account's language.
+- **The disclosure itself, at the end of the audit trail.** After the event
+  log the trail carries one block per consent: "Electronic Records and
+  Signatures Disclosure — Version v2 (fr), shown to <signer>", then the whole
+  disclosure as plain paragraphs, in the language that signer read it in and
+  with the sender's name and address filled in from the event. The evidence is
+  self-contained: a reader years later does not need this product, or its
+  locale files, to see what the person agreed to. An event recorded before the
+  sender was named prints the template as it stands, above a line saying the
+  sender's details were not recorded with that consent.
 - **Submission events page** in the dashboard — the same event line, with a
   shield-check icon.
 - **API** — `GET /api/submitters/:id` and submission payloads include the
-  `esign_consent` event with `data.version`, `data.locale` and
-  `data.disclosure_sha256`.
+  `esign_consent` event with `data.version`, `data.locale`,
+  `data.disclosure_sha256`, `data.sender_name`, `data.sender_email` and
+  `data.pdf_opened`.
 
 ## 5. The exemption: sender-attested completions
 
@@ -131,9 +177,21 @@ create is an ordinary human signer who goes through the gated form.
 ## 6. Changing the disclosure text — the version rule
 
 The disclosure text is the locale key `esign_consent_disclosure_body_html`
-(all 14 base locales in `config/locales/i18n.yml`). `v1` is the launch text;
-nothing has shipped to production yet, so the text can still be edited under
-`v1`.
+(all 14 base locales in `config/locales/i18n.yml`).
+
+**Versions so far**
+
+| version | effective | state |
+| --- | --- | --- |
+| `v1` | 2 September 2026 | archived 5 September 2026 in `config/locales/esign_disclosures/v1.yml` (all 14 locales) |
+| `v2` | 5 September 2026 | live — names the sender, links to the document as a PDF, and covers the §7001(c) points v1 left out |
+
+Nothing had shipped to production under `v1`, but consents had been recorded
+in the development stack, so the bump-and-archive rule below was followed
+rather than editing `v1` in place. Those `v1` events still resolve: their
+recorded `disclosure_sha256` matches
+`EsignConsent.disclosure_sha256(version: 'v1', locale:)` computed from the
+archive file.
 
 **The rule:** bump the version the first time the text changes *after* any
 production consent has been recorded under the current version. From then
@@ -157,7 +215,9 @@ reproducible. When you bump:
 
    Rails loads that folder with the other locale files; the
    `esign_disclosure_archive` scope keeps an old text from ever shadowing
-   the live key. That folder does not exist yet because nothing has shipped.
+   the live key. Take the text programmatically (`I18n.t(key, locale:,
+   fallback: false)` in a runner) rather than by hand: the fingerprints are
+   recomputed from what lands in the file, so a stray space is a real change.
 2. Update the text in every base locale.
 3. Bump `EsignConsent::VERSION` (`v1` → `v2`) and `EsignConsent::EFFECTIVE_DATE`
    in `lib/esign_consent.rb`.
@@ -187,6 +247,26 @@ the disclosure body, the version label, the required message, the reload
 message shown for a stale version, the audit-trail line and the event-log
 line — exists as a real translation in all 14 base locales
 (`en es it fr pt de pl uk cs he nl ar ko ja`; the regional variants inherit
-them). `spec/golden/consent_spec.rb` fails if any locale is missing a key, if
+them) — as do the "View this document as a PDF" link, the "open the PDF
+first" hint, the "Document opened as a PDF" audit line, the appendix's
+"shown to <signer>" heading and its missing-sender note.
+`spec/golden/consent_spec.rb` fails if any locale is missing a key, if
 a non-English locale is an English copy, or if an audit trail PDF generated in
 any base locale would contain "translation missing".
+
+## 8. For the lawyer hour
+
+Open questions for counsel. They are product and policy decisions, not code
+decisions, and the answers may change the text in §1 and the claims on the
+trust page.
+
+1. Does §7001(c) consumer consent apply to our document types at all, and may
+   senders switch it off for B2B or substitute their own text?
+2. Is "withdraw before you complete, by not signing" an adequate withdrawal
+   right, or is an affirmative withdraw control and record required?
+3. Is a click-through modal sufficient prior provision of the disclosure, and
+   must we record that it was opened?
+4. Does the platform or the sender own the paper-copy and fee obligations, and
+   must the Terms make the sender responsible?
+5. Which marketing claims are earned — review the trust page's claim register
+   sentence by sentence.

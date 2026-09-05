@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_05_110000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_05_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gin"
   enable_extension "pg_catalog.plpgsql"
@@ -393,6 +393,23 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_05_110000) do
     t.text "value", null: false
     t.index ["user_id", "key"], name: "index_encrypted_user_configs_on_user_id_and_key", unique: true
     t.index ["user_id"], name: "index_encrypted_user_configs_on_user_id"
+  end
+
+  create_table "legal_acceptances", force: :cascade do |t|
+    t.datetime "accepted_at", null: false
+    t.bigint "account_id", null: false
+    t.datetime "created_at", null: false
+    t.string "document", null: false
+    t.string "ip"
+    t.string "sha256", null: false
+    t.string "source", null: false
+    t.datetime "updated_at", null: false
+    t.string "user_agent"
+    t.bigint "user_id", null: false
+    t.string "version", null: false
+    t.index ["account_id"], name: "index_legal_acceptances_on_account_id"
+    t.index ["user_id", "document"], name: "index_legal_acceptances_on_user_id_and_document"
+    t.index ["user_id"], name: "index_legal_acceptances_on_user_id"
   end
 
   create_table "lock_events", force: :cascade do |t|
@@ -811,6 +828,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_05_110000) do
   add_foreign_key "email_messages", "users", column: "author_id"
   add_foreign_key "encrypted_configs", "accounts"
   add_foreign_key "encrypted_user_configs", "users"
+  add_foreign_key "legal_acceptances", "accounts"
+  add_foreign_key "legal_acceptances", "users"
   add_foreign_key "mcp_tokens", "users"
   add_foreign_key "oauth_access_grants", "oauth_applications", column: "application_id"
   add_foreign_key "oauth_access_grants", "users", column: "resource_owner_id"

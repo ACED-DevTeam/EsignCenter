@@ -1,0 +1,19 @@
+<% content_for(:html_title, "Privacy Policy | #{Docuseal.product_name}") %>
+<% content_for(:html_description, "What #{Docuseal.product_name} collects from account holders and from signers, why we have it, which companies help us handle it, how long we keep it, and how to export or delete it.") %>
+<%# Marketing and legal pages are meant to be found (shared/_meta.html.erb). %>
+<% content_for(:indexable, true) %>
+<% content_for(:canonical_url, privacy_url) %>
+<%= render 'legal/document',
+           document: :privacy,
+           title: 'Privacy Policy',
+           summary: [
+             'We collect what running the service needs: your account details, your usage counters, ' \
+             'and the record of each signature.',
+             "A signer's details come from whoever sent them the document. Requests about that document " \
+             'go to the sender, and we help you reach them.',
+             'Payments are handled by Stripe. Your card number never reaches our servers.',
+             'No advertising cookies and no third-party analytics. Nobody is tracking you across the web ' \
+             'from our pages.',
+             'Your data is stored in the United States, and you can export or delete all of it from Settings ' \
+             'without asking us.'
+           ] %>

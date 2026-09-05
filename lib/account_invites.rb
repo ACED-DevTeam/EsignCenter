@@ -541,7 +541,19 @@ module AccountInvites
   # A fresh invitation accepted: the person is created here, in the account
   # that invited them, with the role the invitation carried. The pending
   # invite's seat becomes their seat, so occupancy does not move.
-  def accept!(invite, first_name:, last_name:, password:)
+  #
+  # This is the third door in the product that creates a login, so it is the
+  # third that records an agreement to the Terms and the Privacy Policy — in
+  # the invitation's own lock, alongside the user row, so the two can only
+  # exist together. `request` is what stamps the IP and browser on that
+  # record; it is optional because not every caller is a browser. `versions`
+  # is what the acceptance page said it was showing: a mismatch raises
+  # LegalDocuments::StaleVersionError and nothing at all is created, because a
+  # week-old invitation link can outlive a wording change.
+  #
+  # A MOVE (accept_move! below) records nothing: that person already has a
+  # login and already agreed when they made it.
+  def accept!(invite, first_name:, last_name:, password:, request: nil, versions: nil)
     with_open_invite(invite) do
       assert_address_free!(invite)
 
@@ -549,6 +561,8 @@ module AccountInvites
                                       role: invite.role, password:)
       user.skip_confirmation!
       user.save!
+
+      LegalDocuments.record_acceptance!(user, request:, source: LegalAcceptance::INVITE, versions:)
 
       invite.update!(accepted_at: Time.current)
 

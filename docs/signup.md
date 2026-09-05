@@ -90,3 +90,30 @@ this build.
 In production the app **refuses to boot** with the switch on and the
 Turnstile keys missing (an open door that could never let anyone in). Missing
 Google credentials only hide the button and log a warning.
+
+## 5. What signing up records
+
+Both sign-up doors — email + password, and Continue with Google — write down
+that the person agreed to the **Terms of Service** and the **Privacy Policy**,
+which are linked in one sentence under the sign-up form and published at the
+public pages `/terms` and `/privacy`. Two rows are written per person (one per
+document), each holding the version they were shown, a SHA-256 of the exact
+text, the time, the IP address and the browser. They are written in the same
+transaction as the account itself, so a sign-up that fails leaves neither.
+
+Accepting a team invitation as a *new* person is the third door and does the
+same thing; the invitation page carries the same sentence and the same two
+links. Accepting one as somebody who already has an account is a move, not a
+sign-up, and records nothing new — their existing agreement moves with them.
+
+The **sign-in page is a sign-up door too**: its *Continue with Google* button
+creates an account for an address that has never signed up, so that page
+carries the same sentence and the same two links.
+
+Every one of those pages sends back the **version** of each document it was
+displaying, and a door refuses — *"Our terms were updated while you were
+reading"* — rather than record an agreement to words the person never saw. A
+request that sends no versions at all is refused the same way.
+
+See **[docs/legal.md](legal.md)** for the versioning rule and for what a
+lawyer still has to settle.

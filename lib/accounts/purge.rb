@@ -65,7 +65,7 @@ module Accounts
       webhook_attempts webhook_events webhook_urls
       abuse_flags account_counters account_exports account_limit_overrides account_accesses account_invites
       account_linked_accounts account_moves encrypted_configs account_configs provisioning_events
-      access_tokens mcp_tokens user_configs encrypted_user_configs
+      access_tokens mcp_tokens user_configs encrypted_user_configs legal_acceptances
       oauth_access_grants oauth_access_tokens users
     ].freeze
 
@@ -420,6 +420,9 @@ module Accounts
         'mcp_tokens' => -> { McpToken.where(user_id: user_ids).count },
         'user_configs' => -> { UserConfig.where(user_id: user_ids).count },
         'encrypted_user_configs' => -> { EncryptedUserConfig.where(user_id: user_ids).count },
+        'legal_acceptances' => lambda {
+          LegalAcceptance.where(account_id: ids).or(LegalAcceptance.where(user_id: user_ids)).count
+        },
         'oauth_access_grants' => -> { OauthAccessGrant.where(resource_owner_id: user_ids).count },
         'oauth_access_tokens' => -> { OauthAccessToken.where(resource_owner_id: user_ids).count },
         'users' => -> { User.where(account_id: ids).count } }
@@ -1106,6 +1109,20 @@ module Accounts
     # to sign up again — which is exactly the promise the 90-day window makes.
     def delete_users!(account)
       user_ids = User.where(account_id: account.id).ids
+
+      # BEFORE the early return, and by ACCOUNT as well as by user (Session 9
+      # phase A, review 1). An acceptance row is owned by the account, and an
+      # account can reach here with no users at all: the last person in it
+      # accepted an invitation from another team, which moves their user row
+      # out and — until this line existed — left their agreement behind for a
+      # walk that returned before it got here, so `assert_emptied!` refused
+      # the purge forever. The user half is the other direction: somebody who
+      # moved IN brought a row naming an account this purge never sees, and
+      # the foreign key to `users` RESTRICTS, so missing it would blow the
+      # walk up on `User.delete_all` below.
+      LegalAcceptance.where(account_id: account.id)
+                     .or(LegalAcceptance.where(user_id: user_ids))
+                     .delete_all
 
       return if user_ids.empty?
 

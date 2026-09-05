@@ -20,6 +20,10 @@ module SubmissionEvents
     ).first(TRACKING_PARAM_LENGTH)
   end
 
+  # Blank values are dropped so an event never carries an empty `ip` or a nil
+  # `uid` — but `false` is an answer, not a blank: the consent event's
+  # `pdf_opened: false` says the signer did not open the PDF, and that has to
+  # survive into the row.
   def create_with_tracking_data(submitter, event_type, request, data = {})
     SubmissionEvent.create!(submitter:, event_type:, data: {
       ip: request.remote_ip,
@@ -27,7 +31,7 @@ module SubmissionEvents
       sid: request.session.id.to_s,
       uid: request.env['warden'].user(:user)&.id,
       **data
-    }.compact_blank)
+    }.reject { |_key, value| value != false && value.blank? })
   end
 
   def populate_account_id

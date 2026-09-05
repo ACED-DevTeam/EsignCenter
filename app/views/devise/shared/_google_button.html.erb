@@ -1,6 +1,6 @@
-<%# "Continue with Google": only while sign-up is open and Google credentials exist. POST-only (OmniAuth refuses GET), full page load (Turbo would swallow the redirect to Google). The browser's timezone goes on the form's query string: OmniAuth keeps the authorize request's query for the callback (omniauth.params), where a new account is stamped with it. %>
+<%# "Continue with Google": only while sign-up is open and Google credentials exist. POST-only (OmniAuth refuses GET), full page load (Turbo would swallow the redirect to Google). The browser's timezone goes on the form's query string: OmniAuth keeps the authorize request's query for the callback (omniauth.params), where a new account is stamped with it. The versions of the Terms and the Privacy Policy this page is showing ride there the same way, so a button drawn before a wording change cannot record an agreement to the new text (OmniauthCallbacksController#register). %>
 <% if Registrations.google_enabled? %>
-  <%= button_to user_google_oauth2_omniauth_authorize_path, method: :post, form: { id: 'google_sign_in_form', data: { turbo: false } }, form_class: 'w-full', class: 'btn btn-outline w-full text-base normal-case gap-3' do %>
+  <%= button_to user_google_oauth2_omniauth_authorize_path(LegalDocuments.version_fields), method: :post, form: { id: 'google_sign_in_form', data: { turbo: false } }, form_class: 'w-full', class: 'btn btn-outline w-full text-base normal-case gap-3' do %>
     <%= svg_icon('brand_google', class: 'w-5 h-5 shrink-0') %>
     <span><%= t('continue_with_google') %></span>
   <% end %>

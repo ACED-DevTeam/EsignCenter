@@ -1127,7 +1127,8 @@ RSpec.describe 'Seats and invitations', type: :request do
       expect(response.body).to include(ERB::Util.html_escape(account.name))
 
       expect do
-        post "/invites/#{token}", params: { first_name: 'Sam', last_name: 'Rivers', password: 'password-123' }
+        post "/invites/#{token}", params: { first_name: 'Sam', last_name: 'Rivers', password: 'password-123',
+                                            **LegalDocuments.version_fields }
       end.to change(User, :count).by(1)
 
       created = User.find_by!(email: invite_row.email)
@@ -1155,7 +1156,8 @@ RSpec.describe 'Seats and invitations', type: :request do
       expect(response.body).to include(I18n.t('invite_unavailable_title'))
 
       expect do
-        post "/invites/#{token}", params: { first_name: 'Sam', last_name: 'Rivers', password: 'password-123' }
+        post "/invites/#{token}", params: { first_name: 'Sam', last_name: 'Rivers', password: 'password-123',
+                                            **LegalDocuments.version_fields }
       end.not_to change(User, :count)
 
       expect(response).to have_http_status(:gone)
@@ -1181,7 +1183,8 @@ RSpec.describe 'Seats and invitations', type: :request do
     end
 
     def accept!
-      post "/invites/#{token}", params: { first_name: 'Sam', last_name: 'Rivers', password: 'password-123' }
+      post "/invites/#{token}", params: { first_name: 'Sam', last_name: 'Rivers', password: 'password-123',
+                                          **LegalDocuments.version_fields }
     end
 
     it 'refuses to add anybody to a team that is frozen for a failed payment' do
@@ -1216,7 +1219,8 @@ RSpec.describe 'Seats and invitations', type: :request do
 
       expect do
         expect do
-          AccountInvites.accept!(stale, first_name: 'Sam', last_name: 'Rivers', password: 'password-123')
+          AccountInvites.accept!(stale, first_name: 'Sam', last_name: 'Rivers', password: 'password-123',
+                                        versions: LegalDocuments.current_versions)
         end.to raise_error(AccountInvites::NoLongerOpen)
       end.not_to change(User, :count)
 
@@ -1917,7 +1921,8 @@ RSpec.describe 'Seats and invitations', type: :request do
       no_validation_error!
 
       expect do
-        post "/invites/#{token}", params: { first_name: 'Sam', last_name: 'Rivers', password: 'password-123' }
+        post "/invites/#{token}", params: { first_name: 'Sam', last_name: 'Rivers', password: 'password-123',
+                                            **LegalDocuments.version_fields }
       end.not_to change(User, :count)
 
       expect(response).to have_http_status(:gone)

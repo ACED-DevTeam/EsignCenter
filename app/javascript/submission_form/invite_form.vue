@@ -29,6 +29,12 @@
       name="esign_consent_locale"
       :value="esignConsentLocale"
     >
+    <input
+      v-if="esignConsent"
+      type="hidden"
+      name="esign_consent_pdf_opened"
+      :value="esignConsentPdfOpened"
+    >
     <div
       v-for="(submitter, index) in [...submitters, ...optionalSubmitters]"
       :key="submitter.uuid"
@@ -136,6 +142,13 @@ export default {
       type: String,
       required: false,
       default: ''
+    },
+    // Whether the signer opened the document as a PDF before agreeing (sent
+    // with the consent; the browser's own claim, stored as such).
+    esignConsentPdfOpened: {
+      type: Boolean,
+      required: false,
+      default: false
     }
   },
   emits: ['success'],

@@ -1,0 +1,927 @@
+<%# The Terms of Service. Plain English, semantic HTML, no CSS classes: the
+    page that renders this wraps it in a styled container. The only structural
+    element that is not prose is the bare <div> around each table, which is
+    what scrolls on a narrow screen. Every number comes
+    from the constant the product actually applies, so the words cannot drift
+    from the code. Nothing time-dependent may go in here — the rendered bytes
+    are hashed into every acceptance row. See docs/legal.md. %>
+<h2>1. Who these terms are between</h2>
+
+<p>
+  These Terms of Service (the “Terms”) are an agreement between you and
+  <%= operator_legal_name %>, which operates <%= product %> at
+  <%= site_host %>. In these Terms, “we”, “us” and
+  “<%= product %>” mean that company, and “you” means the person or
+  organization using the service.
+</p>
+
+<p>
+  By creating an account, or by using <%= product %> in any other way, you agree to
+  these Terms. If you are agreeing on behalf of a company, you are telling us
+  you are allowed to do that, and “you” means that company.
+</p>
+
+<p>
+  You can reach us at <a href="mailto:<%= support_email %>"><%= support_email %></a>.
+  We answer support questions at that address.
+</p>
+
+<h2>2. Your account</h2>
+
+<ul>
+  <li>
+    <strong>One login is one person.</strong> Logins are personal. Do not share
+    a login, and do not let someone else use yours. If more than one person
+    needs access, invite them — see section 5.
+  </li>
+  <li>
+    <strong>You are responsible for your credentials.</strong> Keep your
+    password to yourself, and tell us straight away if you think somebody else
+    has it. We are not able to tell an intruder from you if they are using
+    your password.
+  </li>
+  <li>
+    <strong>You confirm your email address before you can send.</strong> When
+    you sign up with an email address and a password, we email you a link. Until
+    you open it you cannot sign in, and nothing can be sent from the account.
+  </li>
+  <li>
+    <strong>Signing in with Google.</strong> You can create an account, and sign
+    in, with a Google account instead of a password. Google tells us your email
+    address and your name. If you have turned on two-factor authentication in
+    <%= product %>, you still enter your one-time code — Google does not
+    replace it. One case is worth stating plainly: if somebody had already
+    typed your address into the sign-up form but never opened the confirmation
+    email, signing in with Google takes that unconfirmed account over and
+    <strong>replaces its password with a random one nobody holds</strong>.
+    Google has just proved the mailbox is yours; whatever password the other
+    person set stops working, and you set your own from
+    “Forgot your password?”.
+  </li>
+  <li>
+    <strong>You must be able to enter a contract.</strong> <%= product %> is for
+    adults and for organizations. It is not directed at people under 18 and you
+    may not use it if you are under 18.
+  </li>
+</ul>
+
+<h2>3. The free plan</h2>
+
+<p>
+  Every account starts on the free plan. It is free permanently, and it has
+  these limits:
+</p>
+
+<div>
+<table>
+  <tbody>
+    <tr>
+      <td>Documents completed per month</td>
+      <td><%= limits::FREE_COMPLETIONS_PER_MONTH %></td>
+    </tr>
+    <tr>
+      <td>Documents sent per month</td>
+      <td><%= limits::FREE_SENDS_PER_MONTH %></td>
+    </tr>
+    <tr>
+      <td>Documents waiting for signatures at any one time</td>
+      <td><%= limits::FREE_IN_FLIGHT %></td>
+    </tr>
+    <tr>
+      <td>Users</td>
+      <td><%= limits::FREE_SEATS %></td>
+    </tr>
+    <tr>
+      <td>Storage</td>
+      <td><%= gigabytes.call(limits::FREE_STORAGE_BYTES) %></td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<p>
+  The monthly limits run on the UTC calendar month and reset by themselves at
+  midnight UTC on the first of each month. A few things are worth spelling out:
+</p>
+
+<ul>
+  <li>
+    <strong>What counts as a completed document.</strong> A document counts the
+    first time any signer completes it. A document with several signers counts
+    once, not once per person. Corrections, resends and re-completions of the
+    same document never add another completion. A document that is declined, or
+    that expires with nobody having signed it, counts nothing.
+  </li>
+  <li>
+    <strong>What counts as a document sent.</strong> Every document created for
+    signature counts as a send, however it was created — the recipients
+    form, a share link, an API call, “sign it yourself” or a
+    correction. Deleting or archiving a document afterwards does not give the
+    send back.
+  </li>
+  <li>
+    <strong>What counts as storage.</strong> Storage is everything the account
+    holds, including the signed documents we produce for you and anything in
+    your archive, until you delete it permanently. Reaching the
+    storage cap blocks new uploads by people in your account. It never stops a
+    document being sent, and it never stops a signer from signing.
+  </li>
+  <li>
+    <strong>Documents already sent always complete.</strong> Reaching a limit
+    never strands a document that is already out for signature. The people
+    holding it can still finish it, and that completion is still recorded.
+  </li>
+  <li>
+    <strong>Share links pause at the limit.</strong> When the free plan's
+    monthly limit is reached, share links stop accepting new documents until the
+    month resets. Nothing is deleted and nothing is lost.
+  </li>
+  <li>
+    <strong>The free plan carries our footer.</strong> Emails we send on your
+    behalf and the pages your signers sign on show an <%= product %> footer.
+  </li>
+  <li>
+    <strong>Some features are on the paid plan only.</strong> The API,
+    webhooks, embedded signing, signing sessions, automatic reminders,
+    conditional logic, custom email templates, sending from your own email
+    server, BCC, delivery tracking and removing our branding all need a paid
+    plan. The current list is on our <a href="/pricing">pricing page</a>.
+  </li>
+</ul>
+
+<h3>Correcting a document somebody has already signed</h3>
+
+<p>
+  Sometimes a document is signed and only then does somebody spot a mistake. You
+  fix it and send the same document out again, and we treat that as the same
+  document rather than a new one.
+</p>
+
+<%# Quoted verbatim (D73). Deliberately one long source line: the sentence
+    people are shown has to be the sentence the code promises, and a line
+    break in the source would put a newline in the middle of it. %>
+<p>
+  Correcting a signed document and sending it again never uses a second completion, however many rounds it takes; it still counts as a send.
+</p>
+
+<%# Quoted verbatim (D74) — one source line, for the same reason. %>
+<p>
+  Correcting a signed document is allowed even when you have reached the monthly completion limit; it still counts as a send and as an open document.
+</p>
+
+<h2>4. The paid plan</h2>
+
+<ul>
+  <li>
+    <strong>Price.</strong> $<%= price %> per user per month, in US dollars.
+    Sales tax is added where the law requires it.
+  </li>
+  <li>
+    <strong>Every user is a seat.</strong> Everybody in the account occupies a
+    seat, including people who can only view.
+  </li>
+  <li>
+    <strong>Storage.</strong> <%= gigabytes.call(limits::PAID_STORAGE_BYTES_PER_SEAT) %> per seat.
+    As on the free plan, reaching it blocks new uploads only.
+  </li>
+  <li>
+    <strong>Free trial.</strong> <%= trial_days %> days, free. We ask for a card
+    at the start of the trial, and the card is charged when the trial ends
+    unless you cancel before then. Canceling during the trial costs nothing.
+    There is one trial per account, ever.
+  </li>
+  <li>
+    <strong>Adding seats.</strong> A seat added part-way through a billing
+    period is charged straight away, for the rest of that period, at the amount
+    we show you before you confirm it.
+  </li>
+  <li>
+    <strong>Removing seats.</strong> Removing a seat takes effect at your next
+    renewal: the next invoice simply bills fewer seats. There is no mid-cycle
+    credit or refund. The seat count never drops below the number of people
+    actually in the account.
+  </li>
+  <li>
+    <strong>Invitations.</strong> An invitation to join your account is
+    valid for <%= invite_days %> days. It holds the seat while it waits.
+  </li>
+  <li>
+    <strong>Canceling.</strong> You can cancel at any time. Your paid access
+    continues to the end of the period you have already paid for, and then the
+    account moves to the free plan. After the trial we do not give prorated
+    refunds for a period you have started.
+  </li>
+  <li>
+    <strong>Duplicate charges.</strong> If our systems ever charge you twice
+    for the same subscription, we refund the duplicate — automatically where we
+    can, and by hand where we cannot. That is not a discretionary goodwill
+    payment; it is what we do.
+  </li>
+</ul>
+
+<h3>“Unlimited” documents, and fair use</h3>
+
+<p>
+  We do not charge per document. We watch for unusually high usage and review
+  it with you. These are the numbers that prompt that conversation:
+</p>
+
+<div>
+<table>
+  <tbody>
+    <tr>
+      <td>Completed documents</td>
+      <td><%= limits::PAID_COMPLETIONS_REVIEW_PER_SEAT %> per seat per month</td>
+    </tr>
+    <tr>
+      <td>Documents sent</td>
+      <td><%= limits::PAID_SENDS_PER_DAY_PER_SEAT %> per seat per day</td>
+    </tr>
+    <tr>
+      <td>Documents waiting for signatures</td>
+      <td><%= limits::PAID_IN_FLIGHT_PER_SEAT %> per seat</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<p>
+  Passing one of these numbers blocks nothing automatically. It raises a flag
+  for a person at <%= product %> to look at, and only a person can suspend a
+  paid account <strong>for passing these fair-use numbers</strong> — never the
+  software, and never without that review. Two other things can stop an account
+  without anyone reviewing it first, and they are separate rules: an unpaid
+  card (section 6) and the sending pause a spam complaint triggers
+  (section 11).
+</p>
+
+<h2>5. People in your account</h2>
+
+<p>
+  An administrator invites people by email address from Settings. The
+  invitation holds a seat and lasts <%= invite_days %> days; the person chooses
+  their own name and password when they accept it.
+</p>
+
+<p>
+  <strong>If the person you invite already has their own <%= product %>
+  account</strong>, accepting your invitation moves them into your team: their
+  templates, folders and documents come with them, and their old account is
+  archived. Nothing in it is deleted, and documents it has already signed stay
+  verifiable. Because it is a move between two organizations, the keys their old
+  account issued stop working — API tokens, integration tokens,
+  “remember me”, and every browser they were signed in on except the
+  one they accepted from. We tell them all of this on the page before they
+  press the button, and we refuse the move in a number of cases — among them
+  when their old account still has other people in it, still has a paid
+  subscription, is frozen for an unpaid card, is scheduled for deletion, or is
+  already closed. Each refusal says which one it is and what to settle first.
+</p>
+
+<p>
+  An account can never lose its last administrator. Removing, demoting or
+  archiving the only person who can administer an account is refused.
+</p>
+
+<h2>6. If a payment fails</h2>
+
+<p>
+  A failed payment does not take the service away on the first day.
+</p>
+
+<ul>
+  <li>
+    You get <%= grace_days %> days of grace. Through those days everything works
+    exactly as before, paid features included.
+  </li>
+  <li>
+    We email the account's administrators four times in that period: on the day
+    the payment fails, then three days, a week and thirteen days later. Every
+    one of those emails says the date the account will be suspended and links
+    straight to the billing page.
+  </li>
+  <li>
+    On day <%= grace_days %> the account is <strong>suspended</strong>.
+  </li>
+</ul>
+
+<p>
+  Suspended means read-only, and nothing more than that:
+</p>
+
+<ul>
+  <li>Everybody can still sign in. Nothing is deleted.</li>
+  <li>
+    Every document, template and export stays readable, downloadable and
+    exportable.
+  </li>
+  <li>
+    A signer who already holds one of your documents can still finish signing
+    it, and that completion is still recorded.
+  </li>
+  <li>
+    Nothing new can be created or changed — documents, templates, people,
+    settings — and the API and webhooks stop.
+  </li>
+  <li>
+    Paying lifts the suspension automatically, within seconds. There is no
+    support ticket and no manual step.
+  </li>
+</ul>
+
+<p>
+  If our card processor reports the subscription as <em>unpaid</em> or
+  <em>paused</em> rather than merely late, there is no grace left to give and
+  the account is <strong>suspended straight away</strong>, in exactly the
+  read-only shape above. Nothing is deleted, everything stays readable and
+  exportable, and settling the payment lifts the suspension automatically.
+  Later on, if the card processor gives up on the subscription altogether and
+  cancels it, there is nothing left to collect: the account returns to the free
+  plan and can write again under the free plan's limits.
+</p>
+
+<h2>7. Going back to the free plan</h2>
+
+<ul>
+  <li><strong>Nothing is deleted, ever.</strong></li>
+  <li>
+    Every document, template and audit trail stays readable and exportable.
+  </li>
+  <li>
+    <strong>Your free month starts the moment the paid plan ends.</strong> What
+    you completed and sent earlier in that calendar month was paid for and is
+    not charged against the free allowance. The account starts again at 0 of
+    <%= limits::FREE_COMPLETIONS_PER_MONTH %> completions and 0 of
+    <%= limits::FREE_SENDS_PER_MONTH %> sends. That free month still ends with
+    the calendar month, not thirty days later.
+  </li>
+  <li>
+    Documents already in progress keep the features they were created with.
+  </li>
+  <li>
+    The free plan has <%= limits::FREE_SEATS %> seat, so extra people become
+    read-only: they can still sign in, read, download and export, and they
+    cannot create or change anything. Nobody is deleted, and an administrator
+    chooses who keeps the seat.
+  </li>
+</ul>
+
+<h2>8. How long we keep your data, and how you delete it</h2>
+
+<ul>
+  <li>
+    <strong>After you cancel.</strong> We keep a canceled paid account's data
+    for at least <%= paid_retention %> after the cancellation, so that coming
+    back is always possible.
+  </li>
+  <li>
+    <strong>An account nobody uses.</strong> An account with no sign-in and no
+    activity for <%= dormant_after %> may be deleted. Before that happens we
+    email everybody in the account
+    <%= sentence.call(dormant_warning_days) %> days beforehand, and any use of
+    the account resets the clock.
+  </li>
+  <li>
+    <strong>Deleting on purpose.</strong> An administrator can delete the
+    account from Settings. We confirm it is really you, with your password or
+    with a code we email you. The subscription is canceled at once, so you are
+    not charged again. The account then becomes read-only for
+    <%= deletion_window_days %> days, during which you can still sign in,
+    download and export everything — and any administrator can call the
+    deletion off. At the end of those <%= deletion_window_days %> days we
+    destroy your documents, templates, audit trails, files, settings and
+    logins. A short list of records survives, and it is set out below.
+  </li>
+  <li>
+    <strong>Take a copy whenever you like.</strong> Settings offers an export:
+    one zip file holding your documents, your templates and the audit trail of
+    every signature. You do not have to be leaving to ask for it.
+  </li>
+</ul>
+
+<h3>What survives a deletion</h3>
+
+<p>
+  A permanent deletion is not quite total, and we would rather you knew exactly
+  what is left before you press the button. This is the whole list:
+</p>
+
+<ul>
+  <li>
+    <strong>The verification record of each signed document, kept
+    permanently.</strong> A fingerprint, the date it was signed and how many
+    people signed it. It never contains the document, and it never names
+    anybody. It has to outlive the account: without it, every copy of that
+    document already in the world would stop verifying for the people holding
+    it (section 10).
+  </li>
+  <li>
+    <strong>Your subscription and payment history.</strong> What plan you were
+    on, what was charged and when — the accounting record we are required to
+    keep.
+  </li>
+  <li>
+    <strong>The record of what our payment processor told us, with the
+    identity taken out.</strong> We keep the ids, amounts, dates and outcomes,
+    because that is the audit of the money; names, email addresses, postal
+    addresses, card details and the links to processor-hosted invoices are
+    blanked out with a redaction marker.
+  </li>
+  <li>
+    <strong>A stub of the account row itself</strong> — a number and the date
+    it was deleted, renamed so it no longer says who it was. It exists so that
+    the records above point at something rather than at nothing.
+  </li>
+  <li>
+    <strong>Our own log of support access to the account</strong> — when we
+    looked, why, and what we did. It is the record that makes that access
+    answerable, so deleting it on request would defeat its purpose.
+  </li>
+  <li>
+    <strong>Any stored file that another <%= product %> account is also
+    using</strong> — for example a template somebody shared with you and
+    copied. Only your copy is removed; the other account keeps theirs.
+  </li>
+</ul>
+
+<p>
+  Nothing else survives. Your documents, templates, folders, audit trails,
+  uploaded and signed files, signatures, settings, API keys, invitations and
+  logins are all destroyed, and the email addresses on those logins are
+  released for anyone to use again.
+</p>
+
+<h2>9. Signing, and the people who sign</h2>
+
+<p>
+  Before anybody can complete a document on our signing pages, we ask them to
+  agree to use electronic records and signatures, and we show them a short
+  disclosure explaining what that means. We record that agreement in the
+  document's audit trail together with the date and time, the signer's IP
+  address and the version of the disclosure they were shown.
+</p>
+
+<p>
+  There is one door where we cannot ask, and it matters. The API and signing
+  sessions let an account holder mark a document as completed on a signer's
+  behalf — because the signing happened somewhere else, on their own system or
+  in front of them. No signer visits our pages on that path, so
+  <strong>no consent is collected and none is recorded</strong>. If you use
+  that door, obtaining the signer's agreement to sign electronically, and
+  keeping your own record of it, is yours to do.
+</p>
+
+<p>
+  <strong>The sender is responsible for the document.</strong> If you send a
+  document through <%= product %>:
+</p>
+
+<ul>
+  <li>
+    you are responsible for what is in it, for having the right to send it to
+    the people you send it to, and for whatever the law where you and they are
+    requires of you;
+  </li>
+  <li>
+    you are the person a signer asks for a paper copy, and the person they tell
+    if they want to withdraw their agreement to sign electronically. We record
+    the agreement; honoring those requests is yours to do;
+  </li>
+  <li>
+    we do not read, review, check or approve the documents you send. We have no
+    view on whether a document you send is appropriate, accurate or complete.
+  </li>
+</ul>
+
+<p>
+  We provide the tool and the record. Whether a particular signed document is
+  enforceable is a question of law that depends on the document, the parties and
+  where they are. We do not decide it, and nothing in <%= product %> promises an
+  outcome in any dispute.
+</p>
+
+<h2>10. Signed documents and verification</h2>
+
+<p>
+  When a document is completed, we seal it with <%= product %>'s digital
+  signature and add a timestamp from an independent third-party timestamp
+  authority. Anybody holding the file can check it at
+  <%= site_host %>/verify without an account.
+</p>
+
+<p>
+  That page reveals exactly two things: the day the signing finished and how
+  many people signed. It never reveals who signed, what was signed, or anything
+  from inside the document.
+</p>
+
+<h2>11. Acceptable use</h2>
+
+<p>You may not use <%= product %>:</p>
+
+<ul>
+  <li>for anything unlawful, deceptive, fraudulent or misleading;</li>
+  <li>
+    to send documents to people who have not asked for them and have no
+    relationship with you — <%= product %> is not a bulk mail tool;
+  </li>
+  <li>
+    to impersonate somebody else, or to send a document under a name that is not
+    yours to use;
+  </li>
+  <li>
+    to interfere with the service or to get around its limits, or to probe or
+    test its security without our written permission first — we welcome
+    security reports, we just want to know before you start;
+  </li>
+  <li>
+    to upload or send malware, or anything designed to damage or take control
+    of a computer;
+  </li>
+  <li>
+    to scrape, crawl or bulk-collect from the service by any means other than
+    the API on a plan that includes it;
+  </li>
+  <li>
+    to copy, decompile or reverse engineer the hosted service in order to build
+    a competing product — the application's source is open under a license that
+    says what you may do with it (section 14), and this is about the service we
+    run, not about that code;
+  </li>
+  <li>
+    for anything where a failure or a delay could lead to death, personal
+    injury, or severe environmental or property damage. <%= product %> is not
+    built for those uses and must not be relied on for them.
+  </li>
+</ul>
+
+<p>
+  <strong>Complaints and bounces pause sending.</strong> A spam complaint about
+  mail we sent for you, or a high rate of undeliverable addresses, pauses your
+  account's sending until a person at <%= product %> has reviewed it. Everything
+  else keeps working while that happens. We may suspend or close an account for
+  abuse.
+</p>
+
+<p>
+  Every signing page carries a “Report this document” link, so
+  anybody who receives something they should not have can tell us directly.
+</p>
+
+<h2>12. The API and integrations</h2>
+
+<p>
+  The API, webhooks, embedded signing and the other integration features are
+  part of the paid plan. You are responsible for what your API keys do, exactly
+  as you are for what your password does.
+</p>
+
+<%# Quoted verbatim (D78) — one source line, for the same reason. %>
+<p>
+  A legacy integration login can only do document work through the API on its own account; it cannot manage users, seats or billing.
+</p>
+
+<h2>13. Where your data is, and who helps us handle it</h2>
+
+<p>
+  <%= product %> runs in the United States, and your data is stored and
+  processed there. We use a small number of other companies to run the service
+  — hosting, file storage, email delivery, payments, error reporting and
+  bot protection. The current list is on our
+  <a href="/trust">Trust page</a>, and what each of them receives is set out in
+  our <a href="/privacy">Privacy Policy</a>.
+</p>
+
+<p>
+  We do not offer a data processing addendum at this time. If your organization
+  requires one, <%= product %> is not the right service for you yet.
+</p>
+
+<h2>14. Open source, and whose names these are</h2>
+
+<p>
+  <%= product %> is built on DocuSeal, which is open source software licensed
+  under the GNU Affero General Public License, version 3. The source of the
+  version we run is available at
+  <a href="<%= github_url %>" rel="noopener"><%= github_url %></a>.
+</p>
+
+<p>
+  “DocuSeal” is a trademark of its owner. It is not ours, and
+  nothing here suggests that DocuSeal's owner endorses, supports or is
+  responsible for <%= product %>.
+</p>
+
+<h2>15. No warranties</h2>
+
+<p>
+  We work hard to keep <%= product %> running and correct, but we provide it
+  “as is” and “as available”. To the fullest extent the
+  law allows, we disclaim all warranties, whether express or implied, including
+  any implied warranties of merchantability, fitness for a particular purpose
+  and non-infringement.
+</p>
+
+<p>
+  We do not promise that the service will be uninterrupted or error-free, that
+  it will meet a particular legal or regulatory requirement of yours, or that a
+  document you send through it will achieve a particular result.
+</p>
+
+<h2>16. Limits on our liability</h2>
+
+<p>
+  To the fullest extent the law allows, neither we nor anyone who works with us
+  is liable for indirect, incidental, special, consequential or punitive
+  damages, or for lost profits, lost revenue, lost business or lost data,
+  however caused.
+</p>
+
+<p>
+  <strong>Our total liability to you</strong>, for all claims taken together and
+  whatever the legal theory, is limited to the fees you actually paid us for
+  <%= product %> in the twelve months before the event that gave rise to the
+  claim. If you have paid us nothing, our total liability is nothing.
+</p>
+
+<p>
+  Some places do not allow some of these exclusions. Where that is so, they do
+  not apply to you and the rest of this section still does.
+</p>
+
+<h2>17. Your content, and covering us for it</h2>
+
+<p>
+  Your documents are yours. We claim no ownership of them, and we use them only
+  to run the service for you — to store them, show them to the people you
+  send them to, produce the signed result and keep the audit trail.
+</p>
+
+<p>
+  You agree to cover us for any claim, loss or cost that comes from the
+  documents you send, from your use of <%= product %>, or from your breaking
+  these Terms — including reasonable legal costs. We will tell you about
+  any such claim promptly and let you take the lead in defending it.
+</p>
+
+<h2>18. Changes to the service</h2>
+
+<p>
+  We are still building <%= product %>. We may change, add, remove or
+  discontinue features, and we may change how something works. Where a change
+  would take away something you rely on, we will give you reasonable notice and
+  the chance to export everything first.
+</p>
+
+<p>
+  Some features are offered as <strong>beta</strong> or preview features. They
+  are labeled as such, they may change or disappear, they may not work
+  properly, and they are provided with no warranty of any kind. Use them with
+  that in mind, and do not use them for anything that has to be right.
+</p>
+
+<h2>19. Third-party services</h2>
+
+<p>
+  Two other companies are part of using <%= product %>, and your dealings with
+  them are governed by their own terms as well as ours:
+</p>
+
+<ul>
+  <li>
+    <strong>Google</strong>, if you choose to sign in with a Google account.
+  </li>
+  <li>
+    <strong>Stripe</strong>, which handles every payment. Your card details go
+    to Stripe, not to us.
+  </li>
+</ul>
+
+<p>
+  We are not responsible for those services, and we do not control what they
+  do. The other companies we use to run the service are listed on our
+  <a href="/trust">Trust page</a> and in our
+  <a href="/privacy">Privacy Policy</a>.
+</p>
+
+<h2>20. Notices, and agreeing to receive them electronically</h2>
+
+<p>
+  <strong>How we reach you.</strong> We send notices — including changes to
+  these Terms, billing messages, invoices, receipts, security notices and
+  anything else we are required to tell you — by email, to the addresses of the
+  people who administer your account, and by posting them in the application or
+  on this site. A notice is given when we send it. Keep your administrators'
+  email addresses current; a notice sent to an address you no longer read still
+  counts as given.
+</p>
+
+<p>
+  <strong>How you reach us.</strong> Email
+  <a href="mailto:<%= support_email %>"><%= support_email %></a>, or write to
+  the postal address in section 29.
+</p>
+
+<p>
+  <strong>You agree to receive all of this electronically.</strong> By using
+  <%= product %> you consent to receive this agreement, every notice, every
+  disclosure, every invoice and every receipt in electronic form rather than on
+  paper, and you agree that an electronic record satisfies any requirement that
+  such a thing be in writing. You can withdraw that consent by closing your
+  account; we do not offer a paper alternative.
+</p>
+
+<h2>21. Copyright complaints</h2>
+
+<p>
+  If you believe something stored or sent through <%= product %> infringes your
+  copyright, write to
+  <a href="mailto:<%= support_email %>"><%= support_email %></a> with:
+</p>
+
+<ol>
+  <li>your physical or electronic signature;</li>
+  <li>a description of the copyrighted work you say has been infringed;</li>
+  <li>
+    a description of the material you say is infringing, and enough detail for
+    us to find it;
+  </li>
+  <li>your name, postal address, telephone number and email address;</li>
+  <li>
+    a statement that you believe in good faith that the use is not authorized
+    by the copyright owner, its agent or the law; and
+  </li>
+  <li>
+    a statement, made under penalty of perjury, that the information in your
+    notice is accurate and that you are the copyright owner or authorized to
+    act for them.
+  </li>
+</ol>
+
+<p>
+  We remove or disable material in response to valid notices, we tell the
+  account holder, and we close the accounts of repeat infringers.
+</p>
+
+<h2>22. Your privacy rights</h2>
+
+<p>
+  Our <a href="/privacy">Privacy Policy</a> explains what we collect and why.
+  Wherever you live, you can ask us to:
+</p>
+
+<ul>
+  <li>tell you what personal information we hold about you, and give you a copy;</li>
+  <li>correct it if it is wrong;</li>
+  <li>delete it; and</li>
+  <li>reconsider — appeal — if we turn any of those down.</li>
+</ul>
+
+<p>
+  Account holders can do the first three for themselves at any time from
+  Settings, without asking us. For anything else, write to
+  <a href="mailto:<%= support_email %>"><%= support_email %></a> and we will
+  answer. An authorized agent may make a request for you; we may need to
+  confirm with you that they really are acting on your behalf.
+</p>
+
+<p>
+  <strong>We do not sell personal information, and we do not share it for
+  cross-context behavioral advertising. We have not done so in the past twelve
+  months.</strong>
+</p>
+
+<p>
+  We will never treat you differently for exercising any of these rights — no
+  worse price, no worse service, no penalty of any kind.
+</p>
+
+<p>
+  If you are a <strong>signer</strong> rather than an account holder, the
+  person who sent you the document decides what happens to it, so those
+  requests go to them. Write to us if you cannot reach them and we will help
+  you get to the right person.
+</p>
+
+<h2>23. Export controls and sanctions</h2>
+
+<p>
+  <%= product %> is operated from the United States and is subject to United
+  States export control and sanctions laws. By using it you confirm that you
+  are not located in a country or region those laws embargo, that you are not
+  on any United States government list of restricted or denied parties, and
+  that you will not use <%= product %> for any purpose those laws prohibit. We
+  may suspend or close an account to comply with them.
+</p>
+
+<h2>24. Nothing here is advice</h2>
+
+<p>
+  <%= product %> is software. Nothing in these Terms, in the product, in our
+  documentation or in anything our support team says is legal, tax, accounting
+  or financial advice. Whether a document you send does what you need it to do,
+  and whether an electronic signature is the right way to sign it where you and
+  your signers are, are questions for your own professional advisers.
+</p>
+
+<h2>25. Ending these Terms</h2>
+
+<p>
+  You can stop using <%= product %> at any time, and delete your account from
+  Settings (section 8).
+</p>
+
+<p>
+  We can suspend or close an account that breaks these Terms, that is being used
+  for abuse, or that we are required by law to close. Except where the law or a
+  serious abuse makes it impossible, we will tell you why and give you a chance
+  to put it right, and we will give you the chance to export your documents
+  first.
+</p>
+
+<p>
+  These sections carry on after these Terms end: 8 (what we keep and what
+  survives a deletion), 10 (verification), 15 (no warranties), 16 (limits on
+  our liability), 17 (your content, and covering us for it), 20 (notices), 21
+  (copyright complaints), 22 (your privacy rights), 23 (export controls), 24
+  (nothing here is advice), 27 (governing law) and 28 (the rest).
+</p>
+
+<h2>26. Changes to these Terms</h2>
+
+<p>
+  We may change these Terms. When we do, we post the new version on this page
+  with its own version number and effective date before it takes effect, and we
+  email the administrators of every account. The previous version is kept, so
+  the exact words you agreed to on the day you signed up can always be
+  produced.
+</p>
+
+<p>
+  If you keep using <%= product %> after a change takes effect, the new Terms
+  apply to you. If you do not agree with a change, you can cancel and export
+  everything before it takes effect.
+</p>
+
+<h2>27. Governing law</h2>
+
+<p>
+  These Terms are governed by the laws of the State of
+  <%= governing_law_state %>, in the United States of America, without regard to
+  its conflict of laws rules. Any dispute arising out of them belongs in the
+  state or federal courts located in <%= governing_law_state %>, and you and we
+  each agree to those courts.
+</p>
+
+<h2>28. The rest</h2>
+
+<ul>
+  <li>
+    <strong>The whole agreement.</strong> These Terms and the
+    <a href="/privacy">Privacy Policy</a> are the whole agreement between you
+    and us about <%= product %>, and they replace anything said before.
+  </li>
+  <li>
+    <strong>If part of this fails.</strong> If a court finds part of these Terms
+    unenforceable, the rest still stands.
+  </li>
+  <li>
+    <strong>Not waiving anything.</strong> If we do not enforce part of these
+    Terms straight away, we have not given up the right to enforce it later.
+  </li>
+  <li>
+    <strong>Transferring.</strong> You may not transfer these Terms without our
+    written agreement. We may transfer them to a company that acquires the
+    business running <%= product %>, and we will tell you if that happens.
+  </li>
+  <li>
+    <strong>Things outside anyone's control.</strong> Neither of us is
+    responsible for a failure or delay caused by something we could not
+    reasonably control — an act of nature, war, terrorism, civil unrest, a
+    labor dispute, an epidemic, a government act, a failure of the internet or
+    of a utility, or an outage at a provider we depend on. Paying what you owe
+    is the exception: that is not excused.
+  </li>
+  <li>
+    <strong>Nobody else can enforce this.</strong> These Terms are between you
+    and us. No other person or company gains a right to enforce any part of
+    them.
+  </li>
+</ul>
+
+<h2>29. Contact</h2>
+
+<p>
+  Questions about these Terms, and everything else:
+  <a href="mailto:<%= support_email %>"><%= support_email %></a>. We read that
+  address, and a person answers it.
+</p>
+
+<p>
+  By post:
+</p>
+
+<p>
+  <%= operator_legal_name %><br>
+  <%= operator_postal_address %>
+</p>

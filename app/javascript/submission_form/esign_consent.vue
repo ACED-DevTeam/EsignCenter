@@ -12,8 +12,9 @@
         value="true"
         class="checkbox checkbox-sm mt-0.5 flex-none"
         :checked="modelValue"
+        :disabled="isPdfGateClosed"
         :aria-invalid="error ? 'true' : undefined"
-        :aria-describedby="error ? 'esign_consent_error' : undefined"
+        :aria-describedby="describedBy"
         @change="$emit('update:modelValue', $event.target.checked)"
       >
       <input
@@ -26,10 +27,15 @@
         name="esign_consent_locale"
         :value="config.locale"
       >
+      <input
+        type="hidden"
+        name="esign_consent_pdf_opened"
+        :value="pdfOpened"
+      >
       <div class="text-sm sm:text-base leading-snug">
         <label
           for="esign_consent"
-          class="cursor-pointer"
+          :class="isPdfGateClosed ? 'opacity-60' : 'cursor-pointer'"
         >
           {{ config.label }}
         </label>
@@ -40,6 +46,24 @@
         >
           {{ config.link_text }}
         </button>
+        <a
+          v-if="config.pdf_url"
+          id="esign_consent_view_pdf"
+          :href="config.pdf_url"
+          target="_blank"
+          rel="noopener"
+          class="link link-hover font-medium block mt-1"
+          @click="markPdfOpened"
+        >
+          {{ config.view_pdf_text }}
+        </a>
+        <p
+          v-if="isPdfGateClosed"
+          id="esign_consent_open_pdf_first"
+          class="text-base-content/60 text-sm mt-1"
+        >
+          {{ config.open_pdf_first }}
+        </p>
       </div>
     </div>
     <div aria-live="polite">
@@ -73,6 +97,14 @@ export default {
       type: Object,
       required: true
     },
+    // The signer followed the "View this document as a PDF" link at least
+    // once. It lives in the parent form so the invite request can send it too,
+    // and it travels with the consent as `esign_consent_pdf_opened`.
+    pdfOpened: {
+      type: Boolean,
+      required: false,
+      default: false
+    },
     // The server refused the version this page displayed: the signer has to
     // reload and agree again.
     stale: {
@@ -91,8 +123,20 @@ export default {
       default: false
     }
   },
-  emits: ['update:modelValue'],
+  emits: ['update:modelValue', 'pdfOpened'],
   computed: {
+    // §7001(c) asks the signer to confirm their device can display the record
+    // before they agree to receive it electronically, so the box stays out of
+    // reach until they have opened the PDF once. No link (the config carries
+    // no URL), no gate.
+    isPdfGateClosed () {
+      return !!this.config.pdf_url && !this.pdfOpened
+    },
+    describedBy () {
+      if (this.error) return 'esign_consent_error'
+
+      return this.isPdfGateClosed ? 'esign_consent_open_pdf_first' : undefined
+    },
     // Read by assistive tech in two places: the live region announces it
     // when it appears; the always-present sr-only copy describes the disabled
     // action buttons (form.vue points their aria-describedby at it).
@@ -103,6 +147,11 @@ export default {
   methods: {
     focus () {
       this.$refs.checkbox?.focus()
+    },
+    // Client attestation, and stored as one: the browser says the link was
+    // followed, nothing proves the person read what opened.
+    markPdfOpened () {
+      this.$emit('pdfOpened')
     },
     openDisclosure () {
       const dialog = document.getElementById(this.config.modal_id)

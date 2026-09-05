@@ -67,6 +67,13 @@ Rails.application.routes.draw do
     end
   end
 
+  # Public marketing + legal pages (Session 9). Rendered in the marketing
+  # layout for anyone; the signed-out root also renders the landing page.
+  get 'pricing' => 'marketing#pricing', as: :pricing
+  get 'trust' => 'marketing#trust', as: :trust
+  get 'terms' => 'legal#terms', as: :terms
+  get 'privacy' => 'legal#privacy', as: :privacy
+
   get 'verify' => 'verify#show', as: :verify
   post 'verify' => 'verify#create'
   resource :mfa_setup, only: %i[show new edit create destroy], controller: 'mfa_setup'
@@ -137,6 +144,8 @@ Rails.application.routes.draw do
     resource :folder, only: %i[edit update], controller: 'templates_folders'
     resource :preview, only: %i[show], controller: 'templates_preview'
     resource :form, only: %i[show], controller: 'templates_form_preview'
+    # The same PDF the signer's consent link opens, for the form preview.
+    resource :form_document, only: %i[show], controller: 'templates_form_preview_document'
     resource :code_modal, only: %i[show], controller: 'templates_code_modal'
     resource :preferences, only: %i[show create destroy], controller: 'templates_preferences'
     resources :versions, only: %i[index show create], controller: 'templates_versions'
@@ -176,6 +185,9 @@ Rails.application.routes.draw do
     resources :delegate, only: %i[create], controller: 'submit_form_delegate'
     resources :invite, only: %i[create], controller: 'submit_form_invite'
     resources :metadata, only: %i[index], controller: 'submit_form_metadata'
+    # The unsigned original, for the "View this document as a PDF" link the
+    # ESIGN consent disclosure gates the checkbox behind.
+    resource :document, only: %i[show], controller: 'submit_form_document'
     resources :debug, only: %i[index], controller: 'submissions_debug' if Rails.env.development?
     get :completed
     get :delegated
