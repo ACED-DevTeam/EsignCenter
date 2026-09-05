@@ -28,6 +28,8 @@ module ConsentSpecSupport
                     esign_consent_disclosure_body_html esign_consent_version_label esign_consent_required
                     esign_consent_version_stale esign_consent_view_pdf esign_consent_open_pdf_first
                     esign_consent_shown_to esign_consent_sender_not_recorded esign_consent_pdf_opened
+                    esign_consent_pdf_not_opened esign_consent_the_sender
+                    esign_consent_document_too_many_requests
                     consented_to_electronic_signatures close
                     submission_event_names.esign_consent_by_html].freeze
 end
@@ -83,18 +85,19 @@ RSpec.describe 'ESIGN consent', type: :request do
     submission.submitters.first.tap { |s| s.update!(sent_at: Time.current, email: 'signer@example.com') }
   end
 
-  # The consent always travels with the version the form displayed
-  # (consent_version_spec proves a missing or stale version is refused) and
-  # the locale it was displayed in.
-  def consent_params(locale: 'en', pdf_opened: 'true')
+  # The consent always travels with the version the form displayed, the locale
+  # it was displayed in, and a fingerprint of the sender it named
+  # (consent_version_spec proves each of the three is binding).
+  def consent_params(submitter = nil, locale: 'en', pdf_opened: 'true')
     { esign_consent: 'true', esign_consent_version: EsignConsent::VERSION, esign_consent_locale: locale,
-      esign_consent_pdf_opened: pdf_opened }
+      esign_consent_pdf_opened: pdf_opened,
+      esign_consent_sender_digest: submitter && EsignConsent.sender_digest(submitter) }.compact
   end
 
   def completion_params(submitter, esign_consent: nil)
     params = { completed: 'true', values: { text_field(submitter)['uuid'] => 'Jane' } }
 
-    esign_consent ? params.merge(consent_params) : params
+    esign_consent ? params.merge(consent_params(submitter)) : params
   end
 
   def create_signing_session(account, headers, submitter_attrs = {})
@@ -164,6 +167,13 @@ RSpec.describe 'ESIGN consent', type: :request do
       page.process_contents(collector)
       collector.text
     end.join(' ')
+  end
+
+  # What the trail actually draws for a translated string: RTL text is
+  # reordered visually on the way into the PDF (TextUtils.maybe_rtl_reverse),
+  # LTR text is untouched.
+  def rtl(text)
+    TextUtils.maybe_rtl_reverse(text)
   end
 
   # A phrase as it may come back out of the PDF: line wraps fall between
@@ -312,7 +322,7 @@ RSpec.describe 'ESIGN consent', type: :request do
       post "/s/#{submitter.slug}/invite", params: invite
       expect_consent_refused(submitter)
 
-      post "/s/#{submitter.slug}/invite", params: invite.merge(consent_params)
+      post "/s/#{submitter.slug}/invite", params: invite.merge(consent_params(submitter))
       expect_completed_with_consent(submitter)
       expect(submission.submitters.where(uuid: second['uuid']).count).to eq(1)
     end
@@ -351,7 +361,8 @@ RSpec.describe 'ESIGN consent', type: :request do
 
       # A agrees on a step save without completing.
       travel_to(a_consented_at) do
-        put "/s/#{old_slug}", params: { values: { text_field(submitter)['uuid'] => 'Jane' }, **consent_params }
+        put "/s/#{old_slug}",
+            params: { values: { text_field(submitter)['uuid'] => 'Jane' }, **consent_params(submitter) }
       end
       expect(response).to have_http_status(:ok)
       first_consent = consent_events(submitter).sole
@@ -387,7 +398,8 @@ RSpec.describe 'ESIGN consent', type: :request do
       # B agrees on a step save without completing: a second, newer event
       # carrying B's own tracking data; A's stays in the log.
       travel_to(b_consented_at) do
-        put "/s/#{submitter.slug}", params: { values: { text_field(submitter)['uuid'] => 'Jane' }, **consent_params }
+        put "/s/#{submitter.slug}",
+            params: { values: { text_field(submitter)['uuid'] => 'Jane' }, **consent_params(submitter) }
       end
       expect(response).to have_http_status(:ok)
       expect(submitter.reload.completed_at).to be_nil
@@ -436,7 +448,7 @@ RSpec.describe 'ESIGN consent', type: :request do
 
       travel_to(consented_at) do
         put "/s/#{submitter.slug}",
-            params: { values: { text_field(submitter)['uuid'] => 'Jane' }, **consent_params }
+            params: { values: { text_field(submitter)['uuid'] => 'Jane' }, **consent_params(submitter) }
       end
 
       expect(response).to have_http_status(:ok)
@@ -461,7 +473,7 @@ RSpec.describe 'ESIGN consent', type: :request do
       submitter = emailed_submitter_for(account)
 
       # A French page on an English account: the event names the French text.
-      put "/s/#{submitter.slug}", params: completion_params(submitter).merge(consent_params(locale: 'fr'))
+      put "/s/#{submitter.slug}", params: completion_params(submitter).merge(consent_params(submitter, locale: 'fr'))
       expect_completed_with_consent(submitter, locale: 'fr')
 
       data = consent_events(submitter).sole.data
@@ -478,7 +490,8 @@ RSpec.describe 'ESIGN consent', type: :request do
       [[nil, 'en'], %w[xx en], %w[fr-FR fr]].each do |sent, recorded|
         submitter = emailed_submitter_for(account)
 
-        put "/s/#{submitter.slug}", params: completion_params(submitter).merge(consent_params(locale: sent).compact)
+        put "/s/#{submitter.slug}",
+            params: completion_params(submitter).merge(consent_params(submitter, locale: sent).compact)
         expect_completed_with_consent(submitter, locale: recorded)
 
         Sidekiq::Worker.clear_all
@@ -490,8 +503,9 @@ RSpec.describe 'ESIGN consent', type: :request do
     it 'falls back to the browser locale the page was rendered under when it sends none' do
       submitter = emailed_submitter_for(account)
 
-      put "/s/#{submitter.slug}", params: completion_params(submitter).merge(consent_params(locale: nil).compact),
-                                  headers: { 'HTTP_ACCEPT_LANGUAGE' => 'fr-FR,fr;q=0.9,en;q=0.8' }
+      put "/s/#{submitter.slug}",
+          params: completion_params(submitter).merge(consent_params(submitter, locale: nil).compact),
+          headers: { 'HTTP_ACCEPT_LANGUAGE' => 'fr-FR,fr;q=0.9,en;q=0.8' }
       expect_completed_with_consent(submitter, locale: 'fr')
     end
 
@@ -595,14 +609,137 @@ RSpec.describe 'ESIGN consent', type: :request do
     end
 
     it 'records the sender as shown and the browser\'s PDF claim, false included' do
+      platform_certificate!
       submitter = emailed_submitter_for(account)
 
       put "/s/#{submitter.slug}",
-          params: completion_params(submitter).merge(consent_params(pdf_opened: 'false'))
+          params: completion_params(submitter).merge(consent_params(submitter, pdf_opened: 'false'))
 
       expect_completed_with_consent(submitter, pdf_opened: false)
       expect(consent_events(submitter).sole.data)
         .to include('sender_name' => account.name, 'sender_email' => admin_for(account).email)
+    end
+
+    # "Did not open it" is evidence too: the trail says so rather than staying
+    # silent, which a reader could take for "not recorded".
+    it 'prints the not-opened line in the audit trail when the browser said no', sidekiq: :inline do
+      platform_certificate!
+      submitter = emailed_submitter_for(account)
+
+      put "/s/#{submitter.slug}",
+          params: completion_params(submitter).merge(consent_params(submitter, pdf_opened: 'false'))
+
+      expect(response).to have_http_status(:ok)
+
+      text = pdf_text(submitter.submission.reload.audit_trail.download)
+
+      expect(text).to match(pdf_phrase(I18n.t('esign_consent_pdf_not_opened')))
+      expect(text).not_to match(pdf_phrase(I18n.t('esign_consent_pdf_opened')))
+    end
+  end
+
+  # D77 A review: no signed PDF and no modal may ever show a raw placeholder,
+  # and a sender's own name must survive the trip through the plain-text path.
+  describe 'the sender never printed as a placeholder' do
+    # `accounts.name` is NOT NULL, so an unnamed account cannot be saved — the
+    # fallbacks are defence in depth for a signed PDF that must never read
+    # "sent by ". Asserted in memory, where a blank name is reachable.
+    it 'falls back through account name, sender full name and the product name' do
+      submitter = emailed_submitter_for(account)
+      admin = admin_for(account)
+
+      expect(EsignConsent.sender_name(submitter)).to eq(account.name)
+
+      submitter.submission.account.name = ''
+      expect(EsignConsent.sender_name(submitter)).to eq(admin.full_name)
+
+      submitter.submission.created_by_user.first_name = ''
+      submitter.submission.created_by_user.last_name = ''
+      expect(EsignConsent.sender_name(submitter)).to eq(Docuseal.product_name)
+      expect(EsignConsent.sender_name(submitter)).to be_present
+    end
+
+    it 'never puts a placeholder in the modal' do
+      submitter = emailed_submitter_for(account)
+
+      get "/s/#{submitter.slug}"
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).not_to include(ConsentSpecSupport::SENDER_PLACEHOLDER)
+      expect(response.body).to include(ERB::Util.html_escape(EsignConsent.sender_name(submitter)))
+    end
+
+    # strip_tags would eat `<Legal>` if the sender went into the template
+    # before the markup came off, so the plain-text path strips first.
+    it 'keeps angle brackets and ampersands in the sender name out of the plain-text path' do
+      name = 'Acme <Legal> & Co'
+      paragraphs = EsignConsent.disclosure_paragraphs(
+        EsignConsent.disclosure_text(version: EsignConsent::VERSION, locale: 'en'),
+        sender_name: name, sender_email: 'legal@acme.example'
+      )
+      text = paragraphs.join(' ')
+
+      expect(paragraphs.size).to eq(9)
+      expect(text).to include(name)
+      # The template's own markup is gone; every one of the nine places the
+      # disclosure names the sender still has the brackets it was given.
+      expect(text).not_to include('<strong>')
+      expect(text).not_to include('<p>')
+      expect(text.scan('<Legal>').size).to eq(9)
+      expect(text.scan('<').size).to eq(9)
+      expect(text).not_to include(ConsentSpecSupport::SENDER_PLACEHOLDER)
+    end
+
+    # The modal is HTML, so there the same name is escaped rather than kept raw.
+    it 'escapes the sender name in the modal' do
+      account.update!(name: 'Acme <Legal> & Co')
+      submitter = emailed_submitter_for(account)
+      html = EsignConsent.disclosure_html(submitter, locale: 'en')
+
+      expect(html).to include('Acme &lt;Legal&gt; &amp; Co')
+      expect(html).not_to include('<Legal>')
+    end
+  end
+
+  # One resolver behind the invitation's Reply-To header and the address the
+  # disclosure tells the signer to write to (Submitters::ReplyTo).
+  describe 'the disclosure address is the invitation reply-to' do
+    def modal_sender_email(submitter)
+      get "/s/#{submitter.slug}"
+
+      EsignConsent.sender_email(submitter)
+    end
+
+    def invitation_reply_to(submitter)
+      SubmitterMailer.invitation_email(submitter).reply_to&.first
+    end
+
+    it 'matches for a custom reply-to on the signer' do
+      submitter = emailed_submitter_for(account)
+      submitter.update!(preferences: { 'reply_to' => 'Contracts <contracts@acme.example>' })
+
+      expect(invitation_reply_to(submitter)).to eq('contracts@acme.example')
+      expect(modal_sender_email(submitter)).to eq('contracts@acme.example')
+    end
+
+    it 'matches when there is no custom reply-to and falls to the sending user' do
+      submitter = emailed_submitter_for(account)
+
+      expect(invitation_reply_to(submitter)).to eq(admin_for(account).email)
+      expect(modal_sender_email(submitter)).to eq(admin_for(account).email)
+    end
+
+    # The sender signing their own document: replying to themselves reaches
+    # nobody, so the chain moves on to the account's first administrator.
+    it 'matches when the sender is the signer and falls to the first admin' do
+      other_admin = create(:user, account:)
+      submitter = emailed_submitter_for(account)
+      submitter.update!(email: admin_for(account).email)
+
+      expected = [admin_for(account), other_admin].min_by(&:id).email
+
+      expect(invitation_reply_to(submitter.reload)).to eq(expected)
+      expect(modal_sender_email(submitter)).to eq(expected)
     end
   end
 
@@ -654,6 +791,98 @@ RSpec.describe 'ESIGN consent', type: :request do
       get "/templates/#{template.id}/form_document.pdf"
 
       expect(response).not_to have_http_status(:ok)
+    end
+
+    # The door and the signing page share one predicate (Submitters::FormOpen),
+    # so every state that closes the form closes the door.
+    describe 'refusing exactly what the signing page refuses' do
+      def expect_door_refused(submitter)
+        get "/s/#{submitter.slug}/document.pdf"
+
+        expect(response).to have_http_status(:not_found)
+      end
+
+      it 'refuses an archived account' do
+        submitter = emailed_submitter_for(account)
+        account.update!(archived_at: Time.current)
+
+        expect_door_refused(submitter)
+      end
+
+      it 'refuses a declined signer' do
+        submitter = emailed_submitter_for(account)
+        submitter.update!(declined_at: Time.current)
+
+        expect_door_refused(submitter)
+      end
+
+      it 'refuses an expired submission' do
+        submitter = emailed_submitter_for(account)
+        submitter.submission.update!(expire_at: 1.day.ago)
+
+        expect_door_refused(submitter)
+      end
+
+      it 'refuses an archived template' do
+        submitter = emailed_submitter_for(account)
+        submitter.submission.template.update!(archived_at: Time.current)
+
+        expect_door_refused(submitter)
+      end
+
+      it 'refuses a signer whose turn has not come under an enforced order' do
+        template = create(:template, account:, author: admin_for(account), submitter_count: 2,
+                                     only_field_types: %w[text])
+        create(:account_config, account:, key: AccountConfig::ENFORCE_SIGNING_ORDER_KEY, value: true)
+
+        submission = create(:submission, :with_submitters, template:, created_by_user: admin_for(account))
+        first, second = submission.submitters.order(:id).to_a
+
+        # The signing page itself puts up the "awaiting" page for the second.
+        get "/s/#{second.slug}"
+        expect(response.body).to include(I18n.t('awaiting_completion_by_the_other_party'))
+
+        expect_door_refused(second)
+
+        get "/s/#{first.slug}/document.pdf"
+        expect(response).to have_http_status(:ok)
+      end
+    end
+
+    # Only what the page shows: a document a condition excludes is not in the
+    # PDF, and the rest come out in schema order.
+    it 'serves the conditional schema, in schema order' do
+      submitter = emailed_submitter_for(account)
+      submission = submitter.submission
+      attachments = Submissions::OriginalDocumentPdf.attachments_for(submission)
+
+      expect(attachments.map(&:uuid))
+        .to eq(Submissions.filtered_conditions_schema(submission).pluck('attachment_uuid'))
+
+      schema = submission.template_schema.presence || submission.template.schema
+      # "Only while that field has a value", on a field nobody has filled in.
+      condition = { 'field_uuid' => text_field(submitter)['uuid'], 'action' => 'not_empty' }
+      submission.update!(template_schema: schema.map { |item| item.merge('conditions' => [condition]) })
+
+      expect(Submissions::OriginalDocumentPdf.attachments_for(submission.reload)).to be_empty
+
+      get "/s/#{submitter.slug}/document.pdf"
+
+      expect(response).to have_http_status(:not_found)
+    end
+
+    it 'refuses a slug that asks too often, with a readable message' do
+      submitter = emailed_submitter_for(account)
+
+      SubmitFormDocumentController::REQUESTS_PER_SLUG_PER_HOUR.times do
+        get "/s/#{submitter.slug}/document.pdf"
+        expect(response).to have_http_status(:ok)
+      end
+
+      get "/s/#{submitter.slug}/document.pdf"
+
+      expect(response).to have_http_status(:too_many_requests)
+      expect(response.body).to eq(I18n.t('esign_consent_document_too_many_requests'))
     end
 
     it 'hands the signing form the link and the two gate strings' do
@@ -712,6 +941,8 @@ RSpec.describe 'ESIGN consent', type: :request do
       english = %w[esign_consent_checkbox_label esign_consent_disclosure_body_html
                    esign_consent_version_stale esign_consent_view_pdf
                    esign_consent_open_pdf_first esign_consent_pdf_opened
+                   esign_consent_pdf_not_opened esign_consent_the_sender
+                   esign_consent_document_too_many_requests
                    esign_consent_shown_to esign_consent_sender_not_recorded].index_with do |key|
         I18n.t(key, locale: :en)
       end
@@ -758,7 +989,7 @@ RSpec.describe 'ESIGN consent', type: :request do
           SubmissionEvent.create!(submitter:, event_type: type, data: { email: submitter.email })
         end
 
-        put "/s/#{submitter.slug}", params: completion_params(submitter).merge(consent_params)
+        put "/s/#{submitter.slug}", params: completion_params(submitter).merge(consent_params(submitter))
 
         expect(response).to have_http_status(:ok)
         audit_trail = submitter.submission.reload.audit_trail
@@ -783,38 +1014,45 @@ RSpec.describe 'ESIGN consent', type: :request do
 
     # A3.2: the audit trail carries the disclosure itself, so the evidence does
     # not depend on anyone still having the product to look the text up in.
-    %w[en he ja].each do |locale|
+    %w[en he ar ja].each do |locale|
       it "reproduces the #{locale} disclosure in the audit trail appendix" do
         platform_certificate!
         account.update!(locale:, name: 'Acme Ltd')
         submitter = emailed_submitter_for(account)
 
-        put "/s/#{submitter.slug}", params: completion_params(submitter).merge(consent_params(locale:))
+        put "/s/#{submitter.slug}", params: completion_params(submitter).merge(consent_params(submitter, locale:))
 
         expect(response).to have_http_status(:ok), locale
 
         text = pdf_text(submitter.submission.reload.audit_trail.download)
 
-        expect(text).to match(pdf_phrase(I18n.t('esign_consent_disclosure_title', locale:))), locale
-        expect(text).to match(pdf_phrase(I18n.t('esign_consent_shown_to',
-                                                submitter_name: submitter.name || submitter.email,
-                                                locale:))), locale
+        # HexaPDF does no bidi of its own, so every translated string the trail
+        # draws is reversed on the way in; he and ar must come back out of the
+        # PDF in exactly that form, the same as the trail's other RTL strings.
+        expect(text).to match(pdf_phrase(rtl(I18n.t('esign_consent_disclosure_title', locale:)))), locale
+        expect(text).to match(pdf_phrase(rtl(I18n.t('esign_consent_shown_to',
+                                                    submitter_name: submitter.name || submitter.email,
+                                                    locale:)))), locale
         # The first and the last paragraph of the disclosure, with the sender
         # filled in — the whole text is between them.
-        paragraphs = EsignConsent.plain_paragraphs(
-          EsignConsent.interpolate(EsignConsent.disclosure_text(version: EsignConsent::VERSION, locale:),
-                                   sender_name: 'Acme Ltd', sender_email: admin_for(account).email)
+        paragraphs = EsignConsent.disclosure_paragraphs(
+          EsignConsent.disclosure_text(version: EsignConsent::VERSION, locale:),
+          sender_name: 'Acme Ltd', sender_email: admin_for(account).email
         )
 
         expect(paragraphs.size).to eq(9), locale
         [paragraphs.first, paragraphs.last].each do |paragraph|
-          expect(text).to match(pdf_phrase(paragraph.first(60))), "#{locale}: #{paragraph.first(60)}"
+          expect(text).to match(pdf_phrase(rtl(paragraph).first(60))), "#{locale}: #{paragraph.first(60)}"
         end
 
         expect(text).not_to include(ConsentSpecSupport::SENDER_PLACEHOLDER), locale
         expect(text).not_to match(/translation missing/i), locale
-        # The one client attestation, printed as its own line in the signer block.
+        # The one client attestation, named as an attestation. It sits in the
+        # signer block beside "Email verification: Verified", which the trail
+        # has always drawn in logical order, so it is not bidi-reordered — the
+        # appendix above is.
         expect(text).to match(pdf_phrase(I18n.t('esign_consent_pdf_opened', locale:))), locale
+        expect(text).not_to match(pdf_phrase(I18n.t('esign_consent_pdf_not_opened', locale:))), locale
       end
     end
 
@@ -825,7 +1063,7 @@ RSpec.describe 'ESIGN consent', type: :request do
         account.update!(locale:)
         submitter = emailed_submitter_for(account)
 
-        put "/s/#{submitter.slug}", params: completion_params(submitter).merge(consent_params(locale:))
+        put "/s/#{submitter.slug}", params: completion_params(submitter).merge(consent_params(submitter, locale:))
 
         expect(response).to have_http_status(:ok), locale
         expect(submitter.reload.completed_at).to be_present, locale

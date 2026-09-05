@@ -33,11 +33,26 @@ time they open a document they have not yet agreed on:
   §7001(c) "confirm your device can display the record" step: the signer
   proves to themselves that they can open a PDF before agreeing to be sent
   one. The link is served by `GET /s/:slug/document.pdf`
-  (`SubmitFormDocumentController`), keyed on the signing slug and behind the
-  same email/link 2FA gate as the signing page itself. In the builder's form
-  preview the same link answers off the template
+  (`SubmitFormDocumentController`), keyed on the signing slug, behind the same
+  email/link 2FA gate as the signing page and refusing on exactly the same
+  terms — archived account, archived template or submission, expired, declined,
+  or an enforced signing order that has not reached this signer yet. Page and
+  door read one predicate (`Submitters::FormOpen`) so they cannot drift apart.
+  It serves only what the page shows: the submission's schema with its
+  conditions applied, in schema order, so a document a condition excludes is
+  missing from the PDF too. One slug may ask 20 times an hour; beyond that it
+  answers 429 with a readable line. Documents totalling more than 40 MB are not
+  merged — the first one is served, which is the page the form opens on and
+  enough to answer "can this device show a PDF?". In the builder's form preview
+  the same link answers off the template
   (`GET /templates/:id/form_document.pdf`), because the preview's signer
   record is never saved.
+- **The "allow partial download" setting does not apply to this link.** That
+  setting governs the "download what has been signed so far" button, which
+  hands out a partly-completed document. This link serves the *unsigned
+  original* the signer is already looking at, and consent cannot be given
+  without it — switching it off here would leave those accounts' signers
+  unable to agree at all.
 - Once the box is ticked and the form sends its first request, the agreement is
   saved and the checkbox disappears for the rest of that signer's steps — and
   it does not appear again for that person, even if they reopen their link
@@ -85,19 +100,33 @@ delegation, one more for the person the form was handed to — stamped with:
   from the browser. `EsignConsent.disclosure_sha256(version:, locale:)`
   recomputes it, so a later reader can prove the archived text is the one the
   signer saw,
-- `sender_name` — the sending account's name, as the disclosure showed it,
+- `sender_name` — the sending account's name, as the disclosure showed it.
+  A signed PDF must never read "sent by " and stop, so an unnamed account
+  falls back to the name of the person who sent the document and then to the
+  product name,
 - `sender_email` — the address the disclosure told the signer to write to
   (withdrawing consent, asking for paper). It is where a reply to that
-  signer's invitation email would land, resolved exactly as the invitation
-  email's reply-to is: the reply-to set on the signer, then the account's
-  custom invitation-email reply-to, then the person who sent the document,
-  then the account's first active administrator — skipping any no-reply
-  address. Both fields are read off the server's own records, never sent by
-  the browser,
+  signer's invitation email lands. One resolver answers for both
+  (`Submitters::ReplyTo`, which `SubmitterMailer` reads for the Reply-To
+  header), so the address the disclosure gives can never be a mailbox the
+  invitation did not use: the reply-to set on the signer, then the account's
+  custom invitation-email reply-to, then the person who sent the document
+  (skipped when that person is the signer, because replying to yourself
+  reaches nobody), then the account's first active administrator — skipping
+  any no-reply address at every step, and platform support only if an account
+  has nothing reachable at all. Both fields are read off the server's own records, never sent by
+  the browser. The form does send back one thing about them: a SHA-256 of the
+  name and address **as it rendered them** (`esign_consent_sender_digest`).
+  The server recomputes that fingerprint and refuses the consent as stale if
+  it differs — an account renamed while the modal sat open cannot file one
+  sender against a disclosure that named another. The signer reloads and
+  agrees to the disclosure they can actually see,
 - `pdf_opened` — `true` or `false`: whether the signer used the "View this
   document as a PDF" link before ticking the box. This is the **one** field on
   the event the browser asserts. A browser can post anything, so it is stored
-  and printed as what it is: the page's own claim, not a server-side proof,
+  and printed as what it is: the audit trail says "The signer's browser
+  reported opening the PDF", or "The signer did not open the PDF before
+  agreeing" — never a bare claim of fact, and never silence,
 - `ip`, `ua` (browser user agent), `sid` (session) — the same tracking data
   every signing event carries — and `uid`, the user id, when the person who
   consented was signed in to the dashboard (the sender signing their own

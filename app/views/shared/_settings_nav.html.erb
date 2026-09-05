@@ -5,7 +5,7 @@
     (checkpoint 9, D2/1). The "Back" arrow and the "Settings" caption are
     sidebar furniture and stand down on a phone: the logo in the navbar is the
     way out, and the page's own heading already says where you are. %>
-<div class="block w-full md:w-52 flex-none">
+<nav aria-label="<%= t('settings') %>" data-settings-nav class="block w-full md:w-52 flex-none">
   <menu-active class="settings-tabs block">
     <ul id="account_settings_menu"
         class="menu px-0 menu-horizontal md:menu-vertical flex-nowrap md:flex-wrap w-full
@@ -119,4 +119,4 @@
         </a>
       <% end %>
     </div>
-</div>
+</nav>

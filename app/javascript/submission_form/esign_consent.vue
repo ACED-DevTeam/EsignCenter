@@ -32,6 +32,11 @@
         name="esign_consent_pdf_opened"
         :value="pdfOpened"
       >
+      <input
+        type="hidden"
+        name="esign_consent_sender_digest"
+        :value="config.sender_digest"
+      >
       <div class="text-sm sm:text-base leading-snug">
         <label
           for="esign_consent"
@@ -89,10 +94,12 @@ export default {
   name: 'EsignConsent',
   props: {
     // { version, locale, label, link_text, required_message, stale_message,
-    // modal_id } — strings come from the Rails partial so
-    // config/locales/i18n.yml stays the single source. `version` and `locale`
-    // are sent back with the consent: the server refuses a consent given on
-    // an outdated disclosure and records which language the signer read it in.
+    // modal_id, pdf_url, view_pdf_text, open_pdf_first, sender_digest } —
+    // strings come from the Rails partial so config/locales/i18n.yml stays the
+    // single source. `version`, `locale` and `sender_digest` are sent back with
+    // the consent: the server refuses a consent given on an outdated disclosure
+    // or one that named a different sender, and records which language the
+    // signer read it in.
     config: {
       type: Object,
       required: true

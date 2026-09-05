@@ -682,6 +682,7 @@
         :esign-consent-version="esignConsent.version"
         :esign-consent-locale="esignConsent.locale"
         :esign-consent-pdf-opened="esignConsentPdfOpened"
+        :esign-consent-sender-digest="esignConsent.sender_digest"
         :style="{ maxWidth: isBreakpointMd ? '582px' : '' }"
         @success="[isInvite = false, performComplete($event)]"
       />

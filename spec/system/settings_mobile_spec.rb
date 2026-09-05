@@ -30,10 +30,17 @@ RSpec.describe 'Settings on a phone' do
     'esign' => '/settings/esign',
     'notifications' => '/settings/notifications',
     'usage' => '/settings/usage',
-    'export' => '/settings/export'
+    'export' => '/settings/export',
+    'billing' => '/settings/billing'
   }
 
+  # Billing is the one settings row behind a switch, and it is also the widest
+  # page in the set — the plan card, the seat sums and the benefit list. It is
+  # swept with the rest rather than trusted, with the switch put back after.
+  stash_env('BILLING_ENABLED')
+
   before do
+    ENV['BILLING_ENABLED'] = 'true'
     FileUtils.mkdir_p(screenshot_dir)
     sign_in(user)
   end
@@ -56,15 +63,28 @@ RSpec.describe 'Settings on a phone' do
     JS
   end
 
-  # Where the page's own content starts. The settings navigation is not it:
-  # the first heading inside the content column is what the reader came for.
+  # Where the page's own content starts. Scoped deliberately: a document-wide
+  # `querySelector('h1, h2')` would happily measure a heading in the navbar, a
+  # flash message or the nav itself and report a page that starts at the top
+  # when it does not. The settings row holds the nav and the content column
+  # side by side, so the first heading in that row that is NOT inside the nav
+  # is the thing the reader actually came for.
   def first_heading_top
     page.evaluate_script(<<~JS)
       (function () {
-        var h = document.querySelector('h1, h2');
+        var nav = document.querySelector('[data-settings-nav]');
+        if (!nav) return -1;
+        var row = nav.parentElement;
+        var h = Array.prototype.find.call(row.querySelectorAll('h1, h2'), function (el) {
+          return !nav.contains(el);
+        });
         return h ? Math.round(h.getBoundingClientRect().top) : -1;
       })()
     JS
+  end
+
+  def keyboard
+    page.driver.browser.page.keyboard
   end
 
   describe 'at 390x844' do
@@ -81,6 +101,35 @@ RSpec.describe 'Settings on a phone' do
 
         page.driver.browser.screenshot(path: screenshot_dir.join("settings-#{name}-390.png").to_s) if screenshot?(name)
       end
+    end
+
+    # Colour alone does not say which tab is open. The active link carries
+    # `aria-current="page"`, and a keyboard user reaches it by tabbing forward
+    # from the top of the page — no trap, no skipped strip, no mouse.
+    it 'reaches the active settings tab by tabbing from the top of the page' do
+      visit '/settings/users'
+
+      expect(page).to have_css('#account_settings_menu a[aria-current="page"]', visible: :all)
+
+      # Nothing focused, so the browser starts its tab order at the beginning.
+      page.execute_script('document.activeElement && document.activeElement.blur(); window.scrollTo(0, 0)')
+
+      landed = 40.times.any? do
+        keyboard.type(:tab)
+        page.evaluate_script("document.activeElement.getAttribute('aria-current') === 'page'")
+      end
+
+      expect(landed).to be(true), 'Tab never reached the active settings tab'
+      expect(page.evaluate_script('document.activeElement.getAttribute("href")')).to eq('/settings/users')
+      expect(page.evaluate_script('document.activeElement.textContent.trim()')).to eq(I18n.t('users'))
+
+      # And exactly one link claims it, on this page and on the next.
+      expect(page).to have_css('[aria-current="page"]', count: 1, visible: :all)
+
+      visit '/settings/account'
+
+      expect(page).to have_css('[aria-current="page"]', count: 1, visible: :all)
+      expect(page).to have_css('a[href="/settings/account"][aria-current="page"]', visible: :all)
     end
 
     it 'keeps the settings navigation on one horizontal strip' do

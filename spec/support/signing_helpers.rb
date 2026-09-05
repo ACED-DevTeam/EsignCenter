@@ -17,6 +17,7 @@ module SigningHelpers
   def complete!(submitter)
     put "/s/#{submitter.slug}", params: { completed: 'true', esign_consent: 'true',
                                           esign_consent_version: EsignConsent::VERSION,
+                                          esign_consent_sender_digest: EsignConsent.sender_digest(submitter),
                                           values: { text_field(submitter)['uuid'] => 'Jane' } }
 
     expect(response).to have_http_status(:ok)

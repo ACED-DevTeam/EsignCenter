@@ -40,9 +40,9 @@ class SubmitFormController < ApplicationController
 
     @form_configs = Submitters::FormConfigs.call(@submitter, CONFIG_KEYS)
 
-    return render :awaiting if (@form_configs[:enforce_signing_order] ||
-                                submission.template&.preferences&.dig('submitters_order') == 'preserved') &&
-                               !Submitters.current_submitter_order?(@submitter)
+    # Shared with the "View this document as a PDF" door beside the consent
+    # checkbox, so the two refuse on identical terms (Submitters::FormOpen).
+    return render :awaiting if Submitters::FormOpen.awaiting_turn?(@submitter, form_configs: @form_configs)
 
     Submissions.preload_with_pages(submission)
 
@@ -156,10 +156,11 @@ class SubmitFormController < ApplicationController
     redirect_to start_form_path(@submitter.submission.template.slug)
   end
 
+  # Each state gets its own page here, so this asks state by state; the
+  # document door asks Submitters::FormOpen.call, which is the same three
+  # predicates combined. Neither can grow a state the other does not know.
   def maybe_render_locked_page
-    return render :archived if @submitter.submission.template&.archived_at? ||
-                               @submitter.submission.archived_at? ||
-                               @submitter.account.archived_at?
+    return render :archived if Submitters::FormOpen.archived?(@submitter)
     return render :expired if @submitter.submission.expired?
 
     render :declined if @submitter.declined_at?

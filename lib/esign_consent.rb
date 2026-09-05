@@ -67,6 +67,15 @@ module EsignConsent
   # the sender. They are read off the server's own records here, so the event
   # reproduces the filled-in text the signer read, not just the template.
   #
+  # `sender_digest` binds the recorded sender to the sender the page actually
+  # showed: SHA-256 of the name and address as rendered. The server recomputes
+  # it from its own values and refuses a consent that does not match, exactly
+  # as it refuses a stale version — otherwise an account renamed (or a
+  # reply-to changed) while the modal sat open would record one sender against
+  # a disclosure that named another. A request without a digest is refused for
+  # the same reason a request without a version is: nothing vouches for what
+  # that page put in front of the signer.
+  #
   # `pdf_opened` is the one client attestation on the event: the browser says
   # whether the signer followed the "View this document as a PDF" link before
   # ticking the box. The server cannot prove it — a browser can post anything
@@ -78,8 +87,13 @@ module EsignConsent
   # produce exactly one event: the second waits for the lock, then finds the
   # first one's event. One event per human: after a delegation the next
   # person's consent is a new event (consent_scope).
-  def record!(submitter, request, version: nil, locale: nil, pdf_opened: nil)
+  def record!(submitter, request, version: nil, locale: nil, pdf_opened: nil, sender_digest: nil)
     raise StaleVersionError, 'esign_consent_version_stale' unless version == VERSION
+
+    name = sender_name(submitter)
+    email = sender_email(submitter)
+
+    raise StaleVersionError, 'esign_consent_version_stale' unless sender_digest == digest_of(name, email)
 
     locale = normalize_locale(locale) || normalize_locale(I18n.locale) || I18n.default_locale.to_s
 
@@ -91,8 +105,8 @@ module EsignConsent
                                                      version: VERSION,
                                                      locale:,
                                                      disclosure_sha256: disclosure_sha256(version: VERSION, locale:),
-                                                     sender_name: sender_name(submitter),
-                                                     sender_email: sender_email(submitter),
+                                                     sender_name: name,
+                                                     sender_email: email,
                                                      pdf_opened: pdf_opened.to_s == 'true'
                                                    })
     end
@@ -161,8 +175,21 @@ module EsignConsent
     # rubocop:enable Rails/OutputSafety
   end
 
-  # Fills a disclosure template in. `escape:` for HTML display; the audit trail
-  # asks for plain text and escapes nothing.
+  # The same disclosure as plain paragraphs, for a reader that cannot show
+  # HTML (the audit-trail PDF).
+  #
+  # The tags come off the TEMPLATE and the sender's details go in afterwards,
+  # never the other way round: an account really called `Acme <Legal> Ltd`
+  # would otherwise have its own name eaten as a tag on the way through, and
+  # the evidence would name a company that does not exist.
+  def disclosure_paragraphs(text, sender_name:, sender_email:)
+    plain_paragraphs(text).map do |paragraph|
+      interpolate(paragraph, sender_name:, sender_email:)
+    end
+  end
+
+  # Fills a disclosure template in. `escape:` for HTML display; plain-text
+  # readers strip the markup first (disclosure_paragraphs) and escape nothing.
   def interpolate(text, sender_name:, sender_email:, escape: false)
     values = { sender_name:, sender_email:, product_name: Docuseal.product_name }
     values = values.transform_values { |value| ERB::Util.html_escape(value.to_s) } if escape
@@ -170,8 +197,6 @@ module EsignConsent
     I18n.interpolate(text, values)
   end
 
-  # The disclosure as plain paragraphs, for readers that cannot show HTML (the
-  # audit-trail PDF). Tags go, the paragraph breaks stay.
   def plain_paragraphs(text)
     text.to_s.split(%r{</p>}i).filter_map do |chunk|
       ActionController::Base.helpers.strip_tags(chunk).squish.presence
@@ -179,50 +204,34 @@ module EsignConsent
   end
 
   # The name the disclosure gives as the sender: the account the document was
-  # sent from, which is the party the signer is dealing with.
+  # sent from, which is the party the signer is dealing with. An account can
+  # be left unnamed, and a disclosure that says "sent by " and stops is worse
+  # than useless in evidence — so the person who sent it, and finally the
+  # product itself, stand in. Never blank.
   def sender_name(submitter)
-    submitter.submission.account.name
+    submission = submitter.submission
+    sender = submission.created_by_user || submitter.template&.author
+
+    submission.account.name.presence || sender&.full_name.presence || Docuseal.product_name
   end
 
   # The address the disclosure tells the signer to write to — "tell the sender"
-  # has to name somewhere real. It is where a reply to this signer's invitation
-  # email would land, resolved in the order SubmitterMailer#build_submitter_reply_to
-  # uses: the reply-to set on this signer or on the account's invitation email
-  # copy, then the person who sent the document, then the account's first active
-  # administrator. A no-reply address is skipped at every step: a signer must be
-  # able to withdraw consent and ask for paper, and neither works against a
-  # mailbox nobody reads.
+  # has to name somewhere real. It is exactly where a reply to this signer's
+  # invitation email lands (Submitters::ReplyTo, which the mailer reads too),
+  # and platform support only when that account has no reachable address at
+  # all.
   def sender_email(submitter)
-    submission = submitter.submission
-
-    candidates = [submitter.preferences['reply_to'],
-                  invitation_reply_to(submitter),
-                  (submission.created_by_user || submitter.template&.author)&.email,
-                  account_admin_email(submission.account)]
-
-    candidates.filter_map { |candidate| reachable_email(candidate) }.first ||
-      Docuseal::SUPPORT_EMAIL
+    Submitters::ReplyTo.call(submitter) || Docuseal::SUPPORT_EMAIL
   end
 
-  # `Name <a@b.com>` (the shape a custom reply-to and User#friendly_name take)
-  # down to the bare address, and nothing that no-replies.
-  def reachable_email(value)
-    address = (value.to_s[/<([^>]+)>/, 1] || value.to_s).strip
-
-    return if address.blank? || address.exclude?('@') || address.match?(SubmitterMailer::NO_REPLY_REGEXP)
-
-    address
+  # What the page says it showed as the sender, as one fingerprint the form
+  # sends back with the consent (see record!).
+  def sender_digest(submitter)
+    digest_of(sender_name(submitter), sender_email(submitter))
   end
 
-  def invitation_reply_to(submitter)
-    config = Accounts.custom_email_config(submitter.submission.account,
-                                          AccountConfig::SUBMITTER_INVITATION_EMAIL_KEY)
-
-    config&.value&.dig('reply_to')
-  end
-
-  def account_admin_email(account)
-    account.users.active.full_access.admins.order(:id).first&.email
+  def digest_of(name, email)
+    Digest::SHA256.hexdigest([name, email].join("\n"))
   end
 
   # The consent events that belong to the person holding the form now.
@@ -240,5 +249,5 @@ module EsignConsent
     events.where(SubmissionEvent.arel_table[:event_timestamp].gt(delegated_at))
   end
 
-  private_class_method :consent_scope, :reachable_email, :invitation_reply_to, :account_admin_email
+  private_class_method :consent_scope
 end

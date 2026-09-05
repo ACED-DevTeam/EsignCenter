@@ -6,5 +6,4 @@
   <p><strong><%= @missing_count %> expected file(s) could not be included.</strong> They are listed in the zip's <code>manifest.json</code> under "missing", each with the reason — either the file is no longer in our storage, or it was never generated.</p>
 <% end %>
 <p>You will be asked to sign in first — the file is never linked to directly. The download stays available for <%= @days %> days, until <strong><%= @expires_on %></strong>, and is then deleted automatically. You can always ask for a new one.</p>
-<p>Questions? Write to <%= mail_to @support_email %>.</p>
 <p>Thanks,<br>EsignCenter</p>

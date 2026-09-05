@@ -28,8 +28,6 @@ class AccountInviteMailer < ApplicationMailer
     @collision_user = invite.collision_user
     @accept_url = invite_url(token: raw_token)
     @expires_in_days = BillingLifecycle::INVITE_TOKEN_DAYS
-    @support_email = Docuseal::SUPPORT_EMAIL
-
     mail_account(@account)
 
     mail(to: invite.email, subject: "#{@inviter_name} invited you to join #{@account.name} on EsignCenter")
