@@ -14,6 +14,14 @@ module Operator
     # alive, and "run it now" would prove nothing at all.
     HEARTBEAT = 'scheduler_heartbeat'
 
+    # Job name → job class, resolved ONCE from config/schedule.yml when this
+    # class loads. A request parameter only ever picks a KEY of this map; it
+    # never names a class, so nothing typed into the form can be constantized.
+    RUNNABLE_JOBS = YAML.load_file(Rails.root.join('config/schedule.yml'))
+                        .except(HEARTBEAT)
+                        .to_h { |name, entry| [name, entry.fetch('class').constantize] }
+                        .freeze
+
     rescue_from Refused, with: :refused
 
     def show
@@ -32,7 +40,7 @@ module Operator
       raise Refused, t('operator_refused_job_unknown') if entry.nil?
       raise Refused, t('operator_refused_job_heartbeat') if name == HEARTBEAT
 
-      job_class = entry['class'].to_s.safe_constantize
+      job_class = RUNNABLE_JOBS[name]
 
       raise Refused, t('operator_refused_job_unknown') if job_class.nil?
 
