@@ -803,7 +803,13 @@ RSpec.describe 'Feature gating', type: :request do
 
       expect(notice.at('[data-mail-wordmark]').text.strip).to eq(Docuseal.product_name)
       expect(notice.at('[data-mail-support]').text).to include(Docuseal::SUPPORT_EMAIL)
-      # The flag still does its own job on the same mail.
+      # A platform notice is signed with the plain "Sent by EsignCenter", not
+      # the free-document-signing pitch: this is a bill reminder's footer, not
+      # an advertisement. (It is also not the AGPL attribution, which lives in
+      # the interactive UI and never appears in mail at all.)
+      expect(notice.text).to include(I18n.t('sent_by_product_name_html',
+                                            product_url: Docuseal::PRODUCT_EMAIL_URL,
+                                            product_name: Docuseal.product_name).gsub(/<[^>]+>/, ''))
       expect(notice.text).not_to include('Sent using')
 
       # A free account's signer mail: it says who runs the platform, and it
@@ -814,7 +820,9 @@ RSpec.describe 'Feature gating', type: :request do
       expect(free.at('[data-mail-wordmark]')).to be_present
       expect(free.at('[data-mail-support]')).to be_nil
       expect(free.text).not_to include(Docuseal::SUPPORT_EMAIL)
+      # Signer mail keeps the marketing line and never borrows the notice one.
       expect(free.text).to include('Sent using')
+      expect(free.text).not_to include('Sent by')
 
       # And with branding removal on top of that, the signer mail carries none
       # of the three.

@@ -1,4 +1,4 @@
-<p>Hello,</p>
+<p><%= mail_greeting %></p>
 <p>Your EsignCenter plan now includes <%= @seats %> <%= 'seat'.pluralize(@seats) %>, and this account has more people than that.</p>
 <p>Nothing has been deleted and nobody has been removed. <strong><%= @kept_name %></strong> keeps full access; everyone else is now read-only — they can still sign in, read, download and export every document, and they cannot create or change anything.</p>
 <% if @revoked.positive? %>

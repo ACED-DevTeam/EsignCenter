@@ -142,6 +142,7 @@ class AccountMailer < ApplicationMailer
     @current_account = account
     mail_account(account)
 
+    @first_name = first_name_at(account, to)
     @viewed_as = event.details['user_email']
     @mode = SupportImpersonation.mode_label(event.details['mode'])
     @reason = event.reason
@@ -166,6 +167,7 @@ class AccountMailer < ApplicationMailer
     mail_account(user.account)
 
     @code = code
+    @first_name = user.first_name.presence
     @minutes = Accounts::DeletionCodes::TTL.in_minutes.to_i
     @support_email = Docuseal::SUPPORT_EMAIL
 
@@ -210,6 +212,7 @@ class AccountMailer < ApplicationMailer
     mail_account(export.account)
 
     @export = export
+    @first_name = export.requested_by&.first_name.presence
     @export_url = "#{root_url.delete_suffix('/')}/settings/export"
     @support_email = Docuseal::SUPPORT_EMAIL
 
@@ -220,12 +223,23 @@ class AccountMailer < ApplicationMailer
     Accounts::Deletion.format_date(time)
   end
 
+  # The broadcast fans these notices out by ADDRESS, so the person behind the
+  # copy being built is looked up from it — scoped to the account, because an
+  # address is only a person inside one. Blank for an address whose owner has
+  # no first name, or has been removed since the broadcast started, and the
+  # greeting falls back to "Hello,".
+  def first_name_at(account, address)
+    account.users.active.find_by(email: address)&.first_name.presence
+  end
+
   # Sets the view data every one of these mails shares and returns the one
   # address it goes to. Blank means there is nobody to write to and the
   # message is not built at all.
   def prepare(account, recipient)
     @current_account = account
     mail_account(account)
+
+    @first_name = first_name_at(account, recipient)
 
     @purge_date = format_date(account.purge_scheduled_for)
     @window_days = Accounts::Deletion::WINDOW_DAYS

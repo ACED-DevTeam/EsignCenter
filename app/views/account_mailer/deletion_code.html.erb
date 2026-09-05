@@ -1,4 +1,4 @@
-<p>Hello,</p>
+<p><%= mail_greeting %></p>
 <p>You asked us to email a confirmation code so you can delete your EsignCenter account, <strong><%= @current_account.name %></strong>.</p>
 <p style="font-size: 28px; font-weight: bold; letter-spacing: 4px;"><%= @code %></p>
 <p>The code works for the next <%= @minutes %> minutes and can be used once. Entering it schedules the account for deletion — nothing is destroyed for 90 days, and any administrator can cancel before then.</p>

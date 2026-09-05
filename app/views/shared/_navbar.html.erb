@@ -64,17 +64,25 @@
       </div>
     </div>
   <% else %>
-    <div class="flex space-x-2">
+    <div class="flex space-x-2 shrink-0">
       <% if request.path != new_user_session_path && request.path != setup_index_path %>
-        <%= link_to new_user_session_path({ lang: params[:lang] }.compact_blank), class: 'font-medium text-lg' do %>
+        <%= link_to new_user_session_path({ lang: params[:lang] }.compact_blank), class: 'font-medium text-lg shrink-0' do %>
           <span class="flex items-center justify-center space-x-1">
             <%= svg_icon('login', class: 'w-6 h-6') %>
-            <span><%= t('sign_in') %></span>
+            <%# The word is dropped on the narrowest phones: the icon and the
+                link's own accessible name carry it, and the two buttons plus
+                the wordmark did not fit inside 390px otherwise. %>
+            <span class="hidden sm:inline"><%= t('sign_in') %></span>
           </span>
         <% end %>
       <% end %>
       <%# Self-service sign-up follows the REGISTRATION_ENABLED switch; the registration routes themselves arrive with the signup session, so the button also waits for them. A full page load on purpose: the sign-up page carries its own security policy (the Turnstile widget's host), which a Turbo visit would not apply. %>
-      <% if Docuseal.registration_enabled? && respond_to?(:registration_path) && !request.path.in?([registration_path, new_registration_path]) %>
+      <%# The "check your email" page is part of signing up, so it offers no
+          second way to start: it is the same reason the registration pages
+          themselves do not, and on a 390px screen it was the button that
+          pushed the header sideways. %>
+      <% if Docuseal.registration_enabled? && respond_to?(:registration_path) &&
+            !request.path.in?([registration_path, new_registration_path, confirm_registration_path]) %>
         <%= link_to registration_path({ lang: params[:lang] }.compact_blank), class: 'btn btn-neutral btn-sm btn-outline', data: { turbo: false } do %>
           <span class="flex items-center justify-center space-x-1">
             <span class="hidden sm:block capitalize"><%= t('create_free_account') %></span>

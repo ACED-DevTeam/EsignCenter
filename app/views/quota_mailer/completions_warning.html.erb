@@ -1,4 +1,4 @@
-<p>Hello,</p>
+<p><%= mail_greeting %></p>
 <p>Your EsignCenter account has used <%= @used %> of the <%= @limit %> document completions included in the free plan this month.</p>
 <p>When the last one is used, new documents cannot be sent from this account until the limit resets on <%= @resets_at.strftime('%-d %B %Y') %> at 00:00 UTC. Documents already sent can still be signed.</p>
 <p>The paid plan removes this limit: $10 per user per month, with a 14-day free trial.</p>

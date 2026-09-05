@@ -1,4 +1,4 @@
-<p>Hello,</p>
+<p><%= mail_greeting %></p>
 <p>The export of your EsignCenter account, <strong><%= @current_account.name %></strong>, is ready to download.</p>
 <p>It is a single zip file (<%= @size %>) holding your uploaded documents, every completed signed document, the audit trails, your templates, a CSV of all your submissions, and a manifest listing every file with its checksum.</p>
 <p><strong><%= link_to 'Download your export', @export_url %></strong></p>

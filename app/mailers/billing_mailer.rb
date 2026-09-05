@@ -93,7 +93,14 @@ class BillingMailer < ApplicationMailer
     @grace_days = BillingLifecycle::PAST_DUE_GRACE_DAYS
     @billing_url = "#{root_url.delete_suffix('/')}/settings/billing"
 
-    @recipients = account.users.active.admins.pluck(:email)
+    # Every notice here goes to EVERY active administrator in ONE message, so
+    # there is a name to use only when there is exactly one of them, which is
+    # most accounts. With several admins on the To line "Hi Jane," would be
+    # wrong for everybody else reading it, and the greeting stays plain.
+    admins = account.users.active.admins.to_a
+
+    @first_name = admins.one? ? admins.first.first_name.presence : nil
+    @recipients = admins.map(&:email)
   end
 
   # Written by the platform, not by a customer: the mail layout signs it

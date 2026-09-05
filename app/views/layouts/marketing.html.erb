@@ -47,7 +47,16 @@
         </div>
       </marketing-menu>
     </header>
-    <% if flash.present? %><%= render 'shared/flash' %><% end %>
+    <%# The flash is `absolute top-0` with no positioned ancestor of its own, so
+        left alone it pins itself to the top of the viewport and disappears
+        under this layout's sticky z-30 header — "Signed out successfully." was
+        being drawn behind the wordmark. This wrapper gives it something to be
+        absolute inside (directly under the header) and a stacking order above
+        it. Zero height, so it overlays the page rather than pushing it down,
+        exactly as it does in the app layout. %>
+    <% if flash.present? %>
+      <div class="relative z-40 h-0"><%= render 'shared/flash' %></div>
+    <% end %>
     <main id="main" tabindex="-1">
       <%= yield %>
     </main>

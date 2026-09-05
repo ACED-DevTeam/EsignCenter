@@ -466,6 +466,7 @@ en: &en
   you_have_been_invited_to_account_name_product_name_please_sign_up_using_the_link_below_: 'You have been invited to %{account_name} %{product_name}. Please sign up using the link below:'
   sent_using_product_name_in_testing_mode_html: 'Sent using <a href="%{product_url}">%{product_name}</a> in testing mode'
   sent_using_product_name_free_document_signing_html: 'Sent using <a href="%{product_url}">%{product_name}</a> free document signing.'
+  sent_by_product_name_html: 'Sent by <a href="%{product_url}">%{product_name}</a>.'
   sent_with_docuseal_pro_html: 'Sent with <a href="%{product_url}">EsignCenter Pro</a>'
   show_send_with_docuseal_pro_attribution_in_emails_html: Show "Sent with <span class="link">EsignCenter Pro</span>" attribution in emails
   sign_documents_with_trusted_certificate_provided_by_docu_seal_your_documents_and_data_are_never_shared_with_docu_seal_p_d_f_checksum_is_provided_to_generate_a_trusted_signature: Sign documents with trusted certificate provided by EsignCenter. Your documents and data are never shared with EsignCenter. PDF checksum is provided to generate a trusted signature.
@@ -2327,6 +2328,7 @@ es: &es
   you_have_been_invited_to_account_name_product_name_please_sign_up_using_the_link_below_: 'Has sido invitado a %{account_name} %{product_name}. Por favor, regístrate usando el enlace a continuación:'
   sent_using_product_name_in_testing_mode_html: 'Enviado usando <a href="%{product_url}">%{product_name}</a> en Modo de Prueba'
   sent_using_product_name_free_document_signing_html: 'Enviado usando la firma de documentos gratuita de <a href="%{product_url}">%{product_name}</a>.'
+  sent_by_product_name_html: 'Enviado por <a href="%{product_url}">%{product_name}</a>.'
   sent_with_docuseal_pro_html: 'Enviado con <a href="%{product_url}">EsignCenter Pro</a>'
   show_send_with_docuseal_pro_attribution_in_emails_html: Mostrar el mensaje "Enviado con <span class="link">EsignCenter Pro</span>" en los correos electrónicos
   sign_documents_with_trusted_certificate_provided_by_docu_seal_your_documents_and_data_are_never_shared_with_docu_seal_p_d_f_checksum_is_provided_to_generate_a_trusted_signature: Firme documentos con un certificado de confianza proporcionado por EsignCenter. Sus documentos y datos nunca se comparten con EsignCenter. Se proporciona un checksum de PDF para generar una firma de confianza.
@@ -3700,6 +3702,7 @@ it: &it
   you_have_been_invited_to_account_name_product_name_please_sign_up_using_the_link_below_: 'Sei stato invitato a %{account_name} %{product_name}. Registrati utilizzando il link qui sotto:'
   sent_using_product_name_in_testing_mode_html: 'Inviato utilizzando <a href="%{product_url}">%{product_name}</a> in Modalità di Test'
   sent_using_product_name_free_document_signing_html: 'Inviato utilizzando la firma di documenti gratuita di <a href="%{product_url}">%{product_name}</a>.'
+  sent_by_product_name_html: 'Inviato da <a href="%{product_url}">%{product_name}</a>.'
   sent_with_docuseal_pro_html: 'Inviato con <a href="%{product_url}">EsignCenter Pro</a>'
   show_send_with_docuseal_pro_attribution_in_emails_html: Mostra la dicitura "Inviato con <span class="link">EsignCenter Pro</span>" nelle email
   sign_documents_with_trusted_certificate_provided_by_docu_seal_your_documents_and_data_are_never_shared_with_docu_seal_p_d_f_checksum_is_provided_to_generate_a_trusted_signature: "Firma documenti con un certificato di fiducia fornito da EsignCenter. I tuoi documenti e i tuoi dati non vengono mai condivisi con EsignCenter. Il checksum PDF è fornito per generare una firma di fiducia."
@@ -5073,6 +5076,7 @@ fr: &fr
   you_have_been_invited_to_account_name_product_name_please_sign_up_using_the_link_below_: 'Vous avez été invité à %{account_name} %{product_name}. Veuillez vous inscrire en utilisant le lien ci-dessous :'
   sent_using_product_name_in_testing_mode_html: Envoyé avec <a href="%{product_url}">%{product_name}</a> en mode test
   sent_using_product_name_free_document_signing_html: Envoyé avec <a href="%{product_url}">%{product_name}</a> signature de documents gratuite.
+  sent_by_product_name_html: 'Envoyé par <a href="%{product_url}">%{product_name}</a>.'
   sent_with_docuseal_pro_html: Envoyé avec <a href="%{product_url}">EsignCenter Pro</a>
   show_send_with_docuseal_pro_attribution_in_emails_html: Afficher l’attribution "Envoyé avec <span class="link">EsignCenter Pro</span>" dans les e‑mails
   sign_documents_with_trusted_certificate_provided_by_docu_seal_your_documents_and_data_are_never_shared_with_docu_seal_p_d_f_checksum_is_provided_to_generate_a_trusted_signature: Signez des documents avec un certificat de confiance fourni par EsignCenter. Vos documents et données ne sont jamais partagés avec EsignCenter. Une empreinte (checksum) PDF est fournie pour générer une signature de confiance.
@@ -6446,6 +6450,7 @@ pt: &pt
   you_have_been_invited_to_account_name_product_name_please_sign_up_using_the_link_below_: 'Você foi convidado para %{account_name} %{product_name}. Inscreva-se usando o link abaixo:'
   sent_using_product_name_in_testing_mode_html: 'Enviado usando <a href="%{product_url}">%{product_name}</a> no Modo de Teste'
   sent_using_product_name_free_document_signing_html: 'Enviado usando a assinatura gratuita de documentos de <a href="%{product_url}">%{product_name}</a>.'
+  sent_by_product_name_html: 'Enviado por <a href="%{product_url}">%{product_name}</a>.'
   sent_with_docuseal_pro_html: 'Enviado com <a href="%{product_url}">EsignCenter Pro</a>'
   show_send_with_docuseal_pro_attribution_in_emails_html: Mostrar "Enviado com <span class="link">EsignCenter Pro</span>" nos e-mails
   sign_documents_with_trusted_certificate_provided_by_docu_seal_your_documents_and_data_are_never_shared_with_docu_seal_p_d_f_checksum_is_provided_to_generate_a_trusted_signature: Assine documentos com certificado confiável fornecido pela EsignCenter. Seus documentos e dados nunca são compartilhados com a EsignCenter. O checksum do PDF é fornecido para gerar uma assinatura confiável.
@@ -7819,6 +7824,7 @@ de: &de
   you_have_been_invited_to_account_name_product_name_please_sign_up_using_the_link_below_: 'Sie wurden zu %{account_name} %{product_name} eingeladen. Bitte registrieren Sie sich über den folgenden Link:'
   sent_using_product_name_in_testing_mode_html: 'Gesendet über <a href="%{product_url}">%{product_name}</a> im Testmodus'
   sent_using_product_name_free_document_signing_html: 'Gesendet mit der kostenlosen Dokumentensignierung von <a href="%{product_url}">%{product_name}</a>.'
+  sent_by_product_name_html: 'Gesendet von <a href="%{product_url}">%{product_name}</a>.'
   sent_with_docuseal_pro_html: Gesendet mit <a href="%{product_url}">EsignCenter Pro</a>
   show_send_with_docuseal_pro_attribution_in_emails_html: '"Gesendet mit <span class="link">EsignCenter Pro</span>" in E-Mails anzeigen'
   sign_documents_with_trusted_certificate_provided_by_docu_seal_your_documents_and_data_are_never_shared_with_docu_seal_p_d_f_checksum_is_provided_to_generate_a_trusted_signature: Unterzeichnen Sie Dokumente mit einem vertrauenswürdigen Zertifikat von EsignCenter. Ihre Dokumente und Daten werden niemals mit EsignCenter geteilt. Eine PDF-Prüfsumme wird bereitgestellt, um eine vertrauenswürdige Signatur zu generieren.
@@ -9240,6 +9246,7 @@ pl:
   verification_code: Kod Weryfikacyjny
   resend_code: Wyślij Kod Ponownie
   powered_by: 'Napędzany przez'
+  sent_by_product_name_html: 'Wysłane przez <a href="%{product_url}">%{product_name}</a>.'
   open_source_documents_software: 'oprogramowanie do dokumentów open source'
   eu_data_residency: Dane w UE
   please_enter_your_email_address_associated_with_the_completed_submission: Wprowadź adres e-mail powiązany z ukończonym zgłoszeniem.
@@ -9689,6 +9696,7 @@ uk:
   verification_code: Код перевірки
   resend_code: Надіслати код знову
   powered_by: 'Працює на базі'
+  sent_by_product_name_html: 'Надіслано <a href="%{product_url}">%{product_name}</a>.'
   open_source_documents_software: 'відкрите програмне забезпечення для документів'
   eu_data_residency: 'Зберігання даних в ЄС'
   please_enter_your_email_address_associated_with_the_completed_submission: "Введіть адресу електронної пошти, пов'язану із завершеним поданням."
@@ -10138,6 +10146,7 @@ cs:
   verification_code: Ověřovací kód
   resend_code: Znovu odeslat kód
   powered_by: 'Poháněno'
+  sent_by_product_name_html: 'Odesláno službou <a href="%{product_url}">%{product_name}</a>.'
   open_source_documents_software: 'open source software pro dokumenty'
   eu_data_residency: 'Uložení dat v EU'
   please_enter_your_email_address_associated_with_the_completed_submission: Zadejte e-mailovou adresu spojenou s dokončeným odesláním.
@@ -10586,6 +10595,7 @@ he:
   verification_code: קוד אימות
   resend_code: שלח קוד מחדש
   powered_by: 'מופעל על ידי'
+  sent_by_product_name_html: 'נשלח על ידי <a href="%{product_url}">%{product_name}</a>.'
   open_source_documents_software: 'תוכנה בקוד פתוח למסמכים'
   eu_data_residency: 'נתונים באיחוד האירופי'
   please_enter_your_email_address_associated_with_the_completed_submission: 'אנא הזן את כתובת הדוא"ל המשויכת להגשה שהושלמה.'
@@ -10987,6 +10997,7 @@ nl: &nl
   you_have_been_invited_to_account_name_product_name_please_sign_up_using_the_link_below_: 'U bent uitgenodigd voor %{account_name} %{product_name}. Meld u aan via de onderstaande link:'
   sent_using_product_name_in_testing_mode_html: Verzonden met <a href="%{product_url}">%{product_name}</a> in testmodus
   sent_using_product_name_free_document_signing_html: Verzonden met <a href="%{product_url}">%{product_name}</a> gratis documentondertekening.
+  sent_by_product_name_html: 'Verzonden door <a href="%{product_url}">%{product_name}</a>.'
   sent_with_docuseal_pro_html: Verzonden met <a href="%{product_url}">EsignCenter Pro</a>
   show_send_with_docuseal_pro_attribution_in_emails_html: Toon de vermelding 'Verzonden met <span class="link">EsignCenter Pro</span>' in e-mails
   ? sign_documents_with_trusted_certificate_provided_by_docu_seal_your_documents_and_data_are_never_shared_with_docu_seal_p_d_f_checksum_is_provided_to_generate_a_trusted_signature
@@ -12412,6 +12423,7 @@ ar:
   verification_code: رمز التحقق
   resend_code: إعادة إرسال الرمز
   powered_by: 'مشغل بواسطة'
+  sent_by_product_name_html: 'أُرسلت بواسطة <a href="%{product_url}">%{product_name}</a>.'
   open_source_documents_software: 'برنامج مستندات مفتوح المصدر'
   eu_data_residency: 'بيانات في الاتحاد الأوروبي'
   please_enter_your_email_address_associated_with_the_completed_submission: 'يرجى إدخال عنوان البريد الإلكتروني المرتبط بالإرسال المكتمل.'
@@ -12859,6 +12871,7 @@ ko:
   verification_code: 인증 코드
   resend_code: 코드 재전송
   powered_by: '제공:'
+  sent_by_product_name_html: '<a href="%{product_url}">%{product_name}</a>에서 보냈습니다.'
   open_source_documents_software: '오픈소스 문서 소프트웨어'
   eu_data_residency: 'EU 데이터 저장 위치'
   please_enter_your_email_address_associated_with_the_completed_submission: '완료된 제출과 연결된 이메일 주소를 입력하세요.'
@@ -13306,6 +13319,7 @@ ja:
   verification_code: 認証コード
   resend_code: コードを再送信
   powered_by: '提供元：'
+  sent_by_product_name_html: '<a href="%{product_url}">%{product_name}</a> より送信されました。'
   open_source_documents_software: 'オープンソースのドキュメントソフトウェア'
   eu_data_residency: 'EU データ保存場所'
   please_enter_your_email_address_associated_with_the_completed_submission: '完了した提出に関連付けられたメールアドレスを入力してください。'

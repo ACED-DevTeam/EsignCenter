@@ -1,10 +1,31 @@
-<%# The testing-mode line always shows; the "Sent using" line is hidden only for an account entitled to branding removal that switched it on (Accounts.branding_removed?). With no account in scope, branding stays. %>
+<%# Three lines, one of which always shows.
+
+    Testing mode says so, always. A PLATFORM notice — the mail we write to the
+    person who runs an account, never to their signers — is signed "Sent by
+    EsignCenter": it is a statement of who sent the letter, and the
+    free-document-signing line reads as an advertisement at the bottom of a
+    bill reminder or a deletion notice. Everything else is the account's own
+    mail to its signers, where the "Sent using" line is the product's
+    marketing and is hidden only for an account entitled to branding removal
+    that switched it on (Accounts.branding_removed?). With no account in
+    scope, branding stays.
+
+    None of these is the AGPL attribution; that lives in the interactive UI
+    (shared/_powered_by, shared/_attribution) and is pinned by
+    `rake gates:branding`. %>
 <% if @current_account&.testing? %>
   <p>
     ---
   </p>
   <p>
     <%= t('sent_using_product_name_in_testing_mode_html', product_url: Docuseal::PRODUCT_EMAIL_URL, product_name: Docuseal.product_name) %>
+  </p>
+<% elsif platform_notice? %>
+  <p>
+    ---
+  </p>
+  <p>
+    <%= t('sent_by_product_name_html', product_url: Docuseal::PRODUCT_EMAIL_URL, product_name: Docuseal.product_name) %>
   </p>
 <% elsif !Accounts.branding_removed?(@current_account) %>
   <p>

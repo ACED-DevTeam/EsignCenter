@@ -16,6 +16,28 @@ RSpec.describe 'Sign Up' do
     visit new_registration_path
   end
 
+  # The "check your email" page is the last step of signing up, and it was the
+  # one public page that scrolled sideways on a phone: the signed-out header
+  # carried the wordmark, Sign In and a "Create free account" button, five
+  # pixels more than a 390px screen holds. The page no longer offers a second
+  # way to start something the reader has already started.
+  it 'renders /sign_up/confirm without scrolling sideways on a phone' do
+    page.driver.resize(390, 844)
+    visit confirm_registration_path
+
+    expect(page).to have_css('body')
+
+    overflow = page.evaluate_script(<<~JS)
+      (function () {
+        var el = document.scrollingElement || document.documentElement;
+        return el.scrollWidth - el.clientWidth;
+      })()
+    JS
+
+    expect(overflow).to be <= 0, "/sign_up/confirm scrolls sideways by #{overflow}px at 390"
+    expect(page).to have_no_link(href: registration_path)
+  end
+
   it 'renders the sign-up form with the Google button and no upstream attribution' do
     expect(page).to have_content('Create your free account')
     expect(page).to have_content('Free: 5 completed documents a month, 1 user.')

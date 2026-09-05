@@ -172,27 +172,37 @@ summary:focus-visible,
   outline-offset: 3px;
 }
 
-/* The settings tab strip on a phone. A strip that scrolls with a clean edge
-   looks like a strip that has ended, so the last visible tab sits under a
-   short fade that says there is more to the right. It belongs to the small
-   screen only: from `md` the same menu is the sidebar again. */
+/* The settings tab strip on a phone. Two elements, because a strip that
+   scrolls with a clean edge looks like a strip that has ended: the fade that
+   says "there is more to the right" has to stay pinned to that edge, so it is
+   painted on the shell, which does not move, while the scrolling happens on
+   the wrapper inside it. Both belong to the small screen only — from `md`
+   the same menu is the sidebar again. */
 .settings-tabs {
+  overflow-x: auto;
+}
+
+.settings-tabs-shell {
   position: relative;
 }
 
-.settings-tabs::after {
+.settings-tabs-shell::after {
   content: "";
   position: absolute;
   top: 0;
-  bottom: 0;
+  bottom: 1px; /* clear of the strip's own bottom rule */
   right: 0;
-  width: 2rem;
+  width: 2.5rem;
   pointer-events: none;
-  background: linear-gradient(to left, hsl(var(--b1)), hsl(var(--b1) / 0));
+  background: linear-gradient(to left, hsl(var(--b1)) 35%, hsl(var(--b1) / 0));
 }
 
 @media (min-width: 768px) {
-  .settings-tabs::after {
+  .settings-tabs {
+    overflow-x: visible;
+  }
+
+  .settings-tabs-shell::after {
     display: none;
   }
 }

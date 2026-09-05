@@ -1,4 +1,4 @@
-<p>Hello,</p>
+<p><%= mail_greeting %></p>
 <p>Sending has been paused on your EsignCenter account, so no new documents can be sent or started from it for now.</p>
 <% if @reason == 'complaint' %>
   <p>Why: a recipient reported an email from this account as spam. One complaint is enough to pause sending, because repeated complaints would hurt delivery for everyone on the platform.</p>
