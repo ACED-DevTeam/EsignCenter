@@ -16,8 +16,9 @@
 # The row is the state machine. Whatever happens, the job leaves it saying
 # something true: ready with a file attached, or failed with the error on it.
 # A run that dies without either (a worker killed mid-build) leaves it
-# `running`, and the nightly sweep fails it after Accounts::Exports::STALE_AFTER
-# so the account's door is not blocked for ever.
+# `running`, and the nightly sweep fails it Accounts::Exports::STALE_AFTER
+# after the worker CLAIMED it, so the account's door is not blocked for ever.
+# The sweep and this job take the row's lock for that handover: see `finalize!`.
 class AccountExportJob
   include Sidekiq::Job
 
@@ -74,29 +75,52 @@ class AccountExportJob
 
   # Only an export that is still owed work is built. A row that is already
   # ready (a duplicate enqueue) or expired is left exactly as it is.
+  #
+  # `started_at` is THIS ATTEMPT's clock and is rewritten every time the row is
+  # claimed (review 8, X2). It is what the nightly recovery measures staleness
+  # against, so it has to mean "a worker took this on at this moment" — on a
+  # Sidekiq retry hours after the first try, the second attempt is a live build
+  # however long ago the first one started.
   def claim(export_id)
     export = AccountExport.find_by(id: export_id)
 
     return nil if export.nil? || !export.in_progress?
 
-    export.update!(status: AccountExport::RUNNING, started_at: export.started_at || Time.current)
+    export.update!(status: AccountExport::RUNNING, started_at: Time.current)
 
     export
   end
 
+  # The upload happens OUTSIDE the row lock and the attach inside it (see
+  # `finalize!`): the bucket write is the slow part of a build and a row lock
+  # held across it is a row lock held for minutes.
+  #
+  # NOTHING IS UPLOADED THAT THE ROW CANNOT NAME (review 8, W2). The blob row
+  # is created and written onto the export BEFORE the first byte goes to the
+  # bucket, so a worker killed anywhere between here and `finalize!` leaves a
+  # file that `fail!` and the nightly sweeps can still find and delete. Without
+  # it, a Timeout::Error during the upload of a large account's zip left a copy
+  # of the customer's entire account in the bucket for ever, referenced by
+  # nothing.
   def build!(export)
     summary = nil
+    blob = nil
 
     Tempfile.create(['account-export', '.zip'], binmode: true) do |file|
       summary = Accounts::ExportArchive.call(export, file.path)
 
       file.rewind
-      export.archive.attach(io: file, filename: filename_for(export),
-                            content_type: 'application/zip')
+      blob = ActiveStorage::Blob.create_after_unfurling!(io: file, filename: filename_for(export),
+                                                         content_type: 'application/zip')
+      stage!(export, blob)
+
+      file.rewind
+      blob.upload_without_unfurling(file)
     end
 
-    export.update!(status: AccountExport::READY, finished_at: Time.current,
-                   expires_at: Accounts::Exports::TTL.from_now, error: nil, summary:)
+    # Somebody else finished with this row while we were building. Nothing
+    # further is owed — not the READY row, and not the email.
+    return nil unless finalize!(export, blob, summary)
 
     # The mail is part of the SUCCESS PATH and has its own rescue (review 2,
     # M12). It used to be a bare `deliver_later!` after the row was committed
@@ -108,6 +132,68 @@ class AccountExportJob
     # export is ready but the email did not go out.
     export.update!(summary: summary.merge('notified' => notify_ready(export)))
 
+    nil
+  end
+
+  # THE LAST TWO STEPS OF A BUILD ARE ONE STEP, TAKEN UNDER THE ROW'S LOCK
+  # (review 8, X2).
+  #
+  # The nightly stale-export recovery is looking at this same row and will fail
+  # it if the attempt started longer ago than Accounts::Exports::STALE_AFTER.
+  # Without the lock the two interleave: recovery reads `running`, this worker
+  # attaches the zip and says READY, and recovery then deletes that zip and
+  # overwrites the row with `failed` — a finished export destroyed and a
+  # customer told their build died. So both sides take the lock and both re-read
+  # the row inside it (Accounts::Retention.fail_stale_export!).
+  #
+  # Losing the race is not an error. The row was declared dead by the sweep, the
+  # day's budget was handed back and the customer may already have asked for
+  # another one, so this archive is thrown away — storage first, the same way
+  # round as everywhere else (H6) — rather than resurrecting a row somebody else
+  # has finished with.
+  def finalize!(export, blob, summary)
+    finished = false
+
+    export.with_lock do
+      next unless export.status == AccountExport::RUNNING
+
+      export.archive.attach(blob)
+      # The fresh summary replaces the staged pointer as it is written: the
+      # blob is attached now, so `export.archive` is what finds it from here on.
+      export.update!(status: AccountExport::READY, finished_at: Time.current,
+                     expires_at: Accounts::Exports::TTL.from_now, error: nil,
+                     summary: summary.except(AccountExport::STAGED_BLOB_ID))
+
+      finished = true
+    end
+
+    unless finished
+      discard_blob(blob, export)
+      unstage!(export, blob)
+    end
+
+    finished
+  end
+
+  # Names the blob on the row before a byte of it is uploaded, and clears out
+  # anything a PREVIOUS attempt staged and never finished — a Sidekiq retry
+  # builds a second zip, and the first one is abandoned the moment this row
+  # points at the second. Storage first, as everywhere else (H6).
+  def stage!(export, blob)
+    previous = export.staged_blob
+
+    discard_blob(previous, export) if previous && previous.id != blob.id
+
+    export.stage_blob!(blob)
+  end
+
+  # Only ever clears a pointer that still names the blob just dealt with: a row
+  # that has moved on to another attempt keeps its own.
+  def unstage!(export, blob)
+    export.reload
+
+    export.unstage_blob! if export.summary[AccountExport::STAGED_BLOB_ID].to_i == blob.id
+  rescue ActiveRecord::RecordNotFound
     nil
   end
 
@@ -166,10 +252,27 @@ class AccountExportJob
   # Never `archive.purge`: see `fail!`. A StorageFailure is swallowed here on
   # purpose — the row is about to be marked failed either way, and the sweep
   # (Accounts::Retention.purge_failed_export_files!) owns the retry.
+  #
+  # BOTH halves of a build product go: the archive if one was ever attached,
+  # and the zip an attempt was uploading when it died, which is attached to
+  # nothing and would otherwise sit in the bucket for ever (review 8, W2).
   def discard_archive(export)
-    return unless export.archive.attached?
+    discard_blob(export.archive.blob, export) if export.archive.attached?
 
-    Accounts::Purge.purge_blob_storage_first!(export.archive.blob, account_id: export.account_id)
+    discard_staged_blob(export)
+  end
+
+  def discard_staged_blob(export)
+    blob = export.staged_blob
+
+    return if blob.nil?
+
+    discard_blob(blob, export)
+    unstage!(export, blob)
+  end
+
+  def discard_blob(blob, export)
+    Accounts::Purge.purge_blob_storage_first!(blob, account_id: export.account_id)
   rescue Accounts::Purge::StorageFailure => e
     ErrorReport.error(e, account_id: export.account_id, account_export_id: export.id)
   end

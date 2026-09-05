@@ -28,14 +28,16 @@ billing_lifecycle:
 
 # The retention clock (D43): warning emails for accounts that have gone unused
 # — no sign-in and no authenticated activity — for nearly a year, the one-week
-# reminder before a scheduled deletion, and the purges themselves. Daily rather
+# reminder before a scheduled deletion, the purges themselves, and the
+# account-export housekeeping (the seven-day expiry, the failed-file tidy-up
+# and the release of a build whose worker died). Daily rather
 # than hourly — every deadline here is a date, not an hour — and early enough
 # in the morning that a person is around if the operator alert fires.
 account_retention:
   cron: '30 4 * * *'
   class: 'AccountRetentionJob'
   queue: default
-  description: 'Sends dormant-account and scheduled-deletion warnings, and purges accounts whose date has passed'
+  description: 'Sends dormant-account and scheduled-deletion warnings, expires account-export zips and releases abandoned builds, and purges accounts whose date has passed'
 
 # The comp clock (Session 8). Paid access the operator gave away always
 # carries the date it ends; this is what ends it, down the same revoke path a

@@ -5,10 +5,11 @@
 # The promise this file pins, in one sentence each:
 #
 #   * an administrator can ask for ONE ZIP holding everything in the account —
-#     the uploaded documents, every signed copy, the audit trails, the
-#     templates, a CSV of the submissions and a manifest with a checksum for
-#     every file — and what comes out is exactly that, no more (the testing
-#     sandbox is somebody else's account) and no less;
+#     the uploaded documents (the templates', the submissions' own, and every
+#     file a signer sent), every signed copy, the audit trails, the templates,
+#     a CSV of the submissions and a manifest with a checksum for every file —
+#     and what comes out is exactly that, no more (the testing sandbox is
+#     somebody else's account) and no less;
 #   * a file that has gone missing from storage is NAMED rather than fatal;
 #   * the door is open to a free account, a suspended one and one that has
 #     asked to be deleted, and closed to a viewer, to another tenant and to a
@@ -98,6 +99,26 @@ RSpec.describe 'The account export', type: :request do
       submission.reload
     end
 
+    # What a SIGNER puts in, and what a submission carries of its own (review
+    # 8, D3). A file-field upload and the signature image behind a signature
+    # are the customer's evidence as much as the signed PDF is, and they are
+    # nowhere else in the zip — the CSV records a file field as a link into
+    # our storage, which is worth nothing once the account is purged. The
+    # submission-owned original is what a corrected copy holds
+    # (SubmittersResubmitController) and what a one-off upload becomes.
+    let!(:uploads) do
+      submission = create(:submission, template:, created_by_user: admin)
+
+      signer = create(:submitter, submission:, account:, uuid: template.submitters.first['uuid'],
+                                  email: 'uploader@example.com', sent_at: Time.current)
+
+      attach_fixture!(submission.documents, 'uploaded-original.pdf')
+      attach_fixture!(signer.attachments, 'signer-upload.pdf')
+      attach_image!(signer.attachments, 'signature.png')
+
+      submission.reload
+    end
+
     # The sandbox is a separate account. Its template must not appear.
     let!(:child_template) do
       child_user = Accounts.find_or_create_testing_user(account)
@@ -108,6 +129,19 @@ RSpec.describe 'The account export', type: :request do
     def attach_fixture!(attachment, filename)
       attachment.attach(io: Rails.root.join('spec/fixtures/sample-document.pdf').open,
                         filename:, content_type: 'application/pdf')
+    end
+
+    def attach_image!(attachment, filename)
+      attachment.attach(io: Rails.root.join('spec/fixtures/sample-image.png').open,
+                        filename:, content_type: 'image/png')
+    end
+
+    def uploader
+      uploads.submitters.first
+    end
+
+    def uploaded_path(filename)
+      "submissions/#{uploads.id}/attachments/submitter-#{uploader.id}/#{filename}"
     end
 
     def directory_for(record)
@@ -132,6 +166,12 @@ RSpec.describe 'The account export', type: :request do
                "submissions/#{completed.id}/submission.json",
                "submissions/#{completed.id}/audit-trail.pdf",
                "submissions/#{pending.id}/submission.json",
+               "submissions/#{uploads.id}/submission.json",
+               # The originals the submission owns, and what the signer
+               # uploaded — each inside the submission's own folder (D3).
+               "submissions/#{uploads.id}/original/uploaded-original.pdf",
+               uploaded_path('signer-upload.pdf'),
+               uploaded_path('signature.png'),
                'submissions.csv',
                'manifest.json']
 
@@ -149,7 +189,8 @@ RSpec.describe 'The account export', type: :request do
 
       # The sandbox stays where it is.
       expect(paths.grep(%r{\Atemplates/#{child_template.id}-})).to be_empty
-      expect(paths.grep(%r{\Asubmissions/})).to all(match(%r{\Asubmissions/(#{completed.id}|#{pending.id})/}))
+      expect(paths.grep(%r{\Asubmissions/}))
+        .to all(match(%r{\Asubmissions/(#{completed.id}|#{pending.id}|#{uploads.id})/}))
 
       # The manifest describes exactly what is in the file, and every checksum
       # is the checksum of the bytes that are really there.
@@ -170,7 +211,8 @@ RSpec.describe 'The account export', type: :request do
       end
 
       expect(book['counts']).to include('templates' => 2, 'template_documents' => 3,
-                                        'submissions' => 2, 'audit_trails' => 1,
+                                        'submissions' => 3, 'audit_trails' => 1,
+                                        'submission_documents' => 1, 'submitter_attachments' => 2,
                                         'completed_documents' => expected_documents)
 
       # And the summary the page prints says the same thing about the file.
@@ -215,6 +257,60 @@ RSpec.describe 'The account export', type: :request do
       expect(book['files'].pluck('path')).not_to include(path)
       expect(export.summary['missing']).to eq(book['missing'])
       expect(export.summary['missing_count']).to eq(1)
+    end
+
+    # Review 8, D3. The signer's uploads used not to be walked at all, so a
+    # zip that was short every file a signer had ever sent said `missing: []`
+    # — the one outcome this feature must not have. They are walked now, and
+    # one that has gone from the bucket is named like any other.
+    it 'names a signer\'s upload that is gone from storage rather than passing over it in silence' do
+      lost = uploader.attachments.find { |attachment| attachment.filename.to_s == 'signer-upload.pdf' }.blob
+
+      lost.service.delete(lost.key)
+
+      export = build_export!
+      book = manifest(export)
+
+      expect(export.status).to eq(AccountExport::READY)
+      expect(book['missing'])
+        .to contain_exactly({ 'path' => uploaded_path('signer-upload.pdf'), 'reason' => 'not_in_storage' })
+      expect(zip_paths(export)).not_to include(uploaded_path('signer-upload.pdf'))
+      expect(zip_paths(export)).to include(uploaded_path('signature.png'))
+      expect(export.summary['missing_count']).to eq(1)
+    end
+
+    # A filename is somebody else's text, and it ends up as a path inside a
+    # zip that a customer will unpack on their own machine. Two of them can be
+    # the same, and one of them can try to be a path.
+    it 'keeps every uploaded file inside its own folder, whatever it is called' do
+      attach_fixture!(uploader.attachments, '../../../etc/passwd.pdf')
+      attach_fixture!(uploader.attachments, 'signer-upload.pdf')
+
+      paths = zip_paths(build_export!)
+      theirs = paths.grep(%r{\Asubmissions/#{uploads.id}/attachments/submitter-#{uploader.id}/})
+
+      # Four files, four entries: the second upload of a name that is already
+      # taken gets a counter rather than overwriting the first.
+      expect(theirs.size).to eq(4)
+      expect(theirs).to include(uploaded_path('signer-upload.pdf'),
+                                uploaded_path('signature.png'),
+                                uploaded_path('signer-upload-2.pdf'))
+
+      # And the name that tried to be a path is a name: no entry in the whole
+      # archive is absolute or steps out of its folder.
+      expect(theirs).to all(start_with("submissions/#{uploads.id}/attachments/submitter-#{uploader.id}/"))
+      expect(paths).to all(satisfy { |path| path.split('/').exclude?('..') })
+      expect(paths).to all(satisfy { |path| !path.start_with?('/') })
+    end
+
+    it 'makes a safe entry name out of one that is not a name at all' do
+      expect(Accounts::ExportArchive.slugify('..')).to eq('file')
+      expect(Accounts::ExportArchive.slugify('.')).to eq('file')
+      expect(Accounts::ExportArchive.slugify('/etc/passwd')).to eq('etc-passwd')
+
+      # Review 8, C4: bad bytes used to raise out of the whole export.
+      expect(Accounts::ExportArchive.slugify("r\xE9sum\xE9.pdf")).to eq('r-sum-.pdf')
+      expect(Accounts::ExportArchive.slugify((+"bin\xFFary").force_encoding(Encoding::BINARY))).to eq('bin-ary')
     end
 
     # Review 2, Opus #9. The object used to be streamed straight into an open
@@ -645,7 +741,7 @@ RSpec.describe 'The account export', type: :request do
       stuck = Accounts::Exports.request!(account, requested_by: admin)
 
       travel_to((Accounts::Exports::PENDING_STALE_AFTER + 1.minute).from_now) do
-        Accounts::Retention.run!
+        AccountRetentionJob.new.perform
 
         expect(stuck.reload.status).to eq(AccountExport::FAILED)
         expect(Accounts::Exports.remaining_today(account)).to eq(Accounts::Exports::MAX_PER_DAY)
@@ -679,7 +775,7 @@ RSpec.describe 'The account export', type: :request do
       blob = export.archive.blob
 
       travel_to(8.days.from_now) do
-        Accounts::Retention.run!
+        AccountRetentionJob.new.perform
 
         export.reload
 
@@ -700,13 +796,195 @@ RSpec.describe 'The account export', type: :request do
       stuck = Accounts::Exports.request!(account, requested_by: admin)
 
       travel_to((Accounts::Exports::STALE_AFTER + 1.hour).from_now) do
-        Accounts::Retention.run!
+        AccountRetentionJob.new.perform
 
         expect(stuck.reload.status).to eq(AccountExport::FAILED)
 
         expect { Accounts::Exports.request!(account, requested_by: admin) }
           .to change(AccountExport, :count).by(1)
       end
+    end
+
+    # Review 8, C1/D2 — the worst shape of the same thing, and the one that
+    # used to be permanent. A worker killed mid-build leaves the row RUNNING;
+    # `Accounts::Exports.request!` hands a row that is in progress back to
+    # every later request, so until something fails it the account can never
+    # export again — including the administrator who pressed "Export first"
+    # inside the 90-day deletion window. The recovery has to be on the
+    # SCHEDULER, because the scheduler is the only thing that runs at night.
+    it 'recovers a build that died half-way and opens the export door again' do
+      running = Accounts::Exports.request!(account, requested_by: admin)
+
+      running.update!(status: AccountExport::RUNNING, started_at: Time.current)
+
+      travel_to((AccountExportJob::HARD_TIMEOUT + Accounts::Exports::STALE_AFTER).from_now) do
+        # The door really is shut: the dead row is what a request gets.
+        expect(Accounts::Exports.request!(account, requested_by: admin).id).to eq(running.id)
+
+        AccountRetentionJob.new.perform
+
+        expect(running.reload.status).to eq(AccountExport::FAILED)
+        expect(running.error).to be_present
+        expect(running.archive).not_to be_attached
+        expect(Accounts::Exports.remaining_today(account)).to eq(Accounts::Exports::MAX_PER_DAY)
+
+        fresh = nil
+
+        expect { fresh = Accounts::Exports.request!(account, requested_by: admin) }
+          .to change(AccountExport, :count).by(1)
+
+        expect(fresh.id).not_to eq(running.id)
+        expect(fresh.status).to eq(AccountExport::PENDING)
+      end
+    end
+
+    # --- 4a. recovery must never destroy a build that is actually finishing --
+
+    # Review 8, X2. The clock that decides "abandoned" is the ATTEMPT's, not
+    # the request's. An export can wait hours in a busy `documents` queue
+    # before a worker claims it, and the worker's own 30-minute cap starts at
+    # the claim — so measuring from `created_at` would let the sweep delete the
+    # half-built archive of a build that started five minutes ago and tell the
+    # customer it died.
+    it 'leaves a build alone that a worker claimed minutes ago, however long the request waited' do
+      export = Accounts::Exports.request!(account, requested_by: admin)
+
+      export.update_columns(status: AccountExport::RUNNING,
+                            created_at: (Accounts::Exports::STALE_AFTER + 1.hour).ago,
+                            started_at: 5.minutes.ago)
+
+      AccountRetentionJob.new.perform
+
+      expect(export.reload.status).to eq(AccountExport::RUNNING)
+      expect(export.error).to be_nil
+      expect(Accounts::Exports.remaining_today(account)).to eq(Accounts::Exports::MAX_PER_DAY - 1)
+
+      # And the fuse still burns: the same row is failed once ITS OWN attempt
+      # is older than the stale threshold.
+      travel_to((Accounts::Exports::STALE_AFTER + 10.minutes).from_now) do
+        AccountRetentionJob.new.perform
+
+        expect(export.reload.status).to eq(AccountExport::FAILED)
+      end
+    end
+
+    # The interleaving itself (review 8, X2): the sweep gets to the row first
+    # and the worker comes back with a finished zip a moment later. The row
+    # stays failed — the customer has already been told and has already had the
+    # day's budget back — and the archive the worker built does not survive in
+    # the bucket as an orphan nothing in the database names.
+    it 'does not let a worker that finishes after the recovery resurrect the row or leave its zip behind' do
+      export = Accounts::Exports.request!(account, requested_by: admin)
+
+      export.update_columns(status: AccountExport::RUNNING,
+                            started_at: (Accounts::Exports::STALE_AFTER + 10.minutes).ago)
+
+      AccountRetentionJob.new.perform
+
+      expect(export.reload.status).to eq(AccountExport::FAILED)
+
+      blob = ActiveStorage::Blob.create_and_upload!(
+        io: Rails.root.join('spec/fixtures/sample-document.pdf').open,
+        filename: 'esigncenter-export.zip', content_type: 'application/zip'
+      )
+
+      finished = AccountExportJob.new.send(:finalize!, export, blob, 'counts' => {})
+
+      expect(finished).to be(false)
+      expect(export.reload.status).to eq(AccountExport::FAILED)
+      expect(export.error).to be_present
+      expect(export.archive).not_to be_attached
+      expect(ActiveStorage::Blob.exists?(blob.id)).to be(false)
+      expect(blob.service.exist?(blob.key)).to be(false)
+    end
+
+    # And the other way round, which is the ordinary case and the one that
+    # used to lose the file: the worker finishes, the sweep runs afterwards on
+    # a row whose attempt clock is long past the threshold, and the finished
+    # export is left completely alone.
+    it 'leaves a build that finished a moment before the sweep exactly as it is' do
+      export = Accounts::Exports.request!(account, requested_by: admin)
+
+      export.update_columns(status: AccountExport::RUNNING,
+                            started_at: (Accounts::Exports::STALE_AFTER + 10.minutes).ago)
+
+      blob = ActiveStorage::Blob.create_and_upload!(
+        io: Rails.root.join('spec/fixtures/sample-document.pdf').open,
+        filename: 'esigncenter-export.zip', content_type: 'application/zip'
+      )
+
+      expect(AccountExportJob.new.send(:finalize!, export, blob, 'counts' => {})).to be(true)
+
+      AccountRetentionJob.new.perform
+
+      expect(export.reload.status).to eq(AccountExport::READY)
+      expect(export.archive).to be_attached
+      expect(export.archive.blob.id).to eq(blob.id)
+      expect(ActiveStorage::Blob.exists?(blob.id)).to be(true)
+      expect(blob.service.exist?(blob.key)).to be(true)
+      expect(export.downloadable?).to be(true)
+    end
+
+    # Review 8, W2. The upload is the slow part of a build and is deliberately
+    # OUTSIDE the row lock — but that leaves a window in which a copy of the
+    # customer's entire account exists in the bucket attached to nothing, and
+    # every sweep we have looks for a file through `export.archive`. A build
+    # killed in that window (the 30-minute cap firing during the upload of a
+    # large account's zip is the realistic way) used to leave that copy in
+    # storage for ever, invisible to the nightly sweeps and to the account
+    # purge alike. So the row names the file BEFORE the first byte goes up.
+    it 'leaves nothing in the bucket when a build dies between uploading its zip and attaching it' do
+      export = Accounts::Exports.request!(account, requested_by: admin)
+      staged = nil
+
+      allow_any_instance_of(AccountExportJob).to receive(:finalize!) do |_job, row, blob, _summary|
+        staged = blob
+
+        # The promise, checked at the only moment it matters: the file is in
+        # storage and the row already names it.
+        expect(blob.service.exist?(blob.key)).to be(true)
+        expect(row.reload.summary[AccountExport::STAGED_BLOB_ID]).to eq(blob.id)
+
+        raise Timeout::Error, 'the export took longer than 30 minutes and was stopped'
+      end
+
+      AccountExportJob.new.perform(export.id)
+
+      expect(export.reload.status).to eq(AccountExport::FAILED)
+      expect(export.error).to be_present
+      expect(export.archive).not_to be_attached
+      expect(staged).to be_present
+      expect(ActiveStorage::Blob.exists?(staged.id)).to be(false)
+      expect(staged.service.exist?(staged.key)).to be(false)
+      expect(export.summary[AccountExport::STAGED_BLOB_ID]).to be_nil
+      expect(Accounts::Exports.remaining_today(account)).to eq(Accounts::Exports::MAX_PER_DAY)
+    end
+
+    # The harder half of the same thing: the worker is KILLED, so nothing of
+    # its own ever runs — no `fail!`, no tidying. The row is left `running`
+    # with a zip in the bucket, and the nightly sweep is the only thing that
+    # will ever come past. It has to take the file with it.
+    it 'lets the nightly sweep delete the zip of a build whose worker was killed mid-upload' do
+      export = Accounts::Exports.request!(account, requested_by: admin)
+
+      export.update_columns(status: AccountExport::RUNNING,
+                            started_at: (Accounts::Exports::STALE_AFTER + 10.minutes).ago)
+
+      blob = ActiveStorage::Blob.create_and_upload!(
+        io: Rails.root.join('spec/fixtures/sample-document.pdf').open,
+        filename: 'esigncenter-export.zip', content_type: 'application/zip'
+      )
+      export.stage_blob!(blob)
+
+      expect(blob.service.exist?(blob.key)).to be(true)
+
+      AccountRetentionJob.new.perform
+
+      expect(export.reload.status).to eq(AccountExport::FAILED)
+      expect(export.archive).not_to be_attached
+      expect(ActiveStorage::Blob.exists?(blob.id)).to be(false)
+      expect(blob.service.exist?(blob.key)).to be(false)
+      expect(export.summary[AccountExport::STAGED_BLOB_ID]).to be_nil
     end
   end
 
@@ -730,7 +1008,7 @@ RSpec.describe 'The account export', type: :request do
       end
 
       travel_to(8.days.from_now) do
-        Accounts::Retention.run!
+        AccountRetentionJob.new.perform
 
         # The file is still there, so the row that names it is still there
         # too: nothing is orphaned, and the download door is shut anyway.
@@ -739,7 +1017,7 @@ RSpec.describe 'The account export', type: :request do
         expect(ActiveStorage::Blob.exists?(blob.id)).to be(true)
         expect(export.downloadable?).to be(false)
 
-        Accounts::Retention.run!
+        AccountRetentionJob.new.perform
 
         expect(export.reload.status).to eq(AccountExport::EXPIRED)
         expect(ActiveStorage::Blob.exists?(blob.id)).to be(false)

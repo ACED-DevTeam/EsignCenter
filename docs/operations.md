@@ -631,7 +631,7 @@ deploy).
 | `scheduler_heartbeat` | every minute | Writes the timestamp `/up` reports. | Nothing time-based is running at all — see the heartbeat notes above. |
 | `stripe_reconciliation` | `0 6 * * *` (06:00 UTC) | Re-reads every Stripe subscription, repairs drift, cancels duplicate subscriptions, settles refunds an earlier attempt owed, re-enqueues stuck webhook events. Emails the operator **once** if it had anything to fix. | The app's idea of who is paying drifts from Stripe's until it runs again. Safe to run by hand: `StripeReconciliationJob.new.perform` in the console. It is idempotent. |
 | `billing_lifecycle` | `15 * * * *` (hourly) | The dunning clock: past-due reminder emails on days 0, 3, 7 and 13, the suspension on day 14, and the seats of invitations nobody accepted (plus any seat hand-back Stripe refused earlier). | Nobody is suspended and nobody is warned; accounts keep paid features they are not paying for, and lapsed invitations keep holding seats the customer is billed for. Hourly, not daily, because day 14 is a deadline that decides whether an account can write. |
-| `account_retention` | `30 4 * * *` (04:30 UTC) | The 90-day deletion clock and the dormant-account clock: warning emails (60/30/7 days before a dormancy deletion, one week before a scheduled one) and the purges whose date has passed. See **docs/account-deletion.md**. | Nothing is destroyed early — every deadline simply slips until it runs. Deletions and dormancy warnings are late, never wrong. |
+| `account_retention` | `30 4 * * *` (04:30 UTC) | The 90-day deletion clock and the dormant-account clock: warning emails (60/30/7 days before a dormancy deletion, one week before a scheduled one) and the purges whose date has passed — plus the account-export housekeeping: a ready export's zip is deleted the night its seven days are up, a failed export's half-built file is cleared up a day later, and a build whose worker died is released so the account's export door opens again. Every sweep runs even if another raises; the job then ends in an error, so the stamp says which night was incomplete. See **docs/account-deletion.md**. | Nothing is destroyed early — every deadline simply slips until it runs. Deletions and dormancy warnings are late, never wrong. But export zips — a copy of a whole account — stay in the bucket past their advertised seven days, and an export whose worker died keeps that account's export button stuck on "being built" until it runs. |
 
 All four are safe to re-run: each decides from the clock and its own dedupe
 counters, so a catch-up run after an outage sends what was missed once, not
@@ -1111,7 +1111,8 @@ one of their people, and you can change almost nothing while you are there.
    - **The access level.** *Read-only* (the default: look at everything, change
      nothing) or *Allow document edits* — for fixing a template or a stuck
      document at the customer's request. Even in edit mode, billing, users,
-     credentials and signing stay locked.
+     credentials and signing stay locked, nothing can be deleted permanently,
+     and every change you make is logged and shown to the customer.
    - **Your 6-digit authenticator code.** This proves it is really you, right
      now, rather than a laptop somebody left open. Each code works once; if you
      have just used one to sign in, wait for the next one.
@@ -1135,7 +1136,22 @@ Even in "Allow document edits" mode, a support session can never:
 - **Change settings** — account preferences, notifications, personalization,
   webhooks, e-signature settings and the test-mode toggle are all shut.
 - **Sign anything.** Completing a form, declining, delegating, in-person signing
-  and self-signing are refused, as the person and as anybody else.
+  and self-signing are refused, as the person and as anybody else. That includes
+  the round-about routes: creating a submission through the API with a signer
+  already marked `completed`, and the "resubmit" door, which opens a fresh
+  signing session as the person. The `completed` check asks exactly the
+  question the document builder asks — *is there a value there at all* — so
+  `completed: "false"`, `completed: 0` or any other spelling is refused just
+  the same. A field of the customer's own that happens to be called
+  "completed" (a compliance template's "Training completed?") is not a
+  completion and does not get in the way. **No signer is ever marked finished
+  by a support session.**
+- **Delete anything permanently.** Archiving a template or a submission is a
+  soft delete the customer can undo, and support may do it. "Delete
+  permanently" is a different button: it takes the document, its signers and
+  their whole event trail with it, for good. That one is refused — through the
+  page and through the API alike — and support asks the customer to press it
+  themselves.
 
 Three of these are shut for **every** kind of request, a plain page view
 included, because opening them is not a read: the signer's form saves values and
@@ -1155,6 +1171,42 @@ session while one is running all leave a row (never the code itself).
 
 In read-only mode the rule is simpler still — **nothing** that writes works,
 document edits included.
+
+### 9.2a What "Allow document edits" may do — and what it leaves behind
+
+Edit mode exists for one job: fixing the customer's document when they ask.
+Inside it a support session may build and rename templates, upload documents and
+detect fields, clone, restore, archive and un-archive, create and archive
+submissions, correct a signer's name, email address or phone number, and re-send
+an invitation. Everything in 9.2 stays shut, and on top of that the two rules
+above — nothing irreversible, and nobody signed for — hold whichever door is
+used, page or API.
+
+**Every one of those changes is written down.** Each allowed request in edit
+mode leaves an `impersonation.action` line in the audit log naming the exact
+action, the record ids it touched, the account, the person it was made as and
+the operator who made it. **Exactly one line per request, however the request
+ends**, written after the whole request has finished — the error handling
+included — so it can say what actually happened:
+
+- `changed` — it went through. This is what the customer's card counts;
+- `failed` — the door was open and the request did not go through: any 4xx
+  (an upload with no file, a form that failed its own validation, a payload the
+  API rejected, a quota or rate limit), or a redirect carrying an alert, which
+  is how much of the application says no (a signer on a document that has
+  already been opened, for instance);
+- `error` — something broke while support was in there. The line still lands,
+  so "we touched this and it blew up" is answerable a month later.
+
+A request that was *refused* leaves its refusal line and no action line — never
+both. The customer sees the totals too: their Support-access card has an
+**Actions** column reading, for example, *"3 actions · 1 blocked"*. **An
+"action" there means one allowed edit-mode request that completed**; failed
+attempts and errors are in the log with their own outcome and are not counted,
+because telling a customer three things were done when three things were turned
+away would be worse than saying nothing. A read-only session shows *"Nothing
+changed"*, which is the whole promise of that mode, in writing, on the
+customer's own page.
 
 ### 9.3 The one-hour limit, and ending a session
 
@@ -1184,7 +1236,11 @@ test mode first, and test mode cannot be turned on inside a support session.
   recorded.
 - **A "Support access" card** on their **Settings → Account** page, listing the
   last ten sessions with the date, who was viewed as, the access level, how long
-  it lasted and the reason.
+  it lasted, how many actions it actually completed and how many were blocked,
+  and the reason. An action is an allowed edit-mode request that completed;
+  attempts that failed or errored are in the audit log with their outcome but
+  are not counted. Sessions from before we started counting show a dash in that
+  column rather than an unearned zero.
 
 ### 9.5 Reading the audit log
 
@@ -1196,9 +1252,25 @@ kinds of row, filterable by action:
 - `impersonation.refused` — one row per locked door somebody walked into, with
   the path and the controller action. A handful is normal (a click on a settings
   page); a long run of them is worth asking about.
+- `impersonation.action` — one row per allowed write an edit-mode session made,
+  with the controller action, the path, the record ids and an `outcome`:
+  `changed` (it worked), `failed` (the request was allowed but did not go
+  through, so nothing changed — a 4xx from anywhere, or a redirect with an
+  alert) or `error` (it raised). Read-only sessions never produce one, and a
+  refused request never produces one either — it has an `impersonation.refused`
+  row instead. If a customer asks "what did you change?", the `changed` rows
+  are the answer, in full; the `failed` and `error` rows are the answer to
+  "what did you try?".
 - `impersonation.end` — how it ended (`operator`, `sign_out`, `timeout`,
-  `operator_access_lost` or `rebinding`), how many seconds it lasted, and how
-  many refusals it collected.
+  `operator_access_lost` or `rebinding`), how many seconds it lasted, how many
+  refusals it collected, and how many actions it completed (the `changed` rows
+  only).
 
-Every row is written inside the transaction that made the change, so there is no
-support session anywhere in this application without these rows behind it.
+Start, refusal and end rows are written inside the transaction that made the
+change. The action row is the one exception, and deliberately so: it is written
+after the request has finished — outside whatever transaction the action
+opened, and after the error handling — because that is the only moment it can
+honestly say what happened. **There is no ending that leaves an allowed request
+without a row**: a normal response, a 4xx an error handler answered, and an
+exception on its way to the 500 page all leave exactly one, with the outcome
+that fits. The refusal rows are never affected.

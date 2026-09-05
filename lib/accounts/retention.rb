@@ -48,16 +48,66 @@ module Accounts
     # second one on 1 April — so they are all written into one bucket.
     COUNTER_PERIOD = 'retention'
 
+    # The sweeps AccountRetentionJob runs every night, named in the order they
+    # have to happen. This list is the job (review 8, C1): the job calls
+    # `run!` and nothing else, so a sweep added here runs in production the
+    # night it lands, and one dropped from here fails the scheduler proof.
+    SWEEPS = %i[schedule_dormant_warnings! schedule_deletion_reminders!
+                expire_exports! purge_due!].freeze
+
+    # One or more sweeps raised. Raised only AFTER every sweep has had its
+    # turn, so the stamp on the scheduler tab says which night's work was
+    # incomplete without any sweep having been skipped because an earlier one
+    # failed.
+    class SweepFailed < StandardError
+      attr_reader :failures
+
+      def initialize(failures)
+        @failures = failures
+
+        super("the retention sweep failed: #{failures.map { |name, message| "#{name} (#{message})" }.join('; ')}")
+      end
+    end
+
     module_function
 
     # Everything the nightly job does, in the order it matters: warn first
     # (an account warned today may be purged tomorrow, never the reverse),
-    # then purge.
+    # then the export housekeeping, then purge.
+    #
+    # EACH SWEEP IS ISOLATED (review 8, C1). They are four unrelated pieces of
+    # work over four different sets of rows, and one of them raising used to
+    # take the three after it with it — so a single broken account could stop
+    # every export in the system expiring, night after night, with the
+    # scheduler tab saying only "error". Now each is caught and reported on
+    # its own, the rest still run, and the job still ends in a failure so the
+    # stamp records the night as bad and Sidekiq retries it.
     def run!(now: Time.current)
-      schedule_dormant_warnings!(now:)
-      schedule_deletion_reminders!(now:)
-      expire_exports!(now:)
-      purge_due!(now:)
+      failures = {}
+
+      # SWEEPS IS THE LIST, and this line is the only place it is spent
+      # (review 8, V2-2). Naming the four sweeps again here would mean a fifth
+      # one could be added to the job and forgotten in the constant — and the
+      # constant is what the scheduler proof reads, so the new sweep would
+      # ship with no proof at all, which is the exact hole this section was
+      # opened to close.
+      SWEEPS.each { |name| sweep(failures, name) { public_send(name, now:) } }
+
+      raise SweepFailed, failures if failures.any?
+
+      SWEEPS
+    end
+
+    def sweep(failures, name)
+      yield
+
+      nil
+    rescue StandardError => e
+      failures[name] = "#{e.class}: #{e.message}"
+
+      ErrorReport.error(e, retention_sweep: name)
+
+      nil
     end
 
     # --- account exports -------------------------------------------------------
@@ -124,10 +174,32 @@ module Accounts
       nil
     end
 
+    # The file this row owns, in both the shapes it can have: the ATTACHED
+    # archive of a finished build, and the zip an attempt was still uploading
+    # when it died — named on the row before the upload started precisely so
+    # that this sweep can find it (review 8, W2). A build product nothing
+    # points at is the one kind of file no sweep can ever reach, so the row
+    # never lets go of the pointer until the object is gone.
     def discard_export_archive!(export)
-      return false unless export.archive.attached?
+      discarded = false
 
-      Accounts::Purge.purge_blob_storage_first!(export.archive.blob, account_id: export.account_id)
+      if export.archive.attached?
+        Accounts::Purge.purge_blob_storage_first!(export.archive.blob, account_id: export.account_id)
+        discarded = true
+      end
+
+      discard_staged_export_blob!(export) || discarded
+    end
+
+    def discard_staged_export_blob!(export)
+      blob = export.staged_blob
+
+      return false if blob.nil?
+
+      Accounts::Purge.purge_blob_storage_first!(blob, account_id: export.account_id)
+      export.unstage_blob!
+
+      true
     end
 
     # Two fuses, because "nobody is building this" has two shapes (review 2,
@@ -138,21 +210,97 @@ module Accounts
     # Either way the day's budget is handed back: it was spent on an export
     # that produced no file.
     def fail_stale_exports!(now: Time.current)
-      stale = AccountExport.where(status: AccountExport::RUNNING, created_at: ...(now - Exports::STALE_AFTER))
-                           .or(AccountExport.where(status: AccountExport::PENDING,
-                                                   created_at: ...(now - Exports::PENDING_STALE_AFTER)))
+      stale_export_ids(now:).each do |id|
+        fail_stale_export!(id, now:)
+      rescue StandardError => e
+        ErrorReport.error(e, account_export_id: id)
+      end
 
-      stale.find_each do |export|
+      nil
+    end
+
+    # The cheap pre-filter, and DELIBERATELY NOT THE DECISION (review 8, X2):
+    # every row it names is read again under its own lock a moment later,
+    # because between this query and that lock a worker can finish its build.
+    #
+    # A `running` row is measured from the ATTEMPT, not from the request. An
+    # export can sit in a busy `documents` queue for hours before a worker
+    # claims it, and the worker's own 30-minute cap starts at the claim — so
+    # request age says nothing about whether anybody is building it. A row
+    # whose `started_at` is somehow missing falls back to the request clock
+    # rather than becoming immortal.
+    def stale_export_ids(now: Time.current)
+      running = AccountExport.where(status: AccountExport::RUNNING)
+                             .where(started_at: ...(now - Exports::STALE_AFTER))
+      unclaimed = AccountExport.where(status: AccountExport::RUNNING, started_at: nil)
+                               .where(created_at: ...(now - Exports::STALE_AFTER))
+      # A `pending` row was never claimed by anybody, so the request clock is
+      # the only one it has — and the short fuse is right for it.
+      pending = AccountExport.where(status: AccountExport::PENDING,
+                                    created_at: ...(now - Exports::PENDING_STALE_AFTER))
+
+      running.or(unclaimed).or(pending).pluck(:id)
+    end
+
+    # THE DECISION, UNDER THE ROW'S LOCK (review 8, X2).
+    #
+    # Recovery and a worker that is still building race for the same row. The
+    # query above chose this row seconds — or, on a long sweep, minutes — ago;
+    # by now the worker may have attached the zip and said READY. Failing it on
+    # the strength of that stale read would DELETE A FINISHED EXPORT'S FILE and
+    # tell the customer their build died. So the row is locked, its status and
+    # its attempt clock are read again inside the lock, and only a row that is
+    # STILL stale is touched. The worker's own last two steps take the same
+    # lock (AccountExportJob#finalize!), so whichever of the two arrives second
+    # loses cleanly and knows that it lost.
+    def fail_stale_export!(id, now: Time.current)
+      export = AccountExport.find_by(id:)
+
+      return false if export.nil?
+
+      failed = false
+
+      export.with_lock do
+        next unless stale_export?(export, now:)
+
+        # A worker killed AFTER the attach is holding a half-built copy of the
+        # whole account, so the file goes first and the same way round as
+        # everywhere else (H6). A file that will not delete does NOT stop the
+        # row being failed: the door has to open either way, and the failed-file
+        # sweep above tries the object again tomorrow night.
+        begin
+          discard_export_archive!(export)
+        rescue StandardError => e
+          ErrorReport.error(e, account_id: export.account_id, account_export_id: export.id)
+        end
+
         export.update_columns(status: AccountExport::FAILED, finished_at: Time.current,
                               error: 'the export did not finish and was abandoned',
                               updated_at: Time.current)
 
-        Exports.refund!(export)
-      rescue StandardError => e
-        ErrorReport.error(e, account_id: export.account_id, account_export_id: export.id)
+        failed = true
       end
 
-      nil
+      # Outside the lock on purpose: the day's counter is a different table,
+      # and a refund that fails must not roll the failure — and therefore the
+      # reopened export door — back shut.
+      Exports.refund!(export) if failed
+
+      failed
+    end
+
+    # Is this row still abandoned, asked of a row read under its lock? The
+    # two clocks are the two shapes of "nobody is building this": the attempt
+    # clock for a claimed row, the request clock for one no worker ever took.
+    def stale_export?(export, now: Time.current)
+      case export.status
+      when AccountExport::RUNNING
+        (export.started_at || export.created_at) < now - Exports::STALE_AFTER
+      when AccountExport::PENDING
+        export.created_at < now - Exports::PENDING_STALE_AFTER
+      else
+        false
+      end
     end
 
     # --- who gets purged -------------------------------------------------------
