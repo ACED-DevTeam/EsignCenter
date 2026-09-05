@@ -98,9 +98,27 @@ class AccountExportJob
     export.update!(status: AccountExport::READY, finished_at: Time.current,
                    expires_at: Accounts::Exports::TTL.from_now, error: nil, summary:)
 
-    AccountMailer.export_ready(export).deliver_later!
+    # The mail is part of the SUCCESS PATH and has its own rescue (review 2,
+    # M12). It used to be a bare `deliver_later!` after the row was committed
+    # READY: an enqueue that raised took the whole job down, and the retry's
+    # `claim` then refused the READY row and returned quietly — so a broker
+    # wobble lost the promised email for ever, with nothing anywhere saying
+    # so. Now the outcome is written on the row: `notified` is false when the
+    # message could not be handed over, and the page prints a line saying the
+    # export is ready but the email did not go out.
+    export.update!(summary: summary.merge('notified' => notify_ready(export)))
 
     nil
+  end
+
+  def notify_ready(export)
+    AccountMailer.export_ready(export).deliver_later!
+
+    true
+  rescue StandardError => e
+    ErrorReport.error(e, account_id: export.account_id, account_export_id: export.id)
+
+    false
   end
 
   def filename_for(export)
@@ -119,8 +137,19 @@ class AccountExportJob
 
     message = "#{error.class}: #{error.message}".first(MAX_ERROR)
 
-    export.archive.purge if export.archive.attached?
+    # Storage first, rows second (review 2, H6). A half-written archive is
+    # still a copy of the customer's whole account, and `archive.purge` would
+    # take the row that names it before the object — so a storage hiccup here
+    # would leave that copy in the bucket for ever with nothing able to find
+    # it again. If the file will not go, the row keeps pointing at it and the
+    # nightly sweep tries again.
+    discard_archive(export)
+
     export.update!(status: AccountExport::FAILED, finished_at: Time.current, error: message)
+
+    # The day's budget is only spent by exports that produced something
+    # (review 2, Opus #7).
+    Accounts::Exports.refund!(export)
 
     ErrorReport.error(error, account_id: export.account_id, account_export_id: export.id)
 
@@ -132,5 +161,16 @@ class AccountExportJob
     ErrorReport.error(e, account_export_id: export&.id)
 
     nil
+  end
+
+  # Never `archive.purge`: see `fail!`. A StorageFailure is swallowed here on
+  # purpose — the row is about to be marked failed either way, and the sweep
+  # (Accounts::Retention.purge_failed_export_files!) owns the retry.
+  def discard_archive(export)
+    return unless export.archive.attached?
+
+    Accounts::Purge.purge_blob_storage_first!(export.archive.blob, account_id: export.account_id)
+  rescue Accounts::Purge::StorageFailure => e
+    ErrorReport.error(e, account_id: export.account_id, account_export_id: export.id)
   end
 end

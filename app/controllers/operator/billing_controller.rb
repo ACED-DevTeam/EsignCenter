@@ -266,13 +266,16 @@ module Operator
       row = adoptable_row!(account, subscription_id)
       confirmed = params[:confirm_untagged].present?
 
-      StripeBilling::Linker.adopt!(row, subscription_id, confirm_untagged: confirmed) do |stripe_subscription|
+      StripeBilling::Linker.adopt!(row, subscription_id, confirm_untagged: confirmed) do |subscription, replaced|
         OperatorEvents.record!(
           operator: true_user, action: 'stripe.adopt', account:, subject: row, reason:,
           details: { subscription: subscription_id, customer: row.stripe_customer_id,
                      access_state: row.access_state, confirmed_untagged: confirmed,
+                     # What the row was holding, when the adoption replaced a
+                     # subscription Stripe had already finished with.
+                     replaced: replaced,
                      tagged_account_id: StripeBilling::SubscriptionPolicy
-                                          .tagged_account_id(stripe_subscription).presence },
+                                          .tagged_account_id(subscription).presence },
           request:
         )
       end

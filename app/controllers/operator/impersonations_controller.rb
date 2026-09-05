@@ -135,7 +135,25 @@ module Operator
     # the end door has no page at all — so the operator is sent back to the
     # account with the sentence in the flash. Nothing was changed either way.
     def refused(error)
+      audit_refusal!(error)
+
       redirect_to(@account ? operator_account_path(@account) : operator_accounts_path, alert: error.message)
+    end
+
+    # A refused START is a refusal like any other and the customer's audit log
+    # says so (review batch 2): somebody trying repeatedly to get into an
+    # account — with the wrong code, at an archived person, or while another
+    # session is running — used to leave no trace at all. The typed reason is
+    # kept because it is the operator's own words; the authenticator code
+    # never is.
+    def audit_refusal!(error)
+      OperatorEvents.record!(
+        operator: true_user, action: 'impersonation.refused', account: @account,
+        reason: params[:reason].to_s.strip.presence,
+        details: { target: "#{controller_path}##{action_name}", refusal: error.message,
+                   user_id: params[:user_id].presence, mode: params[:mode].presence },
+        request:
+      )
     end
   end
 end

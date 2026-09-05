@@ -126,17 +126,31 @@ Things worth knowing:
 
 * It is built **in the background**. Ask for it, close the page, and we email
   the person who asked when it is ready.
-* The download link is **signed and expires after 7 days**, and the file is
-  then deleted automatically. Ask for another whenever you like.
+* The **file** is kept for 7 days and then deleted automatically. Ask for
+  another whenever you like.
+* The **link** the Download button makes is good for **10 minutes**, not 7
+  days. It is a bearer link — anyone holding it can fetch the file — so it is
+  deliberately short-lived, is never stored by a shared cache, and a fresh one
+  is made each time you press the button (which re-checks that you are still
+  an administrator of the account and that the export is still there).
 * The email links to the export **page**, never to the file, so signing in is
   always required.
 * **One at a time, five a day.** Asking again while one is being built gives
   you the one that is being built; a finished export less than an hour old is
-  handed back as it is rather than rebuilt.
+  handed back as it is rather than rebuilt. An export that **fails** does not
+  count against the five — the day's allowance is given back, so a bad
+  afternoon can never lock you out of your own data.
 * **It always works** — on the free plan, on a suspended account, and on an
   account that has already asked to be deleted. That is the point of it.
-* A file that has gone missing from storage does not fail the export: it is
-  named in the manifest's `missing` list instead.
+* **Anything we could not include is named.** The manifest has a `missing`
+  list, and every entry in it says which file and why:
+  `not_in_storage` (the file is no longer in our storage) or `not_generated`
+  (a submission everybody had signed whose signed copies or audit trail had
+  not been produced yet — usually because the job that makes them was still
+  queued, or had failed). The export page and the "your export is ready" email
+  both say how many, so you never open the zip expecting something that is not
+  in it. Every file that IS in the zip has a size and a SHA-256 in the
+  manifest — there are no undescribed files.
 * A **support session cannot use it.** An operator viewing a customer's
   account as one of its people is refused the export door in both modes: a zip
   of somebody's entire document store is exactly the access support
@@ -144,8 +158,14 @@ Things worth knowing:
 * The **testing sandbox is not included.** A testing child is a separate
   account and exports separately.
 
+If we could not email you when it was ready, the page says so — the export is
+still there to download.
+
 The zips are themselves account data: they are in the purge inventory below,
-rows and files alike.
+rows and files alike. They are deleted the same careful way round as
+everything else: **the stored file first, checked gone, and only then the rows
+that name it**, so a storage failure leaves a zip we can still find and delete
+on the next nightly sweep rather than one stranded in the bucket for ever.
 
 ## What survives a purge, and why
 

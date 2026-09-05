@@ -89,9 +89,22 @@ module Accounts
       nil
     end
 
+    # THE FILE GOES FIRST, AND ONLY THEN THE ROW (review 2, H6).
+    #
+    # `archive.purge` deletes the attachment and blob rows before the stored
+    # object, so a storage failure would leave a copy of the customer's entire
+    # account in the bucket with nothing left in the database naming it — past
+    # its retention, invisible to this sweep for ever after, and invisible to
+    # the account purge's inventory too. `Accounts::Purge.purge_blob_storage_first!`
+    # is the discipline the account purge already uses: object, verify, rows.
+    #
+    # A file that will not delete therefore leaves the row exactly as it was —
+    # still READY, still past its date, so the download door is shut by
+    # `downloadable?` all the same — and the next night's sweep finds it again
+    # and tries once more.
     def expire_ready_exports!(now: Time.current)
       AccountExport.where(status: AccountExport::READY).where(expires_at: ..now).find_each do |export|
-        export.archive.purge if export.archive.attached?
+        discard_export_archive!(export)
         export.update_columns(status: AccountExport::EXPIRED, updated_at: Time.current)
       rescue StandardError => e
         ErrorReport.error(e, account_id: export.account_id, account_export_id: export.id)
@@ -103,9 +116,7 @@ module Accounts
     def purge_failed_export_files!(now: Time.current)
       AccountExport.where(status: AccountExport::FAILED)
                    .where(created_at: ...(now - Exports::FAILED_RETENTION)).find_each do |export|
-        next unless export.archive.attached?
-
-        export.archive.purge
+        discard_export_archive!(export)
       rescue StandardError => e
         ErrorReport.error(e, account_id: export.account_id, account_export_id: export.id)
       end
@@ -113,11 +124,30 @@ module Accounts
       nil
     end
 
+    def discard_export_archive!(export)
+      return false unless export.archive.attached?
+
+      Accounts::Purge.purge_blob_storage_first!(export.archive.blob, account_id: export.account_id)
+    end
+
+    # Two fuses, because "nobody is building this" has two shapes (review 2,
+    # Opus #7). A row that reached `running` had a worker and may have been
+    # killed mid-build, so it is given the long wait; a row still `pending`
+    # was never claimed at all — the enqueue never landed — and there is
+    # nothing to protect by making the customer wait two hours to ask again.
+    # Either way the day's budget is handed back: it was spent on an export
+    # that produced no file.
     def fail_stale_exports!(now: Time.current)
-      AccountExport.in_progress.where(created_at: ...(now - Exports::STALE_AFTER)).find_each do |export|
+      stale = AccountExport.where(status: AccountExport::RUNNING, created_at: ...(now - Exports::STALE_AFTER))
+                           .or(AccountExport.where(status: AccountExport::PENDING,
+                                                   created_at: ...(now - Exports::PENDING_STALE_AFTER)))
+
+      stale.find_each do |export|
         export.update_columns(status: AccountExport::FAILED, finished_at: Time.current,
                               error: 'the export did not finish and was abandoned',
                               updated_at: Time.current)
+
+        Exports.refund!(export)
       rescue StandardError => e
         ErrorReport.error(e, account_id: export.account_id, account_export_id: export.id)
       end

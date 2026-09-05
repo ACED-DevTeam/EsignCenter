@@ -617,6 +617,9 @@ RSpec.describe 'ESIGN consent', type: :request do
         expect(audit_trail).to be_attached
         text = pdf_text(audit_trail.download)
         expect(text).to match(pdf_phrase('Email sent'))
+        # The emailed-link click is signing EVIDENCE (the verification line), not
+        # delivery tracking: it prints on every plan.
+        expect(text).to match(pdf_phrase('Email verification'))
         expect(text).to include(I18n.t('consented_to_electronic_signatures', locale: :en))
         expect(text).not_to match(/translation missing/i)
 

@@ -243,6 +243,15 @@ class StripeReconciliationJob < ApplicationJob
   def settle_vanished_subscription(subscription_row, report, subscription_id)
     return if refuse_vanished_over_cap(subscription_row, report, subscription_id)
 
+    # A row that names no customer can prove nothing either way: not that the
+    # subscription is really gone, and not that the key is wrong. It is
+    # reported and skipped — stopping the whole sweep on it would let one
+    # legacy row starve every account behind it, every night (review 1 loop 2).
+    if subscription_row.stripe_customer_id.blank?
+      return skip_vanished(report, subscription_row, subscription_id,
+                           'the row names no Stripe customer, so nothing can confirm the subscription is gone')
+    end
+
     confirm_key_owns_customer!(subscription_row)
 
     was = subscription_row.access_state
@@ -290,8 +299,6 @@ class StripeReconciliationJob < ApplicationJob
   # sweep stops.
   def confirm_key_owns_customer!(subscription_row)
     customer_id = subscription_row.stripe_customer_id
-
-    raise KeyMismatch, "row #{subscription_row.id} names no Stripe customer to confirm against" if customer_id.blank?
 
     StripeBilling.client.v1.customers.retrieve(customer_id)
 

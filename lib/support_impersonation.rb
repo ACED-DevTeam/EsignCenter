@@ -44,105 +44,157 @@ module SupportImpersonation
   # alternative is a support session that cannot be walked away from.
   ALWAYS_ALLOWED = %w[sessions#destroy].freeze
 
-  # Pages that PRINT a credential. Refused for every verb, GET included, in
-  # both modes: an operator helping with a stuck template has no business
-  # reading the customer's API key, MCP token, webhook signing secret or SMTP
-  # password, and "I only looked" is exactly the access this feature exists to
-  # make impossible. The API settings page is deliberately NOT here — it is
-  # where the customer's integration lives and the operator often needs to see
-  # that one exists — so it stays open with the token masked instead
-  # (app/views/api_settings/index.html.erb).
-  SECRET_CONTROLLERS = %w[
-    reveal_access_token
-    mcp_settings
-    webhook_secret
-    email_smtp_settings
-  ].freeze
-
-  # Every controller in the authenticated app that has a route with a verb
-  # other than GET, and which side of the line it is on. Written off the route
-  # table rather than off memory, and asserted against the route table by the
-  # spec, so a new write door has to be classified here before the suite is
-  # green again.
+  # Every controller in the application, and which side of the line it is on.
+  # EVERY controller, not only the ones with a write route (review batch 2):
+  # `submit_form#show` writes on a GET — it saves default values and attaches
+  # the impersonated person's own signature to a live submitter row — and
+  # `webhook_hmac#show` prints a signing secret on a GET, so a rule that
+  # exempted reads was not a rule at all. An unclassified controller is
+  # CLOSED, for every verb, so a controller added next month is shut the day
+  # it is routed and the spec fails until somebody has decided about it.
   #
-  #   :edit      — a DOCUMENT action. Allowed when the session was started in
-  #                "Allow document edits" mode; refused in read-only mode.
-  #   :forbidden — never, in either mode.
-  #   :secret    — never, in either mode, and for GET as well (see above).
-  #   :console   — the operator's own console.
-  #   :anonymous — a signer's door, a public page, the sign-in machinery or a
-  #                machine API. Not a customer administrator acting inside
-  #                their account; refused all the same, because the whitelist
-  #                names only :edit.
+  #   :read      — reading is fine; there is nothing here to write, or its
+  #                writes are refused.
+  #   :edit      — DOCUMENT work. Writes allowed when the session was started
+  #                in "Allow document edits" mode, refused in read-only mode.
+  #   :forbidden — writes refused in both modes; the page stays readable.
+  #   :secret    — never, in either mode, for ANY verb: the page prints a
+  #                credential.
+  #   :signing   — never, in either mode, for ANY verb: the signer's own
+  #                doors. Their GETs are not reads (see above), and an
+  #                operator must never sign, decline, delegate or be invited
+  #                as the person. The dashboard preview
+  #                (`templates_form_preview`) is what a support session looks
+  #                at instead.
+  #   :export    — never, in either mode, for ANY verb: bulk extraction of
+  #                the customer's data.
+  #   :anonymous — a visitor's or a machine's door. Writes refused like
+  #                anything else; nothing here belongs to the account.
   CLASSIFICATION = {
     # --- documents: the work an edit-mode session exists to do -------------
-    'templates' => :edit,                     # fixing a broken template
-    'templates_clone' => :edit,               # ditto
-    'templates_clone_and_replace' => :edit,   # ditto
-    'templates_detect_fields' => :edit,       # ditto
-    'templates_folders' => :edit,             # moving a template between folders
-    'templates_preferences' => :edit,         # a template's own settings
-    'templates_prefillable_fields' => :edit,  # ditto
-    'templates_recipients' => :edit,          # ditto
-    'templates_restore' => :edit,             # un-archiving a template
-    'templates_share_link' => :edit,          # the template's public link
-    'templates_uploads' => :edit,             # uploading a document to fix
-    'templates_versions' => :edit,            # a new version of a template
-    'template_documents' => :edit,            # ditto
-    'template_folders' => :edit,              # renaming/removing a folder
-    'submissions' => :edit,                   # sending or removing a document
-    'submissions_resend_email' => :edit,      # re-sending the invitation
-    'submissions_unarchive' => :edit,         # bringing one back
-    'submitters' => :edit,                    # correcting a recipient's address
-    'submitters_resubmit' => :edit,           # reopening a stuck signer
-    'submitters_send_email' => :edit,         # re-sending one invitation
-    # ActiveStorage's two doors have their own base controller, outside
-    # ApplicationController, so this rule never runs for them. They are listed
+    'templates' => :edit,
+    'templates_clone' => :edit,
+    'templates_clone_and_replace' => :edit,
+    'templates_detect_fields' => :edit,
+    'templates_folders' => :edit,
+    'templates_preferences' => :edit,
+    'templates_prefillable_fields' => :edit,
+    'templates_recipients' => :edit,
+    'templates_restore' => :edit,
+    'templates_share_link' => :edit,
+    'templates_uploads' => :edit,
+    'templates_versions' => :edit,
+    'template_documents' => :edit,
+    'template_folders' => :edit,
+    'submissions' => :edit,
+    'submissions_resend_email' => :edit,
+    'submissions_unarchive' => :edit,
+    'submitters' => :edit,
+    'submitters_resubmit' => :edit,
+    'submitters_send_email' => :edit,
+    # The in-app builder and dashboard call these with the browser session.
+    # They are document work like the HTML doors above and are classified the
+    # same way; Api::ApiBaseController runs the identical rule.
+    'api/templates' => :edit,
+    'api/templates_clone' => :edit,
+    'api/template_builder_sessions' => :edit,
+    'api/submissions' => :edit,
+    # ActiveStorage's two upload doors have their own base controller,
+    # outside ApplicationController, so this rule never runs for them. Listed
     # as document work because that is what they are: the blob they make is
     # inert until one of the controllers above attaches it, and every one of
     # those IS refused in read-only mode.
     'active_storage/direct_uploads' => :edit,
     'active_storage/disk' => :edit,
 
+    # --- reading: the pages a support session is here to look at ------------
+    'dashboard' => :read,
+    'submissions_archived' => :read,
+    'submissions_dashboard' => :read,
+    'submissions_download' => :read,
+    'submissions_filters' => :read,
+    'submissions_preview' => :read,
+    'submissions_preview_download' => :read,
+    'submission_events' => :read,
+    'submitters_autocomplete' => :read,
+    'submitters_download' => :read,
+    'templates_archived' => :read,
+    'templates_archived_submissions' => :read,
+    'templates_code_modal' => :read,
+    'templates_dashboard' => :read,
+    'templates_form_preview' => :read, # the safe preview, instead of /s/:slug
+    'templates_preview' => :read,
+    'templates_share_link_qr' => :read,
+    'template_folders_autocomplete' => :read,
+    'preview_document_page' => :read,
+    'usage_settings' => :read,
+    'api/users' => :read,
+    'api/form_events' => :read,
+    'api/submission_documents' => :read,
+    'api/submission_events' => :read,
+    'api/active_storage_blobs_proxy' => :read,
+    'active_storage/blobs/proxy' => :read,
+    'active_storage/blobs/redirect' => :read,
+    'active_storage/representations/proxy' => :read,
+    'active_storage/representations/redirect' => :read,
+
     # --- money --------------------------------------------------------------
     'billing_settings' => :forbidden, # Checkout and the Customer Portal
 
     # --- the account row, and leaving ---------------------------------------
     'accounts' => :forbidden, # rename, delete, cancel deletion, deletion code
-    'account_exports' => :forbidden, # a zip of every document the customer has
+
+    # --- taking the customer's data out wholesale ----------------------------
+    'account_exports' => :export,     # the account archive (Session 8 phase D)
+    'submissions_export' => :export,  # every submission of a template as CSV/XLSX
 
     # --- people, roles, seats, invitations -----------------------------------
     'users' => :forbidden,
     'users_read_only' => :forbidden, # parking and un-parking a seat
     'users_send_reset_password' => :forbidden, # mailing somebody a reset link
     'account_invites' => :forbidden,
-    'invites' => :forbidden,                  # accepting an invitation
-    'invitations' => :forbidden,              # Devise's set-your-password door
+    'invites' => :forbidden, # accepting an invitation
+    'invitations' => :forbidden, # Devise's set-your-password door
 
     # --- credentials ---------------------------------------------------------
-    'passwords' => :forbidden,          # reset flows
-    'profile' => :forbidden,            # name, email address and password
-    'mfa_setup' => :forbidden,          # enrolling or removing 2FA
-    'api_settings' => :forbidden,       # rotating the API token
+    'passwords' => :forbidden,     # reset flows
+    'profile' => :forbidden,       # name, email address and password
+    'mfa_setup' => :forbidden,     # enrolling or removing 2FA
+    'api_settings' => :forbidden,  # rotating the API token (page masked)
     'reveal_access_token' => :secret,   # printing the API token
     'mcp_settings' => :secret,          # printing MCP tokens
+    'webhook_secret' => :secret,        # the webhook secret header
+    'webhook_hmac' => :secret,          # the decrypted HMAC signing secret
+    'email_smtp_settings' => :secret,   # the SMTP password
+    'testing_api_settings' => :secret,  # the testing account's API token
     'encrypted_user_configs' => :forbidden, # stored signature material
-    'user_signatures' => :forbidden,    # their saved signature
-    'user_initials' => :forbidden,      # their saved initials
-    'user_configs' => :forbidden,       # their own UI preferences
+    'user_signatures' => :forbidden,   # their saved signature
+    'user_initials' => :forbidden,     # their saved initials
+    'user_configs' => :forbidden,      # their own UI preferences
 
-    # --- signing: never, in any mode ----------------------------------------
+    # --- signing: never, in any mode, for any verb ---------------------------
     # Keyed by the controller's RUNTIME `controller_path`, which is what the
     # rule is handed. Two of these differ from the name in the route table
     # ('..._2fa...' becomes '...2fa...'), and the spec maps one to the other so
     # a future entry cannot be silently ineffective.
-    'start_form' => :forbidden,
-    'start_form_email2fa_send' => :forbidden,
-    'submit_form' => :forbidden,          # completing a form as the person
-    'submit_form_decline' => :forbidden,
-    'submit_form_delegate' => :forbidden,
-    'submit_form_invite' => :forbidden,   # in-person / self-signing invite
-    'submit_form_email2fas' => :forbidden,
+    'start_form' => :signing,
+    'start_form_email2fa_send' => :signing,
+    'submit_form' => :signing,
+    'submit_form_decline' => :signing,
+    'submit_form_delegate' => :signing,
+    'submit_form_invite' => :signing,
+    'submit_form_email2fas' => :signing,
+    'submit_form_download' => :signing,
+    'submit_form_completed_download' => :signing,
+    'submit_form_draw_signature' => :signing,
+    'submit_form_metadata' => :signing,
+    'submit_form_values' => :signing,
+    'send_submission_email' => :signing,
+    'api/submitters' => :signing,            # `completed: true` signs for them
+    'api/signing_sessions' => :signing,
+    'api/submitter_form_views' => :signing,  # stamps opened_at + a view_form event
+    'api/submitter_email_clicks' => :signing,
+    'api/attachments' => :signing,           # the signer's own file upload
 
     # --- account configuration -----------------------------------------------
     'account_configs' => :forbidden,
@@ -150,14 +202,12 @@ module SupportImpersonation
     'notifications_settings' => :forbidden,
     'personalization_settings' => :forbidden,
     'personalization_logo' => :forbidden,
-    'email_smtp_settings' => :secret,     # the SMTP password lives here
-    'esign_settings' => :forbidden,       # signing certificates (operator-only anyway)
-    'timestamp_server' => :forbidden,     # operator-only anyway
+    'esign_settings' => :forbidden,   # signing certificates (operator-only anyway)
+    'timestamp_server' => :forbidden, # operator-only anyway
     'search_entries_reindex' => :forbidden, # operator-only anyway
     'webhook_settings' => :forbidden,
-    'webhook_events' => :forbidden,       # re-delivering pushes data out again
+    'webhook_events' => :forbidden, # re-delivering pushes data out again
     'webhook_preferences' => :forbidden,
-    'webhook_secret' => :secret,          # the signing secret
     'template_sharings_testing' => :forbidden, # the testing-share toggle
     'testing_accounts' => :forbidden, # test mode and support sessions never mix
 
@@ -167,19 +217,33 @@ module SupportImpersonation
     # add it here.
     #
     # --- not the authenticated app --------------------------------------------
-    'sessions' => :anonymous,          # sign in; signing OUT is always allowed
+    'sessions' => :anonymous,   # sign in; signing OUT is always allowed
     'registrations' => :anonymous,
     'confirmations' => :anonymous,
     'omniauth_callbacks' => :anonymous,
     'setup' => :anonymous,
-    'verify' => :anonymous,            # the public PDF checker
-    'reports' => :anonymous,           # the public abuse-report form
-    'send_submission_email' => :anonymous, # a signer asking for their own copy
+    'health' => :anonymous,
+    'pwa' => :anonymous,
+    'embed_scripts' => :anonymous,
+    'turbo/native/navigation' => :anonymous,
+    'verify' => :anonymous,     # the public PDF checker
+    'reports' => :anonymous,    # the public abuse-report form
     'stripe_webhooks' => :anonymous,
     'postmark_webhooks' => :anonymous,
-    'mcp' => :anonymous, # token-authenticated, no session
-    'embed_template_builder' => :anonymous # token-authenticated, no session
+    'mcp' => :anonymous,        # token-authenticated, no session
+    'api/tools' => :anonymous,  # stateless merge/verify
+    'api/admin/accounts' => :anonymous, # provisioning, admin-token only
+    'embed_template_builder' => :anonymous # token-authenticated
   }.freeze
+
+  # The kinds that mean "never, in either mode, for any verb". Checked BEFORE
+  # the read exemption, which is the whole point of them.
+  NEVER = %i[secret signing export].freeze
+
+  # Derived, never written twice (review batch 2): the `:secret` value in the
+  # table above IS the list, so adding a page to one cannot leave the other
+  # behind.
+  SECRET_CONTROLLERS = CLASSIFICATION.select { |_, kind| kind == :secret }.keys.freeze
 
   module_function
 
@@ -194,14 +258,27 @@ module SupportImpersonation
       user.role != 'integration' && !user.platform_operator?
   end
 
-  # The one rule. Everything is refused unless it is named as allowed.
+  # The one rule. Everything is refused unless it is named as allowed, and the
+  # order of these lines is the rule:
+  #
+  #   * the operator's own console is never refused;
+  #   * a NEVER kind is refused for every verb — this comes BEFORE the read
+  #     exemption, because the doors it covers write on a GET or print a
+  #     credential on one (review batch 2);
+  #   * an UNCLASSIFIED controller is refused for every verb, so a new one is
+  #     closed the day it is routed rather than open until somebody notices;
+  #   * reading is otherwise fine;
+  #   * of the writes, only signing out and document work in edit mode pass.
   def refuse?(controller_path:, action:, mode:, read_request:)
     return false if console?(controller_path)
-    return true if SECRET_CONTROLLERS.include?(controller_path)
+
+    kind = CLASSIFICATION[controller_path]
+
+    return true if kind.nil? || NEVER.include?(kind)
     return false if read_request
     return false if ALWAYS_ALLOWED.include?("#{controller_path}##{action}")
 
-    !(mode == EDIT_MODE && CLASSIFICATION[controller_path] == :edit)
+    !(mode == EDIT_MODE && kind == :edit)
   end
 
   def console?(controller_path)
