@@ -73,6 +73,52 @@ module Gates
       reason: 'boot-time inventory across all accounts (row existence only, no value is read or resolved)'
     }
   ].freeze
+  # ---------------------------------------------------------------------------
+  # Account-kind gate (REVIEW 4 / S5 carry-over)
+  # ---------------------------------------------------------------------------
+  # `account_kind` decides what an account IS: a customer that is metered and
+  # billed, an internal account that is not, or the platform operator. The
+  # column carries a `customer` default, so an account created without naming
+  # its kind is silently a paying-plan customer — which is how a provisioning
+  # door or a rake task quietly mints a tenant that shows up in the console,
+  # counts against nothing, and is billed for by nobody. Every creation site in
+  # app/ and lib/ therefore has to say the kind out loud.
+  #
+  # Multiline-aware like the config-lookup scan: the argument list may run over
+  # as many lines as it likes, and `account_kind:` counts wherever it sits
+  # inside the call's own parentheses.
+  ACCOUNT_CREATION = /(?:\bAccount|\.\s*accounts)\s*\.\s*(?:new|create!?)\s*\(#{CALL_ARGS}\)/m
+  ACCOUNT_KIND_ARGUMENT = /\baccount_kind\s*:/
+  # Pinned file AND snippet, exactly like the isolation allowlist: an entry
+  # exempts the one expression it names and nothing else on the line.
+  ACCOUNT_KIND_ALLOWLIST = [
+    {
+      file: 'lib/replace_email_variables.rb',
+      snippet: 'Account.new(id: submission.account_id)',
+      reason: 'unsaved stand-in for an id, never validated or saved: Accounts.link_expires_at reads account_id only'
+    },
+    {
+      file: 'lib/submitters/serialize_for_webhook.rb',
+      snippet: 'Account.new(id: submitter.account_id)',
+      reason: 'unsaved stand-in for an id, never validated or saved: Accounts.link_expires_at reads account_id only'
+    },
+    {
+      file: 'lib/submitters/serialize_for_api.rb',
+      snippet: 'Account.new(id: submitter.account_id)',
+      reason: 'unsaved stand-in for an id, never validated or saved: Accounts.link_expires_at reads account_id only'
+    },
+    {
+      file: 'lib/submissions/serialize_for_api.rb',
+      snippet: 'Account.new(id: submission.account_id)',
+      reason: 'unsaved stand-in for an id, never validated or saved: Accounts.link_expires_at reads account_id only'
+    },
+    {
+      file: 'lib/templates/serialize_for_api.rb',
+      snippet: 'Account.new(id: template.account_id)',
+      reason: 'unsaved stand-in for an id, never validated or saved: Accounts.link_expires_at reads account_id only'
+    }
+  ].freeze
+
   # `multitenant: true` example metadata is banned in every spec: the suite
   # exercises the shipped single-tenant configuration.
   SPEC_METADATA_PATTERN = /multitenant:\s*true/
@@ -194,6 +240,26 @@ module Gates
 
     patterns.flat_map do |pattern|
       scan_matches(content, pattern).map { |match| format_violation(content, relative_path, match) }
+    end
+  end
+
+  # --- account kind -------------------------------------------------------------
+
+  def account_kind_failures
+    source_files.flat_map { |path| account_kind_violations(read(path), relative(path)) }
+  end
+
+  # Only app/ and lib/ are scanned (source_files also carries config/, which
+  # creates no accounts); specs and factories are free to build whatever they
+  # like, because a factory's default is a decision somebody made on purpose.
+  def account_kind_violations(content, relative_path)
+    return [] unless relative_path.start_with?('app/', 'lib/')
+
+    scan_matches(content, ACCOUNT_CREATION).filter_map do |match|
+      next if match[0].match?(ACCOUNT_KIND_ARGUMENT)
+      next if allowlisted?(ACCOUNT_KIND_ALLOWLIST, relative_path, content, match)
+
+      "#{format_violation(content, relative_path, match)} [account_kind: is missing]"
     end
   end
 
@@ -377,6 +443,15 @@ namespace :gates do
     puts 'Isolation gate passed.'
   end
 
+  desc 'Reject an account created without naming its account_kind'
+  task account_kind: :environment do
+    failures = Gates.account_kind_failures
+
+    abort "Account-kind gate failed:\n#{failures.join("\n")}" if failures.any?
+
+    puts 'Account-kind gate passed.'
+  end
+
   desc 'Reject leftover upstream/legacy brand literals and prove the DocuSeal attribution survives'
   task branding: :environment do
     failures = Gates.branding_failures
@@ -389,6 +464,7 @@ namespace :gates do
   desc 'Run all CI gates'
   task all: :environment do
     Rake::Task['gates:isolation'].invoke
+    Rake::Task['gates:account_kind'].invoke
     Rake::Task['gates:branding'].invoke
     Gates.run_gate!('Rubocop gate', 'bundle exec rubocop')
     Gates.run_gate!('ERB lint gate', 'bundle exec erb_lint ./app')

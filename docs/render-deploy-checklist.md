@@ -75,10 +75,19 @@ page. Create the admin account and keep the password in your password
 manager. This admin login is for YOU only; provisioned accounts never see it.
 
 Then open `https://esign.<your-domain>/up` — the health check. It returns
-JSON like `{"status":"ok","db":"ok","redis":"ok","scheduler_last_tick_at":"…"}`
+JSON like
+`{"status":"ok","db":"ok","redis":"ok","scheduler_last_tick_at":"…","operator_account":"ok"}`
 with HTTP 200; `"status":"degraded"` (HTTP 503) means the database or Redis
 is unreachable. Point Render's health-check path at `/up`. Details in
 `docs/operations.md` section 4.
+
+On a brand-new instance `"operator_account"` will say `"missing"` — that is
+expected, and it is the reminder that the platform-operator account has not
+been created yet. **Nobody may sign anything until it says `"ok"`**: the one
+signing certificate every customer's documents are signed with lives on that
+account, so a document completed before the seed has nothing behind it. Run
+the seed (step 2 of "After the deploy, in this order" below), then reload
+`/up` and confirm `"operator_account":"ok"` before sending a single document.
 
 ### Word conversion memory check (launch-gate 3)
 
@@ -212,12 +221,16 @@ each account's own name.
 1. **Check the migration log.** Render runs `rake db:migrate` on boot; the log
    should show the migrations completing and the line
    `removing 0 over-copied account_configs row(s)`.
-2. **Create the platform-operator account:**
+2. **Create the platform-operator account — BEFORE any signing traffic:**
    `OPERATOR_EMAIL=you@example.com OPERATOR_PASSWORD=<strong password> bundle exec rake operator:seed`
    (safe to run twice — it says "already exists" and stops). Both variables
    are required; nothing secret is printed. Then enrol 2FA for that user —
    the operator surfaces (`/jobs`, the full-text toggle) need the operator
    flag **and** 2FA. See `docs/operations.md` section 7.
+   **Check it worked by reloading `/up`: `"operator_account"` must say
+   `"ok"`.** That field is the check — the platform signing certificate lives
+   on this account, and a signing completed while it says `"missing"` produces
+   no certificate-backed artefacts.
 2b. **Export the platform signing certificate to a fresh path:**
    `bundle exec rake "operator:platform_cert:export[/tmp/esigncenter-platform-cert-YYYYMMDD.pem]"`.
    Store the exported file offline in Evan's custody, then run

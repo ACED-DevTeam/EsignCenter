@@ -1385,6 +1385,25 @@ RSpec.describe 'Feature gating', type: :request do
           .to match_array(expected)
       end
 
+      # Review 8, proof coverage: the row above proves the SERIALIZER and the
+      # one below proves the HTML page, and between them sat the door most
+      # integrations actually read — a real HTTP GET of one signer. A
+      # serializer called correctly by a spec is not evidence that the
+      # controller calls it at all, and this is the response a customer's
+      # code parses.
+      it "#{plan} hides or shows the tracking events over GET /api/submitters/:id" do
+        account = public_send("#{plan}_account")
+        submitter = sent_submitter_for(account)
+        timeline_types.each { |type| SubmissionEvent.create!(submitter:, event_type: type) }
+        expected = plan == :free ? ['send_email'] : timeline_types
+
+        act_as(account)
+        get "/api/submitters/#{submitter.id}", headers: json_headers
+
+        expect(response).to have_http_status(:ok)
+        expect(response.parsed_body.fetch('submission_events').pluck('event_type')).to match_array(expected)
+      end
+
       it "#{plan} sees only the timeline rows its plan allows" do
         account = public_send("#{plan}_account")
         submitter = sent_submitter_for(account)

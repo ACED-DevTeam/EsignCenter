@@ -129,3 +129,28 @@ Rails/UnknownEnv:
     - test
     - production
     - local
+
+# Rails/BulkChangeTable reads the adapter out of config/database.yml, which
+# only resolves when a DATABASE_URL is present — so the cop was silent in CI
+# and loud on any machine that happened to export one, which is how fourteen
+# "new" offences appeared in migrations nobody had touched. Pin the adapter so
+# the gate answers the same everywhere, and exclude the migrations written
+# before the pin: they have run in production, they are never edited again,
+# and rewriting shipped history to please a style cop would be the riskier
+# change. Anything added from here on has to combine its alters.
+Rails/BulkChangeTable:
+  Database: postgresql
+  Exclude:
+    - db/migrate/20230726062428_add_template_fields_to_submission.rb
+    - db/migrate/20230819113427_remove_user_first_last_name_not_null.rb
+    - db/migrate/20230902171216_add_phone_and_name_to_submitters.rb
+    - db/migrate/20230915200635_add_devise_two_factor_to_users.rb
+    - db/migrate/20250523121121_add_shared_link_to_templates.rb
+    - db/migrate/20250912090605_add_template_variables.rb
+    - db/migrate/20251125194305_add_confirmable_to_users.rb
+    - db/migrate/20260224120000_add_pkce_to_doorkeeper_access_grants.rb
+    - db/migrate/20260902120300_add_sending_pause_to_accounts.rb
+    - db/migrate/20260903000200_add_stripe_state_to_account_subscriptions.rb
+    - db/migrate/20260903030000_add_suspension_to_accounts.rb
+    - db/migrate/20260904060000_add_payment_pending_to_account_invites.rb
+    - db/migrate/20260905100100_add_paid_thresholds_to_account_limit_overrides.rb

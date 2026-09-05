@@ -136,8 +136,15 @@ module Quotas
   # UTC calendar month — or, on a free account whose paid subscription ended
   # part-way through this month, the shorter window that starts where the
   # paid plan stopped (see period_start).
+  #
+  # CLOSED at the start of next month, and exclusive of it: an endless range
+  # counted every completion from the period start onwards, so a row stamped
+  # in the future (a clock skew, a backfill, a spec that travels forward)
+  # would be charged to this month and could pause an account for usage that
+  # has not happened yet. The end is the same instant `resets_at` promises the
+  # customer their month rolls over on, so the page and the counter agree.
   def month_range(account = nil)
-    period_start(account)..
+    period_start(account)...resets_at(account)
   end
 
   def resets_at(_account = nil)
