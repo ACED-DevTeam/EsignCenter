@@ -83,11 +83,7 @@ module Operator
     end
 
     def refused(error)
-      flash.now[:alert] = error.message
-
-      load_settings
-
-      render :show, status: :unprocessable_content
+      refused_page(error, :show) { load_settings }
     end
   end
 end

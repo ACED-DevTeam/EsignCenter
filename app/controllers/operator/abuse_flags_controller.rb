@@ -51,20 +51,8 @@ module Operator
     def resume_sending
       reason = required_reason
       flag = find_flag!
-      account = flag.account
 
-      assert_actionable!(account)
-
-      paused_at, = SendingPause.state(account)
-
-      raise Refused, t('operator_refused_not_paused') if paused_at.blank?
-
-      ApplicationRecord.transaction do
-        SendingPause.resume!(account)
-
-        record!('sending.resume', account:, reason:, details: { was_paused_at: paused_at.iso8601,
-                                                                from: 'abuse_queue' })
-      end
+      resume_sending!(flag.account, reason:, details: { from: 'abuse_queue' })
 
       redirect_to operator_abuse_path(filter_params), notice: t('operator_notice_sending_resumed')
     end
@@ -135,15 +123,7 @@ module Operator
     end
 
     def refused(error)
-      flash.now[:alert] = error.message
-
-      load_queue
-
-      render :index, status: :unprocessable_content
-    end
-
-    def record!(action, account:, reason:, subject: nil, details: {})
-      OperatorEvents.record!(operator: true_user, action:, account:, subject:, reason:, details:, request:)
+      refused_page(error, :index) { load_queue }
     end
 
     helper_method :console_account_for, :billing_account_for, :filter_params

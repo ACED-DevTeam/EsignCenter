@@ -107,7 +107,7 @@ module PostmarkWebhooks
     EmailEvent.transaction(requires_new: true) do
       event = create_event!(record, send_event, type)
       project_timeline(event)
-      SendingPause.evaluate!(event.account, event:) if %w[complaint permanent_bounce].include?(type)
+      SendingPause.evaluate!(event.account, event:) if SendingPause.pause_trigger?(type)
 
       event
     end

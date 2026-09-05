@@ -315,15 +315,7 @@ module Operator
     # --- refusals ----------------------------------------------------------
 
     def refused(error)
-      flash.now[:alert] = error.message
-
-      load_page
-
-      render :show, status: :unprocessable_content
-    end
-
-    def record!(action, account:, reason:, subject: nil, details: {})
-      OperatorEvents.record!(operator: true_user, action:, account:, subject:, reason:, details:, request:)
+      refused_page(error, :show) { load_page }
     end
   end
 end

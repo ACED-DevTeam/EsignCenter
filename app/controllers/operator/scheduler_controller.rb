@@ -104,11 +104,7 @@ module Operator
     end
 
     def refused(error)
-      flash.now[:alert] = error.message
-
-      load_schedule
-
-      render :show, status: :unprocessable_content
+      refused_page(error, :show) { load_schedule }
     end
   end
 end

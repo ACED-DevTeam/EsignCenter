@@ -1,9 +1,16 @@
-<%# One console action anywhere but the account page: a button, and behind it
-    a dialog that asks for the reason before it will do anything. Same shape
-    as the account page's action modal — the reason is what the audit log
-    shows the next person who asks. Locals: key, url, label, hint; optional
-    button_class. %>
-<% uuid = "operator_console_action_#{key}" %>
+<%# One console action: a button, and behind it a dialog that asks for the
+    reason before it will do anything. The reason is not paperwork — it is
+    what the audit log shows the next person who asks why this account was
+    frozen — so it is required and it is the only field most actions have.
+
+    This is the ONE modal the console has. The account page renders it through
+    operator/accounts/_action_modal, which supplies its own uuid prefix and
+    the typed-name confirmation the purge door asks for; every other tab
+    renders it directly.
+
+    Locals: key, url, label, hint.
+    Optional: uuid_prefix, button_class, confirm_class, extra_field. %>
+<% uuid = "#{local_assigns.fetch(:uuid_prefix, 'operator_console_action_')}#{key}" %>
 <modal-button data-target="<%= uuid %>" class="flex">
   <button class="btn btn-sm <%= local_assigns.fetch(:button_class, 'btn-outline') %>" data-operator-action="<%= key %>">
     <%= label %>
@@ -12,12 +19,19 @@
 <%= render 'shared/html_modal', title: label, uuid: uuid do %>
   <%= form_with url: url, method: :post, data: { turbo: false }, class: 'space-y-4' do %>
     <p class="text-sm text-base-content/70"><%= hint %></p>
+    <% if local_assigns[:extra_field] == 'confirm_name' %>
+      <label class="form-control">
+        <span class="label-text mb-1"><%= t('operator_confirm_name_label') %></span>
+        <input type="text" name="confirm_name" class="input input-bordered w-full" autocomplete="off" required>
+        <span class="label-text-alt mt-1"><%= t('operator_confirm_name_hint', name: @account.name) %></span>
+      </label>
+    <% end %>
     <label class="form-control">
       <span class="label-text mb-1"><%= t('operator_reason_label') %></span>
       <textarea name="reason" rows="3" class="textarea textarea-bordered w-full" required minlength="<%= Operator::BaseController::MINIMUM_REASON_LENGTH %>"></textarea>
     </label>
     <div class="flex justify-end gap-2">
-      <button type="submit" class="btn btn-primary"><%= label %></button>
+      <button type="submit" class="btn <%= local_assigns.fetch(:confirm_class, 'btn-primary') %>"><%= label %></button>
     </div>
   <% end %>
 <% end %>

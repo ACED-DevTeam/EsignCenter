@@ -78,10 +78,8 @@ module Accounts
         state[:counts]['templates'] += 1
 
         template.documents.each do |attachment|
-          added = write_blob!(zip, unique(state, "#{directory}/original/#{filename_for(attachment)}"),
-                              attachment.blob, state)
-
-          state[:counts]['template_documents'] += 1 if added
+          add_blob!(zip, "#{directory}/original/#{filename_for(attachment)}", attachment.blob, state,
+                    'template_documents')
         end
 
         write_json!(zip, "#{directory}/template.json", template_json(template), state)
@@ -129,10 +127,8 @@ module Accounts
     # purge is about to destroy.
     def write_submission_documents!(zip, submission, directory, state)
       submission.documents.each do |attachment|
-        added = write_blob!(zip, unique(state, "#{directory}/original/#{filename_for(attachment)}"),
-                            attachment.blob, state)
-
-        state[:counts]['submission_documents'] += 1 if added
+        add_blob!(zip, "#{directory}/original/#{filename_for(attachment)}", attachment.blob, state,
+                  'submission_documents')
       end
     end
 
@@ -149,9 +145,8 @@ module Accounts
       submission.submitters.sort_by(&:id).each do |submitter|
         submitter.attachments.each do |attachment|
           path = "#{directory}/attachments/submitter-#{submitter.id}/#{filename_for(attachment)}"
-          added = write_blob!(zip, unique(state, path), attachment.blob, state)
 
-          state[:counts]['submitter_attachments'] += 1 if added
+          add_blob!(zip, path, attachment.blob, state, 'submitter_attachments')
         end
       end
     end
@@ -161,19 +156,32 @@ module Accounts
     def write_completed_documents!(zip, submission, directory, state)
       submission.submitters.sort_by(&:id).each do |submitter|
         submitter.documents.each do |attachment|
-          added = write_blob!(zip, unique(state, "#{directory}/completed/#{filename_for(attachment)}"),
-                              attachment.blob, state)
-
-          state[:counts]['completed_documents'] += 1 if added
+          add_blob!(zip, "#{directory}/completed/#{filename_for(attachment)}", attachment.blob, state,
+                    'completed_documents')
         end
       end
 
       return unless submission.combined_document.attached?
 
-      added = write_blob!(zip, unique(state, "#{directory}/completed/#{filename_for(submission.combined_document)}"),
-                          submission.combined_document.blob, state)
+      add_blob!(zip, "#{directory}/completed/#{filename_for(submission.combined_document)}",
+                submission.combined_document.blob, state, 'completed_documents')
+    end
 
-      state[:counts]['completed_documents'] += 1 if added
+    # One counted entry. The name is made unique against everything already in
+    # the archive (a signer who uploads two files called `contract.pdf` gets a
+    # `-2`, never an overwrite), and the count moves only if the blob really
+    # went in — `write_blob!` names a file that has gone from storage in
+    # `missing` instead, and `missing` is the manifest's whole promise.
+    #
+    # `write_audit_trail!` below deliberately does NOT come through here: its
+    # path is fixed per submission and putting it through `unique` would
+    # register it in `state[:paths]`.
+    def add_blob!(zip, path, blob, state, count)
+      added = write_blob!(zip, unique(state, path), blob, state)
+
+      state[:counts][count] += 1 if added
+
+      added
     end
 
     def write_audit_trail!(zip, submission, directory, state)

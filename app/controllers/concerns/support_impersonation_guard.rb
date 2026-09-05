@@ -319,15 +319,8 @@ module SupportImpersonationGuard
   # is shown is a count of rows in their own audit log, so a write that fails
   # must not leave the total claiming a change nobody can look up.
   def write_support_impersonation_action!(state, outcome)
-    OperatorEvents.record!(
-      operator: true_user, action: 'impersonation.action',
-      account: Account.find_by(id: state['account_id']),
-      subject: User.find_by(id: state['user_id']), reason: state['reason'],
-      details: { path: request.path, method: request.request_method,
-                 target: "#{controller_path}##{action_name}", mode: state['mode'],
-                 outcome:, records: support_impersonation_record_ids },
-      request:
-    )
+    record_support_impersonation_request!('impersonation.action', state,
+                                          outcome:, records: support_impersonation_record_ids)
 
     return unless outcome == SupportImpersonation::ACTION_CHANGED
 
@@ -389,8 +382,20 @@ module SupportImpersonationGuard
     # had its say in the customer's log, and the action writer stands down.
     @support_impersonation_refused = true
 
+    record_support_impersonation_request!('impersonation.refused', state, extra)
+  end
+
+  # The two rows a support session writes DURING a request — the refusal and
+  # the action — are the same row with a different verb: the same operator,
+  # the same account, the same person and the same reason, all read off the
+  # session state (the session IS the binding), and the same four facts about
+  # the request. Written in one place so an `action` row and a `refused` row
+  # can never come to describe the request differently, and so a row can never
+  # quietly stop naming one of them. WHEN each is written, and whether, is
+  # decided by the callers above and is unchanged by living here.
+  def record_support_impersonation_request!(action, state, extra = {})
     OperatorEvents.record!(
-      operator: true_user, action: 'impersonation.refused',
+      operator: true_user, action:,
       account: Account.find_by(id: state['account_id']),
       subject: User.find_by(id: state['user_id']), reason: state['reason'],
       details: { path: request.path, method: request.request_method,
