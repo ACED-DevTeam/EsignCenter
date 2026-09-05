@@ -4,6 +4,11 @@ module Api
   class AttachmentsController < ActionController::API
     include ActionController::Cookies
     include ActiveStorage::SetCurrent
+    # This door has its own ActionController::API base — no Devise, no
+    # Pretender — but it does honour the session cookie, and it is keyed on a
+    # submitter slug rather than on who is asking. That is enough for a
+    # support session to reach it, so it gets the rule too (review batch 2).
+    include SupportImpersonationSessionRefusal
 
     COOKIE_STORE_LIMIT = 10
 

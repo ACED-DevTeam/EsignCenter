@@ -21,6 +21,17 @@ module Api
 
     impersonates :user, with: ->(uuid) { User.find_by(uuid:) }
 
+    # Pretender has just defined an impersonation-aware `current_user` and a
+    # `true_user` that is Devise's. The private `current_user` further down
+    # exists only to add the X-Auth-Token fallback, and by REPLACING
+    # Pretender's reader it made this whole surface act as the operator during
+    # a support session (review batch 2, N2): "Allow document edits" was inert
+    # through `/api/*` — which is where the in-app builder saves — and every
+    # builder call wrote an ability refusal into the customer's audit log.
+    # Keeping the reader under a name of its own lets the override add the
+    # token fallback ON TOP of impersonation instead of instead of it.
+    alias current_user_with_impersonation current_user
+
     wrap_parameters false
 
     # Both token guards run on EVERY request that presents a token —
@@ -158,8 +169,12 @@ module Api
       user_from_token
     end
 
+    # The session's person first (impersonated, or the signed-in operator when
+    # nobody is being impersonated), and only then the token. `super` is not
+    # used here on purpose: it reaches Devise directly and would skip
+    # Pretender.
     def current_user
-      super || @current_user ||= user_from_token
+      current_user_with_impersonation || @current_user ||= user_from_token
     end
 
     # The support rule is about the BROWSER. A request with no signed-in Devise

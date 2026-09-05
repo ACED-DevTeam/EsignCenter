@@ -64,7 +64,11 @@ module Operator
 
       session[SupportImpersonation::SESSION_KEY] = {
         'event_id' => event.id, 'started_at' => Time.current.iso8601, 'mode' => mode,
-        'reason' => reason, 'account_id' => @account.id, 'user_id' => user.id, 'refused_count' => 0
+        'reason' => reason, 'account_id' => @account.id, 'user_id' => user.id,
+        # Who is inside. Carried on the session because the one door that has
+        # to refuse without Devise reads the operator from here
+        # (SupportImpersonationSessionRefusal).
+        'operator_id' => true_user.id, 'refused_count' => 0
       }
 
       notify_customer(event)
