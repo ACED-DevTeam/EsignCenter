@@ -1,0 +1,100 @@
+<% content_for(:html_title, 'Contact support — EsignCenter') %>
+<% content_for(:html_description, 'Ask us anything about sending, signing, billing or the API. A real person reads every message and we usually reply within one business day.') %>
+<% content_for(:canonical_url, support_url) %>
+<% content_for(:indexable, 'true') %>
+<%# A full page load on purpose (data-turbo: false): the Turnstile widget script has to run again on every render, and this page carries its own security policy (TurnstileProtected), which a Turbo visit would not apply. %>
+
+<div class="max-w-2xl mx-auto px-4 md:px-2 pt-12 md:pt-16 pb-16 md:pb-24">
+  <h1 class="text-4xl md:text-5xl font-bold tracking-tight text-center">Contact support</h1>
+  <p class="mt-4 text-lg text-base-content/70 text-center">Tell us what you were trying to do and what happened instead. We reply to every message, usually within one business day.</p>
+  <p class="mt-3 text-base-content/70 text-center">Many questions are already answered in the <%= link_to 'help centre', help_path, class: 'link font-medium' %>.</p>
+
+  <%= form_for(@support_request, as: :support_request, url: support_path, html: { class: 'mt-10 space-y-6', data: { turbo: false } }) do |f| %>
+    <% if @support_request.errors.any? %>
+      <div class="alert bg-red-50 border border-red-200 text-red-900 block" role="alert" aria-live="polite">
+        <p class="font-semibold">We could not send that.</p>
+        <ul class="mt-2 list-disc pl-5 space-y-1">
+          <% @support_request.errors.full_messages.each do |message| %>
+            <li dir="auto"><%= message %></li>
+          <% end %>
+        </ul>
+      </div>
+    <% end %>
+
+    <div class="form-control">
+      <%= f.label :name, 'Your name', class: 'label' %>
+      <% if signed_in? %>
+        <%= f.text_field :name, readonly: true, class: 'base-input bg-base-200/70', 'aria-describedby': 'name_help', dir: 'auto' %>
+        <p id="name_help" class="mt-1.5 text-sm text-base-content/60">From your account. <%= link_to 'Change it in your profile', settings_profile_index_path, class: 'link' %>.</p>
+      <% else %>
+        <%= f.text_field :name, required: true, maxlength: SupportRequest::NAME_LIMIT, autocomplete: 'name',
+                                class: "base-input #{'border-red-400' if @support_request.errors.include?(:name)}",
+                                'aria-invalid': @support_request.errors.include?(:name).to_s, 'aria-describedby': ('name_error' if @support_request.errors.include?(:name)), dir: 'auto' %>
+        <% if @support_request.errors.include?(:name) %>
+          <p id="name_error" class="mt-1.5 text-sm text-red-700" dir="auto"><%= @support_request.errors.full_messages_for(:name).to_sentence %></p>
+        <% end %>
+      <% end %>
+    </div>
+
+    <div class="form-control">
+      <%= f.label :email, 'Your email address', class: 'label' %>
+      <% if signed_in? %>
+        <%= f.email_field :email, readonly: true, class: 'base-input bg-base-200/70', 'aria-describedby': 'email_help' %>
+        <p id="email_help" class="mt-1.5 text-sm text-base-content/60">We reply here.</p>
+      <% else %>
+        <%= f.email_field :email, required: true, autocomplete: 'email',
+                                  class: "base-input #{'border-red-400' if @support_request.errors.include?(:email)}",
+                                  'aria-invalid': @support_request.errors.include?(:email).to_s, 'aria-describedby': "email_hint#{' email_error' if @support_request.errors.include?(:email)}" %>
+        <p id="email_hint" class="mt-1.5 text-sm text-base-content/60">We reply here, so please check it.</p>
+        <% if @support_request.errors.include?(:email) %>
+          <p id="email_error" class="mt-1.5 text-sm text-red-700"><%= @support_request.errors.full_messages_for(:email).to_sentence %></p>
+        <% end %>
+      <% end %>
+    </div>
+
+    <div class="form-control">
+      <%= f.label :topic, 'What is it about?', class: 'label' %>
+      <%= f.select :topic, SupportRequest::TOPICS.map { |value, label| [label, value] }, { include_blank: 'Choose one' },
+                   { required: true, class: "base-select #{'border-red-400' if @support_request.errors.include?(:topic)}",
+                     'aria-invalid': @support_request.errors.include?(:topic).to_s } %>
+      <% if @support_request.errors.include?(:topic) %>
+        <p class="mt-1.5 text-sm text-red-700"><%= @support_request.errors.full_messages_for(:topic).to_sentence %></p>
+      <% end %>
+    </div>
+
+    <div class="form-control">
+      <%= f.label :message, 'How can we help?', class: 'label' %>
+      <%= f.text_area :message, required: true, rows: 8, minlength: SupportRequest::MESSAGE_MINIMUM, maxlength: SupportRequest::MESSAGE_LIMIT,
+                                class: "base-textarea w-full text-base leading-relaxed #{'border-red-400' if @support_request.errors.include?(:message)}",
+                                'aria-invalid': @support_request.errors.include?(:message).to_s, 'aria-describedby': "message_hint#{' message_error' if @support_request.errors.include?(:message)}", dir: 'auto' %>
+      <p id="message_hint" class="mt-1.5 text-sm text-base-content/60">At least <%= SupportRequest::MESSAGE_MINIMUM %> characters. Do not include passwords or card numbers.</p>
+      <% if @support_request.errors.include?(:message) %>
+        <p id="message_error" class="mt-1.5 text-sm text-red-700" dir="auto"><%= @support_request.errors.full_messages_for(:message).to_sentence %></p>
+      <% end %>
+    </div>
+
+    <%# The honeypot. Hidden from sight AND from assistive technology, never focusable, and outside the tab order: nobody who can see or hear the page can fill it in, so anything in it came from a script. %>
+    <div class="hidden" aria-hidden="true">
+      <label for="website">Leave this field empty</label>
+      <%= text_field_tag SupportRequestsController::HONEYPOT_FIELD, nil, id: 'website', tabindex: -1, autocomplete: 'off' %>
+    </div>
+
+    <%# Cloudflare Turnstile: the token it writes into this form is verified server-side on submit (lib/turnstile.rb). Drawn only when the instance has a site key: a widget without one throws in the browser (Turnstile.widget?). %>
+    <% if turnstile_widget? %>
+      <div class="form-control pt-1">
+        <div class="cf-turnstile" data-sitekey="<%= ENV.fetch('TURNSTILE_SITE_KEY') %>" data-theme="auto" data-size="flexible"></div>
+      </div>
+    <% end %>
+
+    <div class="form-control">
+      <%= f.button button_title(title: 'Send message', disabled_with: 'Sending…'), class: 'base-button' %>
+    </div>
+  <% end %>
+
+  <p class="mt-8 text-sm text-base-content/60 text-center">
+    Prefer email? Write to <%= mail_to Docuseal::SUPPORT_EMAIL, Docuseal::SUPPORT_EMAIL, class: 'link' %>. Security reports are welcome at the same address.
+  </p>
+</div>
+<% if turnstile_widget? %>
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+<% end %>

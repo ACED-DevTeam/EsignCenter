@@ -1,0 +1,91 @@
+<p>
+  EsignCenter has a REST API, outgoing webhooks, embedded signing and an MCP
+  tool set. They are paid-plan features: on the free plan the pages are visible
+  but the doors are closed, and an API call answers
+  <em>This feature requires a paid plan</em>. The full endpoint-by-endpoint
+  reference is at <%= link_to 'the API reference', api_reference_path %>.
+</p>
+
+<h2>Getting a token</h2>
+
+<ol>
+  <li>Go to <strong>Settings &rarr; API</strong>.</li>
+  <li>Copy your token. Send it on every request as the <code>X-Auth-Token</code> header.</li>
+  <li>The base URL is your EsignCenter address followed by <code>/api</code> &mdash; for example <code><%= Docuseal::DEFAULT_APP_URL %>/api</code>.</li>
+</ol>
+
+<p>
+  A token belongs to a user and carries that user's access. Keep it on your own
+  server: it must never appear in browser code, a mobile app or a public
+  repository.
+</p>
+
+<h2>What the API does</h2>
+
+<p>
+  The usual shape is: create a template (or reuse one you built in the
+  builder), create a submission naming the people who sign, then wait to be
+  told it is finished and fetch the documents. You can also list and read
+  templates, submissions and signers, pre-fill values, and download the
+  completed PDFs and the audit trail.
+</p>
+
+<p>
+  <strong>Embedded signing and signing sessions</strong> put the signing page
+  inside your own application, framed only by the origin you name.
+  <strong>MCP</strong> exposes the same actions to an AI assistant.
+</p>
+
+<h2>Webhooks</h2>
+
+<p>
+  Add an endpoint under <strong>Settings &rarr; Webhooks</strong> and pick the
+  events you want:
+</p>
+
+<ul>
+  <li><code>form.viewed</code>, <code>form.started</code>, <code>form.completed</code>, <code>form.declined</code> &mdash; one signer's progress.</li>
+  <li><code>submission.created</code>, <code>submission.completed</code>, <code>submission.expired</code>, <code>submission.archived</code> &mdash; the whole document.</li>
+  <li><code>template.created</code>, <code>template.updated</code>.</li>
+</ul>
+
+<p>
+  A delivery we cannot make (any 4xx or 5xx answer) is retried a number of
+  times, with the gap growing after each attempt, before we give up. Your
+  endpoint should answer quickly and do its real work afterwards.
+</p>
+
+<aside class="help-callout">
+  <p>
+    <strong>Good to know:</strong> verify every webhook before you act on it.
+    Each request carries an <code>X-Esigncenter-Signature</code> header holding
+    a timestamp and a SHA-256 HMAC of that timestamp and the request body,
+    keyed with the signing secret shown under Settings &rarr; Webhooks. Recompute
+    it and compare; an unsigned or mismatched body is not from us.
+  </p>
+</aside>
+
+<h2>Two things worth knowing</h2>
+
+<p>
+  <strong>Marking a signer complete is your responsibility.</strong> If your
+  integration creates a signer with <code>completed: true</code>, no human sat
+  at our signing page, so no electronic-signature consent is collected or
+  claimed. The audit trail records that completion as made through the API, and
+  obtaining that person's consent is your application's job. Signers who go
+  through our pages always see the consent step described in
+  <%= link_to 'Signing a document', help_article_path('signing-a-document') %>.
+</p>
+
+<p>
+  <strong>A suspended or read-only account closes the machine doors.</strong>
+  An unpaid card or a scheduled deletion makes API tokens, webhooks and
+  embedded sessions answer that the account is not active, while people can
+  still sign in and download. See
+  <%= link_to 'Billing and your free trial', help_article_path('billing-and-trial') %>.
+</p>
+
+<p>
+  Stuck on something the reference does not answer?
+  <%= link_to 'Write to us', support_path %>.
+</p>

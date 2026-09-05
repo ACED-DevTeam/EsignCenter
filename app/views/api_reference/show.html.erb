@@ -1,0 +1,43 @@
+<% content_for(:html_title, 'API reference — EsignCenter') %>
+<% content_for(:html_description, 'Every endpoint of the EsignCenter REST API: templates, submissions, submitters and webhooks. Authenticate with an X-Auth-Token header. API access is on the paid plan.') %>
+<% content_for(:canonical_url, api_reference_url) %>
+<% content_for(:indexable, 'true') %>
+<%# Scalar is bundled as its own pack (app/javascript/api_reference.js) and mounted on the div below, reading the description from this origin. Only this page loads it. %>
+<%# append_*_pack_tag, not a second javascript_pack_tag: shakapacker allows exactly one call per page and works out the shared chunks itself. The view runs before the layout, so the layout's own tag carries both packs. %>
+<% append_javascript_pack_tag 'api_reference', defer: true %>
+<% append_stylesheet_pack_tag 'api_reference', media: 'all' %>
+
+<div class="max-w-6xl mx-auto px-4 md:px-2 pt-10 md:pt-14">
+  <h1 class="text-3xl md:text-4xl font-bold tracking-tight">API reference</h1>
+  <p class="mt-3 text-base-content/70 max-w-3xl">Create templates, send documents for signature and read results from your own code. Everything below is the live description of this instance's API.</p>
+  <dl class="mt-6 grid gap-4 sm:grid-cols-3">
+    <div class="rounded-2xl border border-base-content/10 bg-white p-5">
+      <dt class="text-xs font-semibold uppercase tracking-wider text-base-content/50">Base URL</dt>
+      <dd class="mt-1.5 font-mono text-sm break-all"><%= OpenapiDocument.api_url %></dd>
+    </div>
+    <div class="rounded-2xl border border-base-content/10 bg-white p-5">
+      <dt class="text-xs font-semibold uppercase tracking-wider text-base-content/50">Authentication</dt>
+      <dd class="mt-1.5 font-mono text-sm break-all">X-Auth-Token: &lt;your token&gt;</dd>
+    </div>
+    <div class="rounded-2xl border border-base-content/10 bg-white p-5">
+      <dt class="text-xs font-semibold uppercase tracking-wider text-base-content/50">Plan</dt>
+      <dd class="mt-1.5 text-sm">API tokens are on the paid plan — see <%= link_to 'Pricing', pricing_path, class: 'link font-medium' %>.</dd>
+    </div>
+  </dl>
+  <p class="mt-5 text-sm text-base-content/70">
+    New to it? Start with <%= link_to 'API, webhooks and embedded signing', help_article_path('api-and-webhooks'), class: 'link font-medium' %>.
+    The description itself is at <%= link_to '/docs/openapi.json', openapi_document_path, class: 'link font-medium font-mono' %>.
+    Something missing or wrong? <%= link_to 'Tell us', support_path, class: 'link font-medium' %>.
+  </p>
+</div>
+
+<%# The mount point is EMPTY, and the no-JavaScript fallback is its sibling rather than its child: Scalar hydrates instead of mounting when it finds children, and hydrating markup that was never server-rendered logs a mismatch. min-height, not height: the reference fills a desktop viewport but is free to grow past it on a phone, where a fixed-height scroll container inside a scrolling page is miserable to use. %>
+<div class="mt-8 border-t border-base-content/10">
+  <noscript>
+    <div class="max-w-6xl mx-auto px-4 md:px-2 py-16 text-center">
+      <p class="text-lg font-semibold">The interactive reference needs JavaScript.</p>
+      <p class="mt-2 text-base-content/70">The description itself is plain JSON and needs nothing: <%= link_to '/docs/openapi.json', openapi_document_path, class: 'link font-medium font-mono' %>.</p>
+    </div>
+  </noscript>
+  <div id="api-reference" data-spec-url="<%= openapi_document_path %>" class="min-h-[70vh]"></div>
+</div>

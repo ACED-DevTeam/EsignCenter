@@ -74,6 +74,17 @@ Rails.application.routes.draw do
   get 'terms' => 'legal#terms', as: :terms
   get 'privacy' => 'legal#privacy', as: :privacy
 
+  # The help centre, the support form and the API reference (Session 10 Phase
+  # B). Public, anonymous and English-only, like the pages above them.
+  get 'help' => 'help#index', as: :help
+  get 'help/:slug' => 'help#show', as: :help_article
+  get 'support' => 'support_requests#new', as: :support
+  post 'support' => 'support_requests#create'
+  get 'docs/api' => 'api_reference#show', as: :api_reference
+  # `format: false` so the `.json` stays part of the path rather than being
+  # read as a format segment: the URL a machine is given is a file name.
+  get 'docs/openapi.json' => 'api_reference#spec', as: :openapi_document, format: false
+
   get 'verify' => 'verify#show', as: :verify
   post 'verify' => 'verify#create'
   resource :mfa_setup, only: %i[show new edit create destroy], controller: 'mfa_setup'

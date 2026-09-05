@@ -1,0 +1,21 @@
+<% content_for(:html_title, 'Message sent — EsignCenter support') %>
+<%# Rendered on the honeypot path too, byte for byte: a script that fills the hidden field is told exactly what a person is told, and nothing is sent. %>
+
+<div class="max-w-xl mx-auto px-4 md:px-2 pt-16 md:pt-24 pb-20 md:pb-28 text-center">
+  <span class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-indigo-50 text-indigo-600" aria-hidden="true">
+    <%= svg_icon('check', class: 'w-8 h-8 stroke-2') %>
+  </span>
+  <h1 class="mt-6 text-3xl md:text-4xl font-bold tracking-tight">We got your message</h1>
+  <p class="mt-4 text-lg text-base-content/70">
+    We reply to <strong dir="auto"><%= @support_request.email.presence || 'the address you gave us' %></strong>, usually within one business day.
+  </p>
+  <p class="mt-3 text-base-content/70">There is nothing else for you to do. If it is urgent, replying to our answer keeps everything in one thread.</p>
+  <div class="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
+    <%= link_to 'Back to the help centre', help_path, class: 'btn btn-outline bg-white border-2 px-8' %>
+    <% if signed_in? %>
+      <%= link_to 'Back to your dashboard', root_path, class: 'btn btn-neutral text-white px-8' %>
+    <% else %>
+      <%= link_to 'Back to the home page', root_path, class: 'btn btn-neutral text-white px-8' %>
+    <% end %>
+  </div>
+</div>

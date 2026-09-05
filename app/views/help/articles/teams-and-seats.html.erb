@@ -1,0 +1,77 @@
+<p>
+  A team is the paid plan with more than one person in it. Everybody in your
+  account occupies a seat, and a seat is
+  $<%= StripeBilling::PRICE_PER_SEAT_USD %> per user per month. The free plan
+  has exactly <%= Quotas::Limits::FREE_SEATS %>.
+</p>
+
+<h2>Inviting somebody</h2>
+
+<ol>
+  <li>Go to <strong>Settings &rarr; Users</strong> and enter the person's email address.</li>
+  <li>If your subscription is already paying for a spare seat, the invitation goes out straight away and nothing is charged.</li>
+  <li>If every seat is taken, we show you what your card will be charged <em>today</em> for the rest of the current billing period, and what the subscription will cost from the next renewal. Nothing happens until you confirm.</li>
+  <li>Once the payment goes through, the invitation is sent. The person chooses their own name and password when they accept.</li>
+</ol>
+
+<p>
+  An invitation lasts <%= BillingLifecycle::INVITE_TOKEN_DAYS %> days and holds
+  the seat while it waits. Pending invitations are listed on Settings &rarr;
+  Users with their expiry date, and can be resent or cancelled.
+</p>
+
+<aside class="help-callout">
+  <p>
+    <strong>Good to know:</strong> you always see the exact amount before a
+    seat is bought. That figure is a preview &mdash; asking for it creates
+    nothing and charges nothing &mdash; and the moment it was priced from is
+    the moment the real charge uses, so the invoice you get is the one you
+    agreed to.
+  </p>
+</aside>
+
+<h2>If the person already has their own account</h2>
+
+<p>
+  That is not an error. The invitation page says so and offers to
+  <strong>join this team</strong>: accepting moves them across, bringing their
+  templates, folders and documents with them, and their old account is
+  archived rather than deleted. Documents that account has already signed stay
+  verifiable exactly as they are.
+</p>
+
+<p>
+  Because it is a move between two organisations, the keys their old account
+  issued stop working &mdash; API tokens, "remember me", and every browser they
+  were signed in on except the one they accepted from. We tell them all of this
+  before they press the button. The move is refused, with a plain explanation
+  of what to settle first, if their old account still has other people in it,
+  still has a paid subscription, is frozen for an unpaid card, or is scheduled
+  for deletion.
+</p>
+
+<h2>Removing people, and seats going back down</h2>
+
+<p>
+  A seat comes back when you remove someone, make them read-only, or when an
+  invitation lapses or is cancelled. The subscription then bills for fewer
+  seats from your next renewal. Additions are charged immediately; reductions
+  are not credited or refunded mid-cycle &mdash; the next invoice is simply
+  smaller. An account can never lose its last administrator, so removing or
+  demoting the only admin is refused.
+</p>
+
+<h2>Dropping back to the free plan with a team</h2>
+
+<p>
+  Nobody is deleted. The administrator who signed in most recently keeps full
+  access and everybody else becomes read-only: they can still sign in, read,
+  download and export, but not create or change anything. Settings &rarr; Users
+  has <strong>Give full access</strong> and <strong>Make read-only</strong> on
+  each person, so you decide who holds the seats.
+</p>
+
+<p>
+  More on paying: <%= link_to 'Billing and your free trial', help_article_path('billing-and-trial') %>,
+  or the <%= link_to 'pricing page', pricing_path %>.
+</p>

@@ -1,0 +1,11 @@
+<% content_for(:html_title, 'Too many messages — EsignCenter support') %>
+<%# The per-IP hourly limit (SupportRequestsController::REQUESTS_PER_IP_PER_HOUR). One network being asked to wait, not an accusation — and the address below still works, because somebody with a real emergency must never be shut out entirely. %>
+
+<div class="max-w-xl mx-auto px-4 md:px-2 pt-16 md:pt-24 pb-20 md:pb-28 text-center">
+  <h1 class="text-3xl md:text-4xl font-bold tracking-tight">That is a few messages in a row</h1>
+  <p class="mt-4 text-lg text-base-content/70">We have had several from your network in the last hour. Please try again a little later — nothing you sent before this has been lost.</p>
+  <p class="mt-3 text-base-content/70">If it cannot wait, email <%= mail_to Docuseal::SUPPORT_EMAIL, Docuseal::SUPPORT_EMAIL, class: 'link font-medium' %> directly.</p>
+  <div class="mt-8">
+    <%= link_to 'Back to the help centre', help_path, class: 'btn btn-outline bg-white border-2 px-8' %>
+  </div>
+</div>

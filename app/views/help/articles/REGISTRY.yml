@@ -1,0 +1,77 @@
+# Help-centre article registry. The order below is the order of the articles
+# within each section on /help; the prose for each slug lives beside this file
+# at app/views/help/articles/<slug>.html.erb.
+#
+# summary is the card blurb (<= 140 characters). Deliberately free of product
+# numbers: a number belongs in the article body, rendered from its constant.
+# reading_minutes is the body word count at roughly 200 words a minute.
+---
+- slug: getting-started
+  title: "Getting started with EsignCenter"
+  summary: "Create your account, send your first document for signature, and find your way around the dashboard."
+  section: "Start here"
+  updated_on: '2026-09-05'
+  reading_minutes: 2
+
+- slug: sending-a-document
+  title: "Sending a document for signature"
+  summary: "Upload a PDF or Word file, add the people who sign, set the order, send — and correct it if something is wrong."
+  section: "Sending & signing"
+  updated_on: '2026-09-05'
+  reading_minutes: 2
+
+- slug: signing-a-document
+  title: "Signing a document you were sent"
+  summary: "What a signer sees, from the email to the signed copy — including the consent step, declining and delegating."
+  section: "Sending & signing"
+  updated_on: '2026-09-05'
+  reading_minutes: 3
+
+- slug: templates-and-fields
+  title: "Templates and fields"
+  summary: "Set a document up once so sending it again takes seconds: parties, fields, folders and archiving."
+  section: "Sending & signing"
+  updated_on: '2026-09-05'
+  reading_minutes: 2
+
+- slug: free-plan-limits
+  title: "What the free plan includes"
+  summary: "Every free-plan limit, exactly how each one is counted, what happens when you reach it, and when it resets."
+  section: "Plans & billing"
+  updated_on: '2026-09-05'
+  reading_minutes: 2
+
+- slug: teams-and-seats
+  title: "Teams and seats"
+  summary: "Invite people by email, see the cost before a seat is bought, and move someone who already has their own account."
+  section: "Plans & billing"
+  updated_on: '2026-09-05'
+  reading_minutes: 3
+
+- slug: billing-and-trial
+  title: "Billing and your free trial"
+  summary: "Start the trial, manage your card and invoices, cancel, and what happens if a payment fails."
+  section: "Plans & billing"
+  updated_on: '2026-09-05'
+  reading_minutes: 2
+
+- slug: verify-a-signed-document
+  title: "Verify a signed document"
+  summary: "Anyone can check a signed PDF with no account. What the three answers mean, and what the page never reveals."
+  section: "Trust & data"
+  updated_on: '2026-09-05'
+  reading_minutes: 2
+
+- slug: api-and-webhooks
+  title: "API, webhooks and embedded signing"
+  summary: "Paid-plan developer features: tokens, the base URL, webhook events, signature verification and embedded signing."
+  section: "Developers"
+  updated_on: '2026-09-05'
+  reading_minutes: 2
+
+- slug: your-data-and-deletion
+  title: "Your data, exports and deletion"
+  summary: "Export everything as one zip with checksums, delete your account yourself, and see what is left behind."
+  section: "Trust & data"
+  updated_on: '2026-09-05'
+  reading_minutes: 3

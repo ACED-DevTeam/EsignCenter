@@ -1,4 +1,4 @@
-# The public pages: landing, pricing and trust
+# The public pages: landing, pricing, trust, help, support and the API reference
 
 Plain English first, for anyone who needs to change what the public sees.
 
@@ -12,10 +12,95 @@ Plain English first, for anyone who needs to change what the public sees.
 - **`/trust`** — where data lives, the sub-processor list, the **claim
   register** (every marketing claim with the evidence behind it and, in an ERB
   comment beside each row, the file that proves it) and what we do not claim.
+- **`/help`** and **`/help/<slug>`** — the help centre: ten articles anybody can
+  read, grouped into sections.
+- **`/support`** — the support form: one email to the support mailbox, and a
+  receipt.
+- **`/docs/api`** — the API reference, with the machine-readable description it
+  reads at **`/docs/openapi.json`**.
 - `/terms` and `/privacy` are the legal pages (see `docs/legal.md`).
 
-All four share one layout, `app/views/layouts/marketing.html.erb`. The views live
-in `app/views/marketing/`; the controller is `MarketingController`.
+They all share one layout, `app/views/layouts/marketing.html.erb`. The landing,
+pricing and trust views live in `app/views/marketing/` (`MarketingController`);
+the rest have a controller and a view directory each — `HelpController`,
+`SupportRequestsController`, `ApiReferenceController`.
+
+## The help centre
+
+The table of contents is `app/views/help/articles/REGISTRY.yml`: one entry per
+article with its title, card blurb, section, "updated" date and reading time,
+in the order they appear. `lib/help_center.rb` reads that file and nothing else,
+so there is one place to edit. The prose for each article is the plain HTML file
+beside it, `app/views/help/articles/<slug>.html.erb`, written with no CSS
+classes at all — the typography comes from the `.help-article` block in
+`app/javascript/application.scss`, the same discipline as the legal documents.
+
+**No number in an article is typed by hand.** Every cap, price and window is
+rendered from the constant that enforces it (`Quotas::Limits`, `StripeBilling`,
+`Accounts::Retention` and friends), and `spec/golden/help_spec.rb` scans the
+prose of all ten articles and fails on any digit that is not on a tiny list of
+non-product numbers. A help page cannot promise a limit the app does not apply.
+
+To add an article: write `app/views/help/articles/<slug>.html.erb`, add its row
+to `REGISTRY.yml`, and add its path to `public/sitemap.xml`. The spec fails if a
+file has no registry row or a row has no file.
+
+## The support form
+
+`GET /support` renders it and `POST /support` sends exactly one email to
+`Docuseal::SUPPORT_EMAIL`, with the sender on `Reply-To`. Nothing is written to
+the database: there is no support table, no ticket number and nothing to leak
+later. Signed-in visitors get their name and address filled in and fixed, and
+their account id, kind and plan travel in the email — derived from the session
+on the server, never read from the form.
+
+Three brakes, in this order: five messages an hour from one network; a honeypot
+field, which answers with the ordinary receipt and sends nothing, so a script is
+never told it was caught; and Cloudflare Turnstile.
+
+Turnstile is enforced when the instance has both Cloudflare keys and skipped
+when it does not — the one place this form differs from sign-up, which fails
+closed. Sign-up creates an account and is switched off entirely without the keys
+(`RegistrationConfigGuard`); support is how somebody locked out of their account
+reaches a person, and a form that refuses everybody because a third-party key is
+missing is a form that has failed. Without the keys, no widget and no
+third-party script are rendered at all, and the honeypot and the per-IP limit do
+the work.
+
+## The API reference
+
+`/docs/api` renders [Scalar](https://github.com/scalar/scalar) from the npm
+package `@scalar/api-reference`, bundled through shakapacker as its own pack
+(`app/javascript/api_reference.js`) so no other page in the application carries
+it. It is served from this origin, never a CDN, because the whole application
+runs under `script_src 'self'` — everything in Scalar that would reach off this
+origin (its default web fonts, its hosted request proxy and the "try it" client
+that needs one, its AI assistant and its MCP integration) is switched off in the
+pack.
+
+One thing did have to be handled: Zod, deep inside Scalar, probes for
+`new Function` to decide whether it may use a faster code path. The probe is
+caught and Scalar works either way, but the browser still reports a blocked
+eval. `app/javascript/lib/zod_jitless.js` sets Zod's own `jitless` switch before
+Scalar loads, so the probe never happens. `spec/system/api_reference_spec.rb`
+proves the result in a real browser: the operation list renders with zero
+console errors and zero security-policy violations.
+
+`/docs/openapi.json` is `docs/openapi.json` — the authored document, reviewed
+and shipped with the code — with its generic `your-instance.example.com` example
+host rewritten to this instance's `APP_URL`, `servers[0]` pointed at this
+instance's `/api`, and the contact link pointed at `/support`
+(`lib/openapi_document.rb`). It is built once per process and rebuilt only when
+the file on disk changes, and served with `Cache-Control: public, max-age=3600`.
+
+## The sitemap
+
+`public/sitemap.xml` lists every public page — the landing, pricing, trust, the
+legal pages, verify, the help centre and its ten articles, the API reference and
+the support form — and nothing else, because the rest of the application is
+private to an account. It is a static file on purpose: adding a page is a code
+change, so a generated sitemap would only move the same edit somewhere less
+visible.
 
 ## The pricing table cannot drift from the product
 
@@ -71,6 +156,13 @@ chromium --headless --no-sandbox --hide-scrollbars --disable-gpu \
 ## Checks
 
 `spec/golden/marketing_spec.rb` (what the pages say, the matrix coverage, no
-sign-up links while registration is off) and `spec/system/marketing_spec.rb`
-(no sideways scrolling at 390 px and 1440 px, the keyboard menu, the
-reduced-motion rule, screenshots in `tmp/screenshots/`).
+sign-up links while registration is off), `spec/golden/help_spec.rb` (the
+registry, every article renders, no typed numbers), `spec/golden/support_spec.rb`
+(one mail, the three brakes, the account facts) and
+`spec/golden/api_reference_spec.rb` (the rewritten description, no placeholder
+host, no dropped path).
+
+In a real browser: `spec/system/marketing_spec.rb` (no sideways scrolling at
+390 px and 1440 px on all six pages, the keyboard menu, the reduced-motion rule)
+and `spec/system/api_reference_spec.rb` (Scalar renders with no console error
+and no CSP violation). Both leave screenshots in `tmp/screenshots/`.

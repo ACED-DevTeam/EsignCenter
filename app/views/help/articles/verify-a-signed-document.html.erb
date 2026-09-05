@@ -1,0 +1,76 @@
+<p>
+  Anyone holding a signed PDF can check it, with no account and no sign-in.
+  Open our <%= link_to 'verify page', verify_path %>, upload the file, and we
+  tell you whether EsignCenter produced it. It is there so a bank, a landlord
+  or a clerk can confirm a document is genuine without being given access to
+  anything else.
+</p>
+
+<h2>How to check a document</h2>
+
+<ol>
+  <li>Open the <%= link_to 'verify page', verify_path %>.</li>
+  <li>Choose the PDF, exactly as you received it. Do not open and re-save it first &mdash; that changes the file.</li>
+  <li>Read the answer. It appears immediately.</li>
+</ol>
+
+<h2>The three answers</h2>
+
+<ul>
+  <li><strong>Verified.</strong> Our seal is on the file and its bytes match a document we recorded at signing time. The page shows the day the signing finished and how many people had signed by then.</li>
+  <li><strong>Not on record.</strong> The file carries our seal, but its bytes match nothing we recorded &mdash; usually because it was changed after signing. Even one added byte lands here.</li>
+  <li><strong>Not verified.</strong> The file carries no EsignCenter seal at all. It was not completed here, or it was altered badly enough to break the seal.</li>
+</ul>
+
+<h2>What the page will not tell you</h2>
+
+<p>
+  The answer is deliberately narrow. It never shows who signed &mdash; no
+  names, email addresses or phone numbers &mdash; nothing from the contents of
+  the document, no time of day, and never whether a <em>particular</em> person
+  signed anything. It cannot be used to look people up, and it reveals nothing
+  an attacker could not already read by opening the PDF themselves.
+</p>
+
+<aside class="help-callout">
+  <p>
+    <strong>Good to know:</strong> the verification record outlives the account
+    that sent the document. It holds only a fingerprint of the file, the
+    completion date and the number of signers &mdash; no names &mdash; so it is
+    kept permanently and a document still verifies years after the sender has
+    closed their account.
+  </p>
+</aside>
+
+<h2>What is actually being checked</h2>
+
+<p>
+  Every PDF EsignCenter completes is sealed with a digital signature and
+  carries a trusted timestamp from a public timestamp authority. At the same
+  moment we store a SHA-256 fingerprint of the exact file, the completion time
+  and the signer count. Verifying does two things: it confirms the seal is
+  ours, and it compares the fingerprint of the file you uploaded with the one
+  we recorded. That is why any later edit shows up.
+</p>
+
+<h2>Limits and small print</h2>
+
+<p>
+  One PDF per check, up to
+  <%= number_to_human_size(VerifyController::MAX_FILE_SIZE) %>, and the file
+  has to really be a PDF. There is a fair-use speed limit of
+  <%= VerifyController::MINUTE_LIMIT %> checks a minute per visitor; go past it
+  and the page asks you to wait a moment.
+</p>
+
+<p>
+  A handful of very old files &mdash; combined copies and audit trails produced
+  before this page existed &mdash; carry our seal but no record, so they answer
+  "not on record". Everything signed since verifies normally.
+</p>
+
+<p>
+  The evidence behind each of these claims is set out on our
+  <%= link_to 'trust page', trust_path %>. See also
+  <%= link_to 'Your data, exports and deletion', help_article_path('your-data-and-deletion') %>.
+</p>

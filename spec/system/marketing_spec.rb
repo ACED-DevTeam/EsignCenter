@@ -1,11 +1,13 @@
 # frozen_string_literal: true
 
-# The marketing pages in a real browser (Session 9 Phase B): nothing scrolls
+# The marketing pages in a real browser (Session 9 Phase B, extended with the
+# help centre and the support form in Session 10 Phase B): nothing scrolls
 # sideways on a phone or a desktop, the phone menu works from the keyboard,
 # the reduced-motion rule ships, and a screenshot of every page at both widths
 # lands in tmp/screenshots for the visual pass.
 RSpec.describe 'Marketing pages in the browser' do
-  pages = { 'landing' => '/', 'pricing' => '/pricing', 'trust' => '/trust' }
+  pages = { 'landing' => '/', 'pricing' => '/pricing', 'trust' => '/trust',
+            'help' => '/help', 'help-article' => '/help/free-plan-limits', 'support' => '/support' }
   widths = { 390 => 844, 1440 => 900 }
 
   before do
@@ -25,6 +27,19 @@ RSpec.describe 'Marketing pages in the browser' do
     page.evaluate_script('document.documentElement.scrollWidth <= document.documentElement.clientWidth')
   end
 
+  # Two real animation frames, waited for rather than assumed. A bare round
+  # trip is not enough: an IntersectionObserver delivers its entries on a
+  # frame, and the reveal listener is throttled to one, so a scroll whose frame
+  # never ran leaves a section at opacity 0 and nothing later fires to fix it —
+  # the page has stopped scrolling. This is what made the sweep depend on how
+  # tall the page happened to be.
+  def next_frame
+    page.evaluate_async_script(<<~JS)
+      const done = arguments[0]
+      requestAnimationFrame(() => requestAnimationFrame(() => done(null)))
+    JS
+  end
+
   # Reveal-on-scroll sections stay at opacity 0 until they intersect, so the
   # page is scrolled through a viewport at a time, the way a reader would,
   # before a full-height screenshot is taken. `visible: :all` matters: an
@@ -34,7 +49,7 @@ RSpec.describe 'Marketing pages in the browser' do
     steps = page.evaluate_script('Math.ceil(document.body.scrollHeight / window.innerHeight)')
     (0..steps).each do |step|
       page.execute_script("window.scrollTo(0, #{step} * window.innerHeight)")
-      page.execute_script('void 0') # a round trip, so the observer has a frame to run
+      next_frame # the observer and the scroll listener both run on a frame
     end
     expect(page).to have_no_css('.mk-reveal:not(.mk-revealed)', visible: :all, wait: 5)
     page.execute_script('window.scrollTo(0, 0)')

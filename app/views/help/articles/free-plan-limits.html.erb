@@ -1,0 +1,75 @@
+<p>
+  The free plan is free permanently, not a trial that runs out. It has four
+  monthly or standing limits and one storage cap, and this page says exactly
+  how each one is counted. Your live figures are always on
+  <strong>Settings &rarr; Usage</strong>.
+</p>
+
+<h2>The limits</h2>
+
+<ul>
+  <li><strong><%= Quotas::Limits::FREE_COMPLETIONS_PER_MONTH %> completed documents a month.</strong> A document counts the first time <em>any</em> signer completes it. A two-signer document counts once, when the first of them finishes.</li>
+  <li><strong><%= Quotas::Limits::FREE_SENDS_PER_MONTH %> documents sent a month.</strong> Every document created for signature is a send, however it was started &mdash; the recipients form, a share link, "sign it yourself" or a correction.</li>
+  <li><strong><%= Quotas::Limits::FREE_IN_FLIGHT %> documents out for signature at once.</strong> A live count, not a monthly one: it goes down again as soon as a document completes, is declined, expires or is deleted.</li>
+  <li><strong><%= Quotas::Limits::FREE_SEATS %> user.</strong> Inviting a second person needs the paid plan &mdash; see <%= link_to 'Teams and seats', help_article_path('teams-and-seats') %>.</li>
+  <li><strong><%= number_to_human_size(Quotas::Limits::FREE_STORAGE_BYTES) %> of storage.</strong> Everything the account holds, counted once each. The paid plan gives <%= number_to_human_size(Quotas::Limits::PAID_STORAGE_BYTES_PER_SEAT) %> per seat.</li>
+</ul>
+
+<p>
+  Free accounts also carry an EsignCenter footer on the emails we send for you
+  and on the pages your signers sign on. Everything else about signing &mdash;
+  the sealed PDF, the audit trail, public verification, Word uploads, signing
+  order, decline and delegate, email verification for signers &mdash; is the
+  same on both plans.
+</p>
+
+<h2>What happens when you reach one</h2>
+
+<p>
+  Nothing is deleted and nothing is lost. New documents cannot be started until
+  the month resets, and a share link answers visitors with a polite "not
+  accepting responses right now". Documents already out for signature always
+  finish: reaching a limit never strands somebody halfway through signing, and
+  that completion is still recorded. Downloads and exports keep working.
+</p>
+
+<p>
+  We email your account's administrators once when you reach
+  <%= Quotas::Limits::FREE_COMPLETIONS_WARNING_AT %> of
+  <%= Quotas::Limits::FREE_COMPLETIONS_PER_MONTH %> completions, so the ceiling
+  is never a surprise.
+</p>
+
+<aside class="help-callout">
+  <p>
+    <strong>Good to know:</strong> correcting a document somebody has already
+    signed never costs a second completion, however many rounds it takes, and
+    it is allowed even when you have used all
+    <%= Quotas::Limits::FREE_COMPLETIONS_PER_MONTH %> &mdash; which is usually
+    exactly when a mistake is spotted. It does count as one of your
+    <%= Quotas::Limits::FREE_SENDS_PER_MONTH %> sends.
+  </p>
+</aside>
+
+<h2>Resets, storage and upgrades</h2>
+
+<p>
+  The monthly counts run on the UTC calendar month and reset by themselves at
+  midnight UTC on the first. There is nothing to press.
+</p>
+
+<p>
+  Storage is the one cap that never stops you sending or signing &mdash; only
+  new uploads are refused when you are full. To free space, delete what you no
+  longer need and then <strong>delete permanently</strong> from the archive;
+  the ordinary delete only archives, and archived files still count.
+</p>
+
+<p>
+  Upgrading lifts the document limits at once. If you later drop back to the
+  free plan, your free month starts the moment the paid plan ends: you begin at
+  0 of <%= Quotas::Limits::FREE_COMPLETIONS_PER_MONTH %> completions and 0 of
+  <%= Quotas::Limits::FREE_SENDS_PER_MONTH %> sends, and nothing is deleted.
+  See <%= link_to 'Billing and your free trial', help_article_path('billing-and-trial') %>
+  and the <%= link_to 'pricing page', pricing_path %>.
+</p>

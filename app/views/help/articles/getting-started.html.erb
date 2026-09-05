@@ -1,0 +1,68 @@
+<p>
+  EsignCenter takes a PDF or Word file, collects signatures on it, and hands
+  everybody back a sealed copy with a record of what happened. This page walks
+  you from a brand-new account to your first signed document.
+</p>
+
+<h2>Create your account</h2>
+
+<ol>
+  <li>Choose <strong>Create free account</strong> and enter your name, your email address and a password &mdash; or use <strong>Continue with Google</strong>, which skips the password.</li>
+  <li>If you signed up with a password, open the confirmation email we send you. You cannot sign in until you do, and the link only takes a moment.</li>
+  <li>Sign in. You land on your dashboard, on the free plan, with no card on file.</li>
+</ol>
+
+<p>
+  The free plan is free permanently. It gives you
+  <%= Quotas::Limits::FREE_COMPLETIONS_PER_MONTH %> completed documents a
+  month, <%= Quotas::Limits::FREE_SENDS_PER_MONTH %> sends a month,
+  <%= Quotas::Limits::FREE_IN_FLIGHT %> documents out for signature at once,
+  <%= Quotas::Limits::FREE_SEATS %> user and
+  <%= number_to_human_size(Quotas::Limits::FREE_STORAGE_BYTES) %> of storage.
+  <%= link_to 'Free plan limits', help_article_path('free-plan-limits') %>
+  explains exactly how each of those is counted.
+</p>
+
+<h2>Send your first document</h2>
+
+<ol>
+  <li><strong>Start from a document.</strong> Drop a PDF or a Word file onto your dashboard, or open one of the starter templates that come with a new account.</li>
+  <li><strong>Place the fields.</strong> Drag a signature box, a date and any text boxes onto the page, and say which signer fills in each one.</li>
+  <li><strong>Add the people.</strong> Type a name and an email address for each signer. If one person has to go before another, switch on the signing order.</li>
+  <li><strong>Send.</strong> Each signer gets their own private link by email.</li>
+</ol>
+
+<p>
+  When the last person finishes, everyone receives the completed PDF. It is
+  digitally sealed and carries a trusted timestamp, and an audit trail PDF
+  travels with it listing when the document was sent, opened, agreed to and
+  signed, and from which network address.
+</p>
+
+<h2>Find your way around</h2>
+
+<ul>
+  <li><strong>Templates</strong> &mdash; the documents you reuse, with their fields already placed. See <%= link_to 'Templates and fields', help_article_path('templates-and-fields') %>.</li>
+  <li><strong>Documents</strong> &mdash; everything you have sent, and how far each one has got.</li>
+  <li><strong>Settings &rarr; Usage</strong> &mdash; live meters for this month, and the date the monthly counts reset.</li>
+  <li><strong>Settings &rarr; Billing</strong> &mdash; start a trial, change plan or manage your card. See <%= link_to 'Billing and your free trial', help_article_path('billing-and-trial') %>.</li>
+</ul>
+
+<aside class="help-callout">
+  <p>
+    <strong>Good to know:</strong> you never have to trust us about a finished
+    document. Anyone holding the signed PDF can drop it on our
+    <%= link_to 'verify page', verify_path %> &mdash; no account needed &mdash;
+    and be told whether we produced it, on what date, and by how many signers.
+    Nothing else is revealed.
+  </p>
+</aside>
+
+<h2>If you get stuck</h2>
+
+<p>
+  Every article here links on to the next one, and
+  <%= link_to 'our support form', support_path %> reaches a real person. Tell
+  us what you were trying to do and what happened instead, and we usually
+  reply within one business day.
+</p>

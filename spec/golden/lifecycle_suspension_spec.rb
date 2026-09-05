@@ -516,6 +516,7 @@ RSpec.describe 'Account suspension', type: :request do # rubocop:disable RSpec/M
          submit_form_invite submit_form_email_2fas send_submission_email verify reports
          sessions registrations passwords confirmations omniauth_callbacks invitations
          stripe_webhooks postmark_webhooks invites mcp setup embed_template_builder
+         support_requests
          active_storage/direct_uploads active_storage/disk]
     end
 

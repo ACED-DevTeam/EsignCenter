@@ -17,18 +17,13 @@
 # bulk.
 class RegistrationsController < Devise::RegistrationsController
   include LaunchGates
-
-  TURNSTILE_HOST = 'https://challenges.cloudflare.com'
+  include TurnstileProtected
 
   before_action :require_registration_enabled!
-  # Runs after ApplicationController#set_csp (same condition), so the policy
-  # it appends to is the one the response will carry. The sign-up form is the
-  # only page that carries the widget, so it is the only page whose policy is
-  # widened — the check-your-email page and the global policy never allow a
-  # third-party script. (`create` re-renders `new` on a refusal, but set_csp
-  # itself only runs on GET, so there is no policy to widen there.)
-  before_action :allow_turnstile, only: %i[new],
-                                  if: -> { request.get? && !request.headers['HTTP_X_TURBO'] }
+  # The sign-up form is the only page in this controller that carries the
+  # widget, so it is the only one whose policy is widened; the rule itself
+  # (GET only, after set_csp) lives in TurnstileProtected.
+  protect_with_turnstile only: %i[new]
 
   around_action :with_browser_locale
 
@@ -131,11 +126,11 @@ class RegistrationsController < Devise::RegistrationsController
     false
   end
 
+  # TurnstileProtected#turnstile_passed? says yes or no; the sentence the
+  # visitor reads is this form's business.
   def turnstile_verified?
-    Turnstile.verify!(params['cf-turnstile-response'], request.remote_ip)
+    return true if turnstile_passed?
 
-    true
-  rescue Turnstile::VerificationFailed
     @user.errors.add(:base, I18n.t('please_complete_the_verification'))
 
     false
@@ -149,14 +144,5 @@ class RegistrationsController < Devise::RegistrationsController
 
   def after_inactive_sign_up_path_for(_resource)
     confirm_registration_path
-  end
-
-  def allow_turnstile
-    policy = request.content_security_policy
-
-    return unless policy
-
-    policy.script_src(*policy.directives['script-src'], TURNSTILE_HOST)
-    policy.frame_src(*policy.directives['frame-src'], TURNSTILE_HOST)
   end
 end
