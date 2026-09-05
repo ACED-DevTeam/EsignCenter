@@ -91,17 +91,9 @@ class AccountExportJob
     export
   end
 
-  # The upload happens OUTSIDE the row lock and the attach inside it (see
-  # `finalize!`): the bucket write is the slow part of a build and a row lock
-  # held across it is a row lock held for minutes.
-  #
-  # NOTHING IS UPLOADED THAT THE ROW CANNOT NAME (review 8, W2). The blob row
-  # is created and written onto the export BEFORE the first byte goes to the
-  # bucket, so a worker killed anywhere between here and `finalize!` leaves a
-  # file that `fail!` and the nightly sweeps can still find and delete. Without
-  # it, a Timeout::Error during the upload of a large account's zip left a copy
-  # of the customer's entire account in the bucket for ever, referenced by
-  # nothing.
+  # The staged locator is committed before upload. Upload and finalization
+  # each lock the export row so deletion and stale recovery can coordinate
+  # with them, while archive assembly runs outside that lock.
   def build!(export)
     summary = nil
     blob = nil
@@ -112,10 +104,12 @@ class AccountExportJob
       file.rewind
       blob = ActiveStorage::Blob.create_after_unfurling!(io: file, filename: filename_for(export),
                                                          content_type: 'application/zip')
-      stage!(export, blob)
-
       file.rewind
-      blob.upload_without_unfurling(file)
+      unless stage!(export, blob) && upload!(export, blob, file)
+        discard_blob(blob, export)
+
+        return nil
+      end
     end
 
     # Somebody else finished with this row while we were building. Nothing
@@ -168,11 +162,14 @@ class AccountExportJob
     end
 
     unless finished
-      discard_blob(blob, export)
-      unstage!(export, blob)
+      unstage!(export, blob) if discard_blob(blob, export)
     end
 
     finished
+  rescue ActiveRecord::RecordNotFound
+    discard_blob(blob, export)
+
+    false
   end
 
   # Names the blob on the row before a byte of it is uploaded, and clears out
@@ -180,11 +177,31 @@ class AccountExportJob
   # builds a second zip, and the first one is abandoned the moment this row
   # points at the second. Storage first, as everywhere else (H6).
   def stage!(export, blob)
-    previous = export.staged_blob
+    export.with_lock do
+      next false unless export.status == AccountExport::RUNNING
 
-    discard_blob(previous, export) if previous && previous.id != blob.id
+      previous = export.staged_blob
+      if previous && previous.id != blob.id
+        Accounts::Purge.purge_blob_storage_first!(previous, account_id: export.account_id)
+      end
 
-    export.stage_blob!(blob)
+      export.stage_blob!(blob)
+    end
+  rescue ActiveRecord::RecordNotFound
+    false
+  end
+
+  def upload!(export, blob, file)
+    export.with_lock do
+      next false unless export.status == AccountExport::RUNNING
+      next false unless export.summary[AccountExport::STAGED_BLOB_ID] == blob.id
+
+      blob.upload_without_unfurling(file)
+
+      true
+    end
+  rescue ActiveRecord::RecordNotFound
+    false
   end
 
   # Only ever clears a pointer that still names the blob just dealt with: a row
@@ -267,13 +284,14 @@ class AccountExportJob
 
     return if blob.nil?
 
-    discard_blob(blob, export)
-    unstage!(export, blob)
+    unstage!(export, blob) if discard_blob(blob, export)
   end
 
   def discard_blob(blob, export)
     Accounts::Purge.purge_blob_storage_first!(blob, account_id: export.account_id)
   rescue Accounts::Purge::StorageFailure => e
     ErrorReport.error(e, account_id: export.account_id, account_export_id: export.id)
+
+    false
   end
 end

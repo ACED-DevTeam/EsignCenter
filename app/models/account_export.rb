@@ -47,16 +47,8 @@ class AccountExport < ApplicationRecord
   # Not finished yet: the two states that mean a worker owns this row.
   IN_PROGRESS = [PENDING, RUNNING].freeze
 
-  # Where the row remembers the zip a worker is UPLOADING RIGHT NOW (review 8,
-  # W2). The upload happens outside the row's lock — it takes minutes and a
-  # lock held across it is a lock held for minutes — so between the first byte
-  # reaching the bucket and the attach there is a window in which a copy of the
-  # whole account exists in storage. If the worker dies in that window (the
-  # 30-minute cap firing during the upload of a large account's zip is the
-  # realistic way), an unattached blob is invisible to every sweep we have,
-  # because they all look through `export.archive`. So the row names it BEFORE
-  # the upload starts, and `fail!`, the nightly stale-export recovery and the
-  # failed-file sweep all purge what it names.
+  # The locator is committed before upload starts. A failed or interrupted
+  # upload remains discoverable by worker cleanup, retention and account purge.
   STAGED_BLOB_ID = 'staged_blob_id'
 
   belongs_to :account
