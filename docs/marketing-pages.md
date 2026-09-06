@@ -122,13 +122,31 @@ endpoint, and an address published there is an address harvested there. It is
 built once per process and rebuilt only when the file on disk changes, and
 served with `Cache-Control: public, max-age=3600`.
 
-Because the whole document has its host rewritten, the sample files it sends
-developers to become URLs on **our** domain. They are real files, under
-`public/examples/`, regenerated with `rake api_examples:generate` and committed;
-`spec/golden/api_reference_spec.rb` fails if the served document links to
-anything on this origin that nothing answers. The description itself has to be
-in the deployed image, so the `Dockerfile` copies `docs/openapi.json` explicitly
-— the same spec reads the `Dockerfile` and goes red if that line is dropped.
+Because the whole document has its host rewritten, every link it sends
+developers to becomes a URL on **our** domain, so every one of them has to be
+answerable here: `spec/golden/api_reference_spec.rb` fails if the served
+document links to anything on this origin that nothing answers. The description
+itself has to be in the deployed image, so the `Dockerfile` copies
+`docs/openapi.json` explicitly — the same spec reads the `Dockerfile` and goes
+red if that line is dropped.
+
+**The document describes this application and nothing else.** It arrived from
+upstream describing a larger product, and it advertised eight operations this
+fork has never routed — `POST /templates/{pdf,docx,html,merge}`,
+`POST /submissions/{pdf,docx,html}` and `PUT /templates/{id}/documents` — while
+omitting `POST /templates`, the one endpoint this fork added. Scalar drew the
+invented ones as live operations on our own base URL, so a developer who
+followed the reference got a 404 from us. They are gone, `POST /templates` and
+the token check `GET /user` are in, and the golden spec now matches **every**
+path and verb in the served document against the routes this application
+declares — segment for segment, so an invented sub-path cannot slip through on
+a `:id` wildcard — and an operation that no longer routes, or a documented door
+that quietly disappears, turns the suite red rather than turning up in a
+customer's integration.
+(The sample files under `public/examples/` went with those operations: they
+taught a `{{field tag}}` syntax nothing in this application parses. The links
+to them in the ten generated `docs/api/*.md` language guides were rewritten as
+plain text at the same time, so nothing sends a reader to a file we deleted.)
 
 ## The sitemap
 

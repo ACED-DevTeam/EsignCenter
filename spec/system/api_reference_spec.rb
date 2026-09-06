@@ -138,7 +138,10 @@ RSpec.describe 'API reference in the browser' do
     # merely existing.
     expect(page).to have_css('#api-reference[data-mounted="true"]', wait: 10)
     expect(page).to have_content('EsignCenter API', wait: 60)
-    expect(page).to have_content('/submissions/pdf')
+    # A real operation of ours: this used to name `/submissions/pdf`, an
+    # upstream-Pro endpoint this app has never routed and which review 10
+    # (A-F1) removed from the description along with seven others.
+    expect(page).to have_content('/submissions/emails')
 
     expect(no_horizontal_overflow?).to be(true), '/docs/api scrolls sideways at 390px'
     expect(csp_violations).to eq([])

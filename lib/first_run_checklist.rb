@@ -88,6 +88,28 @@ module FirstRunChecklist
     steps.count { |_, done| done }
   end
 
+  # Where steps 2 and 3 send this person: the document they are working on.
+  #
+  # Their OWN newest template first. `order(:id).first` handed back a seeded
+  # starter on every self-serve account — `StarterTemplates.seed!` runs at
+  # sign-up, so the four starters hold the four lowest ids and a document
+  # uploaded afterwards can never be first, which sent somebody who had just
+  # uploaded a contract to the Bill of Sale instead (review 10, A-F3). A
+  # starter is still a fine destination when it is all the account holds:
+  # picking one is the other half of "upload/pick a template".
+  #
+  # One bounded query: the starter marker is an ORDER BY expression rather
+  # than a second SELECT, so non-starters sort ahead of starters (Postgres
+  # orders true before false descending) and LIMIT 1 takes the newest of the
+  # preferred kind. Nil — an account with no template at all, which is what a
+  # failed StarterTemplatesJob leaves — is the caller's to answer.
+  def step_target_template(account)
+    non_starter = Template.sanitize_sql_array([NON_STARTER_TEMPLATE_SQL,
+                                               { key: StarterTemplates::STARTER_PREFERENCE_KEY }])
+
+    account.templates.active.order(Arel.sql("(#{non_starter}) DESC"), id: :desc).first
+  end
+
   # Step 1. A document of their own — an upload, a template built from
   # scratch, anything that is not one of the four we put there. Sending one of
   # ours counts too: picking a starter template IS choosing a document, and it

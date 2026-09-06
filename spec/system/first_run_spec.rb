@@ -123,6 +123,71 @@ RSpec.describe 'First-run checklist' do
     end
   end
 
+  # Review 10 (A-F3). Steps 2 and 3 used to link to
+  # `templates.active.order(:id).first`, which on a seeded account is always
+  # one of the four starters — never the document the person had just
+  # uploaded — and to the dashboard they were already on when the account held
+  # no template at all.
+  context 'when the steps are followed' do
+    def step_href(step)
+      URI.parse(page.find(%([data-first-run-step="#{step}"]))['href'])
+    end
+
+    it 'sends the next two steps to the document this person chose, not to a seeded starter' do
+      seed_starter_template!
+      create(:template, account:, author: user, only_field_types: %w[text], name: 'An older contract')
+      own = create(:template, account:, author: user, only_field_types: %w[text], name: 'Our supplier contract')
+
+      visit root_path
+
+      expect(page).to have_css('[data-first-run-step="choose"][data-done="true"]')
+      expect(step_href('signer').path).to eq(template_path(own))
+      expect(step_href('send').path).to eq(template_path(own))
+    end
+
+    # The ORDER BY expression is the fix, not `id: :desc`: joining another
+    # team moves the starters across with FRESH ids, so the account's own
+    # document stops being the newest row. Ranked by id alone, steps 2 and 3
+    # would go straight back to a starter (review 10, loop 2).
+    it 'still sends them to their own document when a starter arrives after it' do
+      own = create(:template, account:, author: user, only_field_types: %w[text], name: 'Our supplier contract')
+      starter = seed_starter_template!
+
+      expect(starter.id).to be > own.id
+
+      visit root_path
+
+      expect(page).to have_css('[data-first-run-step="choose"][data-done="true"]')
+      expect(step_href('signer').path).to eq(template_path(own))
+      expect(step_href('send').path).to eq(template_path(own))
+    end
+
+    # Picking a starter is the other half of "upload/pick a template", so a
+    # starter is the right destination when it is all the account holds.
+    it 'sends them to a starter template when that is all the account holds' do
+      starter = seed_starter_template!
+
+      visit root_path
+
+      expect(step_href('signer').path).to eq(template_path(starter))
+      expect(step_href('send').path).to eq(template_path(starter))
+    end
+
+    # A failed StarterTemplatesJob leaves an account with nothing to send, and
+    # the three steps must still go somewhere useful — the upload button, not
+    # a reload of this page.
+    it 'sends them to the upload button when the account holds no template at all' do
+      visit root_path
+
+      expect(page).to have_css('[data-first-run-checklist]')
+
+      %w[choose signer send].each do |step|
+        expect(step_href(step).path).to eq(templates_path)
+        expect(step_href(step).fragment).to eq('templates_upload_button')
+      end
+    end
+  end
+
   # --- review 1 regressions --------------------------------------------------
 
   context 'when the app tour would draw its welcome card too' do

@@ -1,3 +1,16 @@
+> **Read this first.** These language examples are generated from the upstream
+> DocuSeal API description, which covers a larger product than this application.
+> This fork does **not** route `POST /templates/pdf`, `POST /templates/docx`,
+> `POST /templates/html`, `POST /templates/merge`, `POST /submissions/pdf`,
+> `POST /submissions/docx`, `POST /submissions/html` or
+> `PUT /templates/{id}/documents`, and it does not serve the `/examples/...`
+> sample files those sections name (the links to them have been removed, since
+> they answered nowhere) — calling any of those operations returns a routing
+> 404. To create a template from a PDF your application generates, use
+> `POST /api/templates` ([self-hosted-template-api.md](self-hosted-template-api.md)).
+> The operations this application really answers are the ones in
+> `docs/openapi.json`, rendered at `/docs/api`.
+
 ### List all submissions
 
 The API endpoint provides the ability to retrieve a list of available submissions.
@@ -686,7 +699,7 @@ func main() {
 
 ### Create a submission from PDF
 
-The API endpoint provides the functionality to create one-off submission request from a PDF. Use <code>{{Field Name;role=Signer1;type=date}}</code> text tags to define fillable fields in the document. See <a href="https://your-instance.example.com/examples/fieldtags.pdf" target="_blank" class="link font-bold">https://your-instance.example.com/examples/fieldtags.pdf</a> for more text tag formats. Or specify the exact pixel coordinates of the document fields using `fields` param.
+The API endpoint provides the functionality to create one-off submission request from a PDF. Use <code>{{Field Name;role=Signer1;type=date}}</code> text tags to define fillable fields in the document. See `examples/fieldtags.pdf` (an upstream sample this application does not serve) for more text tag formats. Or specify the exact pixel coordinates of the document fields using `fields` param.
 
 
 ```go
@@ -1262,7 +1275,7 @@ func main() {
 
 ### Create a submission from DOCX
 
-The API endpoint provides functionality to create a one-off submission request from a DOCX file with dynamic content variables. Use <code>[[variable_name]]</code> text tags to define dynamic content variables in the document. See <a href="https://your-instance.example.com/examples/demo_template.docx" target="_blank" class="link font-bold">https://your-instance.example.com/examples/demo_template.docx</a> for the specific text variable syntax, including dynamic content tables and list. You can also use the <code>{{signature}}</code> field syntax to define fillable fields, as in a PDF.
+The API endpoint provides functionality to create a one-off submission request from a DOCX file with dynamic content variables. Use <code>[[variable_name]]</code> text tags to define dynamic content variables in the document. See `examples/demo_template.docx` (an upstream sample this application does not serve) for the specific text variable syntax, including dynamic content tables and list. You can also use the <code>{{signature}}</code> field syntax to define fillable fields, as in a PDF.
 
 ```go
 package main
@@ -2999,7 +3012,7 @@ func main() {
 
 ### Create a template from PDF
 
-The API endpoint provides the functionality to create a fillable document template for a PDF file. Use <code>{{Field Name;role=Signer1;type=date}}</code> text tags to define fillable fields in the document. See <a href="https://your-instance.example.com/examples/fieldtags.pdf" target="_blank" class="link font-bold">https://your-instance.example.com/examples/fieldtags.pdf</a> for more text tag formats. Or specify the exact pixel coordinates of the document fields using `fields` param.
+The API endpoint provides the functionality to create a fillable document template for a PDF file. Use <code>{{Field Name;role=Signer1;type=date}}</code> text tags to define fillable fields in the document. See `examples/fieldtags.pdf` (an upstream sample this application does not serve) for more text tag formats. Or specify the exact pixel coordinates of the document fields using `fields` param.
 
 
 ```go
@@ -3370,7 +3383,7 @@ func main() {
 
 ### Create a template from Word DOCX
 
-The API endpoint provides the functionality to create a fillable document template for existing Microsoft Word document. Use <code>{{Field Name;role=Signer1;type=date}}</code> text tags to define fillable fields in the document. See <a href="https://your-instance.example.com/examples/fieldtags.docx" target="_blank" class="link font-bold" >https://your-instance.example.com/examples/fieldtags.docx</a> for more text tag formats. Or specify the exact pixel coordinates of the document fields using `fields` param.
+The API endpoint provides the functionality to create a fillable document template for existing Microsoft Word document. Use <code>{{Field Name;role=Signer1;type=date}}</code> text tags to define fillable fields in the document. See `examples/fieldtags.docx` (an upstream sample this application does not serve) for more text tag formats. Or specify the exact pixel coordinates of the document fields using `fields` param.
 
 
 ```go
