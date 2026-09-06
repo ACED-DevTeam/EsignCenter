@@ -206,6 +206,23 @@ describe 'Submission API' do
       expect(response.parsed_body).to eq({ 'error' => 'uuid must be unique in `submitters`.' })
     end
 
+    # N7. The 422 above is the backstop for ONE index. A unique-constraint
+    # failure from anywhere else in `/api/*` is a bug nobody has named, and
+    # dressing it up as a well-formed refusal — filed as a warning, answered
+    # "Record already exists" — is how that bug hides for months.
+    it 'does not dress an unrelated unique-constraint failure up as a refusal' do
+      allow(Submissions).to receive(:create_from_submitters)
+        .and_raise(ActiveRecord::RecordNotUnique,
+                   'PG::UniqueViolation: duplicate key value violates unique constraint "index_users_on_email"')
+
+      expect do
+        post '/api/submissions', headers: { 'x-auth-token': author.access_token.token }, params: {
+          template_id: templates[0].id, send_email: true,
+          submitters: [{ email: 'jane.doe@example.com' }]
+        }.to_json
+      end.to raise_error(ActiveRecord::RecordNotUnique, /index_users_on_email/)
+    end
+
     it 'returns an error if number of submitters more than in the template' do
       post '/api/submissions', headers: { 'x-auth-token': author.access_token.token }, params: {
         template_id: templates[0].id,

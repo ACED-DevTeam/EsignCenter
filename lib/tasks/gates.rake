@@ -98,10 +98,22 @@ module Gates
   # `Account` itself, or an association/local whose name ends in `account(s)`
   # — `user.accounts`, a bare `accounts`, `testing_account`.
   ACCOUNT_RECEIVER = '(?:\bAccount|\b[a-z_]*accounts?)'
+  # A relation the creation may be chained off: `Account.where(name: n)
+  # .first_or_create!`, `user.accounts.where(...).create!`, `Account.unscoped
+  # .new` — which is how `first_or_create` is actually spelled, and how the
+  # gate walked past all three until review 2 (N5).
+  #
+  # A NAMED list, unlike the config-lookup gate's SCOPE_SEGMENT, because the
+  # receiver here can be an association: "any method" would read
+  # `account.templates.create!(...)` as an account creation.
+  ACCOUNT_SCOPE_VERBS = 'where|not|unscoped|all|order|limit|offset|includes|joins|distinct|lock|select|find_by!?'
+  ACCOUNT_SCOPE_SEGMENT =
+    "\\s*\\.\\s*(?:#{ACCOUNT_SCOPE_VERBS})(?![\\w!?])(?:\\s*\\(#{CALL_ARGS}\\))?".freeze
   # Parenthesised over as many lines as it likes, or paren-less to the end of
   # the line (`Account.create name: x`, and `Account.new` on its own).
-  ACCOUNT_CREATION =
-    /#{ACCOUNT_RECEIVER}\s*\.\s*(?:#{ACCOUNT_CREATION_VERBS})(?![\w!?])(?:\s*\(#{CALL_ARGS}\)|[^\n]*)/m
+  ACCOUNT_CREATION_CALL =
+    "(?:#{ACCOUNT_CREATION_VERBS})(?![\\w!?])(?:\\s*\\(#{CALL_ARGS}\\)|[^\\n]*)".freeze
+  ACCOUNT_CREATION = /#{ACCOUNT_RECEIVER}(?:#{ACCOUNT_SCOPE_SEGMENT})*\s*\.\s*#{ACCOUNT_CREATION_CALL}/m
   # `account.dup` is how the tree's only two real creators work. It is its own
   # pattern, with no argument list to look in, so it can only ever pass by
   # being allowlisted — which is the point: somebody has to say out loud that
@@ -112,7 +124,17 @@ module Gates
   # names no kind, and a snippet inside a comment creates no account. Blanked
   # rather than deleted so every offset still lines up — line numbers and the
   # allowlist's snippet ranges are taken against the same string.
-  CODE_NOISE = /'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|\#[^\n]*/m
+  #
+  # Same-line only, and heredoc bodies blanked first (review 2, N6). A quote
+  # that runs to the end of the FILE is how the gate fails open: an apostrophe
+  # in heredoc prose ("the customer's name") opened a string that swallowed
+  # every line up to the next apostrophe, creation sites included, and the
+  # gate then reported nothing. A string really spread over two source lines
+  # is now left alone instead, which can only ever cost a false alarm.
+  CODE_NOISE = /'(?:\\[^\n]|[^'\\\n])*'|"(?:\\[^\n]|[^"\\\n])*"|\#[^\n]*/
+  # `X = <<~TAG ... TAG`: the opening line is code and is kept, the body and
+  # the terminator are prose and are blanked.
+  HEREDOC_BODY = /(<<[-~]?['"]?(\w+)['"]?[^\n]*\n)(.*?)(^[ \t]*\2\b)/m
   # Pinned file AND snippet, exactly like the isolation allowlist: an entry
   # exempts the one expression it names and nothing else on the line.
   ACCOUNT_KIND_ALLOWLIST = [
@@ -295,10 +317,23 @@ module Gates
     end
   end
 
-  # Strings and comments blanked out, character for character, newlines kept
-  # (CODE_NOISE).
+  # Strings, heredoc bodies and comments blanked out, character for character,
+  # newlines kept (CODE_NOISE, HEREDOC_BODY). Heredocs go first: their bodies
+  # are prose, and prose is where the apostrophes are.
   def blank_code_noise(content)
-    content.gsub(CODE_NOISE) { |noise| noise.gsub(/[^\n]/, ' ') }
+    blank_heredoc_bodies(content).gsub(CODE_NOISE) { |noise| blank_text(noise) }
+  end
+
+  def blank_heredoc_bodies(content)
+    content.gsub(HEREDOC_BODY) do
+      opening, body, terminator = Regexp.last_match.values_at(1, 3, 4)
+
+      "#{opening}#{blank_text(body)}#{blank_text(terminator)}"
+    end
+  end
+
+  def blank_text(text)
+    text.gsub(/[^\n]/, ' ')
   end
 
   # --- branding ----------------------------------------------------------------

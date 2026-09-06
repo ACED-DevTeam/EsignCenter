@@ -37,9 +37,13 @@
 # EXCEPT the ones whose replay FAILED. `attribution_error` marks a row that
 # really did find its send row and then broke on the way into `email_events`.
 # Postmark has already been answered 200 for it, so dropping it loses a real
-# bounce or complaint: those rows are kept however long they take, retried by
-# every sweep, and reported to the operator once they have failed
-# PostmarkWebhooks::MAX_REPLAY_ATTEMPTS times (review 2, M8).
+# bounce or complaint: those rows never age out on the clock, are retried by
+# every sweep, and are reported to the operator the moment they have failed
+# PostmarkWebhooks::MAX_REPLAY_ATTEMPTS times (review 2, M8). They are not
+# kept for ever, though — a replay that has failed MAX_ATTEMPTS times is a bug
+# to fix from that alert, so the sweep drops it and says so, rather than
+# retrying it hourly until the end of time and crowding out every newer row
+# (review 2, N3/N4).
 class PendingEmailEvent < ApplicationRecord
   # How long a webhook waits for its send row before we accept it will never
   # come. Generous on purpose: the alternative to waiting is losing the event.

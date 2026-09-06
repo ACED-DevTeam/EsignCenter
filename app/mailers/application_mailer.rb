@@ -60,10 +60,24 @@ class ApplicationMailer < ActionMailer::Base
   # non-zero count can never say that (review 2, M4). Unstamped mail is simply
   # ignored by the webhook, which is the right answer for mail nobody is
   # tracking.
+  #
+  # The condition is the observer's own, not "any metadata at all" (review 2,
+  # N2): SupportMailer sets a tag and a topic and names no record, so metadata
+  # that was merely PRESENT still stamped the message and still parked a row
+  # per Postmark event — half of M4 unfixed.
   def set_message_uuid
     uuid = SecureRandom.uuid
     message['X-Message-Uuid'] = uuid
-    message['X-PM-Metadata-message-uuid'] = uuid if @message_metadata.present?
+    message['X-PM-Metadata-message-uuid'] = uuid if attributable_metadata?
+  end
+
+  # Exactly what ActionMailerEventsObserver requires before it writes a send
+  # row: the record the message is ABOUT. With no record there is nothing for
+  # a callback to be attributed to, so there is no reason to invite one.
+  def attributable_metadata?
+    metadata = @message_metadata
+
+    metadata.present? && metadata.values_at('tag', 'record_id', 'record_type').all?(&:present?)
   end
 
   def assign_message_metadata(tag, record)

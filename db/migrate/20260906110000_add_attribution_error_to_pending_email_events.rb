@@ -20,6 +20,13 @@
 # is rewritten. The index is the sweep's own lookup for the errored rows, and
 # it is built CONCURRENTLY because this table takes a row per unattributed
 # webhook and is written on the request path.
+#
+# Which brings the concurrent build's trap with it: a failed build leaves an
+# INVALID index of this name behind, and `if_not_exists` — the thing that
+# makes this migration safe to re-run — then skips the step and reports
+# success over an index Postgres will not use. After any failed or interrupted
+# migration run, list the invalid indexes and drop them first:
+# docs/operations.md, "Indexes built CONCURRENTLY".
 class AddAttributionErrorToPendingEmailEvents < ActiveRecord::Migration[8.1]
   disable_ddl_transaction!
 
