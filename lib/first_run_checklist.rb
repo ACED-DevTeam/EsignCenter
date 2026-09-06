@@ -25,15 +25,26 @@ module FirstRunChecklist
 
   module_function
 
-  # Whether this person, on this account, is offered the card at all. The
-  # dismissal is per person (UserConfig), so two colleagues decide separately.
-  def show?(account:, user:, can_create_templates:)
-    return false unless can_create_templates
-    return false unless account.customer?
-    return false if account.created_at < WINDOW.ago
-    return false if dismissed?(user)
+  # The steps to draw for this person on this account, or nil when the card is
+  # not offered at all. The steps come BACK rather than being asked for a
+  # second time by the partial: deciding and drawing are one question, and the
+  # three done-states are three queries.
+  #
+  # The dismissal is per person (UserConfig), so two colleagues decide
+  # separately.
+  def for(account:, user:, can_create_templates:)
+    return unless can_create_templates
+    return unless account.customer?
+    return if account.created_at < WINDOW.ago
+    return if dismissed?(user)
 
-    steps_for(account).value?(false)
+    steps = steps_for(account)
+
+    steps.value?(false) ? steps : nil
+  end
+
+  def show?(account:, user:, can_create_templates:)
+    self.for(account:, user:, can_create_templates:).present?
   end
 
   def dismissed?(user)

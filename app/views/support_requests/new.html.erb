@@ -2,7 +2,10 @@
 <% content_for(:html_description, 'Ask us anything about sending, signing, billing or the API. A real person reads every message and we usually reply within one business day.') %>
 <% content_for(:canonical_url, support_url) %>
 <% content_for(:indexable, 'true') %>
-<%# A full page load on purpose (data-turbo: false): the Turnstile widget script has to run again on every render, and this page carries its own security policy (TurnstileProtected), which a Turbo visit would not apply. %>
+<%# A full page load on purpose, coming AND going. The form posts with data-turbo: false because the Turnstile widget script has to run again on every render; the turbo_visit_control below covers arriving here from another page — a Turbo visit would paint this page inside the previous document, which still carries the ordinary `script-src 'self'` policy, and the widget could never load. Turbo reads the meta out of the fetched document and does a real navigation instead. %>
+<% content_for(:turbo_visit_control, 'reload') %>
+<%# The field the browser puts the caret in when the form comes back with errors. There is no script on this page (the policy forbids inline script), so the focus is decided here, on the server, and carried by the `autofocus` attribute. %>
+<% first_invalid = %i[name email topic message].find { |field| @support_request.errors.include?(field) } %>
 
 <div class="max-w-2xl mx-auto px-4 md:px-2 pt-12 md:pt-16 pb-16 md:pb-24">
   <h1 class="text-4xl md:text-5xl font-bold tracking-tight text-center">Contact support</h1>
@@ -11,11 +14,18 @@
 
   <%= form_for(@support_request, as: :support_request, url: support_path, html: { class: 'mt-10 space-y-6', data: { turbo: false } }) do |f| %>
     <% if @support_request.errors.any? %>
-      <div class="alert bg-red-50 border border-red-200 text-red-900 block" role="alert" aria-live="polite">
+      <%# Each message is a link to the field it belongs to, so somebody reading the summary with a screen reader or moving by keyboard gets to the problem in one step instead of hunting for it. Errors with no field of their own (a failed verification, say) are plain text. %>
+      <div id="form_errors" tabindex="-1" class="alert bg-red-50 border border-red-200 text-red-900 block" role="alert">
         <p class="font-semibold">We could not send that.</p>
         <ul class="mt-2 list-disc pl-5 space-y-1">
-          <% @support_request.errors.full_messages.each do |message| %>
-            <li dir="auto"><%= message %></li>
+          <% @support_request.errors.each do |error| %>
+            <li dir="auto">
+              <% if error.attribute == :base %>
+                <%= error.full_message %>
+              <% else %>
+                <a href="#support_request_<%= error.attribute %>" class="link"><%= error.full_message %></a>
+              <% end %>
+            </li>
           <% end %>
         </ul>
       </div>
@@ -27,7 +37,7 @@
         <%= f.text_field :name, readonly: true, class: 'base-input bg-base-200/70', 'aria-describedby': 'name_help', dir: 'auto' %>
         <p id="name_help" class="mt-1.5 text-sm text-base-content/60">From your account. <%= link_to 'Change it in your profile', settings_profile_index_path, class: 'link' %>.</p>
       <% else %>
-        <%= f.text_field :name, required: true, maxlength: SupportRequest::NAME_LIMIT, autocomplete: 'name',
+        <%= f.text_field :name, required: true, maxlength: SupportRequest::NAME_LIMIT, autocomplete: 'name', autofocus: first_invalid == :name,
                                 class: "base-input #{'border-red-400' if @support_request.errors.include?(:name)}",
                                 'aria-invalid': @support_request.errors.include?(:name).to_s, 'aria-describedby': ('name_error' if @support_request.errors.include?(:name)), dir: 'auto' %>
         <% if @support_request.errors.include?(:name) %>
@@ -42,7 +52,7 @@
         <%= f.email_field :email, readonly: true, class: 'base-input bg-base-200/70', 'aria-describedby': 'email_help' %>
         <p id="email_help" class="mt-1.5 text-sm text-base-content/60">We reply here.</p>
       <% else %>
-        <%= f.email_field :email, required: true, autocomplete: 'email',
+        <%= f.email_field :email, required: true, autocomplete: 'email', autofocus: first_invalid == :email,
                                   class: "base-input #{'border-red-400' if @support_request.errors.include?(:email)}",
                                   'aria-invalid': @support_request.errors.include?(:email).to_s, 'aria-describedby': "email_hint#{' email_error' if @support_request.errors.include?(:email)}" %>
         <p id="email_hint" class="mt-1.5 text-sm text-base-content/60">We reply here, so please check it.</p>
@@ -55,16 +65,17 @@
     <div class="form-control">
       <%= f.label :topic, 'What is it about?', class: 'label' %>
       <%= f.select :topic, SupportRequest::TOPICS.map { |value, label| [label, value] }, { include_blank: 'Choose one' },
-                   { required: true, class: "base-select #{'border-red-400' if @support_request.errors.include?(:topic)}",
-                     'aria-invalid': @support_request.errors.include?(:topic).to_s } %>
+                   { required: true, autofocus: first_invalid == :topic, class: "base-select #{'border-red-400' if @support_request.errors.include?(:topic)}",
+                     'aria-invalid': @support_request.errors.include?(:topic).to_s,
+                     'aria-describedby': ('topic_error' if @support_request.errors.include?(:topic)) } %>
       <% if @support_request.errors.include?(:topic) %>
-        <p class="mt-1.5 text-sm text-red-700"><%= @support_request.errors.full_messages_for(:topic).to_sentence %></p>
+        <p id="topic_error" class="mt-1.5 text-sm text-red-700"><%= @support_request.errors.full_messages_for(:topic).to_sentence %></p>
       <% end %>
     </div>
 
     <div class="form-control">
       <%= f.label :message, 'How can we help?', class: 'label' %>
-      <%= f.text_area :message, required: true, rows: 8, minlength: SupportRequest::MESSAGE_MINIMUM, maxlength: SupportRequest::MESSAGE_LIMIT,
+      <%= f.text_area :message, required: true, rows: 8, minlength: SupportRequest::MESSAGE_MINIMUM, maxlength: SupportRequest::MESSAGE_LIMIT, autofocus: first_invalid == :message,
                                 class: "base-textarea w-full text-base leading-relaxed #{'border-red-400' if @support_request.errors.include?(:message)}",
                                 'aria-invalid': @support_request.errors.include?(:message).to_s, 'aria-describedby': "message_hint#{' message_error' if @support_request.errors.include?(:message)}", dir: 'auto' %>
       <p id="message_hint" class="mt-1.5 text-sm text-base-content/60">At least <%= SupportRequest::MESSAGE_MINIMUM %> characters. Do not include passwords or card numbers.</p>
@@ -73,10 +84,10 @@
       <% end %>
     </div>
 
-    <%# The honeypot. Hidden from sight AND from assistive technology, never focusable, and outside the tab order: nobody who can see or hear the page can fill it in, so anything in it came from a script. %>
+    <%# The honeypot. Hidden from sight AND from assistive technology, never focusable, and outside the tab order: nobody who can see or hear the page can fill it in, so anything in it came from a script. The name is deliberately meaningless — a field called "website" or "url" is one browsers and password managers offer to fill, and a false catch here is silent and total (the visitor gets the receipt and no mail is sent). %>
     <div class="hidden" aria-hidden="true">
-      <label for="website">Leave this field empty</label>
-      <%= text_field_tag SupportRequestsController::HONEYPOT_FIELD, nil, id: 'website', tabindex: -1, autocomplete: 'off' %>
+      <label for="<%= SupportRequestsController::HONEYPOT_FIELD %>">Leave this field empty</label>
+      <%= text_field_tag SupportRequestsController::HONEYPOT_FIELD, nil, id: SupportRequestsController::HONEYPOT_FIELD, tabindex: -1, autocomplete: 'off' %>
     </div>
 
     <%# Cloudflare Turnstile: the token it writes into this form is verified server-side on submit (lib/turnstile.rb). Drawn only when the instance has a site key: a widget without one throws in the browser (Turnstile.widget?). %>

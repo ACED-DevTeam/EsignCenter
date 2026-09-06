@@ -1,6 +1,8 @@
-<%# Upgrade call-to-action: rendered wherever a PAID-ONLY surface is shown to an account whose plan lacks it (the server refuses the matching POST regardless — this is the friendly face of that refusal). Locals: feature (display name, required); body (optional sentence overriding the default copy); title (optional heading for a non-feature context such as the usage page or a full seat count, default "This feature requires a paid plan" — honoured by both variants); compact (optional, true renders a one-line banner for the SECOND gated surface on a page so two full cards never stack). [data-upgrade-cta] points at the billing page whenever billing is switched on and the signed-in user could actually buy (a customer account, admin); otherwise it points at the usage page, so the link is never dead. %>
-<% feature = local_assigns.fetch(:feature) %>
+<%# Upgrade call-to-action: rendered wherever a PAID-ONLY surface is shown to an account whose plan lacks it (the server refuses the matching POST regardless — this is the friendly face of that refusal). Locals: feature (display name, required); body (optional sentence overriding the default copy); title (optional heading for a non-feature context such as the usage page or a full seat count, default "This feature requires a paid plan" — honoured by both variants); compact (optional, true renders a one-line banner for the SECOND gated surface on a page so two full cards never stack); dismiss_path (optional, adds a × beside the button that DELETEs to that path — for a card the person is offered once rather than one that stands for a refusal); dismiss_data (optional data attributes for that button). [data-upgrade-cta] points at the billing page whenever billing is switched on and the signed-in user could actually buy (a customer account, admin); otherwise it points at the usage page, so the link is never dead. %>
+<%# `feature` is required exactly when the default copy needs it: a caller that supplies its own `body` (the first-completion nudge, which is not a refusal at all) has nothing to name. %>
+<% default_body = -> { safe_join([t('feature_is_available_on_the_paid_plan', feature: local_assigns.fetch(:feature)), t('upgrade_to_unlock_this_and_every_other_paid_feature')], ' ') } %>
 <% upgrade_path = upgrade_cta_path %>
+<% dismiss_path = local_assigns[:dismiss_path] %>
 <% if local_assigns[:compact] %>
   <div class="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 rounded-2xl bg-base-200 border border-base-300 px-4 py-3 <%= local_assigns[:class] %>" data-upgrade-cta-compact>
     <div class="flex items-center gap-3 flex-1 min-w-0">
@@ -9,7 +11,7 @@
       </div>
       <p class="text-sm min-w-0" dir="auto">
         <span class="font-semibold"><%= local_assigns[:title] || t('this_feature_requires_a_paid_plan') %>.</span>
-        <span class="text-base-content/70"><%= local_assigns[:body] || t('feature_is_available_on_the_paid_plan', feature:) %></span>
+        <span class="text-base-content/70"><%= local_assigns[:body] || t('feature_is_available_on_the_paid_plan', feature: local_assigns.fetch(:feature)) %></span>
       </p>
     </div>
     <a href="<%= upgrade_path %>" class="btn btn-neutral btn-sm text-white w-full sm:w-auto flex-none gap-1" data-upgrade-cta>
@@ -26,18 +28,27 @@
         </div>
         <div class="min-w-0">
           <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <p class="text-lg font-semibold leading-tight"><%= local_assigns[:title] || t('this_feature_requires_a_paid_plan') %></p>
-            <span class="badge badge-neutral badge-outline badge-sm"><%= t('paid_plan') %></span>
+            <p class="text-lg font-semibold leading-tight" dir="auto"><%= local_assigns[:title] || t('this_feature_requires_a_paid_plan') %></p>
+            <% unless dismiss_path %>
+              <span class="badge badge-neutral badge-outline badge-sm"><%= t('paid_plan') %></span>
+            <% end %>
           </div>
           <p class="text-sm text-base-content/70 mt-1" dir="auto">
-            <%= local_assigns[:body] || safe_join([t('feature_is_available_on_the_paid_plan', feature:), t('upgrade_to_unlock_this_and_every_other_paid_feature')], ' ') %>
+            <%= local_assigns[:body] || default_body.call %>
           </p>
         </div>
       </div>
-      <a href="<%= upgrade_path %>" class="btn btn-neutral text-white w-full md:w-auto flex-none gap-2" data-upgrade-cta>
-        <span><%= t('upgrade_plan') %></span>
-        <%= svg_icon('arrow_right', class: 'w-5 h-5') %>
-      </a>
+      <div class="flex items-center gap-2 w-full md:w-auto flex-none">
+        <a href="<%= upgrade_path %>" class="btn btn-neutral text-white <%= dismiss_path ? 'flex-1' : 'w-full' %> md:w-auto md:flex-none gap-2" data-upgrade-cta>
+          <span><%= t('upgrade_plan') %></span>
+          <%= svg_icon('arrow_right', class: 'w-5 h-5') %>
+        </a>
+        <% if dismiss_path %>
+          <%= button_to dismiss_path, method: :delete, class: 'btn btn-ghost btn-sm btn-circle flex-none', form_class: 'inline', 'aria-label': t('dismiss'), title: t('dismiss'), data: local_assigns.fetch(:dismiss_data, {}) do %>
+            <%= svg_icon('x', class: 'w-5 h-5') %>
+          <% end %>
+        <% end %>
+      </div>
     </div>
   </div>
 <% end %>

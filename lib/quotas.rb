@@ -350,13 +350,15 @@ module Quotas
   end
 
   # Called by ProcessSubmitterCompletionJob right after it records a
-  # first-signer completion.
-  def after_first_completion(account)
+  # first-signer completion. `completed_submitter` is the row it just wrote:
+  # it is what makes the one-time nudge below decidable without depending on
+  # who got there first (see arm_first_completion_prompt).
+  def after_first_completion(account, completed_submitter = nil)
     billing = Plans.billing_account(account)
 
     case Plans.key_for(billing)
     when Plans::FREE
-      arm_first_completion_prompt(billing)
+      arm_first_completion_prompt(billing, completed_submitter)
       free_completion_warning(billing)
     when Plans::PAID then paid_completion_signals(billing)
     end
@@ -368,24 +370,50 @@ module Quotas
   # rendered as a dismissible banner on the dashboards.
   #
   # FIRST EVER, not first this month: the count is over the whole of the
-  # billing account's history, so the banner cannot come back at a month
+  # billing FAMILY's history (account_ids, the same scope every other quota
+  # question uses, so a completion that lands on a linked child account still
+  # arms the parent that pays), so the banner cannot come back at a month
   # rollover, and an account that paid for a while and then dropped back to
-  # free is never asked again — by then its count is long past one. Written
-  # only when the row does not exist, so a dismissal is never undone.
-  def arm_first_completion_prompt(billing)
-    return unless CompletedSubmitter.where(account_id: billing.id).one?
+  # free is never asked again — by then its count is long past one.
+  #
+  # Two things make the decision race-proof, because the failure mode is
+  # permanent: a nudge that is not armed at the first completion can never be
+  # armed later, and the count only ever grows.
+  #
+  #   * only `is_first` rows count. A first document with two signers writes
+  #     one metered row and one or more `is_first: false` siblings; counting
+  #     the siblings made the account's own first document look like its
+  #     second and threw the nudge away.
+  #   * the count stops AT the row that was just written. Two documents
+  #     finishing at the same moment both commit before either asks the
+  #     question, so "how many rows are there now" answers 2 to both of them;
+  #     "how many rows are there up to and including mine" answers 1 to
+  #     exactly one of them, whichever it is.
+  #
+  # The creation lock serialises the read and the write on the billing
+  # account, so the fallback path (no row handed in — a console or a caller
+  # added later) cannot have two writers either. The row is written only when
+  # it does not exist, so a dismissal is never undone.
+  def arm_first_completion_prompt(billing, completed_submitter = nil)
+    with_creation_lock(billing) do
+      next unless first_ever_completion?(billing, completed_submitter)
 
-    config = billing.account_configs.find_or_initialize_by(
-      key: AccountConfig::FIRST_COMPLETION_UPGRADE_PROMPT_KEY
-    )
+      config = billing.account_configs.find_or_initialize_by(
+        key: AccountConfig::FIRST_COMPLETION_UPGRADE_PROMPT_KEY
+      )
 
-    return if config.persisted?
-
-    config.update!(value: { 'shown_at' => Time.current.utc.iso8601 })
+      config.update!(value: { 'shown_at' => Time.current.utc.iso8601 }) unless config.persisted?
+    end
   rescue ActiveRecord::RecordNotUnique
-    # Two signers finishing the account's first two documents at the same
-    # moment: one of them wrote the row, which is exactly the outcome wanted.
+    # Somebody else wrote the row, which is exactly the outcome wanted.
     nil
+  end
+
+  def first_ever_completion?(billing, completed_submitter)
+    scope = CompletedSubmitter.where(account_id: account_ids(billing), is_first: true)
+    scope = scope.where(id: ..completed_submitter.id) if completed_submitter
+
+    scope.one?
   end
 
   # One warning email per month from the second-to-last completion on (4 of 5

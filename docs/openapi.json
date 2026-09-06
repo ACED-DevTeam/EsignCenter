@@ -9,7 +9,7 @@
   "info": {
     "version": "1.0.0",
     "title": "EsignCenter API",
-    "description": "EsignCenter API specs (a customized fork of DocuSeal)",
+    "description": "The EsignCenter REST API: create templates, send documents for signature and read the results from your own code. Authenticate with an X-Auth-Token header; API access is on the paid plan.",
     "contact": {
       "name": "EsignCenter",
       "email": "evan@processorteam.com",

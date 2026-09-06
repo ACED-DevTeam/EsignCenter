@@ -5,6 +5,12 @@
 # summary is the card blurb (<= 140 characters). Deliberately free of product
 # numbers: a number belongs in the article body, rendered from its constant.
 # reading_minutes is the body word count at roughly 200 words a minute.
+#
+# Articles of the same section must sit TOGETHER. The index groups by section
+# and the prev/next chain at the foot of an article walks that grouping, so an
+# entry parked away from its section would send a reader out of the section
+# they are working through and skip the sibling card they just saw next to it.
+# spec/golden/help_spec.rb fails when the two orderings disagree.
 ---
 - slug: getting-started
   title: "Getting started with EsignCenter"
@@ -62,16 +68,16 @@
   updated_on: '2026-09-05'
   reading_minutes: 2
 
-- slug: api-and-webhooks
-  title: "API, webhooks and embedded signing"
-  summary: "Paid-plan developer features: tokens, the base URL, webhook events, signature verification and embedded signing."
-  section: "Developers"
-  updated_on: '2026-09-05'
-  reading_minutes: 2
-
 - slug: your-data-and-deletion
   title: "Your data, exports and deletion"
   summary: "Export everything as one zip with checksums, delete your account yourself, and see what is left behind."
   section: "Trust & data"
   updated_on: '2026-09-05'
   reading_minutes: 3
+
+- slug: api-and-webhooks
+  title: "API, webhooks and embedded signing"
+  summary: "Paid-plan developer features: tokens, the base URL, webhook events, signature verification and embedded signing."
+  section: "Developers"
+  updated_on: '2026-09-05'
+  reading_minutes: 2

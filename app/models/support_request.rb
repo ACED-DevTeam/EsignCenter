@@ -33,9 +33,18 @@ class SupportRequest
   attr_reader :name, :email, :message
   attr_accessor :topic
 
-  validates :name, presence: true, length: { maximum: NAME_LIMIT }
+  # True when the name and the address came from the signed-in person's own
+  # profile rather than from this form (SupportRequestsController#prefill). They
+  # are then OURS, they are already whatever the account rules allowed, and the
+  # visitor cannot change them here — so this form's stricter rules are not
+  # applied to them. The message and the topic are still the visitor's and are
+  # still validated.
+  attr_accessor :trusted_identity
+
+  validates :name, presence: true, length: { maximum: NAME_LIMIT }, unless: :trusted_identity
   validates :email, presence: true, format: { with: User::FULL_EMAIL_REGEXP,
-                                              message: 'does not look like an email address' }
+                                              message: 'does not look like an email address' },
+                    unless: :trusted_identity
   validates :topic, inclusion: { in: TOPICS.keys, message: 'is not one of the choices' }
   validates :message, presence: true,
                       length: { minimum: MESSAGE_MINIMUM, maximum: MESSAGE_LIMIT }

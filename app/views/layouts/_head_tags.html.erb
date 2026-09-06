@@ -2,3 +2,7 @@
   <%= content_for(:html_title) || (signed_in? ? Docuseal.product_name : "#{Docuseal.product_name} — Send it. Get it signed. Prove it.") %>
 </title>
 <%= render 'shared/meta' %>
+<%# A page that has to be a REAL browser load rather than a Turbo visit says so with `content_for(:turbo_visit_control, 'reload')`. The one case today is a page whose Content-Security-Policy is widened for the Cloudflare Turnstile widget (/support, /sign_up): a Turbo visit paints the new page inside the OLD document, which still carries the ordinary `script-src 'self'`, so the widget could never load and the form could never be submitted. Turbo reads this out of the fetched document and navigates for real instead. %>
+<% if (visit_control = content_for(:turbo_visit_control)) %>
+  <meta name="turbo-visit-control" content="<%= visit_control %>">
+<% end %>

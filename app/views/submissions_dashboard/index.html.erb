@@ -7,9 +7,7 @@
     themselves whether there is anything to show, so the two dashboards ask
     the same question in the same words. %>
 <% if signed_in? && current_account.customer? %>
-  <% if FirstRunChecklist.show?(account: current_account, user: current_user, can_create_templates: can?(:create, ::Template)) %>
-    <%= render 'dashboard/first_run_checklist' %>
-  <% end %>
+  <%= render 'dashboard/first_run_checklist' %>
   <%= render 'dashboard/first_completion_prompt' %>
 <% end %>
 <div class="flex justify-between items-center w-full mb-4">

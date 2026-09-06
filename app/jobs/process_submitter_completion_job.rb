@@ -18,7 +18,7 @@ class ProcessSubmitterCompletionJob
     # the same contract as Quotas.record_paid_signals.
     if completed_submitter.is_first && submitter.account.customer?
       begin
-        Quotas.after_first_completion(submitter.account)
+        Quotas.after_first_completion(submitter.account, completed_submitter)
       rescue StandardError => e
         ErrorReport.error(e, account_id: submitter.account_id)
       end

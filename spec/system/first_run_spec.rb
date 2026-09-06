@@ -123,6 +123,93 @@ RSpec.describe 'First-run checklist' do
     end
   end
 
+  # --- review 1 regressions --------------------------------------------------
+
+  context 'when the app tour would draw its welcome card too' do
+    # Two onboarding widgets making the same offer, 200 pixels apart, on a
+    # brand-new account's first screen. The checklist supersedes the tour's
+    # welcome card while it is showing; the tour itself is untouched.
+    it 'takes the app tour\'s welcome card off the dashboard while it is showing' do
+      seed_starter_template!
+
+      visit root_path
+
+      expect(page).to have_css('[data-first-run-checklist]')
+      expect(page).to have_no_css('#app_tour_manager')
+      expect(page).to have_no_content('Start tour')
+    end
+
+    it 'gives the welcome card back once the checklist has been dismissed' do
+      seed_starter_template!
+
+      visit root_path
+      find('[data-first-run-dismiss]').click
+
+      expect(page).to have_no_css('[data-first-run-checklist]')
+
+      visit root_path
+
+      expect(page).to have_css('#app_tour_manager')
+    end
+  end
+
+  context 'when the page is read out rather than looked at' do
+    # Colour, a strikethrough and an unlabelled tick say nothing to assistive
+    # technology, and "1 of 3 done" never says WHICH one (review 1 M2).
+    it 'names the done state of every step in words' do
+      own = create(:template, account:, author: user, only_field_types: %w[text], name: 'Our supplier contract')
+      create(:submission, :with_submitters, template: own, created_by_user: user)
+
+      visit root_path
+
+      expect(page).to have_css('[data-first-run-step="choose"][data-done="true"]')
+      done = page.all('.sr-only', visible: :all).map(&:text)
+      expect(done.count { |text| text.include?(I18n.t('first_run_step_done')) }).to be >= 2
+      expect(done.count { |text| text.include?(I18n.t('first_run_step_not_done')) }).to be >= 1
+
+      # The numbered badge is decoration once the status is in the text.
+      expect(page).to have_css('[data-first-run-step="send"] span[aria-hidden="true"]', visible: :all)
+      expect(page).to have_css("ol[aria-label='#{I18n.t('first_run_checklist_title')}']")
+    end
+  end
+
+  context 'when the first document has been signed' do
+    # The banner IS shared/_upgrade_cta with its own words and a dismiss ×
+    # (review 1 M1), so this is where it is looked at: the screenshots below
+    # are the visual pass on that card.
+    before do
+      account.account_configs.create!(key: AccountConfig::FIRST_COMPLETION_UPGRADE_PROMPT_KEY,
+                                      value: { 'shown_at' => Time.current.utc.iso8601 })
+    end
+
+    it 'draws the shared upgrade card at phone and desktop widths' do
+      { 390 => 844, 1440 => 900 }.each do |width, height|
+        page.driver.resize(width, height)
+
+        visit root_path
+
+        expect(page).to have_css('[data-first-completion-prompt] [data-upgrade-cta]')
+        expect(page).to have_content(I18n.t('first_completion_prompt_title'))
+        expect(page.evaluate_script('document.documentElement.scrollWidth <= document.documentElement.clientWidth'))
+          .to be(true), "the upgrade nudge scrolls sideways at #{width}px"
+
+        page.driver.browser.screenshot(path: screenshot_dir.join("completion-prompt-#{width}.png").to_s, full: true)
+      end
+    end
+
+    it 'puts itself away for the whole account when it is dismissed' do
+      visit root_path
+
+      find('[data-first-completion-dismiss]').click
+
+      expect(page).to have_no_css('[data-first-completion-prompt]')
+
+      visit root_path
+
+      expect(page).to have_no_css('[data-first-completion-prompt]')
+    end
+  end
+
   context 'when the card does not belong' do
     it 'stays away from an internal account' do
       internal = create(:account, :internal)

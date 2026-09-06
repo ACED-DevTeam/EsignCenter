@@ -34,6 +34,7 @@
 #  index_submitters_on_external_id                  (external_id)
 #  index_submitters_on_slug                         (slug) UNIQUE
 #  index_submitters_on_submission_id                (submission_id)
+#  index_submitters_on_submission_id_and_uuid       (submission_id,uuid) UNIQUE
 #
 # Foreign Keys
 #

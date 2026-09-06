@@ -35,6 +35,13 @@ module HelpCenter
   # the same way LegalController does for an unknown document.
   UnknownArticle = Class.new(StandardError)
 
+  # The same reasoning as OpenapiDocument::CACHE_LOCK: /help is a public page
+  # several Puma threads can enter at once on a cold process, and a thread
+  # handed a half-built cache would call `group_by` on nil and 500. The pair is
+  # published after the parse, under the lock, and a failed parse publishes
+  # nothing.
+  CACHE_LOCK = Mutex.new
+
   module_function
 
   # Parsed once and re-parsed when the file itself changes, so the writer sees
@@ -42,11 +49,20 @@ module HelpCenter
   # for the parse twice.
   def articles
     mtime = REGISTRY_PATH.mtime
+    cached = @cache
 
-    return @articles if defined?(@registry_mtime) && @registry_mtime == mtime
+    return cached.last if cached && cached.first == mtime
 
-    @registry_mtime = mtime
-    @articles = load_articles
+    CACHE_LOCK.synchronize do
+      cached = @cache
+
+      return cached.last if cached && cached.first == mtime
+
+      loaded = load_articles
+      @cache = [mtime, loaded].freeze
+
+      loaded
+    end
   end
 
   def load_articles
@@ -81,11 +97,23 @@ module HelpCenter
     articles.group_by(&:section)
   end
 
-  # The article before and after this one, for the foot of an article page.
-  # The list does not wrap: the first has no previous and the last no next.
-  def neighbours(article)
-    index = articles.index(article)
+  # The reading order: the order the index draws the cards in, which is the
+  # registry order regrouped by section. The registry is written so the two are
+  # already the same (REGISTRY.yml's header says so and help_spec enforces it);
+  # walking the grouping anyway means an entry parked away from its section can
+  # only ever make the index look odd, never send a reader out of the section
+  # they are part-way through.
+  def ordered_articles
+    sections.values.flatten
+  end
 
-    [index.positive? ? articles[index - 1] : nil, articles[index + 1]]
+  # The article before and after this one, for the foot of an article page, in
+  # the order the index offers them. The list does not wrap: the first has no
+  # previous and the last no next.
+  def neighbours(article)
+    ordered = ordered_articles
+    index = ordered.index(article)
+
+    [index.positive? ? ordered[index - 1] : nil, ordered[index + 1]]
   end
 end

@@ -41,7 +41,12 @@ class SupportRequestsController < ApplicationController
 
   # A field no human sees and no browser fills. A bot that fills every input
   # on the page names itself by writing here.
-  HONEYPOT_FIELD = 'website'
+  #
+  # The name is deliberately meaningless. It used to be `website`, which is a
+  # name browsers and password managers recognise and offer to fill — and a
+  # false catch is the worst shape this form can fail in: the visitor gets the
+  # ordinary receipt, believes they have written to us, and no mail is sent.
+  HONEYPOT_FIELD = 'contact_reference_code'
 
   skip_before_action :maybe_redirect_to_setup
   skip_before_action :authenticate_user!
@@ -80,10 +85,21 @@ class SupportRequestsController < ApplicationController
 
   # Signed in, the name and the address are ours, not the form's: the fields
   # are shown read-only and whatever was posted for them is discarded.
+  #
+  # `trusted_identity` then takes them out of the form's own validation, which
+  # is stricter than the rules that let them into a User row in the first place
+  # — a profile may carry no name at all, a name longer than this form allows,
+  # or an address with a character this form's pattern rejects. Holding OUR
+  # data to the form's rules would 422 a signed-in customer on fields they
+  # cannot edit here, on the one page that exists to reach a human. A profile
+  # with no name at all falls back to the address, which is the only other
+  # thing we know them by.
   def prefill
     return {} unless signed_in?
 
-    { name: current_user.full_name, email: current_user.email }
+    { name: current_user.full_name.presence || current_user.email,
+      email: current_user.email,
+      trusted_identity: true }
   end
 
   def support_request_params

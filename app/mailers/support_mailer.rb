@@ -22,8 +22,11 @@ class SupportMailer < ApplicationMailer
 
     put_metadata('tag' => 'support_request', 'topic' => topic)
 
+    # A signed-in person's name comes from their profile, which is not held to
+    # this form's length rule (SupportRequest#trusted_identity), so the subject
+    # trims it rather than carrying an arbitrarily long line into the mailbox.
     mail(to: Docuseal::SUPPORT_EMAIL, reply_to: email,
-         subject: "[EsignCenter support] #{topic_label} — #{name}")
+         subject: "[EsignCenter support] #{topic_label} — #{name.to_s.truncate(SupportRequest::NAME_LIMIT)}")
   end
 
   private

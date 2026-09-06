@@ -35,9 +35,10 @@ RSpec.describe 'Support form', type: :request do
   end
 
   def support_params(name: 'Ada Lovelace', email: 'ada@example.com', topic: 'sending', body: nil,
-                     token: 'turnstile-token', website: nil)
+                     token: 'turnstile-token', honeypot: nil)
     { support_request: { name:, email:, topic:, message: body || message },
-      'cf-turnstile-response' => token, 'website' => website }.compact
+      'cf-turnstile-response' => token,
+      SupportRequestsController::HONEYPOT_FIELD => honeypot }.compact
   end
 
   describe 'GET /support' do
@@ -190,7 +191,7 @@ RSpec.describe 'Support form', type: :request do
       deliveries.clear
 
       expect do
-        post '/support', params: support_params(website: 'http://spam.example.com')
+        post '/support', params: support_params(honeypot: 'http://spam.example.com')
       end.not_to change(deliveries, :count)
 
       expect(response).to have_http_status(:ok)
@@ -252,8 +253,139 @@ RSpec.describe 'Support form', type: :request do
       deliveries.clear
 
       expect do
-        post '/support', params: support_params(token: nil, website: 'http://spam.example.com')
+        post '/support', params: support_params(token: nil, honeypot: 'http://spam.example.com')
       end.not_to change(deliveries, :count)
+    end
+  end
+
+  # --- review 1 regressions --------------------------------------------------
+
+  describe 'reaching the form through a Turbo link (Codex 1)' do
+    # The page's policy is widened for the Turnstile widget on THIS document.
+    # A Turbo visit paints it inside the previous document, which still carries
+    # the ordinary `script-src 'self'`, so the widget could never load and the
+    # form could never be submitted. The meta is what makes Turbo navigate for
+    # real instead.
+    it 'tells Turbo to reload rather than paint the page inside the previous document' do
+      get '/support'
+
+      expect(doc.at_css('head meta[name="turbo-visit-control"]')['content']).to eq('reload')
+    end
+
+    it 'says the same on the sign-up page, which carries the same widget' do
+      get '/sign_up'
+
+      expect(doc.at_css('head meta[name="turbo-visit-control"]')['content']).to eq('reload')
+    end
+
+    it 'says nothing of the sort on an ordinary marketing page' do
+      get '/pricing'
+
+      expect(doc.css('meta[name="turbo-visit-control"]')).to be_empty
+    end
+  end
+
+  describe 'a signed-in person whose profile the form would refuse (Codex 5)' do
+    let(:account) { create(:account) }
+
+    def post_signed_in_as(user)
+      sign_in user
+      stub_turnstile(success: true)
+
+      post '/support', params: support_params(name: 'ignored', email: 'ignored@example.com')
+    end
+
+    it 'accepts a profile with no name at all, writing to us as their address', sidekiq: :inline do
+      user = create(:user, account:, first_name: '', last_name: '', email: 'noname@example.com')
+
+      expect { post_signed_in_as(user) }.to change(deliveries, :count).by(1)
+
+      expect(response).to have_http_status(:ok)
+      expect(deliveries.last.subject).to include('noname@example.com')
+      expect(deliveries.last.reply_to).to eq(['noname@example.com'])
+    end
+
+    it 'accepts a name longer than the form allows, trimming only the subject line', sidekiq: :inline do
+      long = 'Wolfeschlegelsteinhausenbergerdorff' * 5
+      user = create(:user, account:, first_name: long, last_name: 'Sr', email: 'long@example.com')
+
+      expect { post_signed_in_as(user) }.to change(deliveries, :count).by(1)
+
+      expect(response).to have_http_status(:ok)
+      expect(deliveries.last.subject).to include(user.full_name.truncate(SupportRequest::NAME_LIMIT))
+      expect(deliveries.last.subject).not_to include(user.full_name)
+    end
+
+    it 'accepts an address this form\'s own pattern would reject', sidekiq: :inline do
+      user = create(:user, account:, email: 'a%b@example.com')
+
+      expect { post_signed_in_as(user) }.to change(deliveries, :count).by(1)
+
+      expect(response).to have_http_status(:ok)
+      expect(deliveries.last.reply_to).to eq(['a%b@example.com'])
+    end
+
+    it 'still holds the visitor\'s own words to the rules' do
+      user = create(:user, account:, email: 'grace@example.com')
+
+      sign_in user
+      stub_turnstile(success: true)
+
+      expect { post '/support', params: support_params(body: 'too short') }.not_to change(deliveries, :count)
+
+      expect(response).to have_http_status(:unprocessable_content)
+    end
+  end
+
+  describe 'the error summary and the fields it points at' do
+    before { stub_turnstile(success: true) }
+
+    it 'links every message to its field, gives the topic error an id, and focuses the first bad one' do
+      post '/support', params: support_params(email: 'not-an-address', topic: 'nonsense', body: 'short')
+
+      expect(response).to have_http_status(:unprocessable_content)
+
+      summary = doc.at_css('#form_errors')
+      expect(summary['role']).to eq('alert')
+      expect(summary['tabindex']).to eq('-1')
+      summary.css('li a').each do |link|
+        expect(doc.at_css(link['href'])).to be_present, "#{link['href']} points at no field"
+      end
+
+      # The topic select was the one field whose error assistive technology
+      # could not reach: no id on the message, no aria-describedby on the
+      # select (review 1 M9).
+      expect(doc.at_css('#topic_error')).to be_present
+      expect(doc.at_css('#support_request_topic')['aria-describedby']).to include('topic_error')
+
+      # Email is the first field in order with an error, so that is where the
+      # caret lands. No script: the page's policy forbids inline JavaScript.
+      expect(doc.at_css('#support_request_email')['autofocus']).to be_present
+      # And nowhere else: `autofocus="false"` is still autofocus to a browser.
+      expect(doc.at_css('#support_request_topic')['autofocus']).to be_nil
+      expect(doc.at_css('#support_request_message')['autofocus']).to be_nil
+      expect(response.body).not_to include('autofocus="false"')
+    end
+
+    it 'shows no alert container at all when there is nothing wrong' do
+      get '/support'
+
+      expect(doc.css('#form_errors')).to be_empty
+      expect(doc.css('[role="alert"]')).to be_empty
+    end
+  end
+
+  describe 'the honeypot\'s name' do
+    # A field called `website` or `url` is one browsers and password managers
+    # offer to fill, and a false catch is silent and total: the visitor gets
+    # the receipt and no mail is sent (review 1 L7).
+    it 'is not a name any form-filler recognises' do
+      get '/support'
+
+      expect(SupportRequestsController::HONEYPOT_FIELD).not_to be_in(%w[website url homepage company])
+      field = doc.at_css("input[name='#{SupportRequestsController::HONEYPOT_FIELD}']")
+      expect(field['autocomplete']).to eq('off')
+      expect(field['tabindex']).to eq('-1')
     end
   end
 

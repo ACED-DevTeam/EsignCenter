@@ -22,6 +22,7 @@
 #  purged_at                       :datetime
 #  sending_pause_reason            :string
 #  sending_paused_at               :datetime
+#  sending_resumed_at              :datetime
 #  suspended_at                    :datetime
 #  suspension_reason               :string
 #  timezone                        :string           not null

@@ -23,6 +23,13 @@ module FirstCompletionPrompt
     return unless account.customer?
     return unless Plans.billing_account(account) == account
     return unless Plans.key_for(account) == Plans::FREE
+    # A frozen or read-only account cannot dismiss it: the × POSTs a write, and
+    # the read-only layer refuses that write on purpose
+    # (spec/golden/lifecycle_suspension_spec.rb). A stuck card on somebody
+    # already having a bad day is worse than no card, so it is not offered at
+    # all — and the moment the account is well again it is, because nothing
+    # about the armed row has changed.
+    return if AccountStates.read_only?(account) || user.read_only?
 
     config = account.account_configs.find_by(key: KEY)
 
