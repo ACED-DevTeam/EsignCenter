@@ -58,16 +58,17 @@ module FirstRunChecklist
   # sent its first document, the checklist retired itself, and the dashboard
   # congratulated them by offering a beginner's tour.
   #
-  # So the question is about the ACCOUNT and not about today's card. A
+  # So the question is about the ACCOUNT and not about today's card: a
   # customer account inside the checklist's window has been offered the
-  # checklist, and one that has sent anything at all is past being welcomed —
-  # either way the tour's welcome card has nothing left to say. Only that card
-  # is affected: the tour itself is untouched and still runs from the template
-  # builder and from `?tour=true`.
+  # checklist, and the tour's welcome card has nothing left to say there. It
+  # is only the window — a person joining an established account months later
+  # is still welcomed by the tour (the checklist never applied to them). Only
+  # that card is affected: the tour itself is untouched and still runs from the
+  # template builder and from `?tour=true`.
   def supersedes_app_tour?(account)
     return false unless account.customer?
 
-    account.created_at >= WINDOW.ago || account.submissions.exists?
+    account.created_at >= WINDOW.ago
   end
 
   def dismissed?(user)

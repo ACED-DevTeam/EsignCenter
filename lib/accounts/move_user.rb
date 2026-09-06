@@ -69,7 +69,10 @@ module Accounts
     #
     # `EmailMessage` needs no scope: it is the body of a mail a USER composed
     # and has no platform-mail equivalent.
-    MOVED_SCOPES = { EmailEvent => { emailable_type: 'Submitter' } }.freeze
+    # Submitter rows follow the documents; Template rows are a moved template's own
+    # share-link verification mail (TemplateMailer), so they follow it too. Account
+    # rows are the platform's letters to the OLD company and stay for its purge.
+    MOVED_SCOPES = { EmailEvent => { emailable_type: %w[Submitter Template] } }.freeze
 
     module_function
 
@@ -301,7 +304,7 @@ module Accounts
       return if names.empty?
 
       StarterTemplates.marked(Template.where(account_id: from.id, name: names))
-                      .where.missing(:submissions).each(&:destroy!)
+                      .where(shared_link: false).where.missing(:submissions).each(&:destroy!)
     end
 
     # Folders are merged by NAME, because every account has a "Default" folder
