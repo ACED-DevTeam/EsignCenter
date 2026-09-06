@@ -11,7 +11,7 @@ module Accounts
   # docs/account-deletion.md, and `orphans` afterwards proves the walk was
   # complete.
   #
-  # Three things deliberately survive a purge:
+  # Four things deliberately survive a purge:
   #
   #   * verified_documents — the /verify fingerprint records. They hold a
   #     SHA-256, a date and a signer count and name nobody, so they are not
@@ -22,6 +22,16 @@ module Accounts
   #   * the accounts row itself — renamed "Deleted account" and stamped
   #     `purged_at`, so every id that still points at it (a verified document,
   #     a Stripe inbox row) points at something rather than nowhere.
+  #   * operator_events — the platform's own audit of what an operator did TO
+  #     this account, the purge itself included. It is not the customer's
+  #     record to take away: it is the record of our access to them, and the
+  #     Privacy Policy already promises it outlives the account ("our own log
+  #     of support access to the account"). Kept WITH its `account_id`, so the
+  #     console can still answer "what did we ever do to that account" — the
+  #     row points at the tombstone, which is exactly what the tombstone is
+  #     for. But kept is not the same as untouched: `details` could carry the
+  #     impersonated administrator's email address, so it is scrubbed the way
+  #     the Stripe rows beside it are (`scrub_operator_events!`).
   #
   # Running it twice is a no-op: the second call sees `purged_at` and answers
   # :already_purged.
@@ -113,6 +123,38 @@ module Accounts
     # bytes we cannot read are bytes we cannot promise are impersonal.
     REDACTED = '[redacted]'
     UNREADABLE_PAYLOAD = '{"redacted":true}'
+
+    # Keys inside `operator_events.details` whose value is a PERSON rather
+    # than the action that was taken. Exactly one of them is written today —
+    # `user_email`, the impersonated administrator's address, written on every
+    # `impersonation.start` by Operator::ImpersonationsController — and the
+    # rest are here so that a console feature which starts recording an
+    # address or a name is scrubbed on the day it ships rather than on the day
+    # somebody audits it. Everything else the console writes is ids, counts,
+    # booleans, iso8601 timestamps, enum outcomes, Stripe object ids and route
+    # paths, and all of it stays: that is what makes the row an audit.
+    #
+    # `before` and `after` are deliberately NOT on this list, even though
+    # Operator::SettingsController writes an email address into them. That
+    # address is the platform's OWN alert mailbox, not a customer's, and those
+    # rows are recorded with no `account:` at all — so a per-account walk never
+    # reaches them. Meanwhile `limits.update` writes `before`/`after` as nested
+    # hashes of numeric caps on rows that DO belong to the account. Redacting
+    # the pair by name would blank an account's limit history, which is
+    # impersonal audit, and still not touch the global rows it was aimed at.
+    #
+    # `records` (impersonation.action) is a nested hash and is walked like any
+    # other, but nothing in it can match: the guard already filters it down to
+    # id-shaped keys and values before it is ever written.
+    OPERATOR_EVENT_PERSONAL_KEYS = %w[
+      admin_email email first_name full_name last_name name phone
+      recipient_email signer_email user_email user_name user_phone
+    ].freeze
+
+    # A different marker from the Stripe REDACTED, on purpose: reading
+    # `[purged]` in an operator event says the ACCOUNT was purged, which is the
+    # only reason a row in this table is ever rewritten.
+    PURGED = '[purged]'
 
     module_function
 
@@ -1016,6 +1058,12 @@ module Accounts
       scrub_stripe_payloads!(account)
 
       StripeEventInbox.where(account_id: account.id).update_all(account_id: nil)
+
+      # The operator audit stays, and stays attached to the tombstone — but
+      # the person it names does not (checkpoint 10, fix-9). Same transaction
+      # as everything above it: a scrub that could be rolled back separately
+      # from the delete is a scrub that can be skipped.
+      scrub_operator_events!(account)
     end
 
     # The export zips the customer asked for (Session 8 phase D). A method of
@@ -1087,13 +1135,17 @@ module Accounts
     # however deep. A `nil` stays `nil`: "line2": null said nothing about
     # anybody in the first place, and a redaction marker there would only make
     # the row harder to read.
-    def scrub_personal_data(value)
+    #
+    # The key list and the marker are arguments so that the operator-event
+    # scrub below walks structures the same way rather than growing a second,
+    # subtly different walker: one recursion, two vocabularies.
+    def scrub_personal_data(value, keys = PERSONAL_PAYLOAD_KEYS, marker = REDACTED)
       case value
       when Hash
         value.to_h do |key, nested|
-          [key, PERSONAL_PAYLOAD_KEYS.include?(key) ? redact(nested) : scrub_personal_data(nested)]
+          [key, keys.include?(key) ? redact(nested, marker) : scrub_personal_data(nested, keys, marker)]
         end
-      when Array then value.map { |nested| scrub_personal_data(nested) }
+      when Array then value.map { |nested| scrub_personal_data(nested, keys, marker) }
       else value
       end
     end
@@ -1101,13 +1153,42 @@ module Accounts
     # Structure kept, leaves replaced — so an address stays an address-shaped
     # object with nothing in it, and any reader that walks into it finds a
     # string rather than a NoMethodError.
-    def redact(value)
+    def redact(value, marker = REDACTED)
       case value
-      when Hash then value.transform_values { |nested| redact(nested) }
-      when Array then value.map { |nested| redact(nested) }
+      when Hash then value.transform_values { |nested| redact(nested, marker) }
+      when Array then value.map { |nested| redact(nested, marker) }
       when nil then nil
-      else REDACTED
+      else marker
       end
+    end
+
+    # The operator audit, de-identified.
+    #
+    # `operator_events` survives a purge and keeps its `account_id` — it is the
+    # record of what WE did to that account, including the purge, and the
+    # Privacy Policy promises it outlives the account. But an
+    # `impersonation.start` row carries `details['user_email']`, the address of
+    # the administrator an operator signed in as, and leaving that behind would
+    # have kept a named customer in a table nobody had documented as a survivor
+    # (found by the schema-derived inventory proof, checkpoint 10 fix-5 E3).
+    #
+    # Only `details` is rewritten. `action`, `subject`, `reason`, `ip`,
+    # `created_at`, `operator_user_id` and `account_id` all stay: the reason is
+    # what our own operator typed to justify the access, the ip is our
+    # operator's, and the rest is the shape of the audit. There is no
+    # `updated_at` on this table, so the write touches the one column it means
+    # to.
+    def scrub_operator_events!(account)
+      OperatorEvent.where(account_id: account.id).find_each do |row|
+        scrubbed = scrub_personal_data(row.details, OPERATOR_EVENT_PERSONAL_KEYS, PURGED)
+
+        # update_columns, so ApplicationRecord's whitespace stripping leaves
+        # the scrubbed values exactly as written — and untouched rows (the
+        # overwhelming majority) are not rewritten at all.
+        row.update_columns(details: scrubbed) if scrubbed != row.details
+      end
+
+      nil
     end
 
     # People last, because half the tables above point at them. Deleting the

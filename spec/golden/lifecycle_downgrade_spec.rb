@@ -1026,10 +1026,12 @@ RSpec.describe 'Deleting an account', type: :request do
         'stripe_event_inboxes' => 'the Stripe audit, kept with account_id nullified and the customer ' \
                                   'scrubbed out of the stored event (asserted below).',
         'operator_events' => 'the platform\'s own audit of what an operator did — including the purge ' \
-                             'itself — so it has to outlive the account it is about. NOT documented in ' \
-                             'docs/account-deletion.md, and its `details` can still carry an ' \
-                             'impersonated administrator\'s address: raised to the CTO at checkpoint 10 ' \
-                             '(fix-5, E3) rather than silenced here.',
+                             'itself — so it has to outlive the account it is about, and the Privacy ' \
+                             'Policy already promises it does ("our own log of support access to the ' \
+                             'account"). Kept WITH its account_id, pointing at the tombstone, and ' \
+                             'documented in docs/account-deletion.md — but the person is scrubbed out ' \
+                             'of `details` first, the way the Stripe rows beside it are (checkpoint 10, ' \
+                             'fix-9; raised by fix-5, E3, and asserted below).',
         'console1984_sessions' => 'a false positive of the column heuristic: its `user_id` is a ' \
                                   'console1984_users row (who opened a Rails console), never an ' \
                                   'account user.'
@@ -1396,6 +1398,67 @@ RSpec.describe 'Deleting an account', type: :request do
       expect(kept.values_at('id', 'mode', 'currency', 'amount_total', 'payment_status'))
         .to eq(['cs_test_a1hd4xzTGg4aefbWwoVlyN44Ge31P23nGKzppJGU9R6VgaPRUEBMqSAqzd',
                 'payment', 'usd', 3000, 'paid'])
+    end
+
+    # `operator_events` is the survivor nobody had written down: the
+    # schema-derived walk above found it (checkpoint 10, fix-5 E3), not the
+    # INVENTORY-indexed one, because nothing empties it. It STAYS — it is our
+    # audit of our own access to the account, including the purge itself, and
+    # the Privacy Policy promises "our own log of support access to the
+    # account" outlives the deletion. But it stayed byte for byte, and an
+    # `impersonation.start` row carries `user_email`: the address of the
+    # administrator an operator signed in as. "Everything was destroyed" was
+    # not true while that sat in a table (checkpoint 10, fix-9).
+    it 'keeps the operator audit attached to the tombstone and scrubs the person out of it' do
+      operator = create(:user, account: create(:account, :internal))
+      address = admin.email
+
+      started = OperatorEvents.record!(
+        operator:, action: 'impersonation.start', account:, subject: admin,
+        reason: 'Ticket 4182: signer says the form will not open',
+        details: { mode: SupportImpersonation::READ_ONLY_MODE, user_email: address }
+      )
+      ended = OperatorEvents.record!(
+        operator:, action: 'impersonation.end', account:,
+        details: { start_event_id: started.id, ended_by: 'operator', duration_seconds: 240,
+                   mode: SupportImpersonation::READ_ONLY_MODE, refused_count: 0, action_count: 2 }
+      )
+      limits = OperatorEvents.record!(
+        operator:, action: 'limits.update', account:,
+        details: { before: { completions_per_month: 99 }, after: { completions_per_month: 50 } }
+      )
+      ended_details = ended.details
+
+      # The fixture has to really carry the person, or this proves nothing.
+      expect(started.details['user_email']).to eq(address)
+      expect(address).to be_present
+
+      Accounts::Purge.call(account)
+
+      # The row survives, and it still points at the account it is about —
+      # which is now the tombstone. That is what the tombstone is for.
+      expect(account.reload.purged_at).to be_present
+      expect(started.reload.account_id).to eq(account.id)
+      expect(OperatorEvent.where(account_id: account.id).count).to eq(3)
+
+      # And the person is nowhere in the table any more.
+      expect(started.details['user_email']).to eq(Accounts::Purge::PURGED)
+      expect(OperatorEvent.where(account_id: account.id).map { |row| row.details.to_json }.join)
+        .not_to include(address)
+
+      # Everything that makes the row an audit is untouched: what was done, by
+      # whom, why, when, and from where.
+      expect(started).to have_attributes(action: 'impersonation.start', operator_user_id: operator.id,
+                                         reason: 'Ticket 4182: signer says the form will not open',
+                                         created_at: be_present)
+      expect(started.details['mode']).to eq(SupportImpersonation::READ_ONLY_MODE)
+
+      # An event that never named anybody is not rewritten at all, and the
+      # nested numeric hashes `limits.update` writes into `before`/`after` are
+      # not collateral damage of scrubbing by key name.
+      expect(ended.reload.details).to eq(ended_details)
+      expect(limits.reload.details).to eq('before' => { 'completions_per_month' => 99 },
+                                          'after' => { 'completions_per_month' => 50 })
     end
 
     it 'refuses an internal account and an account that is still being charged' do
