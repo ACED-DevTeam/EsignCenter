@@ -492,8 +492,8 @@ en: &en
   sent_with_docuseal_pro_html: 'Sent with <a href="%{product_url}">EsignCenter Pro</a>'
   show_send_with_docuseal_pro_attribution_in_emails_html: Show "Sent with <span class="link">EsignCenter Pro</span>" attribution in emails
   sign_documents_with_trusted_certificate_provided_by_docu_seal_your_documents_and_data_are_never_shared_with_docu_seal_p_d_f_checksum_is_provided_to_generate_a_trusted_signature: Sign documents with trusted certificate provided by EsignCenter. Your documents and data are never shared with EsignCenter. PDF checksum is provided to generate a trusted signature.
-  you_have_been_invited_to_submit_the_name_form: 'You have been invited to submit the "%{name}" form.'
-  you_have_been_invited_to_sign_the_name: 'You have been invited to sign the "%{name}".'
+  you_have_been_invited_to_submit_the_name_form: '%{sender} sent you "%{name}" to fill in.'
+  you_have_been_invited_to_sign_the_name: '%{sender} sent you "%{name}" to sign.'
   alternatively_you_can_review_and_download_your_copy_using_the_link_below: "Alternatively, you can review and download your copy using the link below:"
   please_check_the_copy_of_your_name_in_the_email_attachments: 'Please check the copy of your "%{name}" in the email attachments.'
   awaiting_completion_by_the_other_party: "Awaiting completion by the other party"
@@ -502,16 +502,16 @@ en: &en
   please_contact_us_by_replying_to_this_email_if_you_have_any_questions: "Please contact us by replying to this email if you have any questions."
   submitter_invitation_sms_body_sign: '{account.name} has invited you to sign a document: {submitter.link}'
   verification_code_sms_body: 'Verification code: {code}'
-  you_are_invited_to_submit_a_form: 'You are invited to submit a form'
-  you_are_invited_to_sign_a_document: 'You are invited to sign a document'
+  you_are_invited_to_submit_a_form: '{account.name} sent you "{template.name}" to fill in'
+  you_are_invited_to_sign_a_document: '{account.name} sent you "{template.name}" to sign'
   you_are_invited_to_sign_documents: 'You are invited to sign documents'
   your_document_copy: 'Your document copy'
-  name_has_been_completed_by_submitters: '"%{name}" has been completed by %{submitters}.'
-  template_name_has_been_completed_by_submitters: '{template.name} has been completed by {submission.submitters}'
+  name_has_been_completed_by_submitters: '"%{name}" was signed by %{submitters}.'
+  template_name_has_been_completed_by_submitters: '"{template.name}" was signed by {submission.submitters}'
   submitter_invitation_email_sign_body: |
     Hi there,
 
-    You have been invited to sign the "{template.name}".
+    {account.name} sent you "{template.name}" to sign.
 
     [Review and Sign]({submitter.link})
 
@@ -522,7 +522,7 @@ en: &en
   submitter_completed_email_body: |
     Hi,
 
-    "{template.name}" has been completed by {submission.submitters}
+    "{template.name}" was signed by {submission.submitters}
 
     {submission.link}
   submitter_documents_copy_email_body: |
@@ -589,6 +589,7 @@ en: &en
   full_name: "Full name"
   free_tier_summary: "Free: 5 completed documents a month, 1 user."
   continue_with_google: "Continue with Google"
+  continue_with_apple: "Continue with Apple"
   or_sign_up_with_email: "or sign up with email"
   creating_account: "Creating account"
   by_creating_an_account_you_agree_to_html: "By creating an account you agree to the %{terms} and the %{privacy}."
@@ -607,6 +608,10 @@ en: &en
   google_sign_in_failed: "Google sign-in didn't complete. Try again, or use your email and password."
   google_email_not_verified: "Your Google account's email address isn't verified. Verify it with Google or sign up with your email."
   google_sign_in_not_available_with_2fa: "This account uses two-factor authentication. Sign in with your email, password and code."
+  apple_sign_in_failed: "Apple sign-in didn't complete. Try again, or use your email and password."
+  apple_email_not_verified: "Apple didn't confirm your email address. Sign up with your email instead."
+  apple_sign_in_not_available_with_2fa: "This account uses two-factor authentication. Sign in with your email, password and code."
+  apple_did_not_share_an_email_address: "Apple didn't share an email address, so there's nothing to create your account with. On your device open Settings, tap your name, then Sign in with Apple, remove %{product_name}, and try again — this time choose Share My Email."
   this_account_is_no_longer_active: "This account is no longer active."
   welcome_confirm_your_email_to_activate_your_account: "Welcome to %{product}! Confirm your email address to activate your account"
   confirm_my_email: "Confirm my email"
@@ -1974,6 +1979,9 @@ en: &en
   operator_refused_no_operator_account: "There is no operator account to store the setting on. Run `rake operator:seed`."
   operator_notice_settings_saved: "Settings saved."
   integration_role_tooltip: "API-only login from the original DocuSeal data; cannot manage users or billing. Replace with an API token."
+  signup_email_taken_html: "There is already an account for %{email}. %{sign_in}, or %{reset_password} if you have forgotten it."
+  signup_sign_in_instead: "Sign in instead"
+  signup_reset_your_password: "reset your password"
 
 
 es: &es
@@ -2475,6 +2483,7 @@ es: &es
   full_name: "Nombre completo"
   free_tier_summary: "Gratis: 5 documentos completados al mes, 1 usuario."
   continue_with_google: "Continuar con Google"
+  continue_with_apple: "Continuar con Apple"
   or_sign_up_with_email: "o regístrate con tu correo electrónico"
   creating_account: "Creando cuenta"
   by_creating_an_account_you_agree_to_html: "Al crear una cuenta aceptas los %{terms} y la %{privacy}."
@@ -2493,6 +2502,10 @@ es: &es
   google_sign_in_failed: "El inicio de sesión con Google no se completó. Inténtalo de nuevo o usa tu correo y contraseña."
   google_email_not_verified: "La dirección de correo de tu cuenta de Google no está verificada. Verifícala en Google o regístrate con tu correo."
   google_sign_in_not_available_with_2fa: "Esta cuenta usa autenticación en dos pasos. Inicia sesión con tu correo, contraseña y código."
+  apple_sign_in_failed: "El inicio de sesión con Apple no se completó. Inténtalo de nuevo o usa tu correo y contraseña."
+  apple_email_not_verified: "Apple no confirmó tu dirección de correo. Regístrate con tu correo."
+  apple_sign_in_not_available_with_2fa: "Esta cuenta usa autenticación en dos pasos. Inicia sesión con tu correo, contraseña y código."
+  apple_did_not_share_an_email_address: "Apple no compartió ninguna dirección de correo, así que no podemos crear tu cuenta. En tu dispositivo abre Ajustes, toca tu nombre, luego Iniciar sesión con Apple, elimina %{product_name} e inténtalo de nuevo eligiendo Compartir mi correo."
   this_account_is_no_longer_active: "Esta cuenta ya no está activa."
   welcome_confirm_your_email_to_activate_your_account: "¡Bienvenido a %{product}! Confirma tu dirección de correo electrónico para activar tu cuenta"
   confirm_my_email: "Confirmar mi correo electrónico"
@@ -3871,6 +3884,7 @@ it: &it
   full_name: "Nome completo"
   free_tier_summary: "Gratis: 5 documenti completati al mese, 1 utente."
   continue_with_google: "Continua con Google"
+  continue_with_apple: "Continua con Apple"
   or_sign_up_with_email: "oppure registrati con l'email"
   creating_account: "Creazione account in corso"
   by_creating_an_account_you_agree_to_html: "Creando un account accetti i %{terms} e l'%{privacy}."
@@ -3889,6 +3903,10 @@ it: &it
   google_sign_in_failed: "L'accesso con Google non è stato completato. Riprova oppure usa email e password."
   google_email_not_verified: "L'indirizzo email del tuo account Google non è verificato. Verificalo su Google oppure registrati con la tua email."
   google_sign_in_not_available_with_2fa: "Questo account usa l'autenticazione a due fattori. Accedi con email, password e codice."
+  apple_sign_in_failed: "L'accesso con Apple non è stato completato. Riprova oppure usa email e password."
+  apple_email_not_verified: "Apple non ha confermato il tuo indirizzo email. Registrati con la tua email."
+  apple_sign_in_not_available_with_2fa: "Questo account usa l'autenticazione a due fattori. Accedi con email, password e codice."
+  apple_did_not_share_an_email_address: "Apple non ha condiviso alcun indirizzo email, quindi non possiamo creare il tuo account. Sul tuo dispositivo apri Impostazioni, tocca il tuo nome, poi Accedi con Apple, rimuovi %{product_name} e riprova scegliendo Condividi la mia email."
   this_account_is_no_longer_active: "Questo account non è più attivo."
   welcome_confirm_your_email_to_activate_your_account: "Benvenuto su %{product}! Conferma il tuo indirizzo email per attivare l'account"
   confirm_my_email: "Conferma la mia email"
@@ -5267,6 +5285,7 @@ fr: &fr
   full_name: "Nom complet"
   free_tier_summary: "Gratuit : 5 documents complétés par mois, 1 utilisateur."
   continue_with_google: "Continuer avec Google"
+  continue_with_apple: "Continuer avec Apple"
   or_sign_up_with_email: "ou inscrivez-vous par e-mail"
   creating_account: "Création du compte"
   by_creating_an_account_you_agree_to_html: "En créant un compte, vous acceptez les %{terms} et la %{privacy}."
@@ -5285,6 +5304,10 @@ fr: &fr
   google_sign_in_failed: "La connexion avec Google n'a pas abouti. Réessayez ou utilisez votre e-mail et votre mot de passe."
   google_email_not_verified: "L'adresse e-mail de votre compte Google n'est pas vérifiée. Vérifiez-la auprès de Google ou inscrivez-vous par e-mail."
   google_sign_in_not_available_with_2fa: "Ce compte utilise l'authentification à deux facteurs. Connectez-vous avec votre e-mail, votre mot de passe et votre code."
+  apple_sign_in_failed: "La connexion avec Apple n'a pas abouti. Réessayez ou utilisez votre e-mail et votre mot de passe."
+  apple_email_not_verified: "Apple n'a pas confirmé votre adresse e-mail. Inscrivez-vous par e-mail."
+  apple_sign_in_not_available_with_2fa: "Ce compte utilise l'authentification à deux facteurs. Connectez-vous avec votre e-mail, votre mot de passe et votre code."
+  apple_did_not_share_an_email_address: "Apple n'a partagé aucune adresse e-mail, nous ne pouvons donc pas créer votre compte. Sur votre appareil, ouvrez Réglages, touchez votre nom, puis Connexion avec Apple, supprimez %{product_name} et réessayez en choisissant Partager mon e-mail."
   this_account_is_no_longer_active: "Ce compte n'est plus actif."
   welcome_confirm_your_email_to_activate_your_account: "Bienvenue sur %{product} ! Confirmez votre adresse e-mail pour activer votre compte"
   confirm_my_email: "Confirmer mon e-mail"
@@ -6663,6 +6686,7 @@ pt: &pt
   full_name: "Nome completo"
   free_tier_summary: "Grátis: 5 documentos concluídos por mês, 1 utilizador."
   continue_with_google: "Continuar com o Google"
+  continue_with_apple: "Continuar com a Apple"
   or_sign_up_with_email: "ou inscreva-se com o seu e-mail"
   creating_account: "A criar conta"
   by_creating_an_account_you_agree_to_html: "Ao criar uma conta, concorda com os %{terms} e a %{privacy}."
@@ -6681,6 +6705,10 @@ pt: &pt
   google_sign_in_failed: "O início de sessão com o Google não foi concluído. Tente novamente ou use o seu e-mail e palavra-passe."
   google_email_not_verified: "O endereço de e-mail da sua conta Google não está verificado. Verifique-o no Google ou inscreva-se com o seu e-mail."
   google_sign_in_not_available_with_2fa: "Esta conta usa autenticação de dois fatores. Inicie sessão com o seu e-mail, palavra-passe e código."
+  apple_sign_in_failed: "O início de sessão com a Apple não foi concluído. Tente novamente ou use o seu e-mail e palavra-passe."
+  apple_email_not_verified: "A Apple não confirmou o seu endereço de e-mail. Inscreva-se com o seu e-mail."
+  apple_sign_in_not_available_with_2fa: "Esta conta usa autenticação de dois fatores. Inicie sessão com o seu e-mail, palavra-passe e código."
+  apple_did_not_share_an_email_address: "A Apple não partilhou nenhum endereço de e-mail, por isso não podemos criar a sua conta. No seu dispositivo abra os Ajustes, toque no seu nome, depois em Iniciar sessão com a Apple, remova %{product_name} e tente novamente escolhendo Partilhar o meu e-mail."
   this_account_is_no_longer_active: "Esta conta já não está ativa."
   welcome_confirm_your_email_to_activate_your_account: "Bem-vindo ao %{product}! Confirme o seu endereço de e-mail para ativar a sua conta"
   confirm_my_email: "Confirmar o meu e-mail"
@@ -8059,6 +8087,7 @@ de: &de
   full_name: "Vollständiger Name"
   free_tier_summary: "Kostenlos: 5 abgeschlossene Dokumente pro Monat, 1 Benutzer."
   continue_with_google: "Mit Google fortfahren"
+  continue_with_apple: "Mit Apple fortfahren"
   or_sign_up_with_email: "oder mit E-Mail registrieren"
   creating_account: "Konto wird erstellt"
   by_creating_an_account_you_agree_to_html: "Mit dem Erstellen eines Kontos stimmen Sie den %{terms} und der %{privacy} zu."
@@ -8077,6 +8106,10 @@ de: &de
   google_sign_in_failed: "Die Anmeldung mit Google wurde nicht abgeschlossen. Versuchen Sie es erneut oder verwenden Sie E-Mail und Passwort."
   google_email_not_verified: "Die E-Mail-Adresse Ihres Google-Kontos ist nicht verifiziert. Verifizieren Sie sie bei Google oder registrieren Sie sich mit Ihrer E-Mail."
   google_sign_in_not_available_with_2fa: "Dieses Konto verwendet die Zwei-Faktor-Authentifizierung. Melden Sie sich mit E-Mail, Passwort und Code an."
+  apple_sign_in_failed: "Die Anmeldung mit Apple wurde nicht abgeschlossen. Versuchen Sie es erneut oder verwenden Sie E-Mail und Passwort."
+  apple_email_not_verified: "Apple hat Ihre E-Mail-Adresse nicht bestätigt. Registrieren Sie sich mit Ihrer E-Mail."
+  apple_sign_in_not_available_with_2fa: "Dieses Konto verwendet die Zwei-Faktor-Authentifizierung. Melden Sie sich mit E-Mail, Passwort und Code an."
+  apple_did_not_share_an_email_address: "Apple hat keine E-Mail-Adresse übermittelt, deshalb können wir Ihr Konto nicht anlegen. Öffnen Sie auf Ihrem Gerät die Einstellungen, tippen Sie auf Ihren Namen, dann auf „Mit Apple anmelden“, entfernen Sie %{product_name} und versuchen Sie es erneut — wählen Sie dabei „Meine E-Mail-Adresse teilen“."
   this_account_is_no_longer_active: "Dieses Konto ist nicht mehr aktiv."
   welcome_confirm_your_email_to_activate_your_account: "Willkommen bei %{product}! Bestätigen Sie Ihre E-Mail-Adresse, um Ihr Konto zu aktivieren"
   confirm_my_email: "Meine E-Mail bestätigen"
@@ -9366,6 +9399,7 @@ pl:
   full_name: "Imię i nazwisko"
   free_tier_summary: "Bezpłatnie: 5 ukończonych dokumentów miesięcznie, 1 użytkownik."
   continue_with_google: "Kontynuuj przez Google"
+  continue_with_apple: "Kontynuuj przez Apple"
   or_sign_up_with_email: "lub zarejestruj się przez e-mail"
   creating_account: "Tworzenie konta"
   by_creating_an_account_you_agree_to_html: "Tworząc konto, akceptujesz %{terms} oraz %{privacy}."
@@ -9384,6 +9418,10 @@ pl:
   google_sign_in_failed: "Logowanie przez Google nie powiodło się. Spróbuj ponownie lub użyj adresu e-mail i hasła."
   google_email_not_verified: "Adres e-mail Twojego konta Google nie jest zweryfikowany. Zweryfikuj go w Google lub zarejestruj się przez e-mail."
   google_sign_in_not_available_with_2fa: "To konto korzysta z uwierzytelniania dwuskładnikowego. Zaloguj się adresem e-mail, hasłem i kodem."
+  apple_sign_in_failed: "Logowanie przez Apple nie powiodło się. Spróbuj ponownie lub użyj adresu e-mail i hasła."
+  apple_email_not_verified: "Apple nie potwierdziło Twojego adresu e-mail. Zarejestruj się przez e-mail."
+  apple_sign_in_not_available_with_2fa: "To konto korzysta z uwierzytelniania dwuskładnikowego. Zaloguj się adresem e-mail, hasłem i kodem."
+  apple_did_not_share_an_email_address: "Apple nie udostępniło adresu e-mail, więc nie możemy utworzyć Twojego konta. Na urządzeniu otwórz Ustawienia, dotknij swojego imienia, następnie Zaloguj się z Apple, usuń %{product_name} i spróbuj ponownie, wybierając Udostępnij mój adres e-mail."
   this_account_is_no_longer_active: "To konto nie jest już aktywne."
   welcome_confirm_your_email_to_activate_your_account: "Witamy w %{product}! Potwierdź swój adres e-mail, aby aktywować konto"
   confirm_my_email: "Potwierdź mój adres e-mail"
@@ -9839,6 +9877,7 @@ uk:
   full_name: "Повне ім'я"
   free_tier_summary: "Безкоштовно: 5 завершених документів на місяць, 1 користувач."
   continue_with_google: "Продовжити через Google"
+  continue_with_apple: "Продовжити через Apple"
   or_sign_up_with_email: "або зареєструйтеся через електронну пошту"
   creating_account: "Створення акаунта"
   by_creating_an_account_you_agree_to_html: "Створюючи акаунт, ви погоджуєтеся з %{terms} та %{privacy}."
@@ -9857,6 +9896,10 @@ uk:
   google_sign_in_failed: "Вхід через Google не завершено. Спробуйте ще раз або скористайтеся електронною поштою та паролем."
   google_email_not_verified: "Адресу електронної пошти вашого акаунта Google не підтверджено. Підтвердьте її в Google або зареєструйтеся через електронну пошту."
   google_sign_in_not_available_with_2fa: "Цей акаунт використовує двофакторну автентифікацію. Увійдіть за допомогою електронної пошти, пароля та коду."
+  apple_sign_in_failed: "Вхід через Apple не завершено. Спробуйте ще раз або скористайтеся електронною поштою та паролем."
+  apple_email_not_verified: "Apple не підтвердила вашу адресу електронної пошти. Зареєструйтеся через електронну пошту."
+  apple_sign_in_not_available_with_2fa: "Цей акаунт використовує двофакторну автентифікацію. Увійдіть за допомогою електронної пошти, пароля та коду."
+  apple_did_not_share_an_email_address: "Apple не надала адресу електронної пошти, тож ми не можемо створити ваш акаунт. На своєму пристрої відкрийте Параметри, торкніться свого імені, потім «Вхід з Apple», вилучіть %{product_name} і спробуйте ще раз, обравши «Поділитися моєю поштою»."
   this_account_is_no_longer_active: "Цей акаунт більше не активний."
   welcome_confirm_your_email_to_activate_your_account: "Вітаємо в %{product}! Підтвердьте свою адресу електронної пошти, щоб активувати акаунт"
   confirm_my_email: "Підтвердити мою пошту"
@@ -10312,6 +10355,7 @@ cs:
   full_name: "Celé jméno"
   free_tier_summary: "Zdarma: 5 dokončených dokumentů měsíčně, 1 uživatel."
   continue_with_google: "Pokračovat přes Google"
+  continue_with_apple: "Pokračovat přes Apple"
   or_sign_up_with_email: "nebo se zaregistrujte e-mailem"
   creating_account: "Vytváření účtu"
   by_creating_an_account_you_agree_to_html: "Vytvořením účtu souhlasíte s %{terms} a %{privacy}."
@@ -10330,6 +10374,10 @@ cs:
   google_sign_in_failed: "Přihlášení přes Google se nezdařilo. Zkuste to znovu nebo použijte e-mail a heslo."
   google_email_not_verified: "E-mailová adresa vašeho účtu Google není ověřená. Ověřte ji u Googlu nebo se zaregistrujte e-mailem."
   google_sign_in_not_available_with_2fa: "Tento účet používá dvoufázové ověření. Přihlaste se e-mailem, heslem a kódem."
+  apple_sign_in_failed: "Přihlášení přes Apple se nezdařilo. Zkuste to znovu nebo použijte e-mail a heslo."
+  apple_email_not_verified: "Apple nepotvrdil vaši e-mailovou adresu. Zaregistrujte se e-mailem."
+  apple_sign_in_not_available_with_2fa: "Tento účet používá dvoufázové ověření. Přihlaste se e-mailem, heslem a kódem."
+  apple_did_not_share_an_email_address: "Apple nesdílel žádnou e-mailovou adresu, takže váš účet nemůžeme vytvořit. Na svém zařízení otevřete Nastavení, klepněte na své jméno, poté na Přihlásit se přes Apple, odeberte %{product_name} a zkuste to znovu s volbou Sdílet můj e-mail."
   this_account_is_no_longer_active: "Tento účet již není aktivní."
   welcome_confirm_your_email_to_activate_your_account: "Vítejte v %{product}! Potvrďte svou e-mailovou adresu a aktivujte svůj účet"
   confirm_my_email: "Potvrdit můj e-mail"
@@ -10783,6 +10831,7 @@ he:
   full_name: "שם מלא"
   free_tier_summary: "חינם: 5 מסמכים שהושלמו בחודש, משתמש אחד."
   continue_with_google: "המשך עם Google"
+  continue_with_apple: "המשך עם Apple"
   or_sign_up_with_email: "או הירשמו באמצעות אימייל"
   creating_account: "יוצר חשבון"
   by_creating_an_account_you_agree_to_html: "ביצירת חשבון אתם מסכימים ל%{terms} ול%{privacy}."
@@ -10801,6 +10850,10 @@ he:
   google_sign_in_failed: "ההתחברות עם Google לא הושלמה. נסו שוב או השתמשו באימייל ובסיסמה."
   google_email_not_verified: "כתובת האימייל של חשבון Google שלכם אינה מאומתת. אמתו אותה ב-Google או הירשמו באמצעות אימייל."
   google_sign_in_not_available_with_2fa: "חשבון זה משתמש באימות דו-שלבי. התחברו עם אימייל, סיסמה וקוד."
+  apple_sign_in_failed: "ההתחברות עם Apple לא הושלמה. נסו שוב או השתמשו באימייל ובסיסמה."
+  apple_email_not_verified: "Apple לא אישרה את כתובת האימייל שלכם. הירשמו באמצעות אימייל."
+  apple_sign_in_not_available_with_2fa: "חשבון זה משתמש באימות דו-שלבי. התחברו עם אימייל, סיסמה וקוד."
+  apple_did_not_share_an_email_address: "Apple לא שיתפה כתובת אימייל, ולכן אין באפשרותנו ליצור את החשבון שלכם. במכשיר שלכם פתחו הגדרות, הקישו על השם שלכם, לאחר מכן על התחברות עם Apple, הסירו את %{product_name} ונסו שוב תוך בחירה בשיתוף האימייל שלי."
   this_account_is_no_longer_active: "חשבון זה אינו פעיל עוד."
   welcome_confirm_your_email_to_activate_your_account: "ברוכים הבאים ל-%{product}! אמתו את כתובת האימייל שלכם כדי להפעיל את החשבון"
   confirm_my_email: "אימות האימייל שלי"
@@ -11346,6 +11399,7 @@ nl: &nl
   full_name: "Volledige naam"
   free_tier_summary: "Gratis: 5 voltooide documenten per maand, 1 gebruiker."
   continue_with_google: "Doorgaan met Google"
+  continue_with_apple: "Doorgaan met Apple"
   or_sign_up_with_email: "of registreer met e-mail"
   creating_account: "Account wordt aangemaakt"
   by_creating_an_account_you_agree_to_html: "Door een account aan te maken ga je akkoord met de %{terms} en het %{privacy}."
@@ -11364,6 +11418,10 @@ nl: &nl
   google_sign_in_failed: "Inloggen met Google is niet gelukt. Probeer het opnieuw of gebruik je e-mailadres en wachtwoord."
   google_email_not_verified: "Het e-mailadres van je Google-account is niet geverifieerd. Verifieer het bij Google of registreer met je e-mailadres."
   google_sign_in_not_available_with_2fa: "Dit account gebruikt tweestapsverificatie. Log in met je e-mailadres, wachtwoord en code."
+  apple_sign_in_failed: "Inloggen met Apple is niet voltooid. Probeer het opnieuw of gebruik je e-mailadres en wachtwoord."
+  apple_email_not_verified: "Apple heeft je e-mailadres niet bevestigd. Meld je aan met je e-mailadres."
+  apple_sign_in_not_available_with_2fa: "Dit account gebruikt tweestapsverificatie. Log in met je e-mailadres, wachtwoord en code."
+  apple_did_not_share_an_email_address: "Apple heeft geen e-mailadres gedeeld, dus we kunnen je account niet aanmaken. Open op je apparaat Instellingen, tik op je naam, daarna op Inloggen met Apple, verwijder %{product_name} en probeer het opnieuw met de optie Deel mijn e-mailadres."
   this_account_is_no_longer_active: "Dit account is niet meer actief."
   welcome_confirm_your_email_to_activate_your_account: "Welkom bij %{product}! Bevestig je e-mailadres om je account te activeren"
   confirm_my_email: "Mijn e-mailadres bevestigen"
@@ -12659,6 +12717,7 @@ ar:
   full_name: "الاسم الكامل"
   free_tier_summary: "مجانًا: 5 مستندات مكتملة شهريًا، مستخدم واحد."
   continue_with_google: "المتابعة باستخدام Google"
+  continue_with_apple: "المتابعة باستخدام Apple"
   or_sign_up_with_email: "أو سجّل باستخدام البريد الإلكتروني"
   creating_account: "جارٍ إنشاء الحساب"
   by_creating_an_account_you_agree_to_html: "بإنشاء حساب فإنك توافق على %{terms} و%{privacy}."
@@ -12677,6 +12736,10 @@ ar:
   google_sign_in_failed: "لم يكتمل تسجيل الدخول عبر Google. حاول مرة أخرى أو استخدم بريدك الإلكتروني وكلمة المرور."
   google_email_not_verified: "عنوان البريد الإلكتروني لحساب Google الخاص بك غير موثّق. وثّقه لدى Google أو سجّل باستخدام بريدك الإلكتروني."
   google_sign_in_not_available_with_2fa: "يستخدم هذا الحساب المصادقة الثنائية. سجّل الدخول باستخدام بريدك الإلكتروني وكلمة المرور والرمز."
+  apple_sign_in_failed: "لم يكتمل تسجيل الدخول باستخدام Apple. حاول مرة أخرى أو استخدم بريدك الإلكتروني وكلمة المرور."
+  apple_email_not_verified: "لم تؤكد Apple عنوان بريدك الإلكتروني. سجّل باستخدام بريدك الإلكتروني."
+  apple_sign_in_not_available_with_2fa: "يستخدم هذا الحساب المصادقة الثنائية. سجّل الدخول باستخدام بريدك الإلكتروني وكلمة المرور والرمز."
+  apple_did_not_share_an_email_address: "لم تشارك Apple أي عنوان بريد إلكتروني، لذا لا يمكننا إنشاء حسابك. على جهازك، افتح الإعدادات، اضغط على اسمك، ثم تسجيل الدخول باستخدام Apple، وأزل %{product_name}، ثم حاول مرة أخرى واختر مشاركة بريدي الإلكتروني."
   this_account_is_no_longer_active: "هذا الحساب لم يعد نشطًا."
   welcome_confirm_your_email_to_activate_your_account: "مرحبًا بك في %{product}! أكّد عنوان بريدك الإلكتروني لتفعيل حسابك"
   confirm_my_email: "تأكيد بريدي الإلكتروني"
@@ -13128,6 +13191,7 @@ ko:
   full_name: "이름"
   free_tier_summary: "무료: 월 5건의 완료 문서, 사용자 1명."
   continue_with_google: "Google로 계속하기"
+  continue_with_apple: "Apple로 계속하기"
   or_sign_up_with_email: "또는 이메일로 가입"
   creating_account: "계정 생성 중"
   by_creating_an_account_you_agree_to_html: "계정을 만들면 %{terms} 및 %{privacy}에 동의하는 것입니다."
@@ -13146,6 +13210,10 @@ ko:
   google_sign_in_failed: "Google 로그인이 완료되지 않았습니다. 다시 시도하거나 이메일과 비밀번호를 사용하세요."
   google_email_not_verified: "Google 계정의 이메일 주소가 인증되지 않았습니다. Google에서 인증하거나 이메일로 가입하세요."
   google_sign_in_not_available_with_2fa: "이 계정은 2단계 인증을 사용합니다. 이메일, 비밀번호, 인증 코드로 로그인하세요."
+  apple_sign_in_failed: "Apple 로그인이 완료되지 않았습니다. 다시 시도하거나 이메일과 비밀번호를 사용하세요."
+  apple_email_not_verified: "Apple이 이메일 주소를 확인하지 않았습니다. 이메일로 가입해 주세요."
+  apple_sign_in_not_available_with_2fa: "이 계정은 2단계 인증을 사용합니다. 이메일, 비밀번호, 인증 코드로 로그인하세요."
+  apple_did_not_share_an_email_address: "Apple이 이메일 주소를 공유하지 않아 계정을 만들 수 없습니다. 기기에서 설정을 열고 이름을 누른 다음 Apple로 로그인에서 %{product_name}을(를) 삭제하고, 다시 시도할 때 ‘이메일 공유’를 선택해 주세요."
   this_account_is_no_longer_active: "이 계정은 더 이상 활성 상태가 아닙니다."
   welcome_confirm_your_email_to_activate_your_account: "%{product}에 오신 것을 환영합니다! 이메일 주소를 확인하여 계정을 활성화하세요"
   confirm_my_email: "이메일 확인"
@@ -13597,6 +13665,7 @@ ja:
   full_name: "氏名"
   free_tier_summary: "無料プラン：月5件の完了ドキュメント、ユーザー1名。"
   continue_with_google: "Googleで続行"
+  continue_with_apple: "Appleで続行"
   or_sign_up_with_email: "またはメールアドレスで登録"
   creating_account: "アカウントを作成中"
   by_creating_an_account_you_agree_to_html: "アカウントを作成すると、%{terms}および%{privacy}に同意したものとみなされます。"
@@ -13615,6 +13684,10 @@ ja:
   google_sign_in_failed: "Googleでのサインインが完了しませんでした。もう一度お試しいただくか、メールアドレスとパスワードをご利用ください。"
   google_email_not_verified: "Googleアカウントのメールアドレスが確認されていません。Googleで確認するか、メールアドレスで登録してください。"
   google_sign_in_not_available_with_2fa: "このアカウントは二要素認証を使用しています。メールアドレス、パスワード、コードでサインインしてください。"
+  apple_sign_in_failed: "Appleでのサインインが完了しませんでした。もう一度お試しいただくか、メールアドレスとパスワードをご利用ください。"
+  apple_email_not_verified: "Appleがメールアドレスを確認できませんでした。メールアドレスでご登録ください。"
+  apple_sign_in_not_available_with_2fa: "このアカウントは二要素認証を使用しています。メールアドレス、パスワード、コードでサインインしてください。"
+  apple_did_not_share_an_email_address: "Appleからメールアドレスが共有されなかったため、アカウントを作成できません。デバイスの「設定」を開き、ご自身の名前をタップして「Appleでサインイン」から%{product_name}を削除し、もう一度お試しのうえ「メールを共有」を選択してください。"
   this_account_is_no_longer_active: "このアカウントは現在有効ではありません。"
   welcome_confirm_your_email_to_activate_your_account: "%{product}へようこそ！メールアドレスを確認してアカウントを有効にしてください"
   confirm_my_email: "メールアドレスを確認する"

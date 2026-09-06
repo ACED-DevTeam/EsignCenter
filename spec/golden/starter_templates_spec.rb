@@ -7,7 +7,9 @@
 # sent and signed the moment the person arrives.
 RSpec.describe 'Starter templates', type: :request do
   stash_env 'REGISTRATION_ENABLED', 'TURNSTILE_SITE_KEY', 'TURNSTILE_SECRET_KEY',
-            'GOOGLE_OAUTH_CLIENT_ID', 'GOOGLE_OAUTH_CLIENT_SECRET', 'ADMIN_PROVISION_TOKEN', clear: true
+            'GOOGLE_OAUTH_CLIENT_ID', 'GOOGLE_OAUTH_CLIENT_SECRET',
+            'APPLE_OAUTH_CLIENT_ID', 'APPLE_OAUTH_TEAM_ID', 'APPLE_OAUTH_KEY_ID',
+            'APPLE_OAUTH_PRIVATE_KEY', 'ADMIN_PROVISION_TOKEN', clear: true
 
   let(:admin_token) { 'golden-starter-provision-token' }
 
@@ -24,6 +26,7 @@ RSpec.describe 'Starter templates', type: :request do
     RateLimit.store.clear
     OmniAuth.config.test_mode = false
     OmniAuth.config.mock_auth[:google_oauth2] = nil
+    OmniAuth.config.mock_auth[:apple] = nil
   end
 
   def sign_up(email: 'ada@example.com')
@@ -49,6 +52,27 @@ RSpec.describe 'Starter templates', type: :request do
     expect(response).to have_http_status(:redirect)
 
     follow_redirect!
+  end
+
+  # The Apple door, driven the way spec/golden/signup_spec.rb drives it: the
+  # POST-only authorize endpoint, then the callback — which Apple reaches with
+  # a form POST rather than a redirect.
+  def sign_up_with_apple!(email: 'grace-apple@example.com')
+    ENV['APPLE_OAUTH_CLIENT_ID'] = 'com.esigncenter.web'
+    ENV['APPLE_OAUTH_TEAM_ID'] = 'AB1234CD56'
+    ENV['APPLE_OAUTH_KEY_ID'] = 'EF7890GH12'
+    ENV['APPLE_OAUTH_PRIVATE_KEY'] = OpenSSL::PKey::EC.generate('prime256v1').to_pem
+
+    OmniAuth.config.test_mode = true
+    OmniAuth.config.mock_auth[:apple] =
+      OmniAuth::AuthHash.new(provider: 'apple', uid: '001234.fedcba9876543210.1234',
+                             info: { email:, name: 'Grace Hopper', email_verified: true })
+
+    post user_apple_omniauth_authorize_path(LegalDocuments.version_fields)
+
+    expect(response).to have_http_status(:redirect)
+
+    post user_apple_omniauth_callback_path
   end
 
   def account_for(email)
@@ -122,8 +146,8 @@ RSpec.describe 'Starter templates', type: :request do
     end
   end
 
-  # (b) The Google door seeds by construction: both doors save through
-  # Registrations.save_signup, which is where the job is enqueued.
+  # (b) The provider doors seed by construction: every self-serve door saves
+  # through Registrations.save_signup, which is where the job is enqueued.
   describe 'the Google sign-up door' do
     it 'seeds the same four templates', sidekiq: :inline do
       expect { sign_up_with_google! }.to change(Template, :count).by(4)
@@ -136,6 +160,21 @@ RSpec.describe 'Starter templates', type: :request do
       create(:user, account:, email: 'returning@example.com')
 
       expect { sign_up_with_google!(email: 'returning@example.com') }.not_to change(Template, :count)
+    end
+  end
+
+  describe 'the Apple sign-up door' do
+    it 'seeds the same four templates', sidekiq: :inline do
+      expect { sign_up_with_apple! }.to change(Template, :count).by(4)
+
+      expect(account_for('grace-apple@example.com').templates.map(&:name)).to match_array(starter_names)
+    end
+
+    it 'seeds nothing for an existing user signing in again', sidekiq: :inline do
+      account = create(:account)
+      create(:user, account:, email: 'returning-apple@example.com')
+
+      expect { sign_up_with_apple!(email: 'returning-apple@example.com') }.not_to change(Template, :count)
     end
   end
 
@@ -276,7 +315,7 @@ RSpec.describe 'Starter templates', type: :request do
       expect(user.account.templates.count).to eq(0)
     end
 
-    it 'seeds for each of the two doors the feature is for' do
+    it 'seeds for each of the self-serve doors the feature is for' do
       allow(StarterTemplatesJob).to receive(:perform_later).and_call_original
 
       Registrations::SELF_SERVE_SOURCES.each_with_index do |source, index|
@@ -288,7 +327,8 @@ RSpec.describe 'Starter templates', type: :request do
       end
 
       expect(Registrations::SELF_SERVE_SOURCES)
-        .to eq([LegalAcceptance::SIGNUP_EMAIL, LegalAcceptance::SIGNUP_GOOGLE])
+        .to eq([LegalAcceptance::SIGNUP_EMAIL, LegalAcceptance::SIGNUP_GOOGLE,
+                LegalAcceptance::SIGNUP_APPLE])
     end
   end
 

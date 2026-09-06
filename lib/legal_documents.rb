@@ -279,7 +279,6 @@ module LegalDocuments
       governing_law_state: GOVERNING_LAW_STATE,
       support_email: Docuseal::SUPPORT_EMAIL,
       github_url: Docuseal::GITHUB_URL,
-      docuseal_url: Docuseal::DOCUSEAL_URL,
       version: DOCUMENTS[doc][:version],
       effective_on: DOCUMENTS[doc][:effective_on],
       limits: Quotas::Limits,

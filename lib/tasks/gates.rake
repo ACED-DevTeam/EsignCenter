@@ -222,15 +222,12 @@ module Gates
     { name: 'vaclaimnet', pattern: /vaclaimnet/i },
     { name: 'koalify', pattern: /koalify/i }
   ].freeze
-  # The AGPL attribution target and the README fork statement are the only
-  # places the upstream domain may appear. LICENSE / LICENSE_ADDITIONAL_TERMS
+  # The README fork statement is the only place the upstream domain may appear:
+  # the AGPL attribution itself points at the upstream *source repository*
+  # (Docuseal::DOCUSEAL_SOURCE_URL), so no app file needs the commercial domain
+  # and the gate refuses it everywhere else. LICENSE / LICENSE_ADDITIONAL_TERMS
   # are legal text and are not scanned at all.
   BRANDING_ALLOWLIST = [
-    {
-      file: 'lib/docuseal.rb',
-      snippet: "DOCUSEAL_URL = 'https://www.docuseal.com'",
-      reason: 'AGPL LICENSE_ADDITIONAL_TERMS attribution target'
-    },
     {
       file: 'README.md',
       snippet: 'EsignCenter is a customized fork of [DocuSeal](https://www.docuseal.com)',
@@ -246,10 +243,10 @@ module Gates
   ATTRIBUTION_REQUIREMENTS = [
     {
       file: 'app/views/shared/_powered_by.html.erb',
-      snippets: ['Docuseal::DOCUSEAL_URL', '>DocuSeal</a>', 'AGPL LICENSE_ADDITIONAL_TERMS'],
+      snippets: ['Docuseal::DOCUSEAL_SOURCE_URL', '>DocuSeal</a>', 'AGPL LICENSE_ADDITIONAL_TERMS'],
       # The anchor has to be rendered markup, not a mention: a line outside any
       # ERB or HTML comment that opens the anchor with the attribution URL.
-      rendered_anchor: '<a href="<%= Docuseal::DOCUSEAL_URL'
+      rendered_anchor: '<a href="<%= Docuseal::DOCUSEAL_SOURCE_URL'
     },
     {
       file: 'app/views/templates_share_link_qr/_branding.html.erb',
@@ -257,9 +254,46 @@ module Gates
     },
     {
       file: 'lib/docuseal.rb',
-      snippets: ["DOCUSEAL_URL = 'https://www.docuseal.com'", "SUPPORT_EMAIL = 'evan@processorteam.com'"]
+      snippets: ["DOCUSEAL_SOURCE_URL = 'https://github.com/docusealco/docuseal'",
+                 "SUPPORT_EMAIL = 'evan@processorteam.com'"]
     }
   ].freeze
+  # Keeping the partials alive proves nothing if the pages stop rendering them:
+  # deleting `render 'shared/attribution'` from a signer-facing view used to
+  # leave this gate green. Every view that carried the attribution when the
+  # gate was written is pinned here and must keep a *visible* render call (one
+  # parked in an ERB or HTML comment is not a render). Adding a new page is
+  # free; dropping the footer from an existing one is not.
+  ATTRIBUTION_RENDER_CALLS = ["render 'shared/attribution'", "render 'shared/powered_by'"].freeze
+  ATTRIBUTION_RENDER_SITES = %w[
+    app/views/embed_template_builder/show.html.erb
+    app/views/embed_template_builder/upgrade_required.html.erb
+    app/views/layouts/marketing.html.erb
+    app/views/send_submission_email/success.html.erb
+    app/views/shared/_attribution.html.erb
+    app/views/start_form/completed.html.erb
+    app/views/start_form/completed_unproven.html.erb
+    app/views/start_form/documents_not_ready.html.erb
+    app/views/start_form/email_verification.html.erb
+    app/views/start_form/email_verification_required.html.erb
+    app/views/start_form/paused.html.erb
+    app/views/start_form/private.html.erb
+    app/views/start_form/show.html.erb
+    app/views/submissions_preview/completed.html.erb
+    app/views/submit_form/archived.html.erb
+    app/views/submit_form/awaiting.html.erb
+    app/views/submit_form/completed.html.erb
+    app/views/submit_form/declined.html.erb
+    app/views/submit_form/delegated.html.erb
+    app/views/submit_form/email_2fa.html.erb
+    app/views/submit_form/expired.html.erb
+    app/views/submit_form/show.html.erb
+    app/views/submit_form/success.html.erb
+    app/views/verify/show.html.erb
+  ].freeze
+  # The QR page carries its own branding partial, so it names its own call.
+  QR_RENDER_SITE = 'app/views/templates_share_link_qr/show.html.erb'
+  QR_RENDER_CALLS = ["render 'branding'"].freeze
   EXPECTED_SUPPORT_EMAIL = 'evan@processorteam.com'
 
   module_function
@@ -357,7 +391,7 @@ module Gates
   # --- branding ----------------------------------------------------------------
 
   def branding_failures
-    branding_scan_failures + attribution_failures + support_email_failures
+    branding_scan_failures + attribution_failures + attribution_render_failures + support_email_failures
   end
 
   def branding_scan_failures
@@ -400,6 +434,23 @@ module Gates
 
       failures
     end
+  end
+
+  # Every pinned view still renders one of the attribution partials.
+  def attribution_render_failures(root = ROOT)
+    sites = ATTRIBUTION_RENDER_SITES.index_with(ATTRIBUTION_RENDER_CALLS)
+                                    .merge(QR_RENDER_SITE => QR_RENDER_CALLS)
+
+    sites.flat_map { |file, calls| render_site_failures(root, file, calls) }
+  end
+
+  def render_site_failures(root, file, calls)
+    path = File.join(root, file)
+
+    return ["#{file}: attribution render site is missing"] unless File.file?(path)
+    return [] if calls.any? { |call| visible_markup(read(path)).include?(call) }
+
+    ["#{file}: attribution partial is no longer rendered (expected #{calls.join(' or ')})"]
   end
 
   ERB_COMMENT = /<%#.*?%>/m

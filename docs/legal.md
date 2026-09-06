@@ -136,7 +136,7 @@ is created. Each holds:
 | `sha256` | The digest of the exact rendered bytes of that version |
 | `accepted_at` | When |
 | `ip`, `user_agent` | What the request carried (blank when there was no request) |
-| `source` | Which door: `signup_email`, `signup_google` or `invite` |
+| `source` | Which door: `signup_email`, `signup_google`, `signup_apple` or `invite` |
 
 The version names the text and the digest proves it: with the archive, the
 pair answers *"what exactly did this person agree to?"* years later. It is the
@@ -146,15 +146,16 @@ same pattern the signer's electronic-signature disclosure uses
 Rows are never updated. Agreeing to a newer version is a new row, so the table
 reads as a history.
 
-### The three doors
+### The four doors
 
 | Door | Where | Source |
 | --- | --- | --- |
 | Email + password sign-up | `Registrations.save_signup` | `signup_email` |
 | Continue with Google | `Registrations.save_signup`, from `OmniauthCallbacksController#register` | `signup_google` |
+| Continue with Apple | `Registrations.save_signup`, from `OmniauthCallbacksController#register` | `signup_apple` |
 | Accepting a team invitation as a new person | `AccountInvites.accept!` | `invite` |
 
-In all three the agreement is written **in the same transaction as the user**
+In all four the agreement is written **in the same transaction as the user**
 — the user save at sign-up, the invitation's own row lock at acceptance — so
 a person can never exist without one and an agreement can never exist without
 a person. A failure to record it fails the sign-up.

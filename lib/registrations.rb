@@ -1,13 +1,25 @@
 # frozen_string_literal: true
 
 # Self-serve sign-up rules shared by the email+password path
-# (RegistrationsController) and the Google path (OmniauthCallbacksController):
-# who may create an account, and what that account looks like. See
-# docs/signup.md.
+# (RegistrationsController) and the two OmniAuth paths, Google and Apple
+# (OmniauthCallbacksController): who may create an account, and what that
+# account looks like. See docs/signup.md.
 module Registrations
-  # The two doors a human can walk through. `LegalAcceptance::SOURCES` also
+  # The three doors a human can walk through. `LegalAcceptance::SOURCES` also
   # holds INVITE, which joins an account somebody else already owns.
-  SELF_SERVE_SOURCES = [LegalAcceptance::SIGNUP_EMAIL, LegalAcceptance::SIGNUP_GOOGLE].freeze
+  SELF_SERVE_SOURCES = [LegalAcceptance::SIGNUP_EMAIL, LegalAcceptance::SIGNUP_GOOGLE,
+                        LegalAcceptance::SIGNUP_APPLE].freeze
+
+  # Apple signs its own client secret, so there is no "secret" slot: the four
+  # values are the Service ID, the Apple Developer team, the key's id and the
+  # .p8 private key that signs the short-lived JWT sent in the secret's place.
+  APPLE_KEYS = %w[APPLE_OAUTH_CLIENT_ID APPLE_OAUTH_TEAM_ID APPLE_OAUTH_KEY_ID APPLE_OAUTH_PRIVATE_KEY].freeze
+
+  # The env file ships every credential slot pre-written with a `PASTE_...`
+  # marker so nobody has to remember which ones exist. A slot still carrying
+  # its marker is not a credential, and treating it as one would put a button
+  # on the sign-in page that cannot work.
+  PLACEHOLDER_PREFIX = 'PASTE_'
 
   module_function
 
@@ -16,6 +28,40 @@ module Registrations
   def google_enabled?
     Docuseal.registration_enabled? &&
       ENV['GOOGLE_OAUTH_CLIENT_ID'].present? && ENV['GOOGLE_OAUTH_CLIENT_SECRET'].present?
+  end
+
+  # All four, or no Apple — the same all-or-nothing rule Google gets, for the
+  # same reason. Two of the four have a shape Apple documents and never
+  # varies (the team id and the key id are ten characters), and the fourth
+  # has to be a private key or the strategy cannot sign anything, so those
+  # are checked rather than assumed: a half-filled slot hides the button
+  # instead of offering a sign-in that ends in an error page.
+  def apple_enabled?
+    Docuseal.registration_enabled? && apple_configured?
+  end
+
+  def apple_configured?
+    APPLE_KEYS.all? { |key| configured?(ENV.fetch(key, nil)) } &&
+      apple_id_format?(ENV.fetch('APPLE_OAUTH_TEAM_ID', nil)) &&
+      apple_id_format?(ENV.fetch('APPLE_OAUTH_KEY_ID', nil)) &&
+      apple_private_key.include?('PRIVATE KEY')
+  end
+
+  # A value that is present and is not still the env file's paste marker.
+  def configured?(value)
+    value.present? && !value.to_s.start_with?(PLACEHOLDER_PREFIX)
+  end
+
+  # Apple team ids and key ids are ten alphanumeric characters, always.
+  def apple_id_format?(value)
+    value.to_s.match?(/\A[A-Za-z0-9]{10}\z/)
+  end
+
+  # A .p8 key is several lines; a host's environment editor usually stores it
+  # as one line with the breaks escaped, so both spellings are accepted here
+  # rather than in four different places later.
+  def apple_private_key
+    ENV.fetch('APPLE_OAUTH_PRIVATE_KEY', '').to_s.gsub('\\n', "\n")
   end
 
   # Per-IP sign-up velocity (the two registration rows of Quotas::Limits).
@@ -96,14 +142,14 @@ module Registrations
     false
   end
 
-  # The four starter templates (D50). Enqueued HERE, from the one place both
-  # self-serve doors save through, so the email form and the Google button
+  # The four starter templates (D50). Enqueued HERE, from the one place every
+  # self-serve door saves through, so the email form and both sign-in buttons
   # seed by construction rather than because each remembered to.
   #
   # Three conditions, and all three are about the SAME question — is this a
   # stranger's brand-new account, created by a human at a sign-up page?
   #
-  #   * `source` is one of the two self-serve doors. A headless caller passes
+  #   * `source` is one of the self-serve doors. A headless caller passes
   #     `source: nil` (a console, a provisioning script), and a script that
   #     creates a customer account is not a person who needs four sample
   #     documents to look at;
@@ -129,7 +175,8 @@ module Registrations
   # (unbuilt, unsaved): the person's name is the account name until they
   # change it in Settings, the timezone is what their browser reported, the
   # language is the one the sign-up page rendered in. The user is unconfirmed
-  # — the email path leaves it so; the Google path confirms it itself.
+  # — the email path leaves it so; the Google and Apple paths confirm it
+  # themselves.
   def build_signup(name:, email:, password:, timezone:, locale: I18n.locale)
     name = name.to_s.strip
     email = email.to_s.strip

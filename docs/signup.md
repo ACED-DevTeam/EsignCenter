@@ -64,9 +64,67 @@ in Google's console it runs in **Testing** mode: only the test users listed
 there can use the button (launch-gate item 4b). Everyone else still has the
 email path.
 
-**Apple Sign-In** is not offered. The `APPLE_*` variables are placeholders
-and the button does not exist; adding it is a launch-gate item, not part of
-this build.
+## 2b. Continue with Apple
+
+The **Continue with Apple** button sits next to the Google one, on the same
+two pages, and appears when all four `APPLE_OAUTH_*` values are real — see
+*Turning the Apple button on* below. Everything after Apple hands back an
+address is identical to the Google door: the same new-account rules, the same
+adoption of an unconfirmed account, the same two-factor detour, the same
+per-network limits and disposable-address blocklist, the same four starter
+documents, and the same record of what was agreed to. Apple only differs in
+three places.
+
+**1. Apple shares the address once, and only once.** The very first time
+somebody authorises us, Apple sends their e-mail address (and, if they leave
+it switched on, their name). Every sign-in after that sends an internal
+identifier and nothing else — which is fine, because by then the account
+exists and we recognise them by their address.
+
+The awkward case is somebody whose first attempt did not finish: they hit the
+hourly sign-up limit, used a throwaway address, or the page they clicked from
+was showing an out-of-date Terms of Service. Apple now thinks they have
+already authorised us, so it sends no address, and there is no account for us
+to sign them into. Rather than invent anything, the page tells them what
+actually fixes it: on their device, open **Settings → their name → Sign in
+with Apple**, remove EsignCenter from the list, and try again — the next
+attempt counts as a first authorisation and the address comes through. No
+account is ever created without an e-mail address.
+
+**2. The address may be a private relay.** Apple lets people hide their real
+address behind a `@privaterelay.appleid.com` forward. That is a genuine,
+deliverable mailbox and is stored and used exactly like any other — nothing
+in the product treats it differently. It is worth knowing only because a
+customer may be puzzled by the address on their own profile page.
+
+**3. Apple answers with a form submission, not a redirect.** Google sends the
+browser back to us with an ordinary link; Apple sends it back with a hidden
+form that posts from Apple's own website. Two consequences, both handled:
+that one address (`/auth/apple/callback`) accepts a post without our usual
+cross-site form token, and the session cookie handed out when the button is
+pressed is marked so the browser will still send it back on Apple's
+submission. Nothing else on the site changes.
+
+### Turning the Apple button on
+
+The button hides itself, and every `/auth/apple/...` address answers *404*,
+unless **all four** of `APPLE_OAUTH_CLIENT_ID`, `APPLE_OAUTH_TEAM_ID`,
+`APPLE_OAUTH_KEY_ID` and `APPLE_OAUTH_PRIVATE_KEY` hold real values. "Real"
+is checked, not assumed:
+
+- a value still starting with `PASTE_` (how the environment file ships every
+  unfilled slot) does not count;
+- the team id and the key id must be Apple's ten characters;
+- the private key must be an actual key (the `-----BEGIN ... PRIVATE KEY-----`
+  text of the `.p8` file Apple gives you). A key stored on one line with `\n`
+  in place of the line breaks is accepted too, because most hosting panels
+  store it that way.
+
+Anything short of that and the button simply is not there; email sign-up and
+the Google button are unaffected, and a production boot logs a warning saying
+which variables are missing. The Apple Developer steps that produce those four
+values are written out in `docs/render-deploy-checklist.md` under launch gate
+4b.
 
 ## 3. The four abuse guards
 
@@ -74,28 +132,28 @@ this build.
 | --- | --- | --- |
 | Cloudflare Turnstile | Every email sign-up carries a one-time token from the widget; the server asks Cloudflare whether it is genuine. A blank token, a Cloudflare outage or a missing secret all **fail closed** — the form re-renders with *Please complete the verification and try again* and nothing is written. There is no environment bypass; the test suite stubs the HTTP call. | one check per submission, 5 s timeout |
 | Disposable-address blocklist | Addresses at throwaway-mail domains (the `valid_email2` list, e.g. mailinator.com) are refused with *Please use a permanent email address*. Sign-up only: an admin may still invite such an address to their own account, and internal provisioning is untouched. The domain list is checked, never DNS. | — |
-| Per-network limits | Sign-ups from one IP address are counted — sign-ups, not attempts. On the email path an attempt counts only once the Turnstile check and the form's own checks (a valid, permanent, untaken address; a long enough password) have passed, immediately before the account is written; a typo, a taken address or a failed CAPTCHA never spends the budget, so five mistakes from one office never lock the office out. On the Google path only the creation of a new account counts (an existing user signing in with Google is not a sign-up). Past the limit the form answers *Too many sign-ups from this network* with status 429 and the Google path returns to the sign-in page with the same message. Invitations and sign-in are not counted. Redis-backed like the other velocity limits: if Redis is down the limit is off, never the sign-up. | 5 per hour, 20 per day |
-| Per-network attempt ceiling | A second, separate count: every sign-up **attempt** from one IP address, however it ends, and every hit on a Google `/auth/...` endpoint. Checked first, before anything outbound happens — the Turnstile check is a call to Cloudflare that waits up to five seconds, and the Google callback makes OmniAuth call Google, so an attempt anyone can replay for free is a web thread they can hold for free. Past the ceiling the form answers *Too many sign-ups from this network* (429) and the Google endpoints answer 429 with an empty body. Set far above honest use: a whole office behind one address never gets near it. Redis-backed and fails open the same way. | 30 sign-up attempts per hour, 60 Google hits per hour |
+| Per-network limits | Sign-ups from one IP address are counted — sign-ups, not attempts. On the email path an attempt counts only once the Turnstile check and the form's own checks (a valid, permanent, untaken address; a long enough password) have passed, immediately before the account is written; a typo, a taken address or a failed CAPTCHA never spends the budget, so five mistakes from one office never lock the office out. On the Google and Apple paths only the creation of a new account counts (an existing user signing in with a provider is not a sign-up). Past the limit the form answers *Too many sign-ups from this network* with status 429 and the provider paths return to the sign-in page with the same message. Invitations and sign-in are not counted. Redis-backed like the other velocity limits: if Redis is down the limit is off, never the sign-up. | 5 per hour, 20 per day |
+| Per-network attempt ceiling | A second, separate count: every sign-up **attempt** from one IP address, however it ends, and every hit on a Google or Apple `/auth/...` endpoint. Checked first, before anything outbound happens — the Turnstile check is a call to Cloudflare that waits up to five seconds, and the provider callbacks make OmniAuth call Google or Apple, so an attempt anyone can replay for free is a web thread they can hold for free. Past the ceiling the form answers *Too many sign-ups from this network* (429) and the provider endpoints answer 429 with an empty body. Set far above honest use: a whole office behind one address never gets near it. Redis-backed and fails open the same way. | 30 sign-up attempts per hour, 60 provider hits per hour |
 
 ## 4. The switch
 
 `REGISTRATION_ENABLED=true` opens sign-up. Anything else keeps it closed:
 
 - `/sign_up`, the check-your-email page, the confirmation resend form and
-  every `/auth/...` Google endpoint answer **404** (empty body).
-- The sign-in page shows no *Create free account* link and no Google
+  every `/auth/...` Google and Apple endpoint answer **404** (empty body).
+- The sign-in page shows no *Create free account* link and no Google or Apple
   button; the navbar shows no sign-up button.
 - Existing users sign in, reset passwords and get invited exactly as before.
 
 In production the app **refuses to boot** with the switch on and the
 Turnstile keys missing (an open door that could never let anyone in). Missing
-Google credentials only hide the button and log a warning.
+Google or Apple credentials only hide that button and log a warning.
 
 ## 5. Starter templates
 
 A brand-new account is not an empty shelf. The moment a customer account is
-created by either self-serve door — the email form or the Google button — four
-ready-made documents are put into it in the background:
+created by any self-serve door — the email form, the Google button or the
+Apple button — four ready-made documents are put into it in the background:
 
 - **Mutual Non-Disclosure Agreement** — two parties agree to keep each other's
   information private before working together.
@@ -156,7 +214,7 @@ pays.
 
 ## 6. What signing up records
 
-Both sign-up doors — email + password, and Continue with Google — write down
+All three sign-up doors — email + password, Continue with Google and Continue with Apple — write down
 that the person agreed to the **Terms of Service** and the **Privacy Policy**,
 which are linked in one sentence under the sign-up form and published at the
 public pages `/terms` and `/privacy`. Two rows are written per person (one per
@@ -169,7 +227,7 @@ same thing; the invitation page carries the same sentence and the same two
 links. Accepting one as somebody who already has an account is a move, not a
 sign-up, and records nothing new — their existing agreement moves with them.
 
-The **sign-in page is a sign-up door too**: its *Continue with Google* button
+The **sign-in page is a sign-up door too**: its *Continue with Google* and *Continue with Apple* buttons
 creates an account for an address that has never signed up, so that page
 carries the same sentence and the same two links.
 

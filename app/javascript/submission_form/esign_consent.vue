@@ -16,6 +16,7 @@
         :aria-disabled="isPdfGateClosed ? 'true' : undefined"
         :aria-invalid="error ? 'true' : undefined"
         :aria-describedby="describedBy"
+        @click="onGateClick"
         @change="onChange"
       >
       <input
@@ -65,6 +66,7 @@
           target="_blank"
           rel="noopener"
           class="link link-hover font-medium block mt-1"
+          :class="{ 'motion-safe:animate-pulse': nudged }"
           @click="markPdfOpened"
         >
           {{ config.view_pdf_text }}
@@ -72,7 +74,9 @@
         <p
           v-if="isPdfGateClosed"
           id="esign_consent_open_pdf_first"
-          class="text-base-content/60 text-sm mt-1"
+          class="text-sm mt-1"
+          :class="nudged ? 'text-base-content font-semibold' : 'text-base-content/60'"
+          :data-nudged="nudged ? 'true' : undefined"
         >
           {{ config.open_pdf_first }}
         </p>
@@ -85,6 +89,15 @@
         class="text-error text-sm mt-1 ps-7"
       >
         {{ message }}
+      </p>
+      <!-- The hint above is what `aria-describedby` points at, so a screen
+           reader hears it on focus; this copy is announced on the refused
+           click, which is the moment the signer asks why nothing happened. -->
+      <p
+        v-if="nudged"
+        class="sr-only"
+      >
+        {{ config.open_pdf_first }}
       </p>
     </div>
     <p
@@ -154,6 +167,17 @@ export default {
     }
   },
   emits: ['update:modelValue', 'pdfOpened'],
+  data () {
+    return {
+      // The signer tried to tick the box while the PDF gate was still closed.
+      // Nothing else changes on screen when that happens, so without this the
+      // click reads as a dead control; it brings the reason and the link that
+      // clears it forward for a few seconds. Never a substitute for the
+      // hint: the hint is always on screen while the gate is closed.
+      nudged: false,
+      nudgeTimeout: null
+    }
+  },
   computed: {
     // §7001(c) asks the signer to confirm their device can display the record
     // before they agree to receive it electronically, so the box refuses to
@@ -184,7 +208,31 @@ export default {
       return this.config.required_message
     }
   },
+  watch: {
+    // The nudge exists only to explain a refusal. Once the PDF has been
+    // opened there is nothing left to refuse, so it goes at once rather than
+    // sitting out its timer beside a hint that has already disappeared.
+    isPdfGateClosed (closed) {
+      if (closed) return
+
+      clearTimeout(this.nudgeTimeout)
+      this.nudged = false
+    }
+  },
+  beforeUnmount () {
+    clearTimeout(this.nudgeTimeout)
+  },
   methods: {
+    // Feedback for a click the gate refuses — mouse, tap, or Space on the
+    // focused checkbox, all of which fire `click`. Re-arming the timer on a
+    // second click keeps the emphasis up while the signer keeps trying.
+    onGateClick () {
+      if (!this.isPdfGateClosed) return
+
+      clearTimeout(this.nudgeTimeout)
+      this.nudged = true
+      this.nudgeTimeout = setTimeout(() => { this.nudged = false }, 6000)
+    },
     focus () {
       this.$refs.checkbox?.focus()
     },

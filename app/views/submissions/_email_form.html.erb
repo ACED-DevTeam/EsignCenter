@@ -23,8 +23,8 @@
     </div>
   <% elsif submitters.size == 1 %>
     <submitter-item class="form-control">
-      <%# Bulk send is hidden for everyone (no limit is set, so several recipients in one send are never blocked). %>
-      <emails-textarea data-bulk-enabled="false">
+      <%# No `data-limit` is set, so several recipients in one send are never blocked and the recipient counter stays off. %>
+      <emails-textarea>
         <submitters-autocomplete data-field="email" class="block relative">
           <autoresize-textarea>
             <%= f.text_area :emails, required: true, class: 'base-textarea w-full !text-lg', placeholder: "#{t('type_emails_here')}...", rows: 2 %>

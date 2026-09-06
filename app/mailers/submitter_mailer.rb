@@ -273,14 +273,16 @@ class SubmitterMailer < ApplicationMailer
     user.role == 'integration' ? user.friendly_name.sub(/\+\w+@/, '@') : user.friendly_name
   end
 
+  # The stock subjects carry the same `{account.name}` / `{template.name}`
+  # variables the customisable ones do (they are the defaults the
+  # Personalization editor offers), so the fallback goes through
+  # ReplaceEmailVariables too — otherwise a free account would send a subject
+  # with the raw tokens in it.
   def build_invite_subject(subject, email_config, submitter)
-    if email_config || subject
-      ReplaceEmailVariables.call(subject || email_config.value['subject'], submitter:)
-    elsif submitter.with_signature_fields?
-      I18n.t(:you_are_invited_to_sign_a_document)
-    else
-      I18n.t(:you_are_invited_to_submit_a_form)
-    end
+    default_key =
+      submitter.with_signature_fields? ? :you_are_invited_to_sign_a_document : :you_are_invited_to_submit_a_form
+
+    ReplaceEmailVariables.call(subject || email_config&.value&.dig('subject') || I18n.t(default_key), submitter:)
   end
 
   def build_submitter_preferences_index(submitter)

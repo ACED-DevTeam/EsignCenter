@@ -254,17 +254,24 @@ each account's own name.
    email should arrive from that app's own server, signing should complete, the
    completion email should arrive, and the app's webhook should verify. Then
    check the log has no `no SMTP config for account` lines.
-6. **Watch the four scheduled jobs fire** (Sessions 5–7 added three of them;
-   the times are UTC and they live in `config/schedule.yml`). Within the first
-   day you should see each of these in the log, and `/jobs` shows them under
-   *Cron*:
+6. **Watch all six scheduled jobs fire** (Sessions 5–10 added five of them;
+   the times are UTC and they live in `config/schedule.yml`, which is the only
+   place a recurring job is ever declared). Within the first day you should
+   see each of these in the log, and `/jobs` shows them under *Cron*:
 
    | Job | When |
    | --- | --- |
    | `scheduler_heartbeat` | every minute — `/up` stops reporting a fresh `scheduler_last_tick_at` if it stops |
+   | `housekeeping` | every hour at :05 — closes support sessions the operator walked away from and replays email callbacks that arrived early |
    | `billing_lifecycle` | every hour at :15 — the past-due reminder/suspension clock and the lapsed-invitation seat sweep |
+   | `comp_expiry` | every hour at :45 — ends complimentary paid plans on their expiry date. The one job whose silent death gives paid access away for ever |
    | `stripe_reconciliation` | 06:00 — re-reads Stripe and repairs drift |
-   | `account_retention` | 04:30 — the deletion and dormancy clocks |
+   | `account_retention` | 04:30 — the deletion and dormancy clocks, and the account-export housekeeping |
+
+   The Scheduler tab in the operator console (`/operator/scheduler`) shows the
+   same six with when each last ran, how long it took and whether it worked,
+   and gives every business job a **Run now** button. What each job does and
+   what it costs you when it stops is `docs/operations.md` section 4.1.
 
    The first tick to look for is the heartbeat (one minute). If nothing is
    firing at all, nothing time-based is running — see `docs/operations.md`
@@ -277,6 +284,18 @@ each account's own name.
    webhook endpoint and copy its signing secret, then run
    `bundle exec rake stripe:check` (everything must say PASS) and only then set
    `BILLING_ENABLED=true`.
+
+   **One Stripe setting `rake stripe:check` cannot assert — set it by hand.**
+   In the Stripe dashboard: **Settings → Billing → Subscriptions and emails →
+   Manage failed payments**. The retry schedule must run **at least 14 days**
+   (choose the longest window Stripe offers), and "after all retries fail"
+   must be **Mark the subscription as unpaid** — never *Cancel*, never *Leave
+   as is*. This is a dashboard-only value with no API behind it, so no command
+   can confirm it and nothing will alert you if somebody changes it: it has to
+   be looked at with your own eyes, at launch and after any Stripe settings
+   change. Why it matters, and what goes wrong when it is short, is
+   `docs/operations.md` section 3.4. Note the date and the window you chose in
+   the deploy notes.
 
    **Before you run any Stripe command line tool against production, check
    which Stripe account it is logged into.** On the development machine the
@@ -326,6 +345,117 @@ of them needs an action from you, but somebody will ask:
   query and what to do with the answer are in `docs/operations.md`
   section 2.3, step 4b.
 
+## Sessions 8–10 additions — what the deploy does on its own
+
+Thirteen more migrations arrived with the operator console, the account
+export, the legal record and the billing fixes. **None of them destroys data
+and none of them needs an action from you** — every one adds a column, a table
+or an index. Three things are worth knowing anyway:
+
+- **One migration can stop the deploy on purpose.** `20260906090000` adds a
+  rule the database enforces from now on: one party per role, per document. It
+  refuses to be added while any existing document holds two people in the same
+  role, and prints the first twenty. That is deliberate — deciding which of two
+  people really holds a role is a human judgement, not something a migration
+  should guess. Catch it on the rehearsal copy, not on production: the full
+  procedure is `docs/operations.md` section 2.3, "Duplicate submitter uuids".
+- **Three indexes are built `CONCURRENTLY`**, which keeps signing working
+  while they are created but leaves an unusable index behind if a build is
+  interrupted — and a re-run then skips it silently. After *any* failed or
+  interrupted migration run, follow "Indexes built CONCURRENTLY" in
+  `docs/operations.md` section 2.3 before running the migrations again. This
+  applies on production too, not only on the rehearsal copy.
+- **Nothing customers see changes at the deploy.** No sign-outs, no clocks
+  reset, no rows rewritten: new comp expiry dates, exports, legal-acceptance
+  records and the Stripe `cancel_at` date all start empty and fill in as they
+  are used. The full list, row by row, is the second migration table in
+  `docs/operations.md` section 2.
+
+## Launch gate 4b — Sign in with Apple
+
+The **Continue with Apple** button is built and switched off. It appears the
+moment four environment variables hold real values, and stays invisible until
+then (`docs/signup.md`, *Turning the Apple button on*). This is the errand
+that produces those four values. Allow about half an hour, plus however long
+Apple takes to verify the domain — usually minutes.
+
+You need an **Apple Developer Program** membership ($99/year) for the account
+that will own the sign-in. Everything below happens at
+<https://developer.apple.com/account>, under **Certificates, Identifiers &
+Profiles**.
+
+1. **Find your team id.** Top right of the developer account page, under
+   *Membership details* — ten characters, e.g. `AB1234CD56`. That is
+   `APPLE_OAUTH_TEAM_ID`.
+
+2. **Create an App ID.** *Identifiers* → **+** → *App IDs* → *App*.
+   Description: `EsignCenter`. Bundle ID: explicit, e.g.
+   `com.esigncenter.signin`. In the Capabilities list tick **Sign In with
+   Apple**. Register. (Apple requires an App ID to exist even though we are a
+   website; nothing else uses it.)
+
+3. **Create a Services ID — this is the client id.** *Identifiers* → **+** →
+   *Services IDs*. Description: `EsignCenter Web`. Identifier: e.g.
+   `com.esigncenter.web` — it must be different from the App ID above.
+   Register, then open it again and tick **Sign In with Apple** →
+   **Configure**:
+   - Primary App ID: the App ID from step 2.
+   - **Domains and Subdomains:** `esigncenter.com` (add `www.esigncenter.com`
+     too if the site answers there).
+   - **Return URLs:** `https://esigncenter.com/auth/apple/callback` — exactly
+     that path, and one line per domain you listed. HTTPS only; Apple rejects
+     `http://` and rejects `localhost`, which is why this cannot be tested on
+     a laptop.
+   Save. The Services ID identifier is `APPLE_OAUTH_CLIENT_ID`.
+
+4. **Verify the domain.** In the same Configure panel Apple offers
+   *Download* for a file named `apple-developer-domain-association.txt`. It
+   has to answer at
+   `https://esigncenter.com/.well-known/apple-developer-domain-association.txt`.
+   This app serves anything under its `public/` folder, so the file goes to
+   `public/.well-known/apple-developer-domain-association.txt` in the repo and
+   ships with the next deploy — a one-line job for the engineer. Load the URL
+   in a browser to confirm it returns the file, then press **Verify** in
+   Apple's panel. A domain that is not verified makes every sign-in attempt
+   fail with *invalid_client*.
+
+5. **Create the sign-in key.** *Keys* → **+**. Key Name: `EsignCenter Sign In`.
+   Tick **Sign In with Apple** → **Configure** → choose the App ID from
+   step 2 → Save → **Continue** → **Register**. Apple now shows a **ten
+   character Key ID** — that is `APPLE_OAUTH_KEY_ID` — and lets you
+   **Download** a file called `AuthKey_XXXXXXXXXX.p8` **once and only once**.
+   Download it and keep it somewhere safe; Apple will never show it again and
+   a lost key means creating a new one.
+
+6. **Put the four values into Render.** Web service → *Environment*:
+   - `APPLE_OAUTH_CLIENT_ID` — the Services ID from step 3
+     (`com.esigncenter.web`).
+   - `APPLE_OAUTH_TEAM_ID` — the ten characters from step 1.
+   - `APPLE_OAUTH_KEY_ID` — the ten characters from step 5.
+   - `APPLE_OAUTH_PRIVATE_KEY` — the **whole contents** of the `.p8` file,
+     including the `-----BEGIN PRIVATE KEY-----` and
+     `-----END PRIVATE KEY-----` lines. Paste it with its line breaks; if
+     Render's editor collapses it, `\n` between the lines works too.
+   Save, which redeploys.
+
+7. **Check it.** `FORCE_SSL` must be `true` (it is, in the table in section 2)
+   — Apple's sign-in returns the browser to us in a way that only works over
+   HTTPS. Then open `https://esigncenter.com/sign_in` in a private window: a
+   black **Continue with Apple** button now sits under the Google one. Press
+   it, sign in with an Apple ID, and choose **Share My Email**. You should
+   land signed in, with a new account carrying the four sample documents.
+   If the button is not there, one of the four values did not take — the boot
+   log says which.
+
+Two things worth knowing before you test:
+
+- **Apple hands over the email address only the first time.** If your first
+  attempt fails for any reason, the second one arrives with no address and the
+  page will tell you to remove EsignCenter from *Settings → your name → Sign
+  in with Apple* on your device and try again. That is expected, not a bug.
+- **Hide My Email is fine.** If a customer chooses it, we store the
+  `@privaterelay.appleid.com` forward Apple gives us. Mail to it reaches them.
+
 ## 6. After a deploy that changes built-in field mappings
 
 If your integrating app keeps its own copies of field mappings for templates,
@@ -358,3 +488,10 @@ DocuSeal" attribution in the signing screens must stay** (it does — footer),
 and the fork's complete source must remain publicly available (it is — this
 repository). The corner logo was removed; that is allowed. Do not remove the
 footer attribution.
+
+The "DocuSeal" word in that footer links to DocuSeal's own source repository
+(`https://github.com/docusealco/docuseal`), never to their sign-up page: the
+credit owes a reader the upstream project, not a competitor's sales funnel.
+`rake gates:branding` fails the build if the link moves, if either attribution
+partial loses it, or if any page that shows the footer today stops rendering
+it.

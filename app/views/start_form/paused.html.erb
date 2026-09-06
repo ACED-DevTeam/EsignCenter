@@ -1,4 +1,4 @@
-<% content_for(:html_title, "#{@template.name} | EsignCenter") %>
+<% content_for(:html_title, "#{@template.name} — EsignCenter") %>
 <% content_for(:html_description, t('form_not_accepting_responses')) %>
 <main class="max-w-md mx-auto px-2 mt-12 mb-4">
   <div class="space-y-6 mx-auto">
@@ -29,4 +29,4 @@
     <% end %>
   </div>
 </main>
-<%= render 'shared/attribution', link_path: '/start', account: @template.account %>
+<%= render 'shared/attribution', account: @template.account %>

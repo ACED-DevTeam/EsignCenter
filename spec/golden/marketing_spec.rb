@@ -37,7 +37,7 @@ RSpec.describe 'Marketing pages', type: :request do
   end
 
   def visible_attribution_links
-    doc.css("a[href^='#{Docuseal::DOCUSEAL_URL}']").select do |a|
+    doc.css("a[href^='#{Docuseal::DOCUSEAL_SOURCE_URL}']").select do |a|
       a.text.strip == 'DocuSeal' && a.ancestors.none? { |node| hidden_node?(node) }
     end
   end

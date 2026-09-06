@@ -1,7 +1,10 @@
-<% if Registrations.google_enabled? %>
+<% if Registrations.google_enabled? || Registrations.apple_enabled? %>
   <div class="divider my-6 text-base-content/60"><%= t('or') %></div>
-  <%= render 'devise/shared/google_button' %>
-  <%# This button creates an account for an address nobody has signed up with
+  <div class="space-y-3">
+    <%= render 'devise/shared/google_button' %>
+    <%= render 'devise/shared/apple_button' %>
+  </div>
+  <%# These buttons create an account for an address nobody has signed up with
       yet, so the sign-in page is a sign-up door too and carries the same
       sentence the sign-up form does (review 1). %>
   <p class="text-sm text-center text-base-content/70 mt-4" dir="auto">

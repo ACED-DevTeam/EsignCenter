@@ -1,13 +1,20 @@
 # frozen_string_literal: true
 
 module Docuseal
-  # Upstream project URL — used for the AGPL-required DocuSeal attribution
-  # (see LICENSE_ADDITIONAL_TERMS).
-  DOCUSEAL_URL = 'https://www.docuseal.com'
+  # Upstream source repository — the target of the AGPL-required DocuSeal
+  # attribution (see LICENSE_ADDITIONAL_TERMS). The attribution owes the reader
+  # the upstream project's source, never its commercial site or signup funnel,
+  # so this is the repo URL; the upstream domain appears nowhere in app code
+  # and `rake gates:branding` refuses it (BANNED_LITERALS, no allowlist entry).
+  DOCUSEAL_SOURCE_URL = 'https://github.com/docusealco/docuseal'
   PRODUCT_URL = 'https://github.com/AmishHillBilly/EsignCenter'
-  PRODUCT_EMAIL_URL = ENV.fetch('PRODUCT_EMAIL_URL', PRODUCT_URL)
   PRODUCT_NAME = 'EsignCenter'
   DEFAULT_APP_URL = ENV.fetch('APP_URL', 'http://localhost:3000')
+  # Where the "Sent using EsignCenter" line in a signer's mail points. That
+  # line is free-plan product branding (D45), not the AGPL attribution, and a
+  # signer who follows it wants the product, not our source tree — so it is the
+  # app's own address, overridable per deployment.
+  PRODUCT_EMAIL_URL = ENV.fetch('PRODUCT_EMAIL_URL', DEFAULT_APP_URL)
   GITHUB_URL = 'https://github.com/AmishHillBilly/EsignCenter'
   SUPPORT_EMAIL = 'evan@processorteam.com'
 

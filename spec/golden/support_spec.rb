@@ -186,10 +186,19 @@ RSpec.describe 'Support form', type: :request do
       expect(doc.at_css('main').text).to include(I18n.t('please_complete_the_verification'))
     end
 
-    it 'answers a filled honeypot with the ordinary receipt, byte for byte, and sends nothing' do
+    # `sidekiq: :inline` is what makes this example mean anything (checkpoint
+    # 10, E1). The controller sends with `deliver_later!`, so under the
+    # default fake queue `deliveries` never moves whether the honeypot caught
+    # the request or not, and the receipt is the same page either way — the
+    # example passed with the honeypot switched off. Inline, the honest post
+    # below really delivers (asserted, so a change that stopped it being
+    # observable fails here rather than going quiet again) and a trapped one
+    # that delivered would fail.
+    it 'answers a filled honeypot with the ordinary receipt, byte for byte, and sends nothing',
+       sidekiq: :inline do
       stub_turnstile(success: true)
 
-      post '/support', params: support_params
+      expect { post '/support', params: support_params }.to change(deliveries, :count).by(1)
       honest = Nokogiri::HTML(response.body).at_css('main').to_html
 
       deliveries.clear

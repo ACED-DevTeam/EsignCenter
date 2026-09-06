@@ -1,58 +1,188 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
   <head>
-    <title>We're sorry, but something went wrong (500)</title>
+    <meta charset="utf-8">
+    <title>Something went wrong — EsignCenter</title>
     <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="robots" content="noindex">
+    <!-- Deliberately self-contained: no stylesheet, no script, no image file.
+         These three pages are what a visitor sees when the app is refusing or
+         broken, so they must not depend on anything the app has to serve. -->
     <style>
-    .error-page {
-      background-color: #FAF7F4;
-      color: #2E2F30;
-      text-align: center;
-      font-family: arial, sans-serif;
-      margin: 0;
-    }
+      :root {
+        color-scheme: light dark;
+        --ec-bg: #faf7f5;
+        --ec-surface: #ffffff;
+        --ec-border: rgba(41, 19, 52, 0.10);
+        --ec-text: #291334;
+        --ec-muted: rgba(41, 19, 52, 0.68);
+        --ec-brand: #4f46e5;
+        --ec-brand-ink: #ffffff;
+        --ec-glow: rgba(79, 70, 229, 0.10);
+        --ec-shadow: 0 1px 2px rgba(41, 19, 52, 0.06), 0 12px 32px rgba(41, 19, 52, 0.08);
+      }
 
-    .error-page h1 {
-      font-weight: 700;
-      font-size: 10em;
-      color: #F97272;
-      margin: 0 0 0.1em;
-    }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --ec-bg: #17141d;
+          --ec-surface: #211c2b;
+          --ec-border: rgba(255, 255, 255, 0.12);
+          --ec-text: #f6f3f8;
+          --ec-muted: rgba(246, 243, 248, 0.72);
+          --ec-brand: #818cf8;
+          --ec-brand-ink: #14111c;
+          --ec-glow: rgba(129, 140, 248, 0.16);
+          --ec-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 32px rgba(0, 0, 0, 0.45);
+        }
+      }
 
-    .error-page h2 {
-      font-weight: 600;
-      font-size: 1.75em;
-      color: #291434;
-      margin: 0.5em 0;
-    }
+      * { box-sizing: border-box; }
 
-    .error-page a.btn {
-      display: inline-block;
-      width: auto;
-      background-color: #291434;
-      padding: 1em 1.5em;
-      border-radius: 25px;
-      color: #ffffff;
-      text-decoration: none;
-      margin: 1em 0;
-      text-transform: uppercase;
-    }
+      html, body { height: 100%; }
 
-    .error-page div.dialog {
-      width: 95%;
-      max-width: 33em;
-      margin: 6em auto 0;
-    }
+      body {
+        margin: 0;
+        padding: 1.5rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background-color: var(--ec-bg);
+        background-image:
+          radial-gradient(60rem 30rem at 85% -10%, var(--ec-glow), transparent 60%),
+          radial-gradient(40rem 20rem at -10% 20%, var(--ec-glow), transparent 60%);
+        color: var(--ec-text);
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        font-size: 16px;
+        line-height: 1.6;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      .ec-card {
+        width: 100%;
+        max-width: 34rem;
+        padding: 2.5rem 2rem;
+        border: 1px solid var(--ec-border);
+        border-radius: 1.25rem;
+        background: var(--ec-surface);
+        box-shadow: var(--ec-shadow);
+        text-align: center;
+      }
+
+      .ec-wordmark {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.6rem;
+        margin-bottom: 2.25rem;
+        color: inherit;
+        text-decoration: none;
+        font-size: 1.125rem;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+      }
+
+      .ec-wordmark svg { display: block; }
+
+      .ec-code {
+        display: block;
+        width: fit-content;
+        margin: 0 auto 0.85rem;
+        padding: 0.2rem 0.7rem;
+        border-radius: 999px;
+        background: var(--ec-glow);
+        color: var(--ec-brand);
+        font-size: 0.75rem;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        margin: 0 0 0.75rem;
+        font-size: 1.75rem;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        line-height: 1.2;
+      }
+
+      p {
+        margin: 0 auto;
+        max-width: 26rem;
+        color: var(--ec-muted);
+      }
+
+      .ec-actions {
+        margin-top: 2rem;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 1.25rem;
+      }
+
+      .ec-button {
+        display: inline-block;
+        padding: 0.8rem 1.75rem;
+        white-space: nowrap;
+        border: 1px solid var(--ec-brand);
+        border-radius: 0.75rem;
+        background: var(--ec-brand);
+        color: var(--ec-brand-ink);
+        font-weight: 600;
+        text-decoration: none;
+      }
+
+      .ec-button:hover { filter: brightness(1.08); }
+
+      .ec-links {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: center;
+        gap: 0.35rem 1.25rem;
+        font-size: 0.9375rem;
+      }
+
+      .ec-links a {
+        color: var(--ec-brand);
+        text-decoration: none;
+        font-weight: 500;
+      }
+
+      .ec-links a:hover { text-decoration: underline; }
+
+      a:focus-visible {
+        outline: 2px solid var(--ec-brand);
+        outline-offset: 3px;
+      }
+
+      @media (min-width: 480px) {
+        .ec-card { padding: 3rem 3rem 2.75rem; }
+
+        h1 { font-size: 2.125rem; }
+      }
     </style>
   </head>
 
-  <body class="error-page">
-    <div class="dialog">
-      <div>
-        <h1>500</h1>
-        <h2>We're sorry, but something went wrong</h2>
+  <body>
+    <main class="ec-card">
+      <a class="ec-wordmark" rel="noopener noreferrer" href="/">
+        <svg height="32" width="32" viewBox="0 0 180 180" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+          <rect x="8" y="8" width="164" height="164" rx="36" fill="#4F46E5" />
+          <path d="M 50 94 L 78 121 L 132 60" stroke="#FFFFFF" stroke-width="15" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+          <path d="M 46 140 C 76 151, 104 151, 134 140" stroke="#FFFFFF" stroke-width="8" stroke-linecap="round" fill="none" opacity="0.85" />
+        </svg>
+        <span>EsignCenter</span>
+      </a>
+      <p class="ec-code">Error 500</p>
+      <h1>Something went wrong</h1>
+      <p>This one is on us: an error on our side stopped this page loading. Try again in a moment, and tell us if it keeps happening.</p>
+      <div class="ec-actions">
+        <a class="ec-button" rel="noopener noreferrer" href="/">Go to the home page</a>
+        <span class="ec-links">
+          <a rel="noopener noreferrer" href="/help">Help centre</a>
+          <a rel="noopener noreferrer" href="/support">Contact support</a>
+        </span>
       </div>
-      <a rel="noopener noreferrer" href="/" class="btn">Back to homepage</a>
-    </div>
+    </main>
   </body>
 </html>

@@ -1,0 +1,35 @@
+<%# Sign-up's own error rendering (review 10, D6).
+
+    Devise's shared block opened with "1 error prohibited this user from being
+    saved" and then listed "Email has already been taken" — a dead end for the
+    one mistake people actually make on this form, which is signing up twice.
+    So the taken address gets a sentence and two ways forward instead, and the
+    count header is gone from every case.
+
+    Naming the address reveals nothing this form did not already reveal:
+    Devise's `paranoid` setting covers the confirmation and password forms,
+    never registration, and refusing the sign-up at all is itself the answer
+    (spec/golden/signup_spec.rb, "refuses an address that already has a
+    user"). The alternative — a silent success — leaves a real person waiting
+    for mail that never comes. %>
+<% if resource.errors.any? %>
+  <div id="error_explanation" data-turbo-cache="false">
+    <div class="alert">
+      <%= svg_icon('x_circle', class: 'stroke-current shrink-0 h-6 w-6') %>
+      <div dir="auto">
+        <% if resource.errors.of_kind?(:email, :taken) %>
+          <p class="text-sm">
+            <%= t('signup_email_taken_html',
+                  email: resource.email,
+                  sign_in: link_to(t('signup_sign_in_instead'), new_user_session_path, class: 'link'),
+                  reset_password: link_to(t('signup_reset_your_password'), new_user_password_path, class: 'link')) %>
+          </p>
+        <% end %>
+        <% resource.errors.each do |error| %>
+          <% next if error.attribute == :email && error.type == :taken %>
+          <p class="text-sm"><%= error.full_message %></p>
+        <% end %>
+      </div>
+    </div>
+  </div>
+<% end %>

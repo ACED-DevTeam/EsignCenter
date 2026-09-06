@@ -331,14 +331,46 @@ Devise.setup do |config|
   # so you need to do it manually. For the users scope, it would be:
   # config.omniauth_path_prefix = '/my_engine/users/auth'
 
-  # Google is the only sign-in provider (Apple Sign-In is a launch-gate item).
-  # Missing credentials do not break boot: the Google button hides and the
-  # authorize endpoint is never offered (Registrations.google_enabled?).
+  # Two sign-in providers, Google and Apple (D61). Missing credentials do not
+  # break boot in either case: the button hides and the authorize endpoint is
+  # never offered (Registrations.google_enabled? / .apple_enabled?).
   config.omniauth :google_oauth2,
                   ENV.fetch('GOOGLE_OAUTH_CLIENT_ID', nil),
                   ENV.fetch('GOOGLE_OAUTH_CLIENT_SECRET', nil),
                   scope: 'email,profile',
                   prompt: 'select_account'
+
+  # Apple mints no long-lived client secret. The strategy signs a sixty-second
+  # JWT with the .p8 key on every exchange, which is why the secret argument is
+  # empty and the team id, the key id and the key itself carry the credentials.
+  # The env value is read here rather than through Registrations so that boot
+  # never has to autoload application code; the `\n` unescaping matches
+  # Registrations.apple_private_key, because a hosting panel stores a
+  # multi-line key as one line.
+  #
+  # `scope: 'email name'` is what makes Apple ask the person to share their
+  # address and their name — and it is also what makes the callback a
+  # cross-site form POST rather than a redirect
+  # (AppleFormPostCookieMiddleware).
+  #
+  # The four values are read per request rather than frozen at boot: the
+  # strategy turns the private key into an OpenSSL key object the moment a
+  # request phase runs, so a key that was still a placeholder when the process
+  # started must not be baked in — the door would stay broken until a restart.
+  # `setup` is OmniAuth's own hook for exactly this, and it runs before both
+  # the request phase and the callback.
+  config.omniauth :apple,
+                  ENV.fetch('APPLE_OAUTH_CLIENT_ID', nil),
+                  '',
+                  scope: 'email name',
+                  setup: lambda { |env|
+                    options = env['omniauth.strategy'].options
+
+                    options[:client_id] = ENV.fetch('APPLE_OAUTH_CLIENT_ID', nil)
+                    options[:team_id] = ENV.fetch('APPLE_OAUTH_TEAM_ID', nil)
+                    options[:key_id] = ENV.fetch('APPLE_OAUTH_KEY_ID', nil)
+                    options[:pem] = Registrations.apple_private_key
+                  }
 
   # ==> Hotwire/Turbo configuration
   # When using Devise with Hotwire/Turbo, the http status for error responses
@@ -362,6 +394,6 @@ end
 # third-party page); omniauth-rails_csrf_protection checks the CSRF token on
 # that POST. While REGISTRATION_ENABLED is off, RegistrationGateMiddleware
 # (config/application.rb) answers 404 for every /auth/* path before OmniAuth
-# can redirect anyone to Google.
+# can redirect anyone to Google or Apple.
 OmniAuth.config.allowed_request_methods = [:post]
 # rubocop:enable Metrics/BlockLength

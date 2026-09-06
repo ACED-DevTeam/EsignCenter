@@ -36,6 +36,13 @@ RSpec.describe 'Feature gating', type: :request do
     create(:template, account:, author: admin_for(account))
   end
 
+  # The stock signature-request subject as a signer receives it: the default
+  # carries the same `{account.name}` / `{template.name}` variables the
+  # customisable subject does, and the mailer resolves them (D5).
+  def default_invite_subject(submitter)
+    ReplaceEmailVariables.call(I18n.t(:you_are_invited_to_sign_a_document), submitter:)
+  end
+
   def sent_submitter_for(account, template: template_for(account))
     submission = create(:submission, :with_submitters, template:, created_by_user: admin_for(account))
     submission.submitters.first.tap { |submitter| submitter.update!(sent_at: Time.current) }
@@ -763,7 +770,7 @@ RSpec.describe 'Feature gating', type: :request do
 
       expect(response).to have_http_status(:ok)
       expect(response.body).not_to include(I18n.t('powered_by'))
-      expect(response.body).to include("href=\"#{Docuseal::DOCUSEAL_URL}/start\"")
+      expect(response.body).to include("href=\"#{Docuseal::DOCUSEAL_SOURCE_URL}\"")
       expect(response.body).to include('>DocuSeal</a>')
 
       free_submitter, free_html = invitation_html(free_account)
@@ -774,7 +781,7 @@ RSpec.describe 'Feature gating', type: :request do
 
       expect(response).to have_http_status(:ok)
       expect(response.body).to include(I18n.t('powered_by'))
-      expect(response.body).to include("href=\"#{Docuseal::DOCUSEAL_URL}/start\"")
+      expect(response.body).to include("href=\"#{Docuseal::DOCUSEAL_SOURCE_URL}\"")
     end
 
     # Three signatures in the mail layout, each answering a different question
@@ -904,7 +911,7 @@ RSpec.describe 'Feature gating', type: :request do
 
       expect(response).to have_http_status(:ok)
       expect(response.body).not_to include(I18n.t('powered_by'))
-      expect(response.body).to include("href=\"#{Docuseal::DOCUSEAL_URL}\"")
+      expect(response.body).to include("href=\"#{Docuseal::DOCUSEAL_SOURCE_URL}\"")
       expect(response.body).to include('>DocuSeal</a>')
 
       # After the downgrade the builder token is refused (the embed row is
@@ -915,7 +922,7 @@ RSpec.describe 'Feature gating', type: :request do
 
       expect(response).to have_http_status(:forbidden)
       expect(response.body).to include(I18n.t('powered_by'))
-      expect(response.body).to include("href=\"#{Docuseal::DOCUSEAL_URL}\"")
+      expect(response.body).to include("href=\"#{Docuseal::DOCUSEAL_SOURCE_URL}\"")
       expect(response.body).to include('>DocuSeal</a>')
     end
   end
@@ -1132,10 +1139,10 @@ RSpec.describe 'Feature gating', type: :request do
         'invitation_reminder_email_body' => reminder_body
       ))
 
-      free_mail = SubmitterMailer.invitation_email(sent_submitter_for(free_account, template: free_template),
-                                                   reminder: true)
+      free_submitter = sent_submitter_for(free_account, template: free_template)
+      free_mail = SubmitterMailer.invitation_email(free_submitter, reminder: true)
 
-      expect(free_mail.subject).to eq(I18n.t('you_are_invited_to_sign_a_document'))
+      expect(free_mail.subject).to eq(default_invite_subject(free_submitter))
       expect(mail_body(free_mail)).not_to include('Your document is still waiting for you')
     end
 
@@ -1373,7 +1380,7 @@ RSpec.describe 'Feature gating', type: :request do
 
       mail = SubmitterMailer.invitation_email(submitter.reload)
 
-      expect(mail.subject).to eq(I18n.t(:you_are_invited_to_sign_a_document))
+      expect(mail.subject).to eq(default_invite_subject(submitter))
       expect((mail.html_part || mail).body.decoded).not_to include('Template body', 'Account body')
       expect(template.reload.preferences['request_email_subject']).to eq('Template subject')
       expect(paid_account.account_configs.find_by(key: AccountConfig::SUBMITTER_INVITATION_EMAIL_KEY)).to be_present

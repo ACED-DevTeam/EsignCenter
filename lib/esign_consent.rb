@@ -25,6 +25,9 @@
 # after a production consent has been recorded under the current version, and
 # archive the superseded text of every locale under
 # config/locales/esign_disclosures/<old-version>.yml (see disclosure_text).
+# "The text" is the body AND the three self-signing paragraphs
+# (SELF_SIGNING_KEYS): both are fingerprinted, so both are archived together
+# and both are read back from the same snapshot.
 # The version is stored on the event and printed in the audit trail. The form
 # sends back the version it displayed, and a consent for another version — or
 # for no version at all — is refused (StaleVersionError): a page opened before
@@ -43,6 +46,18 @@ module EsignConsent
   # Rails loads that folder with the other locale files, and the scope keeps
   # an old text from ever shadowing the live DISCLOSURE_KEY.
   ARCHIVE_SCOPE = 'esign_disclosure_archive'
+  # The self-signing paragraphs are part of the fingerprinted text, so they
+  # live under the version rule with the bodies: a superseded version's three
+  # paragraphs are archived beside its body as
+  # `<locale>: { esign_disclosure_archive: { <version>_self_signing: { <key>: ... } } }`.
+  # VERSION_FORMAT keeps the suffixed key out of reach of a version lookup.
+  SELF_SIGNING_ARCHIVE_SUFFIX = '_self_signing'
+  # What that snapshot says for a version that never had a self-signing
+  # variant — v1, which shipped before the variant existed, so no v1 consent
+  # can carry `self_signing` (docs/esign-consent.md §6). Saying it out loud is
+  # the point: "there was never anything to reproduce" and "somebody forgot to
+  # archive it" both refuse to print wording, and only one of them is a bug.
+  SELF_SIGNING_NEVER_PUBLISHED = 'never_published'
   VERSION_FORMAT = /\Av\d+\z/
   # The placeholders that mark a paragraph as one that names the SENDER,
   # spelled out so they are not read as format tokens (self_signing_body).
@@ -259,6 +274,15 @@ module EsignConsent
   # `self_signing:` returns the variant a person signing their OWN document is
   # shown (self_signing_body) — the same words, minus the paragraphs that tell
   # them to write to themselves.
+  #
+  # BOTH halves of that variant come from the same place: while a version is
+  # current, its body and its self-signing paragraphs are the live locale
+  # keys; once it is superseded, both come from its archive snapshot. A
+  # version's words are never assembled half from a snapshot and half from
+  # today's locale file — that was the hole (review 10, A3): editing a
+  # self-signing paragraph used to change the text of every self-signing
+  # consent ever recorded, under every version, and make each of them
+  # unreproducible. nil when this version has no self-signing variant on file.
   def disclosure_text(version:, locale:, self_signing: false)
     locale = normalize_locale(locale)
 
@@ -268,9 +292,37 @@ module EsignConsent
 
     body = I18n.t(key, locale:, fallback: false, raise: true)
 
-    self_signing ? self_signing_body(body, locale:) : body
+    return body unless self_signing
+
+    paragraphs = self_signing_paragraphs(version:, locale:)
+
+    self_signing_body(body, paragraphs) if paragraphs
   rescue I18n::MissingTranslationData
     nil
+  end
+
+  # The three self-signing paragraphs as this version published them: the live
+  # locale keys while the version is current, that version's archived snapshot
+  # once it is superseded (SELF_SIGNING_ARCHIVE_SUFFIX).
+  #
+  # nil means "no self-signing wording on file for this version", which the
+  # audit trail turns into the "wording no longer on file" line rather than
+  # printing today's paragraphs under an old version's header. Three ways to
+  # get there: the version never had a self-signing variant (v1 says so with
+  # SELF_SIGNING_NEVER_PUBLISHED), its snapshot is missing (raised and rescued
+  # by the caller), or the snapshot is there but incomplete — a half-archived
+  # version is not a text anybody can vouch for.
+  def self_signing_paragraphs(version:, locale:)
+    return SELF_SIGNING_KEYS.map { |key| I18n.t(key, locale:, fallback: false, raise: true) } if version == VERSION
+
+    snapshot = I18n.t("#{ARCHIVE_SCOPE}.#{version}#{SELF_SIGNING_ARCHIVE_SUFFIX}", locale:, fallback: false,
+                                                                                   raise: true)
+
+    return unless snapshot.is_a?(Hash)
+
+    paragraphs = SELF_SIGNING_KEYS.map { |key| snapshot[key.to_sym] }
+
+    paragraphs if paragraphs.all?(&:present?)
   end
 
   # "Sign it yourself": the sender and the signer are the same person, so
@@ -298,8 +350,12 @@ module EsignConsent
   # The substitution happens BEFORE the fingerprint is taken, so the event's
   # `disclosure_sha256` is of the text this signer really saw, and the audit
   # trail rebuilds the same text from the event's `self_signing` flag.
-  def self_signing_body(body, locale:)
-    replacement = SELF_SIGNING_KEYS.map { |key| "<p>#{I18n.t(key, locale:)}</p>" }.join
+  #
+  # `paragraphs` are this VERSION's three paragraphs, resolved by
+  # self_signing_paragraphs — never read from the live locale file here, or an
+  # archived body would be spliced with today's words.
+  def self_signing_body(body, paragraphs)
+    replacement = paragraphs.map { |paragraph| "<p>#{paragraph}</p>" }.join
     replaced = false
 
     body.to_s.split(%r{(?<=</p>)}).filter_map do |paragraph|
@@ -435,5 +491,6 @@ module EsignConsent
     events.where(SubmissionEvent.arel_table[:event_timestamp].gt(delegated_at))
   end
 
-  private_class_method :consent_scope, :resolve_locale!, :verified_locale!, :locale_token_key, :self_signing_body
+  private_class_method :consent_scope, :resolve_locale!, :verified_locale!, :locale_token_key, :self_signing_body,
+                       :self_signing_paragraphs
 end

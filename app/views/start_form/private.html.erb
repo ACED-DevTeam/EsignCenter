@@ -1,4 +1,4 @@
-<% content_for(:html_title, "#{@template.name} | EsignCenter") %>
+<% content_for(:html_title, "#{@template.name} — EsignCenter") %>
 <% I18n.with_locale(@template.account.locale) do %>
   <% content_for(:html_description, t('share_link_is_currently_disabled')) %>
 <% end %>
@@ -28,4 +28,4 @@
     </toggle-submit>
   <% end %>
 </main>
-<%= render 'shared/attribution', link_path: '/start', account: @template.account %>
+<%= render 'shared/attribution', account: @template.account %>
