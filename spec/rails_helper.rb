@@ -1,7 +1,11 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
-ENV['RAILS_ENV'] ||= 'test'
+# Forced, not defaulted: the dev container ships RAILS_ENV=development, and with `||=`
+# a bare `bundle exec rspec` there ran the whole suite against the development
+# database and config (review 10, 2026-09-06: three full runs, 750+ spurious
+# failures, dev data at risk). A spec process is a test process, full stop.
+ENV['RAILS_ENV'] = 'test'
 ENV['TZ'] ||= 'UTC'
 
 # The dev container loads .env.standalone.local (real SMTP/TSA/Stripe credentials) for the
