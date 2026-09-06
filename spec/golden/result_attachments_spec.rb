@@ -213,6 +213,137 @@ RSpec.describe 'Signed result attachments', type: :request do
       expect(digests.size).to eq(1)
       digests.each { |digest| expect(VerifiedDocument.where(sha256: digest)).to exist }
     end
+
+    # The row and the retirement are ONE decision, and until now nothing
+    # shipped said so — the `transaction` could be deleted and the whole suite
+    # stayed green (review 10, Q2). If storage refuses the delete, the re-key
+    # has to go back with it: the superseded copy is still on file, and the old
+    # row is the only thing that lets /verify answer for the PDF a signer may
+    # already be holding. The honest state is "old row, old copy, job retries".
+    it 'puts the row back when the file it supersedes cannot be deleted', sidekiq: :inline do
+      platform_certificate!
+
+      submitter = completed_submitter
+
+      Submissions::GenerateResultAttachments.call(submitter)
+
+      superseded = submitter.documents.reload.sole
+      delivered_sha = VerifiedDocument.where(submission_id: submitter.submission_id).sole.sha256
+
+      allow(Accounts::Purge).to receive(:purge_blob_storage_first!)
+        .and_raise(Accounts::Purge::StorageFailure, 'file is still in storage')
+
+      expect do
+        travel_to(2.minutes.from_now) { Submissions::GenerateResultAttachments.call(submitter.reload) }
+      end.to raise_error(Accounts::Purge::StorageFailure)
+
+      rows = VerifiedDocument.where(submission_id: submitter.submission_id)
+
+      # The row still describes the copy that is still on file.
+      expect(rows.count).to eq(1)
+      expect(rows.sole.sha256).to eq(delivered_sha)
+
+      expect(ActiveStorage::Attachment.where(id: superseded.id)).to exist
+      expect(Digest::SHA256.hexdigest(superseded.reload.download)).to eq(delivered_sha)
+    end
+  end
+
+  # The same defect on the submission's OWN outputs (review 10, Q1). The audit
+  # trail and the combined/merged PDFs are `has_one_attached`, created with a
+  # bare `ActiveStorage::Attachment.create!` — so a regenerated one used to sit
+  # NEXT to its predecessor, and `has_one` serves the first row it finds: the
+  # older copy, whose fingerprint the new `verified_documents` row had just
+  # taken away. The "Audit Log" button, the API and the export archive all
+  # handed out a PDF /verify answers "not on record" for.
+  describe 'a regenerated submission output leaves exactly one copy' do
+    # Runs the block twice, two minutes apart so the signature timestamp — and
+    # therefore the bytes — differ, then asks the three questions: one
+    # attachment of that name, the one the product serves is on record, the
+    # first one's file is gone from the database and from the bucket.
+    def expect_single_copy(submission, name, &)
+      first = yield
+      blob = first.blob
+      key = blob.key
+      service = blob.service
+
+      travel_to(2.minutes.from_now, &)
+
+      attachments = ActiveStorage::Attachment.where(record: submission, name:)
+
+      expect(attachments.count).to eq(1)
+      expect(attachments.sole.id).not_to eq(first.id)
+
+      served = submission.reload.public_send(:"#{name}_attachment")
+
+      expect(served.id).to eq(attachments.sole.id)
+      expect(VerifiedDocument.where(sha256: Digest::SHA256.hexdigest(served.download))).to exist
+
+      expect(ActiveStorage::Attachment.where(id: first.id)).not_to exist
+      expect(ActiveStorage::Blob.where(id: blob.id)).not_to exist
+      expect(service.exist?(key)).to be(false)
+    end
+
+    it 'retires the previous audit trail and its file', sidekiq: :inline do
+      platform_certificate!
+
+      submission = completed_submitter.submission
+
+      expect_single_copy(submission, 'audit_trail') { Submissions::GenerateAuditTrail.call(submission.reload) }
+    end
+
+    it 'retires the previous combined PDF and its file', sidekiq: :inline do
+      platform_certificate!
+
+      submitter = completed_submitter
+
+      expect_single_copy(submitter.submission, 'combined_document') do
+        Submissions::GenerateCombinedAttachment.call(submitter.reload)
+      end
+    end
+
+    it 'retires the previous merged PDF and its file', sidekiq: :inline do
+      platform_certificate!
+
+      submitter = completed_submitter
+
+      expect_single_copy(submitter.submission, 'merged_document') do
+        Submissions::GenerateCombinedAttachment.call(submitter.reload, with_audit: false)
+      end
+    end
+
+    # The real production shape, through the door the "Audit Log" button goes
+    # through: an attempt that stored the PDF and then died writes a `fail`
+    # lock event, and the next call regenerates rather than waiting.
+    it 'leaves one audit trail when EnsureAuditGenerated regenerates after a failed attempt', sidekiq: :inline do
+      platform_certificate!
+
+      submission = completed_submitter.submission
+      lock_key = ['audit_trail', submission.id].join(':')
+
+      allow(ErrorReport).to receive(:error)
+      allow(VerifiedDocuments).to receive(:record!).and_raise(Errno::ECONNREFUSED)
+
+      expect { Submissions::EnsureAuditGenerated.call(submission) }.to raise_error(Errno::ECONNREFUSED)
+
+      superseded = ActiveStorage::Attachment.where(record: submission, name: 'audit_trail').sole
+
+      expect(LockEvent.where(key: lock_key, event_name: 'fail')).to exist
+
+      allow(VerifiedDocuments).to receive(:record!).and_call_original
+
+      travel_to(2.minutes.from_now) { Submissions::EnsureAuditGenerated.call(submission.reload) }
+
+      attachments = ActiveStorage::Attachment.where(record: submission, name: 'audit_trail')
+
+      expect(attachments.count).to eq(1)
+      expect(attachments.sole.id).not_to eq(superseded.id)
+      expect(ActiveStorage::Blob.where(id: superseded.blob_id)).not_to exist
+
+      served = submission.reload.audit_trail_attachment
+
+      expect(served.id).to eq(attachments.sole.id)
+      expect(VerifiedDocument.where(sha256: Digest::SHA256.hexdigest(served.download))).to exist
+    end
   end
 
   describe 'a field whose value names no attachment' do

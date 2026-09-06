@@ -21,9 +21,19 @@
 # none of this.
 #
 # `Secure` rides along whenever the request itself was HTTPS, because browsers
-# reject `SameSite=None` without it. Over plain HTTP — a development container,
-# a request spec — it is left off: there is no browser there to satisfy, and
-# marking the cookie secure would stop the test client sending it back.
+# reject `SameSite=None` without it — and "was HTTPS" is asked of
+# `Rack::Request#ssl?`, not of `rack.url_scheme` alone. Behind a TLS-terminating
+# proxy (Render's, and any load balancer) the app itself is spoken to over
+# plain HTTP and only the `X-Forwarded-Proto` header says the browser was on
+# HTTPS; reading the raw scheme would have made the `Secure` flag depend on
+# FORCE_SSL being switched on rather than on the request, and a `SameSite=None`
+# cookie without `Secure` is dropped by every browser — every Apple sign-in
+# would fail as csrf_detected.
+#
+# Over plain HTTP — a development container, a request spec — it is correctly
+# left off: browsers accept a non-Secure cookie from an http:// origin, so the
+# dev door still works, and marking it secure would stop the test client (and
+# a developer's browser on http://localhost) sending it back at all.
 #
 # Sits in the stack beside RegistrationGateMiddleware, both ahead of OmniAuth's
 # own strategy middleware, so this one sees the response the strategy built.
@@ -55,7 +65,7 @@ class AppleFormPostCookieMiddleware
 
     return if name.nil?
 
-    secure = env['rack.url_scheme'].to_s == 'https'
+    secure = Rack::Request.new(env).ssl?
     cookies = headers[name]
     rewritten = Array.wrap(cookies).map { |cookie| rewrite(cookie, secure:) }
 

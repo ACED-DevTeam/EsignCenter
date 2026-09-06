@@ -16,6 +16,14 @@
   <%= form_for(resource, as: resource_name, url: registration_path, html: { class: 'space-y-6 mt-6', autocomplete: 'on' }, data: { turbo: false }) do |f| %>
     <div class="space-y-2" dir="auto">
       <%= render 'devise/registrations/errors', resource: %>
+      <%# The alert above already says everything about an address that is
+          taken — it names the address and offers both ways forward — so the
+          same fact is not repeated in red under the field. field_error_proc
+          prints every error it is left, so this one error is retired here,
+          after the alert has read it and on this form alone; the field keeps
+          the outline it would have had, and every other error on every other
+          form still speaks for itself. %>
+      <% email_taken = resource.errors.delete(:email, :taken).present? %>
       <set-timezone data-input-id="signup_timezone"></set-timezone>
       <%= hidden_field_tag 'user[timezone]', nil, id: 'signup_timezone' %>
       <%# The versions of the Terms and the Privacy Policy this page is showing.
@@ -31,7 +39,7 @@
       </div>
       <div class="form-control">
         <%= f.label :email, t(:email), class: 'label' %>
-        <%= f.email_field :email, required: true, autocomplete: 'email', class: 'base-input' %>
+        <%= f.email_field :email, required: true, autocomplete: 'email', class: "base-input#{' input-error' if email_taken}" %>
       </div>
       <div class="form-control">
         <%= f.label :password, class: 'label' do %>

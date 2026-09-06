@@ -365,6 +365,13 @@ RSpec.describe 'Self-serve registration', type: :request do
       expect(response.body).to include('Sign in instead')
       expect(response.body).to include(new_user_password_path)
       expect(response.body).not_to include('prohibited this user from being saved')
+      # Once, not twice: the sentence above the form replaces the red
+      # "Email has already been taken" that field_error_proc used to print
+      # under the field as well.
+      expect(response.body).not_to include('has already been taken')
+      expect(response.body.scan('There is already an account for').size).to eq(1)
+      # The field still shows as the wrong one, it just says nothing extra.
+      expect(response.body).to match(/<input[^>]*class="base-input input-error"[^>]*id="user_email"/)
       expect(User.where('lower(email) = ?', 'taken@example.com').count).to eq(1)
     end
 
@@ -926,6 +933,44 @@ RSpec.describe 'Self-serve registration', type: :request do
       ActionController::Base.allow_forgery_protection = original
     end
 
+    # Apple sends a cancelled sheet back the same way it sends a success: the
+    # same cross-site POST, no token, `error=user_cancelled_authorize` in the
+    # body and no `omniauth.auth` on the environment. Devise runs `failure`
+    # inside that POST, so an exemption keyed on the action name would have
+    # left everybody who taps Cancel — or whose exchange failed — looking at
+    # the 422 error page instead of the sign-in page. Forgery protection is on
+    # for this example because the test environment normally has it off, which
+    # is exactly why the suite could not see this.
+    it 'sends a cancelled or failed Apple sign-in back to sign-in, not to the 422 page' do
+      enable_google!
+      OmniAuth.config.test_mode = true
+      OmniAuth.config.mock_auth[:apple] = :user_cancelled_authorize
+      original = ActionController::Base.allow_forgery_protection
+      ActionController::Base.allow_forgery_protection = true
+
+      expect do
+        post user_apple_omniauth_callback_path, params: { error: 'user_cancelled_authorize' }
+      end.not_to change(User, :count)
+
+      expect(response).to redirect_to(new_user_session_path)
+      expect(flash[:alert]).to eq(I18n.t('apple_sign_in_failed'))
+      expect(Account.count).to eq(1)
+      expect_signed_out
+
+      # Google's failure arrives as an ordinary same-site GET — driven here
+      # directly, because with forgery protection on, OmniAuth's own token
+      # verifier refuses the authorize POST that a button would have made —
+      # and it still ends on the sign-in page with Google's own sentence.
+      OmniAuth.config.mock_auth[:google_oauth2] = :access_denied
+
+      expect { get user_google_oauth2_omniauth_callback_path }.not_to change(User, :count)
+      expect(response).to redirect_to(new_user_session_path)
+      expect(flash[:alert]).to eq(I18n.t('google_sign_in_failed'))
+      expect_signed_out
+    ensure
+      ActionController::Base.allow_forgery_protection = original
+    end
+
     # And the other half of that round trip: a browser will not send a
     # SameSite=Lax cookie on a cross-site POST, so the session holding
     # OmniAuth's state would simply not arrive and nobody could ever finish an
@@ -944,6 +989,25 @@ RSpec.describe 'Self-serve registration', type: :request do
 
       expect(session_cookie_header).to match(/SameSite=Lax/i)
       expect(session_cookie_header).not_to match(/SameSite=None/i)
+
+      # A browser drops a SameSite=None cookie that is not also Secure, and in
+      # production the app is spoken to over plain HTTP behind Render's TLS
+      # proxy: only X-Forwarded-Proto says the browser was on HTTPS. So the
+      # flag follows the request the BROWSER made, not this process's scheme.
+      post user_apple_omniauth_authorize_path(LegalDocuments.version_fields),
+           headers: { 'HTTP_X_FORWARDED_PROTO' => 'https' }
+
+      expect(session_cookie_header).to match(/SameSite=None/i)
+      expect(session_cookie_header).to match(/;\s*secure/i)
+
+      # And over plain http — the dev container, this spec — it stays off, or
+      # the cookie would never be sent back at all. Browsers accept a
+      # non-Secure SameSite=None cookie from an http:// origin, so the dev
+      # door still works.
+      post user_apple_omniauth_authorize_path(LegalDocuments.version_fields)
+
+      expect(session_cookie_header).to match(/SameSite=None/i)
+      expect(session_cookie_header).not_to match(/;\s*secure/i)
     end
   end
 

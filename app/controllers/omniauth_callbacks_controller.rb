@@ -29,7 +29,20 @@ class OmniauthCallbacksController < Devise::OmniauthCallbacksController
   # controller is reached, and RegistrationGateMiddleware counts that one
   # request against the per-network ceiling. Google's callback is an ordinary
   # top-level redirect (GET) and needs no exemption.
-  skip_before_action :verify_authenticity_token, only: :apple
+  #
+  # The exemption is keyed on the REQUEST, not on the action name, because
+  # Apple sends every outcome of its sheet to the same address by the same
+  # verb: a success, a tapped Cancel (`error=user_cancelled_authorize`) and a
+  # strategy refusal (`csrf_detected`, `invalid_credentials`) are all that one
+  # cross-site POST. A failure is handed to `#failure` inside that very POST —
+  # OmniAuth's on_failure hook runs this controller on the callback's own env —
+  # so `only: :apple` would have left everybody who cancels on the 422 page.
+  # `request.post?` plus the exact callback path is the tightest predicate that
+  # covers both actions: a GET to the same path, and a POST anywhere else,
+  # still needs a token. (`omniauth.error.strategy` exists only on the failure
+  # path, so it would have to be paired with the action name — and a skip with
+  # two conditions is OR-ed, not AND-ed, by ActiveSupport.)
+  skip_before_action :verify_authenticity_token, if: :apple_callback_post?
 
   before_action :require_registration_enabled!
 
@@ -182,6 +195,13 @@ class OmniauthCallbacksController < Devise::OmniauthCallbacksController
     strategy = request.env['omniauth.error.strategy']&.name.to_s
 
     strategy == RegistrationGateMiddleware::APPLE_PROVIDER ? APPLE : GOOGLE
+  end
+
+  # The one request in this app that arrives with no authenticity token and
+  # has to be honoured anyway: Apple's form_post from appleid.apple.com,
+  # whether it carries a person or a refusal.
+  def apple_callback_post?
+    request.post? && request.path == user_apple_omniauth_callback_path
   end
 
   def refuse(message)

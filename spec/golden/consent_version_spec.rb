@@ -701,4 +701,69 @@ RSpec.describe 'ESIGN consent version', type: :request do
       expect(EsignConsent.disclosure_text(version: 'v0', locale: 'en')).to be_nil
     end
   end
+
+  # The bump procedure (docs/esign-consent.md §6) says to archive a superseded
+  # version's TWO halves together — the body and the self-signing paragraphs —
+  # and until now nothing checked that it had been done. A `v2.yml` written
+  # with the body and without `v2_self_signing` passed the whole suite; the
+  # omission surfaced later, in production, as "wording no longer on file" on a
+  # self-signing signer's audit trail, for consents already on record that
+  # cannot be re-taken (review 10, Q7). This is the guard that catches a
+  # half-written archive on the day it is committed, in every locale.
+  describe 'the archived versions on file' do
+    # Read from the files rather than from a list somebody has to remember to
+    # extend, so a new `v3.yml` is guarded the day it lands. `_self_signing`
+    # keys fold into the version they belong to.
+    def archived_versions
+      keys = Rails.root.glob('config/locales/esign_disclosures/*.yml').flat_map do |path|
+        YAML.safe_load_file(path, aliases: true).values.flat_map do |translations|
+          (translations[EsignConsent::ARCHIVE_SCOPE] || {}).keys
+        end
+      end
+
+      keys.map { |key| key.delete_suffix(EsignConsent::SELF_SIGNING_ARCHIVE_SUFFIX) }.uniq.sort
+    end
+
+    def archived(version, locale, suffix: nil)
+      I18n.t("#{EsignConsent::ARCHIVE_SCOPE}.#{version}#{suffix}", locale:, fallback: false, default: nil)
+    end
+
+    it 'carries a body AND a self-signing answer for every version in every locale' do
+      versions = archived_versions
+
+      # The walk has to be real: v1 is on file today, and so are all 14 base
+      # locales the disclosure ships in.
+      expect(versions).to include('v1')
+      expect(EsignConsent.locales.size).to be >= 14
+
+      versions.each do |version|
+        EsignConsent.locales.each do |locale|
+          expect(archived(version, locale)).to be_present,
+                                               "#{locale}: #{EsignConsent::ARCHIVE_SCOPE}.#{version} is missing — " \
+                                               'every consent recorded under that version reads back as ' \
+                                               '"wording no longer on file"'
+
+          snapshot = archived(version, locale, suffix: EsignConsent::SELF_SIGNING_ARCHIVE_SUFFIX)
+
+          # `never_published` is a fact on the record (v1 shipped before the
+          # variant existed); a snapshot is the three paragraphs, all of them.
+          if snapshot == EsignConsent::SELF_SIGNING_NEVER_PUBLISHED
+            expect(EsignConsent.disclosure_text(version:, locale:, self_signing: true)).to be_nil, locale.to_s
+            next
+          end
+
+          expect(snapshot).to be_a(Hash),
+                              "#{locale}: #{version}#{EsignConsent::SELF_SIGNING_ARCHIVE_SUFFIX} is neither " \
+                              "'#{EsignConsent::SELF_SIGNING_NEVER_PUBLISHED}' nor a snapshot of the three " \
+                              'self-signing paragraphs — archive both halves together (docs/esign-consent.md §6)'
+          expect(snapshot.keys.map(&:to_s)).to include(*EsignConsent::SELF_SIGNING_KEYS), "#{locale} (#{version})"
+
+          # And the resolver really can produce it, which is the promise the
+          # archive exists to keep.
+          expect(EsignConsent.disclosure_text(version:, locale:, self_signing: true))
+            .to be_present, "#{locale} (#{version})"
+        end
+      end
+    end
+  end
 end
