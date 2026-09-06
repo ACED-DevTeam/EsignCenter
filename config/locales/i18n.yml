@@ -1617,6 +1617,7 @@ en: &en
   operator_billing_period: "Current period"
   operator_billing_trial: "Trial ends"
   operator_billing_cancel_at_period_end: "Cancels at period end"
+  operator_billing_cancel_at: "Ends on %{date}"
   operator_billing_ended_at: "Paid access ended"
   operator_billing_comp_expires: "Comp expires"
   operator_billing_refund_owed: "A refund is owed on subscription %{id} and has not been settled."

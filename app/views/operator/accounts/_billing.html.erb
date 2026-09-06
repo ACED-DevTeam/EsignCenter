@@ -41,7 +41,7 @@
         </div>
         <div>
           <dt class="text-base-content/70"><%= t('operator_billing_cancel_at_period_end') %></dt>
-          <dd><%= @subscription.cancel_at_period_end ? t('operator_yes') : t('operator_no') %></dd>
+          <dd><%= @subscription.cancel_at_period_end ? t('operator_yes') : t('operator_no') %><% if @subscription.cancel_at %> · <%= t('operator_billing_cancel_at', date: l(@subscription.cancel_at.utc.to_date, format: :long)) %><% end %></dd>
         </div>
         <div>
           <dt class="text-base-content/70"><%= t('operator_billing_ended_at') %></dt>
