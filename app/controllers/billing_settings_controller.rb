@@ -254,10 +254,12 @@ class BillingSettingsController < ApplicationController
     @actionable = !@read_only && !@manual && !@pending_deletion
     @view_state = view_state
     # Stripe's own word for the subscription, not our access state. A trial
-    # the customer has already cancelled reads as `canceling` here — the flag
-    # outranks the status in `access_state_for` — while Stripe is still
-    # running it as a trial and has charged nothing. The card has to say "no
-    # charge is coming" rather than quote a monthly price they will never pay.
+    # the customer has already cancelled reads as `canceling` here — the
+    # cancellation outranks the status in `access_state_for`, whether Stripe
+    # expressed it as the period-end flag or as a `cancel_at` date — while
+    # Stripe is still running it as a trial and has charged nothing. The card
+    # has to say "no charge is coming" rather than quote a monthly price they
+    # will never pay.
     @in_trial = @subscription&.stripe_status == 'trialing'
     # What Stripe actually bills: the quantity frozen at Checkout, which is
     # not the same as the number of people in the account today. The page

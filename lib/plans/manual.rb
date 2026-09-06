@@ -70,7 +70,7 @@ module Plans
         # mark. Leaving a stale one behind would shorten the free month of the
         # next revoke to a date that belonged to the previous one.
         subscription.update!(access_state: 'active', quantity: seats.to_i, status: 'manual',
-                             cancel_at_period_end: false, stripe_subscription_id: nil,
+                             cancel_at_period_end: false, cancel_at: nil, stripe_subscription_id: nil,
                              stripe_status: nil, ended_at: nil, comp_expires_at:)
 
         subscription
@@ -137,7 +137,7 @@ module Plans
       ended = was_paid ? { ended_at: subscription.ended_at || Time.current } : {}
 
       subscription.update!(access_state: 'cancelled', status: 'canceled', cancel_at_period_end: false,
-                           comp_expires_at: nil, **stale_ids, **ended)
+                           cancel_at: nil, comp_expires_at: nil, **stale_ids, **ended)
 
       Quotas.record_downgrade!(billing) if was_paid
 

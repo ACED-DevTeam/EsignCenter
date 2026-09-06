@@ -9,9 +9,12 @@
 # and those cases change only `status` / `cancel_at_period_end` on a real
 # capture and say so.
 #
-# The two actors in the fixtures:
+# The actors in the fixtures (C is the Checkout pair, scoped to its own
+# group):
 #   A  sub_1UBSbL…AD6ynIIK / cus_VBqHCUoJle1zGV — trialing → active → canceling → canceled
 #   B  sub_1UBSds…s81X4tCG / cus_VBqKHh0NHYmvT1 — active → past_due → active (real test clock)
+#   D  sub_1UCYcm…OgksBnOF / cus_VCyWT6xgIcO6LD — a trial cancelled from the
+#      Customer Portal, captured during the session 10 staging walk (W1)
 
 # The fixture actors, the credentials every example runs against and the
 # Stripe stubs both this file and spec/golden/seats_spec.rb drive live in
@@ -565,6 +568,71 @@ RSpec.describe 'Stripe billing', type: :request do # rubocop:disable RSpec/Multi
       expect(row.current_period_start).to eq(Time.zone.at(1_788_411_076))
       expect(row.current_period_end).to eq(Time.zone.at(1_791_003_076))
       expect(StripeEventInbox.order(:id).last).to have_attributes(status: 'processed', last_error: nil)
+
+      expect_paid_access
+    end
+  end
+
+  # W1, session 10 staging walk. Cancelling a subscription that is still in
+  # its TRIAL from Stripe's own Customer Portal does not set
+  # `cancel_at_period_end` at all: Stripe writes `cancel_at` (the trial end),
+  # `canceled_at` and `cancellation_details.reason`, and leaves the flag
+  # false. The app read the flag alone, so the row stayed `trialing` and the
+  # billing page went on promising the customer the charge they had just
+  # called off. Driven over the capture of that exact event.
+  describe 'the trial the customer cancels from the Customer Portal' do
+    # Actor D (the walk's own account), whose whole life in the fixtures is
+    # this one event.
+    let(:subscription_d) { 'sub_1UCYcm4rEeOqtLcXOgksBnOF' }
+    let(:customer_d) { 'cus_VCyWT6xgIcO6LD' }
+
+    it 'writes the cancellation Stripe expressed as a date, and keeps the trial paid until it runs out' do
+      row = cancelled_row(customer: customer_d)
+      stub_subscription(subscription_d, 'subscription-trialing-portal-cancelled')
+
+      post_stripe_event('event-customer.subscription.updated-portal-trial-cancel')
+      drain_stripe_jobs
+
+      row.reload
+
+      expect(row.access_state).to eq('canceling')
+      # Stripe still calls it a trial, and still says the flag is off: the
+      # date is the only thing that carries the cancellation.
+      expect(row.stripe_status).to eq('trialing')
+      expect(row.cancel_at_period_end).to be(false)
+      expect(row.cancel_at).to eq(Time.zone.at(1_789_882_094))
+      expect(row.trial_end).to eq(Time.zone.at(1_789_882_094))
+      expect(row.stripe_subscription_id).to eq(subscription_d)
+      expect(StripeEventInbox.sole).to have_attributes(status: 'processed', last_error: nil)
+
+      # Cancelling does not take the trial away — it runs to its end, exactly
+      # as a cancelled paid month does.
+      expect_paid_access
+    end
+
+    # "Renew plan" in the Portal clears the date, and the nightly sweep has to
+    # read that the same way the webhook does — it is the same one mapping.
+    it 'puts the account back on its trial when Stripe clears the date' do
+      row = create(:account_subscription, account:, access_state: 'trialing', status: 'trialing',
+                                          stripe_customer_id: customer_d,
+                                          stripe_subscription_id: subscription_d)
+      StripeBilling::SubscriptionSync.apply!(row, fixture_json('subscription-trialing-portal-cancelled'))
+
+      expect(row.reload.access_state).to eq('canceling')
+
+      stub_subscription(subscription_d, 'subscription-trialing-portal-cancelled',
+                        { 'cancel_at' => nil, 'canceled_at' => nil })
+      # The sweep also asks Stripe what else this customer holds; one
+      # subscription, the one the row already names.
+      stub_subscription_list(customer_d, { subscription_d => 'trialing' })
+      allow(OperatorAlert).to receive(:deliver).and_return(true)
+
+      StripeReconciliationJob.new.perform
+
+      row.reload
+
+      expect(row.access_state).to eq('trialing')
+      expect(row.cancel_at).to be_nil
 
       expect_paid_access
     end
@@ -3260,6 +3328,46 @@ RSpec.describe 'Stripe billing', type: :request do # rubocop:disable RSpec/Multi
 
         expect(described_class.access_state_for(subscription)).to eq(expected)
       end
+    end
+
+    # The other half of the same table row (session 10 walk, W1): Stripe also
+    # says "this is ending" with a DATE, and the Customer Portal writes it
+    # that way whenever the subscription is still in its trial — `cancel_at`
+    # set to the trial end, `cancel_at_period_end` left false. Driven over the
+    # real capture of exactly that, with only the status changed.
+    {
+      'trialing' => 'canceling',
+      'active' => 'canceling',
+      'past_due' => 'past_due',
+      'unpaid' => 'suspended',
+      'canceled' => 'cancelled'
+    }.each do |status, expected|
+      it "reads Stripe #{status} with a cancel_at date and no flag as #{expected}" do
+        subscription = fixture_json('subscription-trialing-portal-cancelled').merge('status' => status)
+
+        expect(subscription['cancel_at_period_end']).to be(false)
+        expect(described_class.access_state_for(subscription)).to eq(expected)
+      end
+    end
+
+    # And back again: "Renew plan" in the Portal clears the date, which is the
+    # only thing that says the cancellation was called off.
+    it 'reads a subscription whose cancellation date Stripe cleared as a running trial again' do
+      subscription = fixture_json('subscription-trialing-portal-cancelled')
+                     .merge('cancel_at' => nil, 'canceled_at' => nil)
+
+      expect(described_class.access_state_for(subscription)).to eq('trialing')
+    end
+
+    # A cancellation Stripe has not got round to yet is still a cancellation.
+    # Reading only a FUTURE date would put the row back to `trialing` for the
+    # minutes between the date passing and Stripe's own job ending the
+    # subscription — and tell the customer their plan renews.
+    it 'still reads a cancellation date that has already passed as cancelling' do
+      subscription = fixture_json('subscription-trialing-portal-cancelled')
+                     .merge('cancel_at' => 2.minutes.ago.to_i)
+
+      expect(described_class.access_state_for(subscription)).to eq('canceling')
     end
 
     # The table maps a status to a string; these two rows are the ones whose

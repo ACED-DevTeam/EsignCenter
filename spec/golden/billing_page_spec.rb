@@ -938,6 +938,47 @@ RSpec.describe 'Billing page', type: :request do # rubocop:disable RSpec/Multipl
       expect(doc.text).to include(I18n.t('billing_resume_hint'))
     end
 
+    # The same trial, cancelled the way the Customer Portal actually does it
+    # (session 10 walk, W1): Stripe leaves `cancel_at_period_end` false and
+    # names the date in `cancel_at`. The card has to read that date — while
+    # the app read the flag alone the page still said "your free trial ends on
+    # the 20th — then $20 per month" to somebody who had just cancelled.
+    it 'says a trial cancelled from the Customer Portal ends with no charge' do
+      create(:account_subscription, account:, access_state: 'canceling', status: 'trialing',
+                                    stripe_status: 'trialing', cancel_at_period_end: false, quantity: 2,
+                                    stripe_customer_id: 'cus_x', stripe_subscription_id: 'sub_x',
+                                    cancel_at: 11.days.from_now, trial_end: 11.days.from_now,
+                                    current_period_end: 11.days.from_now, trial_used_at: Time.current)
+
+      doc = page
+
+      expect(doc.at('[data-billing-card]')['data-billing-card']).to eq('canceling')
+      expect(doc.at('[data-billing-headline]').text.strip).to eq(
+        I18n.t('billing_trial_cancels_on', date: I18n.l(11.days.from_now.to_date, format: :long))
+      )
+      expect(doc.at('[data-billing-amount]').text.strip).to eq(I18n.t('billing_trial_no_charge'))
+      expect(doc.text).to include(I18n.t('billing_resume_hint'))
+      expect(doc.at('[data-billing-portal-button]')).to be_present
+    end
+
+    # And the same fact on a paid subscription: Stripe ends it on the date it
+    # was given, which is not always the end of the period the customer is in.
+    # The card used to fall back to a vague "at the end of the current period"
+    # for exactly this row, because only the flag was read.
+    it 'names the date a subscription ends on when it is not the end of the period' do
+      create(:account_subscription, account:, access_state: 'canceling', status: 'active',
+                                    stripe_status: 'active', cancel_at_period_end: false, quantity: 1,
+                                    stripe_customer_id: 'cus_x', stripe_subscription_id: 'sub_x',
+                                    cancel_at: 5.days.from_now, current_period_end: 25.days.from_now)
+
+      doc = page
+
+      expect(doc.at('[data-billing-headline]').text.strip).to eq(
+        I18n.t('billing_cancels_on', date: I18n.l(5.days.from_now.to_date, format: :long))
+      )
+      expect(doc.text).to include(I18n.t('billing_resume_hint'))
+    end
+
     # Every other settings page renders dates in the account's timezone; a
     # trial ending at 02:00 UTC is still today for a customer in New York.
     it 'shows dates in the account\'s own timezone' do

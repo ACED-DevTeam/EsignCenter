@@ -22,7 +22,8 @@ module PlanHelpers
     ended = was_paid ? { ended_at: subscription.ended_at || Time.current } : {}
 
     ApplicationRecord.transaction do
-      subscription.update!(access_state: 'cancelled', status: 'canceled', cancel_at_period_end: false, **ended)
+      subscription.update!(access_state: 'cancelled', status: 'canceled', cancel_at_period_end: false,
+                           cancel_at: nil, **ended)
 
       Quotas.record_downgrade!(account) if was_paid
     end

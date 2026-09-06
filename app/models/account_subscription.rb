@@ -6,6 +6,7 @@
 #
 #  id                          :bigint           not null, primary key
 #  access_state                :string           not null
+#  cancel_at                   :datetime
 #  cancel_at_period_end        :boolean          default(FALSE), not null
 #  comp_expires_at             :datetime
 #  current_period_end          :datetime

@@ -28,10 +28,10 @@ Customer Portal has quantity editing switched OFF (section 5).
 
 ## 2. The state table
 
-Stripe's own word for a subscription (`status`), plus its "cancel when the
-month ends" flag, become the app's verdict like this:
+Stripe's own word for a subscription (`status`), plus whether the customer has
+asked for it to end, become the app's verdict like this:
 
-| Stripe says | Cancel at period end | The app's `access_state` | Paid features |
+| Stripe says | Set to end | The app's `access_state` | Paid features |
 |---|---|---|---|
 | `trialing` | no | `trialing` | **on** |
 | `trialing` | yes | `canceling` | **on** |
@@ -44,6 +44,21 @@ month ends" flag, become the app's verdict like this:
 | `incomplete_expired` | either | `cancelled` | off |
 | `canceled` | either | `cancelled` | off |
 | anything we do not recognise | either | `cancelled` | off |
+
+**"Set to end" is two facts, not one.** Stripe says a subscription is going to
+end in either of two ways, and both mean the same thing to us:
+
+- `cancel_at_period_end` — the ordinary cancel on a subscription that is being
+  billed: it stops when the month the customer has paid for runs out;
+- `cancel_at` — an actual date Stripe will end it on. This is what the
+  **Customer Portal writes when the subscription is still in its trial**: the
+  date is the trial end and the flag is left *false*. The app used to read
+  only the flag, so a customer who had just cancelled their trial was still
+  told the trial would end and then cost $10 a month (session 10 staging
+  walk). The date is stored on the row (`account_subscriptions.cancel_at`) and
+  it is what the billing page quotes; Stripe **clears** it when the customer
+  resumes ("Renew plan"), which is what brings the account back to `trialing`
+  or `active`.
 
 Two deliberate choices in that table:
 
@@ -511,11 +526,11 @@ Two more facts pinned in code, not in the environment:
 
 #### A note on the test fixtures and the API version
 
-The 13 captured events in `spec/fixtures/stripe/` were recorded at
+The 14 captured events in `spec/fixtures/stripe/` were recorded at
 `2026-07-29.dahlia`, the Stripe account's default at the time, while the app
 pins `2026-08-26.dahlia`. Stripe stamps an event with the version it was
 created at and re-reading it later does not re-render it, so the only way to
-move the captures is to trigger 13 new events — new customers, new
+move the captures is to trigger 14 new events — new customers, new
 subscriptions, new ids through every example. Instead, the two objects the app
 actually reads were fetched at BOTH versions and compared: the subscription
 (including `items.data[].current_period_start/end` and the expanded price) is
@@ -526,6 +541,17 @@ both. Every retrieve stub in the specs also asserts the exact subscription id
 **and** the `expand[]=items.data.price` the app sends, so a missing expansion
 cannot pass unnoticed. Recapture when the launch-gate endpoint is created on
 the live account.
+
+How a capture is made and what is scrubbed: the event is taken off the wire
+exactly as Stripe posted it (the staging install's webhook log, or `stripe
+listen`), the only value replaced is the account tag our own Checkout writes
+(`metadata.esigncenter_account_id` → `424242`, so no fixture names a real
+account), and it is written back pretty-printed with sorted keys. Where the
+matrix also needs the OBJECT — the body a `subscriptions.retrieve` answers
+with — it is `data.object` from the same event, saved beside it as
+`subscription-*.json`, so the two can never disagree. The newest of them,
+`event-customer.subscription.updated-portal-trial-cancel.json`, is the
+Customer Portal cancelling a trial (session 10 staging walk, W1).
 
 ### 5.3 Checking it
 

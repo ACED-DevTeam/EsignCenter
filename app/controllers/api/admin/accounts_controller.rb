@@ -207,13 +207,41 @@ module Api
         params.permit(:name, :email, :first_name, :last_name, :timezone, :locale, :idempotency_key)
       end
 
+      # The webhook to subscribe, in either shape a caller sends it.
+      #
+      # `webhook[url]` is the nested shape the documentation has always shown.
+      # A FLAT `webhook_url` (with `webhook_events` and `webhook_secret`) is
+      # what people reach for when they build the body by hand, and it used to
+      # be read by nothing at all: the account was created, `201` came back
+      # with `webhook_url_id: null`, and no subscription existed — a silent
+      # miss that only turns up when the first event never arrives (session 10
+      # staging walk, W4). Both shapes are accepted now; the nested one wins if
+      # a caller somehow sends both, and neither is required.
       def webhook_params
-        @webhook_params ||=
-          if params[:webhook].present?
-            params.require(:webhook).permit(:url, events: [], secret: {})
-          else
-            {}
-          end
+        @webhook_params ||= nested_webhook_params.presence || flat_webhook_params
+      end
+
+      def nested_webhook_params
+        return {} if params[:webhook].blank?
+
+        params.require(:webhook).permit(:url, events: [], secret: {})
+      end
+
+      def flat_webhook_params
+        return {} if params[:webhook_url].blank?
+
+        { url: params[:webhook_url].to_s,
+          events: flat_webhook_events,
+          secret: params.permit(webhook_secret: {})[:webhook_secret] }
+      end
+
+      # A list in JSON; one comma-separated string when the request is a form
+      # post or the parameters ride on the query string.
+      def flat_webhook_events
+        raw = params[:webhook_events]
+        raw = raw.to_s.split(',') if raw.is_a?(String)
+
+        Array(raw).map { |event| event.to_s.strip }
       end
     end
   end
