@@ -143,9 +143,63 @@ module Submissions
 
       saved = ApplicationRecord.no_touching { attachments.map { |e| e.tap(&:save!) } }
 
-      verifications.each { |verification| VerifiedDocuments.record_digest!(**verification) }
+      # The record of what was signed and the retirement of what it replaces
+      # are ONE decision (review 10, B-F1). A signing job that failed after
+      # the PDF was stored is retried, this run signs the document afresh, and
+      # `verified_documents` — keyed per output — hands the output's row to
+      # the new bytes. The attachment the first attempt saved used to stay
+      # exactly where it was: the signer's completion mail carried both PDFs,
+      # `/s/:slug/download` served both, and the first one answered "not on
+      # record" at /verify because its fingerprint no longer had a row.
+      #
+      # So the superseded copy goes in the same transaction that takes its
+      # row away. If the file cannot be deleted the whole thing rolls back —
+      # the old row still describes the copy that is still on file, which is
+      # the honest state — and the job retries.
+      ApplicationRecord.transaction do
+        verifications.each { |verification| VerifiedDocuments.record_digest!(**verification) }
+
+        retire_superseded_documents!(submitter, saved)
+      end
 
       saved
+    end
+
+    # The documents this run has just replaced: an earlier attempt's copy of
+    # the same schema document (they share `original_uuid`), never a document
+    # this run did not produce.
+    #
+    # Storage-first, through the same helper an expiring export uses: the
+    # object goes, it is verified gone, and only then the rows that name it —
+    # `ActiveStorage::Blob#purge` is the other way round and would leave the
+    # signer's PDF in the bucket with nothing left anywhere able to find it.
+    # Each blob here was created by `build_pdf_attachment` for this attachment
+    # alone, so nothing else can be holding it.
+    def retire_superseded_documents!(submitter, saved)
+      saved_ids = saved.map(&:id)
+      replaced = saved.map { |attachment| document_key(attachment) }
+
+      superseded = submitter.documents.reload.reject { |a| saved_ids.include?(a.id) }
+                            .select { |a| replaced.include?(document_key(a)) }
+
+      superseded.each do |attachment|
+        Accounts::Purge.purge_blob_storage_first!(
+          attachment.blob,
+          account_id: submitter.account_id,
+          subject: 'Could not delete a superseded signed document'
+        )
+      end
+
+      submitter.documents.reset
+
+      superseded
+    end
+
+    # What a signed attachment is a copy OF — the schema document's uuid,
+    # which is also how `Submitters.select_attachments_for_download` reads
+    # these rows.
+    def document_key(attachment)
+      attachment.metadata['original_uuid'] || attachment.uuid
     end
 
     def generate_pdfs(submitter)

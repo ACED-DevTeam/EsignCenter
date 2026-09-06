@@ -292,18 +292,31 @@ module Accounts
     # 10, seam L1).
     #
     # The incoming duplicates are dropped, and only those: still carrying the
-    # starter marker, never used — no submission was ever made from them — and
-    # named the same as a starter the team already holds. A starter the person
-    # actually sent is their work and travels with them like anything else,
-    # and so is one they renamed, because the NAME is what makes it a
-    # duplicate on the screen this is about. The information lost is zero: the
-    # card that survives is the same document.
+    # starter marker, STILL PRISTINE — nobody has saved the row since we
+    # seeded it — never used, no submission and no share link, and named the
+    # same as a starter the team already holds. A starter the person actually
+    # sent is their work and travels with them like anything else, and so is
+    # one they renamed, because the NAME is what makes it a duplicate on the
+    # screen this is about. The information lost is zero: the card that
+    # survives is the same document.
+    #
+    # The pristine marker is the fourth test and it was the missing one
+    # (review 10, A-F2). Sending is not the only way to make a document your
+    # own: opening a starter, renaming its fields to suit your business and
+    # saving writes neither a submission nor a share link, and that work was
+    # being destroyed here — versions included, inside the transaction that
+    # archives the account being left, silently. Editing always writes the
+    # row, and writing the row takes the marker off
+    # (Template#forget_starter_pristine_marker), so the row now answers the
+    # question the other three tests could not.
     def drop_untouched_starters!(from, to)
       names = StarterTemplates.marked(Template.where(account_id: to.id)).pluck(:name)
 
       return if names.empty?
 
-      StarterTemplates.marked(Template.where(account_id: from.id, name: names))
+      incoming = StarterTemplates.marked(Template.where(account_id: from.id, name: names))
+
+      StarterTemplates.pristine(incoming)
                       .where(shared_link: false).where.missing(:submissions).each(&:destroy!)
     end
 

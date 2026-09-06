@@ -135,6 +135,86 @@ RSpec.describe 'Signed result attachments', type: :request do
     end
   end
 
+  # A retry does not only replace a ROW. It replaces the customer's document,
+  # and the copy it replaces used to stay attached: the completion mail
+  # carried two sealed PDFs, `/s/:slug/download` served two, and the older one
+  # answered "not on record" at /verify because `verified_documents` is keyed
+  # per output and the row had moved to the new bytes (review 10, B-F1).
+  describe 'a retried signing job leaves exactly one copy' do
+    def download_digests(submitter)
+      Submitters.select_attachments_for_download(submitter).map { |a| Digest::SHA256.hexdigest(a.download) }
+    end
+
+    it 'retires the superseded document and its file', sidekiq: :inline do
+      platform_certificate!
+
+      submitter = completed_submitter
+      schema_documents = submitter.submission.template_schema.size
+
+      Submissions::GenerateResultAttachments.call(submitter)
+
+      superseded = submitter.documents.reload.sole
+      blob = superseded.blob
+      key = blob.key
+      service = blob.service
+
+      travel_to(2.minutes.from_now) { Submissions::GenerateResultAttachments.call(submitter.reload) }
+
+      documents = submitter.documents.reload
+
+      # One per schema document, and the one that is left is the new one.
+      expect(documents.size).to eq(schema_documents)
+      expect(documents.map { |a| a.metadata['original_uuid'] }.uniq.size).to eq(schema_documents)
+      expect(documents.map(&:id)).not_to include(superseded.id)
+
+      # Said the way a signer asks it: every file the download door hands out
+      # is a file /verify can answer for.
+      digests = download_digests(submitter.reload)
+
+      expect(digests.size).to eq(schema_documents)
+      digests.each { |digest| expect(VerifiedDocument.where(sha256: digest)).to exist }
+
+      # The retired copy is gone from the database AND from storage.
+      expect(ActiveStorage::Attachment.where(id: superseded.id)).not_to exist
+      expect(ActiveStorage::Blob.where(id: blob.id)).not_to exist
+      expect(service.exist?(key)).to be(false)
+    end
+
+    # The same thing through the door every download goes through. An attempt
+    # that saved its attachments and then died writes a `fail` lock event, and
+    # the next call regenerates rather than waiting.
+    it 'leaves one copy when EnsureResultGenerated regenerates after a failed attempt', sidekiq: :inline do
+      platform_certificate!
+
+      submitter = completed_submitter
+      lock_key = ['result_attachments', submitter.id].join(':')
+
+      allow(ErrorReport).to receive(:error)
+      allow(VerifiedDocuments).to receive(:record_digest!).and_raise(Errno::ECONNREFUSED)
+
+      expect { Submissions::EnsureResultGenerated.call(submitter) }.to raise_error(Errno::ECONNREFUSED)
+
+      superseded = submitter.documents.reload.sole
+
+      expect(LockEvent.where(key: lock_key, event_name: 'fail')).to exist
+
+      allow(VerifiedDocuments).to receive(:record_digest!).and_call_original
+
+      travel_to(2.minutes.from_now) { Submissions::EnsureResultGenerated.call(submitter.reload) }
+
+      documents = submitter.documents.reload
+
+      expect(documents.size).to eq(1)
+      expect(documents.map(&:id)).not_to include(superseded.id)
+      expect(ActiveStorage::Blob.where(id: superseded.blob_id)).not_to exist
+
+      digests = download_digests(submitter.reload)
+
+      expect(digests.size).to eq(1)
+      digests.each { |digest| expect(VerifiedDocument.where(sha256: digest)).to exist }
+    end
+  end
+
   describe 'a field whose value names no attachment' do
     # The API takes any value a caller sends for any field, so a signature
     # field can end up holding a string that was never an upload.

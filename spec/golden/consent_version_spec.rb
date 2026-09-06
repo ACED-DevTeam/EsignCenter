@@ -7,6 +7,57 @@
 #
 # Companion to spec/golden/consent_spec.rb (which proves the gate on every
 # path); this file proves the version binding and the once-only guarantee.
+
+# The live disclosure, pinned byte for byte. Every consent event on record
+# carries one of these fingerprints, and the audit trail reproduces a signer's
+# wording only while the text on file still hashes to the digest recorded on
+# their event (Submissions::GenerateAuditTrail#consent_wording_recorded?). So
+# editing a word of any locale's disclosure without bumping the version does
+# not quietly rewrite what old evidence says the signer agreed to — it turns
+# this pin RED, and the editor has to do what docs/esign-consent.md §6 asks:
+# archive the superseded text of every base locale under
+# config/locales/esign_disclosures/<old-version>.yml, change the wording, bump
+# EsignConsent::VERSION and EFFECTIVE_DATE, then recompute the digests below
+# (`EsignConsent.disclosure_sha256(version:, locale:, self_signing:)`).
+#
+# Computed 2026-09-06 from config/locales/i18n.yml for v2 (effective
+# 5 September 2026). Two per locale: the disclosure a signer sent a document by
+# somebody else reads, and the self-signing variant a sender signing their own
+# document reads, which is fingerprinted separately on the event.
+module ConsentDisclosureDigests
+  VERSION = 'v2'
+  LIVE = {
+    'en' => { text: 'e8ddd3babdf9e57a6ad35092be37f20444774d524c567b6e6ed85cd3538be549',
+              self_signing: '5b5a532c674ef2dc7abd99836339065c9826ee77ae92892b28813daeb02fbc04' },
+    'es' => { text: '479e5dc5b4a0bf17c3f59322516fdcf0178af19f07207673ede0ecd51cfcd194',
+              self_signing: '20a19fa59ec4003d58c633bb2b7c74f5e55011dc05cd0a9392bcd1f28a1a0347' },
+    'fr' => { text: 'd960849349677619b95a4e0fbd26772cdc1a3b5e4f325809cefe6e43664ff6b9',
+              self_signing: '5fee9e857fdc31c04a1330fdca75c1ce0cef2b4a117f181c8d4e1242ce8a673f' },
+    'pt' => { text: '8bee90241158d96049c80726d88809580bd4c518c90f53a83f4952ec13c2c529',
+              self_signing: 'cf47d09f91db379edd7e865e7a556e52f698d7a85a3cf8d1eb839a146bf73135' },
+    'de' => { text: 'd3626ad7cb56716210b067fc098c5d49c53da65da4ac9c7e8ac74cd49003d3f1',
+              self_signing: '81ac410d553f55830aac763c1434da55121d668e4e9c8a3f533013c4e63bec16' },
+    'it' => { text: '20455d6cc287ace687a1cf7e46a1b7286492da69e782c9e967d9150659e602db',
+              self_signing: 'cb12a15a443df4492d05c68823523c994a3c53b6156126c350f5b3dc32e72547' },
+    'nl' => { text: 'ab88b38c6a7074efedb31aea857c51361a444b6fb299b613d4bcdabcda52993e',
+              self_signing: '2107c6960d38cedbc7526531b8e216154f1eb41dd53eed4f47c07845d3a844f3' },
+    'pl' => { text: '1a8379fc5b482dc27050387ada29702e399b5864171221611066cd02999904e3',
+              self_signing: 'fd001e8df108971d0220348c93efbbc0b67e3cc500e04bf96930f411c9bf92c6' },
+    'uk' => { text: '5ba5bc57f266893327a26d6f01b8ae9556ff1f5b44bd44911a1fe45c031f85b9',
+              self_signing: '034b5a68422d82c7bf5b8ba4cd0e781bc13f6f3068815ee9fe1fbd0c00b6f480' },
+    'cs' => { text: '9798f341196dd51a85f16e7206698b1de08a339044e8e0475d15bc02e9b40389',
+              self_signing: 'f36b1dfb927c6ee794859fdcb81fd3fd6d70a0454e24180babd640565582f827' },
+    'he' => { text: '47f246f4ac37bf0b9f19413a2292bd0233b8460308edaff0946fc31df3d84a55',
+              self_signing: '478ae253f522b97d2f0d43c55f7c30584f58c2a68f80180d24725c1d2b78d4da' },
+    'ar' => { text: '42247e56810d00ba7e2d5f8c377d67593f68466b8be15b6077df3ee2be5548ac',
+              self_signing: '91d76ef40c1bdd53e515f5229510afdf15701f93d61757c9325e0a51c7de2767' },
+    'ko' => { text: '85bfc897b510a293c2427fc2d5193c01597cea8fff1cf1f80a4c3857d57a5bb3',
+              self_signing: '91c61a17208994dfdbcb3a3e1fc100bceb596672b86477220a3cae352e9ad541' },
+    'ja' => { text: '1bc9765f2f751cea8f3fd596eb3ab87bc8153835376932a6de32a605e9bbc738',
+              self_signing: '7140cac7d5c8200d335376a8fe72e1182b0c7c35025f4ce5a049577ff4bd45a1' }
+  }.freeze
+end
+
 RSpec.describe 'ESIGN consent version', type: :request do
   let!(:account) { create(:account) }
   let!(:admin) { create(:user, account:) }
@@ -437,6 +488,22 @@ RSpec.describe 'ESIGN consent version', type: :request do
       end.to raise_error(EsignConsent::LocaleInvalidError, 'esign_consent_locale_invalid')
 
       expect(consent_events(submitter)).not_to exist
+    end
+  end
+
+  # B-F4's CI guard: see ConsentDisclosureDigests above.
+  describe 'the live disclosure fingerprints' do
+    it 'still hashes to the pinned v2 digests in every base locale' do
+      expect(EsignConsent::VERSION).to eq(ConsentDisclosureDigests::VERSION),
+                                       'the version was bumped: re-pin ConsentDisclosureDigests::LIVE'
+      expect(EsignConsent.locales).to match_array(ConsentDisclosureDigests::LIVE.keys)
+
+      ConsentDisclosureDigests::LIVE.each do |locale, digests|
+        expect(EsignConsent.disclosure_sha256(version: EsignConsent::VERSION, locale:))
+          .to eq(digests.fetch(:text)), locale
+        expect(EsignConsent.disclosure_sha256(version: EsignConsent::VERSION, locale:, self_signing: true))
+          .to eq(digests.fetch(:self_signing)), "#{locale} (self-signing)"
+      end
     end
   end
 end

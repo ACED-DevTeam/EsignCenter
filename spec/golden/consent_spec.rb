@@ -1339,6 +1339,60 @@ RSpec.describe 'ESIGN consent', type: :request do
                                               digest: event.data['disclosure_sha256'])))
       expect(text).to match(pdf_phrase(I18n.t('esign_consent_disclosure_title')))
     end
+
+    # B-F4. The version header alone does not make the words below it
+    # evidence: the event carries a fingerprint of the exact text the signer
+    # was shown, and the trail reproduces the words only while the text on
+    # file still hashes to it. A digest that no longer matches is what a
+    # wording edit WITHOUT a version bump looks like from the trail's side
+    # (consent_version_spec pins the live digests so CI catches the edit
+    # itself) — and today's words must never be printed under an older
+    # version's header, which would put words in a signer's mouth in a signed
+    # PDF. Tampering with the recorded digest is the same condition, reached
+    # without mutating the locale data every other example reads.
+    it 'appends the wording only while its fingerprint matches the recorded one', sidekiq: :inline do
+      platform_certificate!
+      account.update!(name: 'Acme Ltd')
+      submitter = emailed_submitter_for(account)
+
+      put "/s/#{submitter.slug}", params: completion_params(submitter, esign_consent: 'true')
+
+      expect(response).to have_http_status(:ok)
+
+      event = consent_events(submitter).sole
+      opening = EsignConsent.disclosure_paragraphs(
+        EsignConsent.disclosure_text(version: EsignConsent::VERSION, locale: 'en'),
+        sender_name: 'Acme Ltd', sender_email: admin_for(account).email
+      ).first
+
+      # As recorded: the fingerprint matches the text on file, so the words are
+      # in the appendix and no "not on file" line is.
+      matching = pdf_text(submitter.submission.reload.audit_trail.download)
+
+      expect(matching).to match(pdf_phrase(opening.first(70)))
+      expect(matching).not_to match(pdf_phrase(I18n.t('esign_consent_wording_not_on_file',
+                                                      version: EsignConsent::VERSION, language: 'en',
+                                                      digest: event.data['disclosure_sha256'])))
+
+      event.update!(data: event.data.merge('disclosure_sha256' => '0' * 64))
+
+      submission = submitter.submission.reload
+      submission.audit_trail_attachment.destroy!
+      Submissions::GenerateAuditTrail.call(submission)
+
+      text = pdf_text(submission.reload.audit_trail.download)
+
+      # The signer is still in the appendix, under their own heading, with the
+      # version, the language and the digest that was recorded — and without a
+      # word of the wording this product would print today.
+      expect(text).to match(pdf_phrase(I18n.t('esign_consent_disclosure_title')))
+      expect(text).to match(pdf_phrase(I18n.t('esign_consent_shown_to',
+                                              submitter_name: submitter.name || submitter.email)))
+      expect(text).to match(pdf_phrase(I18n.t('esign_consent_wording_not_on_file',
+                                              version: EsignConsent::VERSION, language: 'en',
+                                              digest: '0' * 64)))
+      expect(text).not_to match(pdf_phrase(opening.first(70)))
+    end
   end
 
   describe 'locales' do

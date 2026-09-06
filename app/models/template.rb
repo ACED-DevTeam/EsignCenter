@@ -48,6 +48,7 @@ class Template < ApplicationRecord
   has_one :search_entry, as: :record, inverse_of: :record, dependent: :destroy if SearchEntry.table_exists?
 
   before_validation :maybe_set_default_folder, on: :create
+  before_save :forget_starter_pristine_marker
 
   attribute :preferences, :string, default: -> { {} }
   attribute :fields, :string, default: -> { [] }
@@ -97,5 +98,22 @@ class Template < ApplicationRecord
 
   def maybe_set_default_folder
     self.folder ||= account.default_template_folder
+  end
+
+  # A seeded starter carries `starter_pristine` until somebody saves it, and
+  # this is the somebody (review 10, A-F2). Whatever the save was — a rename,
+  # a moved field, a changed signer — the document is now the account's own
+  # work, and the one thing the marker is asked about is whether it may be
+  # thrown away as a duplicate when its owner joins a team
+  # (Accounts::MoveUser#drop_untouched_starters!). So the answer is "no" from
+  # the first save onwards, and nobody has to remember to say so.
+  #
+  # The seeder's own writes all happen BEFORE it puts the marker on, and it
+  # puts it on with `update_columns`, which does not run this.
+  def forget_starter_pristine_marker
+    return unless preferences.is_a?(Hash)
+    return if preferences[StarterTemplates::STARTER_PRISTINE_KEY].blank?
+
+    self.preferences = preferences.except(StarterTemplates::STARTER_PRISTINE_KEY)
   end
 end

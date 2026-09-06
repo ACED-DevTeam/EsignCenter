@@ -297,6 +297,27 @@ delegation.
   Y, digest Z)". Skipping the signer silently would be worse than useless:
   their block would simply be absent and the appendix would read as though
   they had agreed to whatever the signer above them did.
+
+  **The words are checked against the fingerprint before they are printed.**
+  Every consent event carries `disclosure_sha256`, the fingerprint of the
+  exact text that signer was shown. Before the audit trail prints a word of
+  it, it fingerprints the text it is about to print — with the same one
+  function that stamped the event, so the two can never drift — and compares
+  the two. They match on every consent this product has recorded, and the
+  wording is reproduced. If they ever do not — somebody edited the live
+  disclosure without bumping the version and archiving the old text (§6), an
+  archived body was touched, or an event's own fingerprint is missing or
+  damaged — the trail prints nothing of the wording and falls back to the
+  "Disclosure wording no longer on file (version X, locale Y, digest Z)" line
+  above, naming the version, the language and the fingerprint that was
+  recorded. A signed PDF never puts today's words in a signer's mouth under
+  the version header of the words they actually read; a reader who sees that
+  line knows exactly which text to go and find. For an editor this means one
+  thing: change a disclosure and you must bump the version and archive the old
+  text, or the evidence for every consent already on record stops printing its
+  wording. CI says so first — `spec/golden/consent_version_spec.rb` pins the
+  live fingerprint of all 14 base locales (and of the self-signing variant),
+  so an unbumped wording edit turns that example red before it can ship.
 - **Submission events page** in the dashboard — the same event line, with a
   shield-check icon.
 - **API** — `GET /api/submitters/:id` and submission payloads include the

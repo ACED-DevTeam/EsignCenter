@@ -586,12 +586,33 @@ module Submissions
         text = EsignConsent.disclosure_text(version: event.data['version'], locale: event.data['locale'],
                                             self_signing: event.data['self_signing'].present?)
 
-        if text.blank?
+        if text.blank? || !consent_wording_recorded?(event, text)
           add_consent_wording_not_on_file(composer, submission, event, versions_index)
         else
           add_consent_disclosure(composer, submission, event, text, versions_index)
         end
       end
+    end
+
+    # The words below a version header are evidence only if they are the words
+    # that were fingerprinted when the box was ticked. The event carries that
+    # fingerprint (`disclosure_sha256`), so the trail hashes the text it is
+    # about to print and compares — with EsignConsent's own digest function,
+    # never a second copy of the algorithm, so the two ends cannot drift.
+    #
+    # Anything but an exact match means this file can no longer produce the
+    # words that consent was given to: the live text was edited without the
+    # VERSION being bumped and the old wording archived (docs/esign-consent.md
+    # §6), an archived body was touched, or the event's own digest is missing
+    # or damaged. Printing today's wording under the recorded version header
+    # would put words in the signer's mouth in a signed PDF, so it falls
+    # through to the "wording no longer on file" line instead, which names the
+    # version, the language and the digest that WAS recorded — exactly what
+    # somebody needs to go and find the real text.
+    def consent_wording_recorded?(event, text)
+      recorded = event.data['disclosure_sha256'].to_s
+
+      recorded.present? && recorded == EsignConsent.text_sha256(text)
     end
 
     # The disclosure this consent names cannot be produced any more: a version

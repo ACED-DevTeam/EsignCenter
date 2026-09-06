@@ -1202,4 +1202,126 @@ RSpec.describe 'The account export', type: :request do
       expect(mail.subject).to eq('Your EsignCenter account export could not be built')
     end
   end
+
+  # --- 8. a failure that deserves another try -------------------------------
+  #
+  # Review 10 (C-F1 / C-F6 / V2-N-F2). Only the wall-clock cap was rescued, so
+  # every OTHER failure left the row `running` under this attempt's token and
+  # re-raised. Sidekiq retried; the retry is a new EXECUTION with a new token,
+  # so its claim found a running row owned by somebody else and not yet stale,
+  # refused it, and `perform` returned nil — which Sidekiq reads as a job that
+  # SUCCEEDED. No further retry, no `sidekiq_retries_exhausted`, and therefore
+  # nothing anywhere writing an ending onto the row: the export sat `running`
+  # with the door shut behind it and the day's budget spent on nothing, until
+  # the nightly sweep failed it up to two hours later.
+  describe 'a failure that deserves another try' do
+    def claimed_job(jid)
+      job = AccountExportJob.new
+      job.jid = jid
+
+      job
+    end
+
+    it 'hands the row back before it re-raises, so the retry can claim it' do
+      export = AccountExport.create!(account:, requested_by: admin, status: AccountExport::PENDING)
+
+      allow(Accounts::ExportArchive).to receive(:call).and_raise(StandardError, 'the bucket said no')
+
+      expect { claimed_job('worker-one').perform(export.id) }
+        .to raise_error(StandardError, 'the bucket said no')
+
+      export.reload
+
+      # Nobody owns it, and it is waiting for a worker again.
+      expect(export.status).to eq(AccountExport::PENDING)
+      expect(export.attempt_owner).to be_nil
+      expect(export.started_at).to be_nil
+    end
+
+    it 'lets the retry build the export the first attempt could not' do
+      export = AccountExport.create!(account:, requested_by: admin, status: AccountExport::PENDING)
+      attempts = 0
+
+      allow(Accounts::ExportArchive).to receive(:call).and_wrap_original do |original, *args|
+        attempts += 1
+
+        raise StandardError, 'the bucket said no' if attempts == 1
+
+        original.call(*args)
+      end
+
+      expect { claimed_job('worker-one').perform(export.id) }.to raise_error(StandardError)
+
+      # Sidekiq's retry: the same job id, a new execution.
+      claimed_job('worker-one').perform(export.id)
+
+      export.reload
+
+      expect(attempts).to eq(2)
+      expect(export.status).to eq(AccountExport::READY)
+      expect(export.archive).to be_attached
+    end
+
+    # Every delivery raises, so Sidekiq really does exhaust its retries and
+    # really does run the exhausted callback — which is the whole point: the
+    # row cannot end anywhere else.
+    it 'keeps raising until Sidekiq gives up, and then the row says so' do
+      export = Accounts::Exports.request!(account, requested_by: admin)
+
+      expect(Accounts::Exports.remaining_today(account)).to eq(Accounts::Exports::MAX_PER_DAY - 1)
+
+      allow(Accounts::ExportArchive).to receive(:call).and_raise(StandardError, 'the bucket said no')
+
+      raised = 0
+
+      # The first delivery plus `retry: 2`.
+      3.times do
+        claimed_job('worker-one').perform(export.id)
+      rescue StandardError
+        raised += 1
+      end
+
+      expect(raised).to eq(3)
+
+      # And now the callback Sidekiq runs on a fresh object that owns nothing.
+      AccountExportJob.new.fail_after_retries(export.id, StandardError.new('the bucket said no'),
+                                              jid: 'worker-one')
+
+      export.reload
+
+      expect(export.status).to eq(AccountExport::FAILED)
+      expect(export.error).to include('the bucket said no')
+      # The door is open again and the day was not spent.
+      expect(Accounts::Exports.reusable(account)).to be_nil
+      expect(Accounts::Exports.remaining_today(account)).to eq(Accounts::Exports::MAX_PER_DAY)
+    end
+
+    # The other half of the release: a zombie whose build finally blows up
+    # long after the sweep replaced it owns nothing, so it may neither hand
+    # the live execution's row back to a third worker nor fail it.
+    it 'never releases or fails a row another execution has taken over' do
+      export = AccountExport.create!(account:, requested_by: admin, status: AccountExport::PENDING)
+      first = claimed_job('worker-one')
+
+      expect(first.send(:claim, export.id)).to be_present
+
+      export.update_columns(started_at: (Accounts::Exports::STALE_AFTER + 1.minute).ago,
+                            updated_at: Time.current)
+
+      expect(claimed_job('worker-two').send(:claim, export.id)).to be_present
+
+      owner = export.reload.attempt_owner
+
+      first.send(:release!, export.reload)
+
+      expect(export.reload.status).to eq(AccountExport::RUNNING)
+      expect(export.attempt_owner).to eq(owner)
+
+      first.send(:fail!, export.reload, StandardError.new('the bucket said no'))
+
+      expect(export.reload.status).to eq(AccountExport::RUNNING)
+      expect(export.attempt_owner).to eq(owner)
+      expect(export.error).to be_nil
+    end
+  end
 end
