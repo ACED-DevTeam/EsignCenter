@@ -174,8 +174,15 @@ RSpec.describe 'Branding gate' do
       requirement = Gates::ATTRIBUTION_REQUIREMENTS.find { |r| r.fetch(:file) == branding_file }
       commented = "<!--\n#{passing_content(requirement)}\n-->\n"
 
-      expect(attribution_failures_for(branding_file => commented)).to match_array(
-        requirement.fetch(:snippets).map { |snippet| "#{branding_file}: attribution snippet missing: #{snippet}" }
+      # The AGPL marker is a developer-facing ERB comment and is looked for in
+      # the raw file, so it is the one snippet an HTML comment cannot hide;
+      # every visible snippet is missing, and the DocuSeal anchor — pinned on
+      # this page since the rebrand hollowed its credit out — is not rendered.
+      hidden = requirement.fetch(:snippets).reject { |snippet| snippet.start_with?(Gates::AGPL_MARKER_PREFIX) }
+
+      expect(attribution_failures_for(branding_file => commented)).to contain_exactly(
+        *hidden.map { |snippet| "#{branding_file}: attribution snippet missing: #{snippet}" },
+        "#{branding_file}: attribution anchor is not rendered markup: #{requirement.fetch(:rendered_anchor)}"
       )
     end
 
