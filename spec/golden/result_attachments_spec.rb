@@ -99,6 +99,40 @@ RSpec.describe 'Signed result attachments', type: :request do
       expect(after_retry.first.last).to eq(after_first.first.last)
       expect(after_retry.first.first).not_to eq(after_first.first.first)
     end
+
+    # The other half of that promise (review 2, H2). The row used to be
+    # written straight after signing and BEFORE the upload, so a retry that
+    # died on the way to storage replaced the fingerprint of the PDF the
+    # signer already holds with one for bytes that were never stored — the
+    # delivered document then answered "not on record" for ever. Nothing is
+    # filed until the attachment is saved.
+    it 'keeps the stored document verifiable when a retry dies before the new bytes are stored',
+       sidekiq: :inline do
+      platform_certificate!
+
+      submitter = completed_submitter
+
+      Submissions::GenerateResultAttachments.call(submitter)
+
+      delivered_sha = VerifiedDocument.where(submission_id: submitter.submission_id).sole.sha256
+
+      allow(ActiveStorage::Blob).to receive(:create_and_upload!).and_raise(Errno::ECONNREFUSED)
+
+      expect do
+        travel_to(2.minutes.from_now) { Submissions::GenerateResultAttachments.call(submitter.reload) }
+      end.to raise_error(Errno::ECONNREFUSED)
+
+      rows = VerifiedDocument.where(submission_id: submitter.submission_id)
+
+      expect(rows.count).to eq(1)
+      expect(rows.sole.sha256).to eq(delivered_sha)
+
+      # Said the way a signer would ask it: the bytes actually in storage are
+      # the bytes on record.
+      stored = submitter.documents.reload.sole
+
+      expect(Digest::SHA256.hexdigest(stored.download)).to eq(delivered_sha)
+    end
   end
 
   describe 'a field whose value names no attachment' do

@@ -35,7 +35,7 @@ class AccountExportJob
   # Sidekiq gave up. The row must not stay "running" — the page would poll for
   # ever and no new export could be requested.
   sidekiq_retries_exhausted do |job, exception|
-    AccountExportJob.new.fail_after_retries(job['args'].first, exception)
+    AccountExportJob.new.fail_after_retries(job['args'].first, exception, jid: job['jid'])
   end
 
   # A failure that is worth trying again is RAISED, so Sidekiq retries it and
@@ -59,12 +59,17 @@ class AccountExportJob
     nil
   end
 
-  def fail_after_retries(export_id, exception)
+  # Sidekiq has given up on this JOB, so this runs on a fresh object that owns
+  # nothing (review 2, M7): the ownership check is made against the job id
+  # instead, which every execution of that job signs with. A row that has since
+  # been taken over by a different job is left to the execution building it.
+  def fail_after_retries(export_id, exception, jid: nil)
     export = AccountExport.find_by(id: export_id)
 
     return if export.nil? || !export.in_progress?
+    return if jid.present? && export.attempt_owner.present? && !export.attempt_owner.start_with?("#{jid}-")
 
-    fail!(export, exception)
+    fail!(export, exception, check_owner: false)
   end
 
   private
@@ -82,25 +87,32 @@ class AccountExportJob
   # Sidekiq retry hours after the first try, the second attempt is a live build
   # however long ago the first one started.
   #
-  # ONE WORKER, UNDER THE ROW'S LOCK, AND IT SIGNS THE CLAIM (review 8, D5).
-  # This used to be a read followed by an update with neither: two workers
-  # handed the same export id — a duplicate enqueue, or a Sidekiq retry that
-  # overlapped the attempt it was retrying — both read `pending`, both wrote
-  # `running`, and both then built a zip over the same row, one of them
-  # deleting the other's staged blob mid-upload. So the read and the write are
-  # one statement under the lock, and the row records WHOSE attempt it is:
+  # ONE EXECUTION, UNDER THE ROW'S LOCK, AND IT SIGNS THE CLAIM (review 8 D5,
+  # corrected in review 2 M7).
+  #
+  # This used to be a read followed by an update with neither lock nor
+  # signature: two workers handed the same export id both read `pending`, both
+  # wrote `running`, and both built a zip over the same row, one deleting the
+  # other's staged blob mid-upload. The signature fixed part of it — and then
+  # signed with the `jid`, which Sidekiq reuses for every DELIVERY of one job.
+  # Two deliveries of the same job (a broker hiccup, a manual requeue) both
+  # matched the owner and both built, which is the same defect wearing the
+  # fix's clothes. The token now names the EXECUTION: the jid, so the log still
+  # says which job it was, plus a nonce made fresh in this object.
   #
   #   * a row nobody owns (pending) is claimed;
-  #   * a running row is claimed only by the attempt that already owns it,
-  #     which is what a Sidekiq retry is — same `jid`, so it resumes its own
-  #     half-finished build instead of being locked out of it;
-  #   * a running row owned by somebody else is left alone. Nothing else may
-  #     decide a worker died: the nightly stale-export recovery does that, and
-  #     it is the only thing that hands the row back.
+  #   * a running row owned by another execution is left alone — unless it is
+  #     STALE by the nightly recovery's own predicate, which is the one
+  #     definition of "that worker is dead" this code has. Without that a
+  #     Sidekiq retry after a killed worker could never resume, and the row
+  #     would wait for the sweep before anything could touch it;
+  #   * a stale row is taken over, and from that moment the previous execution
+  #     owns nothing: every step below re-checks ownership under the lock, so
+  #     a zombie that wakes up cannot stage, upload or finish over the top of
+  #     the execution that replaced it.
   #
   # A hand-driven run (`AccountExportJob.new.perform(id)` — the console, and
-  # specs) has no `jid` and signs with an attempt id of its own, so it takes a
-  # pending row and refuses one another worker is building.
+  # specs) has no `jid` and signs `inline-<nonce>`.
   def claim(export_id)
     export = AccountExport.find_by(id: export_id)
 
@@ -111,8 +123,7 @@ class AccountExportJob
 
     export.with_lock do
       next unless export.in_progress?
-      next if export.status == AccountExport::RUNNING && export.attempt_owner.present? &&
-              export.attempt_owner != attempt
+      next if claimed_by_a_live_execution?(export, attempt)
 
       export.update!(status: AccountExport::RUNNING, started_at: Time.current,
                      summary: export.summary.merge(AccountExport::ATTEMPT_KEY => attempt))
@@ -123,11 +134,25 @@ class AccountExportJob
     claimed ? export : nil
   end
 
-  # Who this attempt is. Sidekiq's job id is the same string across every retry
-  # of one job, which is exactly the identity the claim needs; a run driven by
-  # hand has none and gets one that belongs to this object alone.
+  def claimed_by_a_live_execution?(export, attempt)
+    return false unless export.status == AccountExport::RUNNING
+    return false if export.attempt_owner.blank? || export.attempt_owner == attempt
+
+    !Accounts::Retention.stale_export?(export)
+  end
+
+  # Does this row still belong to this execution? Asked inside the lock by
+  # every step that writes, because a takeover can have happened since the
+  # claim.
+  def owns?(export)
+    export.attempt_owner == attempt_id
+  end
+
+  # Who this EXECUTION is. Sidekiq's job id is the same string across every
+  # delivery and every retry of one job, so it cannot tell two executions
+  # apart on its own; the nonce is what does.
   def attempt_id
-    @attempt_id ||= jid.presence || "inline-#{SecureRandom.hex(8)}"
+    @attempt_id ||= "#{jid.presence || 'inline'}-#{SecureRandom.hex(8)}"
   end
 
   # The staged locator is committed before upload. Upload and finalization
@@ -189,6 +214,7 @@ class AccountExportJob
 
     export.with_lock do
       next unless export.status == AccountExport::RUNNING
+      next unless owns?(export)
 
       export.archive.attach(blob)
       # The fresh summary replaces the staged pointer as it is written: the
@@ -216,6 +242,7 @@ class AccountExportJob
   def stage!(export, blob)
     export.with_lock do
       next false unless export.status == AccountExport::RUNNING
+      next false unless owns?(export)
 
       previous = export.staged_blob
       if previous && previous.id != blob.id
@@ -231,6 +258,7 @@ class AccountExportJob
   def upload!(export, blob, file)
     export.with_lock do
       next false unless export.status == AccountExport::RUNNING
+      next false unless owns?(export)
       next false unless export.summary[AccountExport::STAGED_BLOB_ID] == blob.id
 
       blob.upload_without_unfurling(file)
@@ -245,6 +273,8 @@ class AccountExportJob
   # that has moved on to another attempt keeps its own.
   def unstage!(export, blob)
     export.reload
+
+    return nil unless owns?(export)
 
     export.unstage_blob! if export.summary[AccountExport::STAGED_BLOB_ID].to_i == blob.id
   rescue ActiveRecord::RecordNotFound
@@ -270,10 +300,13 @@ class AccountExportJob
   # Failing is a real outcome, not an incident: the row says so, the person
   # who asked is told, and the error is reported once. Deliberately NO
   # OperatorAlert — an export that could not be built wakes nobody up.
-  def fail!(export, error)
+  def fail!(export, error, check_owner: true)
     export.reload
 
     return unless export.in_progress?
+    # A row taken over by a live execution is not this one's to fail: doing so
+    # would delete the archive that execution is building.
+    return if check_owner && !owns?(export)
 
     message = "#{error.class}: #{error.message}".first(MAX_ERROR)
 

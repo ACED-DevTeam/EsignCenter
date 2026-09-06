@@ -60,18 +60,25 @@ RSpec.describe 'Visitor IP handling', type: :request do
   # stand in for because only a real request through Cloudflare knows what
   # Cloudflare puts in the chain.
   describe 'the production wiring itself' do
+    # Line-anchored, not `include`. A substring match is passed by the line
+    # commented out — one `#` and the production wiring is dead while the
+    # assertion stays green (review 2, M3) — and the behavioural examples
+    # above cannot notice, because they build the list by hand.
     it 'hands the trusted-proxy list to Rails in the production environment file' do
       production_config = Rails.root.join('config/environments/production.rb').read
 
-      expect(production_config).to include('config.action_dispatch.trusted_proxies = TrustedProxies.all')
-      expect(production_config).to include("require_relative '../../lib/trusted_proxies'")
+      expect(production_config).to match(/^\s*config\.action_dispatch\.trusted_proxies\s*=\s*TrustedProxies\.all\s*$/)
+      expect(production_config).to match(%r{^\s*require_relative\s+'\.\./\.\./lib/trusted_proxies'\s*$})
+
+      # And nothing else assigns it, so the line above is the whole answer.
+      expect(production_config.scan(/^\s*config\.action_dispatch\.trusted_proxies\s*=/).size).to eq(1)
     end
 
     it 'drops both spoofable client-IP headers in the middleware' do
       middleware_source = Rails.root.join('lib/normalize_client_ip_middleware.rb').read
 
-      expect(middleware_source).to include("env.delete('HTTP_FORWARDED')")
-      expect(middleware_source).to include("env.delete('HTTP_CLIENT_IP')")
+      expect(middleware_source).to match(/^\s*env\.delete\('HTTP_FORWARDED'\)\s*$/)
+      expect(middleware_source).to match(/^\s*env\.delete\('HTTP_CLIENT_IP'\)\s*$/)
     end
 
     it 'keeps that middleware in the stack, ahead of anything that reads an IP' do

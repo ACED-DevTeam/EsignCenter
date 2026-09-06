@@ -1363,9 +1363,14 @@ RSpec.describe 'Quotas', type: :request do # rubocop:disable RSpec/MultipleDescr
        sidekiq: :inline do
       submitter = send_one(free_account).submitters.first
       pause_subject = 'Sending is paused on your EsignCenter account'
+      # Dated NOW on purpose. A complaint pauses only when the delivery it is
+      # about is after the operator's Resume, and with no send row to date it
+      # by the complaint's own time stands in (review 2, M5) — the factory's
+      # default is an hour ago, which would make the third one a stale
+      # complaint about a pre-resume batch, which is the case the fix ignores.
       complaint = lambda do
         create(:email_event, account: free_account, emailable: submitter, event_type: 'complaint',
-                             email: submitter.email)
+                             email: submitter.email, event_datetime: Time.current)
       end
 
       SendingPause.evaluate!(free_account, event: complaint.call)

@@ -905,15 +905,22 @@ RSpec.describe 'The account export', type: :request do
     it 'leaves a build that finished a moment before the sweep exactly as it is' do
       export = Accounts::Exports.request!(account, requested_by: admin)
 
-      export.update_columns(status: AccountExport::RUNNING,
-                            started_at: (Accounts::Exports::STALE_AFTER + 10.minutes).ago)
+      # Claimed for real, then backdated: only the execution that owns the row
+      # may finish it (review 2, M7), and what this example is about is a
+      # worker that finishes after the sweep's threshold has passed.
+      job = AccountExportJob.new
+      job.jid = 'worker-one'
+
+      expect(job.send(:claim, export.id)).to be_present
+
+      export.update_columns(started_at: (Accounts::Exports::STALE_AFTER + 10.minutes).ago)
 
       blob = ActiveStorage::Blob.create_and_upload!(
         io: Rails.root.join('spec/fixtures/sample-document.pdf').open,
         filename: 'esigncenter-export.zip', content_type: 'application/zip'
       )
 
-      expect(AccountExportJob.new.send(:finalize!, export, blob, 'counts' => {})).to be(true)
+      expect(job.send(:finalize!, export.reload, blob, 'counts' => {})).to be(true)
 
       AccountRetentionJob.new.perform
 
@@ -1084,35 +1091,87 @@ RSpec.describe 'The account export', type: :request do
       expect(build_export!.summary['notified']).to be(true)
     end
 
-    # D5 (review 8). The claim was a read followed by an update with no lock
-    # and no signature, so two workers handed the same export id — a duplicate
-    # enqueue, or a retry that overlapped the attempt it was retrying — both
-    # read `pending`, both wrote `running`, and both then built a zip over one
-    # row, one of them deleting the other's staged blob mid-upload.
-    it 'lets exactly one worker claim an export, and lets its own retry back in' do
+    # D5 (review 8), corrected in review 2 (M7). The claim was a read followed
+    # by an update with no lock and no signature, so two workers handed the
+    # same export id both read `pending`, both wrote `running`, and both built
+    # a zip over one row, one deleting the other's staged blob mid-upload. The
+    # first fix signed the claim with the `jid` — which Sidekiq reuses for
+    # every DELIVERY of one job, so two deliveries of the same job still both
+    # matched the owner and both built. The token names the EXECUTION now.
+    it 'lets exactly one execution claim an export, the same job id included' do
       export = AccountExport.create!(account:, requested_by: admin, status: AccountExport::PENDING)
 
       first = AccountExportJob.new
       first.jid = 'worker-one'
-      second = AccountExportJob.new
-      second.jid = 'worker-two'
+      other_job = AccountExportJob.new
+      other_job.jid = 'worker-two'
+      same_job_again = AccountExportJob.new
+      same_job_again.jid = 'worker-one'
 
       expect(first.send(:claim, export.id)).to be_present
       expect(export.reload.status).to eq(AccountExport::RUNNING)
-      expect(export.attempt_owner).to eq('worker-one')
+      expect(export.attempt_owner).to start_with('worker-one-')
 
-      # The second worker finds the row taken and does no work at all.
-      expect(second.send(:claim, export.id)).to be_nil
-      expect(export.reload.attempt_owner).to eq('worker-one')
+      owner = export.attempt_owner
 
-      # A Sidekiq retry of the FIRST job carries the same id, and has to be
-      # able to resume its own half-finished build.
-      claimed_at = export.started_at
+      # Another job finds the row taken and does no work at all.
+      expect(other_job.send(:claim, export.id)).to be_nil
+
+      # And so does a SECOND DELIVERY of the same job, which is a second
+      # execution however identical its job id.
+      expect(same_job_again.send(:claim, export.id)).to be_nil
+      expect(export.reload.attempt_owner).to eq(owner)
+    end
+
+    # The one thing that hands a claimed row back: the sweep's own definition
+    # of a dead worker. Without it a Sidekiq retry after a killed worker could
+    # never resume, and the row would wait hours for the sweep.
+    it 'lets a retry take the row over once the previous execution is stale' do
+      export = AccountExport.create!(account:, requested_by: admin, status: AccountExport::PENDING)
+
+      first = AccountExportJob.new
+      first.jid = 'worker-one'
+
+      expect(first.send(:claim, export.id)).to be_present
+
+      owner = export.reload.attempt_owner
+
+      export.update_columns(started_at: (Accounts::Exports::STALE_AFTER + 1.minute).ago,
+                            updated_at: Time.current)
+
       retry_of_first = AccountExportJob.new
       retry_of_first.jid = 'worker-one'
 
       expect(retry_of_first.send(:claim, export.id)).to be_present
-      expect(export.reload.started_at).to be > claimed_at
+      expect(export.reload.attempt_owner).to start_with('worker-one-')
+      expect(export.attempt_owner).not_to eq(owner)
+    end
+
+    # And the execution that was replaced cannot write over the top of the one
+    # that replaced it, however far through its own build it had got.
+    it 'refuses a replaced execution the right to stage or finish' do
+      export = AccountExport.create!(account:, requested_by: admin, status: AccountExport::PENDING)
+
+      first = AccountExportJob.new
+      first.jid = 'worker-one'
+
+      expect(first.send(:claim, export.id)).to be_present
+
+      export.update_columns(started_at: (Accounts::Exports::STALE_AFTER + 1.minute).ago,
+                            updated_at: Time.current)
+
+      second = AccountExportJob.new
+      second.jid = 'worker-two'
+
+      expect(second.send(:claim, export.id)).to be_present
+
+      blob = ActiveStorage::Blob.create_and_upload!(io: StringIO.new('zip bytes'), filename: 'stale.zip',
+                                                    content_type: 'application/zip')
+
+      expect(first.send(:stage!, export.reload, blob)).to be(false)
+      expect(first.send(:finalize!, export.reload, blob, {})).to be(false)
+      expect(export.reload.status).to eq(AccountExport::RUNNING)
+      expect(export.archive).not_to be_attached
     end
 
     it 'never claims a row that is already finished' do

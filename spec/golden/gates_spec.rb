@@ -29,10 +29,40 @@ RSpec.describe 'Account-kind gate' do
         'account.accounts.create!(name: name)',
         'Account . create!( name: name )',
         "Account.create!(\n  name: name,\n  timezone: 'UTC'\n)",
-        'Account.create!(name: helper(other(1)))'
+        'Account.create!(name: helper(other(1)))',
+        # Review 2 (M2/M3): the ordinary Rails idioms the first version of the
+        # gate walked straight past. Every one of these mints a `customer`
+        # account by default.
+        'Account.new',
+        'Account.create name: name',
+        'Account.build(name: name)',
+        'user.accounts.build(name: name)',
+        'accounts.create!(name: name)',
+        'accounts.build(name: name)',
+        'Account.find_or_create_by(name: name)',
+        'Account.find_or_create_by!(name: name)',
+        'Account.first_or_create(name: name)',
+        'user.accounts.first_or_create!(name: name)',
+        'account.dup',
+        'testing_account = account.dup',
+        # A string that merely spells the argument out is not the argument.
+        "Account.new(name: 'account_kind: internal')"
       ].each do |snippet|
         expect(Gates.account_kind_violations("#{snippet}\n", 'lib/probe.rb')).to have_attributes(size: 1), snippet
       end
+    end
+
+    # The two `.dup` sites in lib/accounts.rb are the tree's only real
+    # non-signup creators, and they pass by being named in the allowlist with
+    # the reason (a copy inherits the original's kind) — never by accident.
+    it 'passes the reviewed dup sites and nothing else' do
+      expect(Gates.account_kind_violations("new_account = account.dup\n", 'lib/accounts.rb')).to be_empty
+      expect(Gates.account_kind_violations("new_account = account.dup\n", 'lib/other.rb')).to have_attributes(size: 1)
+    end
+
+    # A creation site parked inside a comment creates nothing.
+    it 'ignores creations inside comments' do
+      expect(Gates.account_kind_violations("# Account.create!(name: name)\n", 'lib/probe.rb')).to be_empty
     end
 
     it 'accepts a creation that names the kind anywhere inside the same call' do
@@ -41,7 +71,11 @@ RSpec.describe 'Account-kind gate' do
         'Account.create!(name: name, account_kind: Account::INTERNAL_KIND)',
         "Account.create!(\n  name: name,\n  account_kind: Account::OPERATOR_KIND\n)",
         'user.accounts.create!(name: name, account_kind: kind)',
-        'Account.new(params.merge(account_kind: Account::INTERNAL_KIND))'
+        'Account.new(params.merge(account_kind: Account::INTERNAL_KIND))',
+        'Account.build(name: name, account_kind: kind)',
+        'accounts.create!(name: name, account_kind: kind)',
+        'Account.find_or_create_by!(name: name, account_kind: kind)',
+        'Account.create name: name, account_kind: kind'
       ].each do |snippet|
         expect(Gates.account_kind_violations("#{snippet}\n", 'lib/probe.rb')).to be_empty, snippet
       end

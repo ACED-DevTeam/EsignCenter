@@ -395,6 +395,13 @@ module Quotas
   # added later) cannot have two writers either. The row is written only when
   # it does not exist, so a dismissal is never undone.
   def arm_first_completion_prompt(billing, completed_submitter = nil)
+    # Once the row exists the answer can never change, so the lock — an
+    # advisory lock on the billing account, taken by every creation path there
+    # is — is not taken at all. Without this every free completion of every
+    # free account contended for it for ever, for a decision made once
+    # (review 1 loop 2, N7).
+    return if billing.account_configs.exists?(key: AccountConfig::FIRST_COMPLETION_UPGRADE_PROMPT_KEY)
+
     with_creation_lock(billing) do
       next unless first_ever_completion?(billing, completed_submitter)
 

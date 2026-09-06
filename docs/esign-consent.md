@@ -74,17 +74,31 @@ time they open a document they have not yet agreed on:
   sends anything to the server.
 
 **"Sign it yourself".** When the sender and the signer are the same person,
-the sender IS the address the disclosure would tell them to write to — so the
+the sender IS the person the disclosure would tell them to write to — so the
 notice would end up telling somebody to email themselves for a paper copy or
-to withdraw. Those three paragraphs ("Who sent this", "Withdrawing consent",
-"Paper copies") are replaced by one sentence that says what is actually true:
-you sent this to yourself, you already hold the document, you can download and
-keep the PDF when you finish, you can stop at any time before you complete it,
-nothing costs anything either way, and stopping does not affect documents you
-have already signed. Everything else — what you need, keeping a copy, what we
-record — is unchanged, because it still applies. The event carries a
-`self_signing` flag and fingerprints that variant, so the audit trail
-reproduces exactly the words this signer read.
+to withdraw, to ask themselves for a copy, and that they "do not have an
+account with us to update" when the account is their own. So every paragraph
+that names the sender comes out: the ones that give an address to write to
+("Who sent this", "Withdrawing consent", "Paper copies") and the ones that
+merely name them ("Your copy", "Your contact details"), along with the
+opening paragraph's "if they send you another document" sentence.
+
+Three paragraphs go in their place, at the position of the first one removed:
+
+1. the agreement itself — electronic records and signatures for this document
+   only, your electronic signature has the same legal effect as your
+   handwritten one, and each document you sign asks you to agree again;
+2. what is actually true about this one — you sent it to yourself, you already
+   hold the document, you can download and keep the PDF when you finish, you
+   can stop at any time before you complete it, nothing costs anything either
+   way, and stopping does not affect documents you have already signed;
+3. where documents are sent — the email address on your own account, which you
+   can change yourself in your account settings.
+
+Everything else — what you need, keeping a copy, what we record — is
+unchanged, because it still applies, and none of it names a sender. The event
+carries a `self_signing` flag and fingerprints that variant, so the audit
+trail reproduces exactly the words this signer read.
 
 This applies on every path a person can sign through: the emailed link, a
 share link, an embedded signing session, a resubmitted form, a delegated
@@ -134,9 +148,14 @@ delegation, one more for the person the form was handed to — stamped with:
   which language this disclosure was shown in. Please reload the page and
   agree again.") and is deliberately not the stale-version message: nothing
   was updated, and saying so would be a lie in the one place this product
-  cannot afford one. A server-side caller with no page behind it — `record!`
-  invoked straight from Ruby — has no token to offer and stands on the
-  locale of its own request; no controller reaches that path,
+  cannot afford one. `record!`'s `require_locale:` defaults to false, and
+  nothing in this application uses that default: both callers pass true.
+  A Ruby caller that took it — the console, a future backfill — would still
+  have to hand over the current disclosure version and the sender digest, so
+  the only thing the default changes is where the LANGUAGE comes from (this
+  request's rendered locale instead of a signed pair). There is no path by
+  which a browser reaches it, and no consent this product records has ever
+  been filed that way,
 - `disclosure_sha256` — the SHA-256 fingerprint of the disclosure **template**
   in that version and language: the locale string with its `%{sender_name}`,
   `%{sender_email}` and `%{product_name}` placeholders still in it, not the
@@ -208,10 +227,10 @@ delegation, one more for the person the form was handed to — stamped with:
   as a bare fact — the trail always says whose claim it is, and never stays
   silent,
 - `self_signing` — `true` when the sender and the signer are the same person
-  ("sign it yourself"). The disclosure they were shown drops the paragraphs
-  that name an address to write to and carries one sentence in their place
-  (§1), so the flag is what lets the audit trail rebuild the exact text they
-  read; `disclosure_sha256` is of that variant,
+  ("sign it yourself"). The disclosure they were shown drops every paragraph
+  that names the sender and carries three self-signing paragraphs in their
+  place (§1), so the flag is what lets the audit trail rebuild the exact text
+  they read; `disclosure_sha256` is of that variant,
 - `ip`, `ua` (browser user agent), `sid` (session) — the same tracking data
   every signing event carries — and `uid`, the user id, when the person who
   consented was signed in to the dashboard (the sender signing their own
@@ -376,7 +395,7 @@ not by the request — see §2 (`locale`). This section is about the strings
 themselves.
 
 Every consent string — the checkbox label, the disclosure link and title,
-the disclosure body, the self-signing sentence, the version label, the
+the disclosure body, the three self-signing paragraphs, the version label, the
 required message, the reload message shown for a stale version, the
 "we could not confirm which language" message, the "wording no longer on
 file" line, the audit-trail line and the event-log

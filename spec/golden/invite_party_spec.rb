@@ -107,6 +107,95 @@ RSpec.describe 'Inviting the next party', type: :request do
       expect(submission.submitters.reload.find { |s| s.uuid == second_uuid }&.email).to eq('second@example.com')
       expect(invite_events.sole.data['uuid']).to eq(second_uuid)
     end
+
+    # Two signers can race to invite the same party through their own field
+    # values. The check ("is this uuid already here?") is not a lock, so the
+    # loser reaches the insert and the unique index refuses it — which used to
+    # come back to the signer as a 500 on the signing page, the one place the
+    # product cannot afford one (review 2, H4). The invite form's door already
+    # answered a refusal; this one now answers the same.
+    it 'answers the signer who loses the race with a refusal, not a server error' do
+      raced = false
+
+      allow(Submissions).to receive(:normalize_email).and_wrap_original do |original, value|
+        unless raced
+          raced = true
+          submission.submitters.create!(uuid: second_uuid, email: 'raced@example.com', account_id: account.id)
+        end
+
+        original.call(value)
+      end
+
+      put "/s/#{submitter.slug}", params: { completed: 'true',
+                                            values: { text_field['uuid'] => 'second@example.com' },
+                                            **consent_params(submitter) }
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body['error']).to eq('party_already_invited')
+
+      # Nothing of the refused completion survives: the signer presses again
+      # and, with the party now on record, finishes.
+      expect(submitter.reload.completed_at).to be_nil
+      expect(submitter.submission_events.where(event_type: 'complete_form')).to be_empty
+    end
+  end
+
+  # An invite request is one request: it adds the parties AND completes the
+  # signer who invited them. The completion is where the consent and the
+  # required fields are checked, so a refusal has to take the invitees with it
+  # — otherwise the recipients are added for good and the signer's corrected
+  # retry is ignored, because the role is already occupied (review 2, H1).
+  describe 'an invite the completion then refuses' do
+    it 'leaves no invited party, no event and no completion behind' do
+      submitter.update!(values: { text_field['uuid'] => 'Jane' })
+
+      post "/s/#{submitter.slug}/invite",
+           params: { submission: { submitters: [{ uuid: second_uuid, email: 'typo@example.com' }] } }
+                     .merge(consent_params(submitter), esign_consent_locale_token: 'not-a-real-token')
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body['error']).to eq('esign_consent_locale_invalid')
+
+      expect(submission.submitters.reload.map(&:uuid)).not_to include(second_uuid)
+      expect(submission.submitters.pluck(:email)).not_to include('typo@example.com')
+      expect(invite_events).to be_empty
+      expect(submitter.reload.completed_at).to be_nil
+    end
+
+    # The point of taking them back: the retry has to be able to name a
+    # different address for the same party.
+    it 'lets the corrected retry through' do
+      submitter.update!(values: { text_field['uuid'] => 'Jane' })
+
+      post "/s/#{submitter.slug}/invite",
+           params: { submission: { submitters: [{ uuid: second_uuid, email: 'typo@example.com' }] } }
+                     .merge(consent_params(submitter), esign_consent_locale_token: 'not-a-real-token')
+
+      expect(response).to have_http_status(:unprocessable_content)
+
+      invite!(email: 'second@example.com')
+
+      expect(response).to have_http_status(:ok)
+      expect(submission.submitters.reload.find { |s| s.uuid == second_uuid }.email).to eq('second@example.com')
+      expect(invite_events.sole.data['uuid']).to eq(second_uuid)
+    end
+  end
+
+  # The refusals the invite form can meet that have nothing to do with a value
+  # (review 2, product 6 / L5). They used to be a bare 422 with no body, which
+  # the page turned into a browser alert reading "Value is invalid" — a
+  # sentence that describes none of them.
+  describe 'a refusal the page has to be able to explain' do
+    it 'names the reason when the document is no longer accepting signatures' do
+      submitter.update!(completed_at: Time.current)
+
+      post "/s/#{submitter.slug}/invite",
+           params: { submission: { submitters: [{ uuid: second_uuid, email: 'second@example.com' }] } }
+                     .merge(consent_params(submitter))
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body['error']).to eq('document_no_longer_accepting')
+    end
   end
 
   describe 'two people in one role' do

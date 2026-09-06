@@ -63,6 +63,17 @@ record of a PDF that was never stored and can never be produced again. Rows
 written before this change keep no key and are left exactly as they are — a
 fingerprint already on record still answers this page.
 
+The row is written only once the file has been **stored**, never before: a
+retry that dies between signing and storage leaves the previous row alone, so
+the copy a signer already holds keeps verifying. The cost of keying per output
+is the other side of that coin, and it is worth writing down for whoever comes
+next: if a "Regenerate this document" button were ever added, regenerating an
+output would replace its row and the copy already in a signer's hands would
+start answering **Not on record**. Nothing in the product regenerates a
+delivered document today (`Submissions.regenerate_documents` has no caller and
+the debug controller is development-only), so the promise holds. Anyone adding
+such a door has to decide first whether the old fingerprint stays on record.
+
 The date the page shows is the day (UTC) the **last signer completed** the
 submission — not the day the PDF file itself was generated. The two can
 differ: a combined PDF is built at the first download when "combine PDF

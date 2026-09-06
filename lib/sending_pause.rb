@@ -146,12 +146,48 @@ module SendingPause
     billing = Plans.billing_account(account)
 
     if COMPLAINT_EVENTS.include?(event.event_type)
-      pause!(billing, reason: 'complaint', details: { email_event_id: event.id, email: event.email })
+      if complaint_after_resume?(billing, event)
+        pause!(billing, reason: 'complaint', details: { email_event_id: event.id, email: event.email })
+      end
     elsif HARD_BOUNCE_EVENTS.include?(event.event_type) && (rate = bounce_rate(billing))
       pause!(billing, reason: 'bounce_rate', details: { email_event_id: event.id, bounce_rate: rate })
     end
 
     nil
+  end
+
+  # A complaint pauses only when the message it complains about went out AFTER
+  # the operator last pressed Resume.
+  #
+  # Spam complaints routinely reach us hours or days after the send, and the
+  # bounce side has honoured the resume watermark since review 8 (A1) while
+  # this side did not: an operator who reviewed a complaint pause and resumed
+  # was re-paused by the next complaint about the SAME pre-resume batch, the
+  # customer got a second "sending paused" letter, and the console button could
+  # not lift the pause for real — the very defect the watermark was added to
+  # fix, surviving on the other reason code (review 2, M5).
+  #
+  # What is dated is the DELIVERY, not the complaint: the provider stamps
+  # "complained at" from its own clock, which can read either side of our
+  # resume for a message we sent afterwards. When there is no send row to date
+  # it by, the complaint's own time stands in — which errs towards pausing,
+  # the safe direction.
+  def complaint_after_resume?(billing, event)
+    ids = Quotas.account_ids(billing)
+    watermark = resumed_at(ids)
+
+    return true if watermark.blank?
+
+    (delivered_at(ids, event) || event.event_datetime) > watermark
+  end
+
+  # When the (message, recipient) this event is about was sent, or nil.
+  def delivered_at(ids, event)
+    return nil if event.message_id.blank? || event.email.blank?
+
+    signer_events(ids, 'send').where(message_id: event.message_id)
+                              .where('LOWER(email) = ?', event.email.to_s.downcase)
+                              .maximum(:event_datetime)
   end
 
   # Mail an account sent its SIGNERS. Every send row the abuse pause looks at

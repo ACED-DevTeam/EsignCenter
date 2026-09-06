@@ -39,6 +39,17 @@ class SubmitFormController < ApplicationController
     render json: { error: 'esign_consent_locale_invalid' }, status: :unprocessable_content
   end
 
+  # A completion can invite the next party through a field value
+  # (`invite_via_field_uuid`), and two signers racing to invite the same party
+  # both pass the "is this uuid already here?" check. The unique index on
+  # `submitters (submission_id, uuid)` refuses the loser, which rolls the whole
+  # completion back — so this door answers the same refusal the invite form's
+  # door answers rather than a 500 on the signing page. Nothing was written;
+  # pressing Complete again succeeds, because by then the party is on record.
+  rescue_from ActiveRecord::RecordNotUnique do
+    render json: { error: 'party_already_invited' }, status: :unprocessable_content
+  end
+
   def show
     submission = @submitter.submission
 

@@ -25,7 +25,7 @@ module Submitters
       unless submitter.submission_events.exists?(event_type: 'start_form')
         SubmissionEvents.create_with_tracking_data(submitter, 'start_form', request)
 
-        WebhookUrls.enqueue_events(submitter, 'form.started')
+        enqueue_after_commit { WebhookUrls.enqueue_events(submitter, 'form.started') }
       end
 
       if params[:esign_consent].to_s == 'true'
@@ -48,9 +48,23 @@ module Submitters
 
       submitter.submission.save!
 
-      ProcessSubmitterCompletionJob.perform_async('submitter_id' => submitter.id) if submitter.completed_at?
+      if submitter.completed_at?
+        enqueue_after_commit { ProcessSubmitterCompletionJob.perform_async('submitter_id' => submitter.id) }
+      end
 
       submitter
+    end
+
+    # Sidekiq knows nothing about the database transaction that is open around
+    # it: a job pushed from inside one can be picked up by a worker before the
+    # rows it needs are committed — or at all, if the transaction then rolls
+    # back. Every caller here used to run outside a transaction, so this was
+    # only a rule to remember; the invite door now wraps the whole invite-then-
+    # complete in one (SubmitFormInviteController), so the rule is enforced
+    # here instead. With nothing open the block runs straight away, which is
+    # what the ordinary form step still does.
+    def enqueue_after_commit(&)
+      ActiveRecord.after_all_transactions_commit(&)
     end
 
     def update_submitter!(submitter, params, request, validate_required: true)
@@ -82,7 +96,7 @@ module Submitters
         submitter.save!
       end
 
-      SearchEntries.enqueue_reindex(submitter) if submitter.completed_at?
+      enqueue_after_commit { SearchEntries.enqueue_reindex(submitter) } if submitter.completed_at?
 
       submitter
     end

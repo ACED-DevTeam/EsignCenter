@@ -385,8 +385,14 @@ RSpec.describe 'Postmark delivery tracking', type: :request do
     expect(submitter.submission.submission_events.count).to eq(1)
   end
 
+  # The two headers are one uuid: ours keys the send rows, Postmark's quotes it
+  # back in every callback. The Postmark copy is only stamped on a message that
+  # HAS metadata, because that is the only kind a send row is written for
+  # (review 2, M4 — the pair of examples further down proves both sides of
+  # that with real mailers).
   it 'places the same UUID in the observer and Postmark metadata headers' do
     mailer = ApplicationMailer.new
+    mailer.put_metadata('tag' => 'probe', 'record_id' => account.id, 'record_type' => 'Account')
     mailer.set_message_uuid
 
     expect(mailer.message['X-PM-Metadata-message-uuid'].value).to eq(mailer.message['X-Message-Uuid'].value)
@@ -530,6 +536,37 @@ RSpec.describe 'Postmark delivery tracking', type: :request do
       expect(SendingPause.paused?(account)).to be(false)
     end
 
+    # M5: the complaint side used to ignore the watermark entirely, so the
+    # operator's Resume was undone by the next complaint about the same
+    # pre-resume batch — spam complaints reach us hours or days late.
+    it 'is not re-paused by a late complaint about a delivery made before the resume' do
+      deliver(payload('spam_complaint').merge('ID' => 'first-complaint'))
+
+      expect(SendingPause.paused?(account)).to be(true)
+
+      SendingPause.resume!(account)
+
+      expect(SendingPause.paused?(account)).to be(false)
+
+      deliver(payload('spam_complaint').merge('ID' => 'late-complaint'))
+
+      expect(response.parsed_body).to eq('recorded' => true)
+      expect(SendingPause.paused?(account)).to be(false)
+    end
+
+    it 'still pauses on a complaint about a delivery made after the resume' do
+      SendingPause.resume!(account)
+
+      fresh = create(:email_event, account:, emailable: submitter, event_type: 'send',
+                                   email: 'signer@example.com', event_datetime: 1.minute.from_now)
+
+      deliver(payload('spam_complaint').merge('ID' => 'fresh-complaint',
+                                              'Metadata' => { 'message-uuid' => fresh.message_id }))
+
+      expect(SendingPause.paused?(account)).to be(true)
+      expect(account.reload.sending_pause_reason).to eq('complaint')
+    end
+
     it 'still pauses on bounces earned after the resume' do
       bounce_three_of_ten!
       SendingPause.resume!(account)
@@ -611,6 +648,96 @@ RSpec.describe 'Postmark delivery tracking', type: :request do
       expect { HousekeepingJob.new.perform }.to change(PendingEmailEvent, :count).by(-1)
       expect(PendingEmailEvent.sole.provider_message_id).not_to eq(early_uuid)
       expect(EmailEvent.where(event_type: 'permanent_bounce').count).to eq(0)
+    end
+
+    # M8. A replay that RAISES is not a callback nobody can claim: its send row
+    # is right there and the write broke. Postmark has already been answered
+    # 200, so dropping it at three days with the never-matched ones loses a
+    # real bounce for good.
+    it 'keeps a callback whose replay failed, counts the attempts and never expires it' do
+      deliver(early_bounce)
+
+      create(:email_event, account:, emailable: submitter, event_type: 'send',
+                           message_id: early_uuid, email: 'signer@example.com')
+
+      allow(PostmarkWebhooks).to receive(:persist!).and_raise(ActiveRecord::StatementInvalid, 'timeline write failed')
+
+      expect { HousekeepingJob.new.perform }.not_to change(PendingEmailEvent, :count)
+
+      parked = PendingEmailEvent.sole
+
+      expect(parked.attempts).to eq(1)
+      expect(parked.attribution_error).to include('timeline write failed')
+      expect(parked.last_attempted_at).to be_present
+
+      # Three days old and still kept, because this one CAN be attributed.
+      parked.update!(created_at: (PendingEmailEvent::MAX_WAIT + 1.day).ago)
+
+      expect { HousekeepingJob.new.perform }.not_to change(PendingEmailEvent, :count)
+      expect(PendingEmailEvent.sole.attempts).to eq(2)
+
+      # And once the write works again, the sweep lands it.
+      allow(PostmarkWebhooks).to receive(:persist!).and_call_original
+
+      expect { HousekeepingJob.new.perform }.to change(PendingEmailEvent, :count).by(-1)
+      expect(EmailEvent.where(event_type: 'permanent_bounce').sole.message_id).to eq(early_uuid)
+    end
+
+    it 'tells the operator once a failed replay has been retried enough times' do
+      deliver(early_bounce)
+
+      PendingEmailEvent.sole.update!(attempts: PostmarkWebhooks::MAX_REPLAY_ATTEMPTS,
+                                     attribution_error: 'ActiveRecord::StatementInvalid: timeline write failed')
+
+      allow(OperatorAlert).to receive(:deliver)
+
+      PostmarkWebhooks.sweep_pending!
+
+      expect(OperatorAlert).to have_received(:deliver)
+        .with(hash_including(subject: a_string_including('cannot be replayed')))
+    end
+
+    it 'counts what it dropped without counting it as still waiting' do
+      deliver(early_bounce)
+      PendingEmailEvent.sole.update!(created_at: (PendingEmailEvent::MAX_WAIT + 1.day).ago)
+
+      expect(PostmarkWebhooks.sweep_pending!).to eq(pending: 0, dropped: 1, errored: 0)
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # M4: mail nobody is tracking is not stamped, so its callbacks are not parked
+  # ---------------------------------------------------------------------------
+  describe 'a message with no account behind it' do
+    # OperatorMailer and SupportMailer write to US. They name no account, so no
+    # send row is ever written for them — and while they still stamped the
+    # Postmark metadata uuid, every Postmark event about them (delivery and
+    # open included) was PARKED for three days and then dropped, which made the
+    # sweep's `dropped` alarm permanently non-zero and therefore useless.
+    it 'carries no Postmark metadata uuid, so its callbacks are ignored rather than parked' do
+      mail = OperatorMailer.alert('Something happened', 'body')
+      mail.deliver_now!
+
+      expect(mail['X-Message-Uuid']).to be_present
+      expect(mail['X-PM-Metadata-message-uuid']).to be_nil
+      expect(EmailEvent.where(tag: 'operator_alert')).not_to exist
+
+      expect do
+        deliver(payload('bounce_hard').merge('ID' => 'operator-mail', 'Metadata' => {}))
+      end.not_to change(PendingEmailEvent, :count)
+
+      expect(response.parsed_body).to eq('ignored' => true)
+    end
+
+    # Customer mail still is: naming the account is what makes it trackable.
+    it 'still stamps a message that names an account' do
+      submitter.update!(email: 'signer@example.com')
+
+      mail = SubmitterMailer.invitation_email(submitter)
+      mail.deliver_now!
+
+      expect(mail['X-PM-Metadata-message-uuid']).to be_present
+      expect(mail['X-PM-Metadata-message-uuid'].value).to eq(mail['X-Message-Uuid'].value)
     end
   end
 end

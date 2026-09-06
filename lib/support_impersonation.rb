@@ -37,10 +37,12 @@ module SupportImpersonation
   # account, as one of their people" deserves a sentence, not a ticket number.
   MINIMUM_REASON_LENGTH = 10
 
-  # How far back the abandoned-session sweep looks. Days rather than hours, so
-  # a scheduler that was down overnight still closes what it missed, and
-  # bounded so the hourly sweep never grows into a walk of the whole log.
-  SWEEP_WINDOW = 7.days
+  # How many unclosed starts one sweep tick closes. There is deliberately no
+  # window any more: a floor of seven days meant a scheduler outage longer than
+  # a week left those sessions saying "In progress" for ever, which is the
+  # exact state the sweep exists to end (review 2, M9). The work is bounded by
+  # this batch instead — oldest first, and the next tick takes the rest.
+  SWEEP_BATCH = 500
 
   # The operator's own console. Never refused — it is the surface the session
   # is driven from, it is behind its own 404 gate, and the end door lives in
@@ -494,37 +496,59 @@ module SupportImpersonation
   # operator's own session cookie, so it does not pretend to (the card prints a
   # dash for a session recorded without them).
   #
-  # Idempotent by construction: a session that later writes its own end row —
-  # the operator comes back with the cookie still in hand — is matched by
-  # `start_event_id` like every other end row, and this sweep only ever looks
-  # at starts that have none.
+  # Idempotent because both writers go through the same door (record_end!):
+  # the operator who comes back with the cookie still in hand and this sweep
+  # take the START row's lock and decide under it, so one start can only ever
+  # have one ending.
   def expire_abandoned!(now: Time.current)
-    closed = 0
-
-    abandoned_starts(now).each do |event|
-      ApplicationRecord.transaction do
-        next if end_row_exists?(event)
-
-        OperatorEvents.record!(
-          operator: nil, action: 'impersonation.end', account: event.account, subject: event.subject,
-          reason: event.reason,
-          details: { start_event_id: event.id, ended_by: 'expired', mode: event.details['mode'],
-                     duration_seconds: MAX_DURATION.to_i }
-        )
-
-        closed += 1
-      end
+    abandoned_starts(now).count do |event|
+      record_end!(start_event_id: event.id, account: event.account, subject: event.subject,
+                  reason: event.reason,
+                  details: { ended_by: 'expired', mode: event.details['mode'],
+                             duration_seconds: MAX_DURATION.to_i })
     end
-
-    closed
   end
 
-  # Every start whose hour is up and which has no end row. Bounded by the
-  # oldest window worth walking: a start from last year has been swept many
-  # times over, and re-reading them all every hour would grow without end.
+  # THE ONE PLACE AN `impersonation.end` IS WRITTEN (review 2, M9).
+  #
+  # Two writers race for it: this sweep, closing a session the operator walked
+  # away from, and the operator's own next request, which ends a session it
+  # finds expired. The guard used to write unconditionally and the sweep
+  # checked-then-wrote with nothing serialising the two, so an operator
+  # returning at the same moment as a tick produced TWO end rows for one
+  # start — and the customer's Support-access card pairs start with end, so it
+  # printed one and orphaned the other.
+  #
+  # The start event is the lock. Whoever holds it asks, under it, whether an
+  # ending already exists, and writes it there. Returns true when it wrote one.
+  def record_end!(start_event_id:, account:, subject:, reason:, details:, operator: nil, request: nil)
+    written = false
+
+    ApplicationRecord.transaction do
+      # With no start row to take — a session recorded before the id was, or a
+      # log since purged — the ending is written anyway: a missing ending is
+      # worse than a repeated one.
+      start = start_event_id && OperatorEvent.lock.find_by(id: start_event_id, action: 'impersonation.start')
+
+      next if start && end_row_exists?(start_event_id)
+
+      OperatorEvents.record!(operator:, action: 'impersonation.end', account:, subject:, reason:,
+                             details: { start_event_id: }.merge(details), request:)
+
+      written = true
+    end
+
+    written
+  end
+
+  # Every start whose hour is up and which has no end row, oldest first and no
+  # further back than SWEEP_BATCH of them. There is no age floor: a session
+  # left open by a scheduler outage is still owed its ending however long ago
+  # it started.
   def abandoned_starts(now = Time.current)
     starts = OperatorEvent.where(action: 'impersonation.start')
-                          .where(created_at: (now - SWEEP_WINDOW)...(now - MAX_DURATION))
+                          .where(created_at: ...(now - MAX_DURATION))
+                          .order(:id).limit(SWEEP_BATCH)
                           .preload(:account, :subject).to_a
 
     return [] if starts.empty?
@@ -540,9 +564,9 @@ module SupportImpersonation
                  .pluck(Arel.sql("details ->> 'start_event_id'")).to_set(&:to_i)
   end
 
-  def end_row_exists?(event)
+  def end_row_exists?(start_event_id)
     OperatorEvent.where(action: 'impersonation.end')
-                 .exists?(["details ->> 'start_event_id' = ?", event.id.to_s])
+                 .exists?(["details ->> 'start_event_id' = ?", start_event_id.to_s])
   end
 
   # The customer's own history: the last few times support looked at this

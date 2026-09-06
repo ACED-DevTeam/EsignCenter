@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_06_100100) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_06_110000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gin"
   enable_extension "pg_catalog.plpgsql"
@@ -497,11 +497,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_06_100100) do
   end
 
   create_table "pending_email_events", force: :cascade do |t|
+    t.integer "attempts", default: 0, null: false
+    t.string "attribution_error"
     t.datetime "created_at", null: false
+    t.datetime "last_attempted_at"
     t.string "provider_event_key", null: false
     t.string "provider_message_id", null: false
     t.jsonb "record", default: {}, null: false
     t.datetime "updated_at", null: false
+    t.index ["attribution_error"], name: "index_pending_email_events_on_failed_replays", where: "(attribution_error IS NOT NULL)"
     t.index ["created_at"], name: "index_pending_email_events_on_created_at"
     t.index ["provider_event_key"], name: "index_pending_email_events_on_provider_event_key", unique: true
     t.index ["provider_message_id"], name: "index_pending_email_events_on_provider_message_id"

@@ -11,8 +11,11 @@
 
     `FirstRunChecklist.for` both decides and answers: it hands back the steps
     it worked out, so the three done-state queries are asked once rather than
-    once to decide and once to draw. %>
-<% steps = FirstRunChecklist.for(account: current_account, user: current_user, can_create_templates: can?(:create, ::Template)) %>
+    once to decide and once to draw. A page that needs the same answer for
+    something else — the templates dashboard, which also decides whether the
+    app tour's welcome card stands aside — works them out once and passes them
+    in as `steps`. %>
+<% steps = local_assigns.fetch(:steps) { FirstRunChecklist.for(account: current_account, user: current_user, can_create_templates: can?(:create, ::Template)) } %>
 <% if steps %>
   <% done_count = FirstRunChecklist.done_count(steps) %>
   <% first_template = current_account.templates.active.order(:id).first %>

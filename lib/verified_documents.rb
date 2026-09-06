@@ -8,6 +8,15 @@
 # and Sidekiq retries it, because a signed PDF without a record would be
 # "not on record" forever.
 #
+# ORDER MATTERS, and it is the callers' half of the promise: the row is
+# written only once the attachment holding those bytes has been SAVED. It
+# used to be written straight after signing, before the upload — so an upload
+# that failed replaced the row for the copy a signer may already hold with
+# the fingerprint of bytes that were never stored, and the delivered PDF
+# answered "not on record" on the next retry (review 2, H2). Recorded after
+# the save, a row can only ever describe bytes that exist, and a replacement
+# can only ever happen because the replacement itself is now stored.
+#
 # `signed_at` is the moment the last signer completed, not the moment the
 # bytes were produced: a combined PDF built lazily at download days later, or
 # a signing job retried across midnight, still answers the completion day on
@@ -30,7 +39,14 @@ module VerifiedDocuments
   # `combined:<submission id>:<audit|merged>` or
   # `audit_trail:<submission id>` — see the three callers.
   def record!(pdf, submission:, kind:, output_key:)
-    digest = sha256(pdf)
+    record_digest!(digest: sha256(pdf), submission:, kind:, output_key:)
+  end
+
+  # The same write with the fingerprint already taken. The per-submitter
+  # documents are built first and saved together at the end
+  # (Submissions::GenerateResultAttachments), so their bytes are fingerprinted
+  # while they are in hand and filed once they are stored.
+  def record_digest!(digest:, submission:, kind:, output_key:)
     completed = submission.submitters.where.not(completed_at: nil)
 
     # These exact bytes are already on record under some other output — the

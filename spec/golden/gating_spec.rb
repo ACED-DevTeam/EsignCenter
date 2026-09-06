@@ -1447,6 +1447,19 @@ RSpec.describe 'Feature gating', type: :request do
       end
     end
 
+    # The same rule, half-applied: the TEMPLATE-level documents-copy reply-to
+    # is entitlement-gated at the read seam but was never format-checked, so a
+    # paid account that typed a phone number into it still put that on an
+    # outgoing header (review 2, L6).
+    it 'ignores a documents-copy reply-to that is not an address either' do
+      submitter = sent_submitter_for(paid_account)
+
+      expect(Submitters::ReplyTo.header(submitter, documents_copy_reply_to: 'call me on 555 0101'))
+        .to eq(admin_for(paid_account).friendly_name)
+      expect(Submitters::ReplyTo.header(submitter, documents_copy_reply_to: 'Copies <copies@acme.example>'))
+        .to eq('Copies <copies@acme.example>')
+    end
+
     it 'goes inert the day the account stops paying, and comes back when it pays again' do
       submitter = submitter_with_reply_to(paid_account, 'contracts@acme.example')
 

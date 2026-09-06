@@ -16,6 +16,13 @@ module PostmarkWebhooks
                    OriginalLink FirstOpen UserAgent SuppressSending].freeze
   GEO_FIELDS = %w[CountryISOCode Country RegionISOCode Region City Zip Coords IP].freeze
 
+  # How many parked message ids one sweep walks. See sweep_pending!.
+  SWEEP_BATCH = 500
+  # How many failed replays before the operator is told (sweep_pending!).
+  MAX_REPLAY_ATTEMPTS = 5
+  # How much of a replay failure is kept on the row.
+  MAX_ERROR = 500
+
   class DuplicateEvent < StandardError; end
 
   module_function
@@ -108,6 +115,13 @@ module PostmarkWebhooks
   # Nothing here may take its caller down: the observer is inside the delivery
   # path of a message that has already been sent, and the sweep walks many
   # messages. A replay that fails is reported and left parked for the next one.
+  # A replay that RAISES is a different thing from one that finds no send row,
+  # and the row now says which it was (review 2, M8). A failure — the timeline
+  # write, the sending-pause write — is recorded on the row with its message
+  # and a count, so the sweep keeps retrying it, the three-day clock does not
+  # apply to it, and the operator is told once it has failed enough times.
+  # Postmark has already been answered 200 for these, so deleting one loses a
+  # real bounce or complaint for good.
   def attribute_pending!(uuid)
     PendingEmailEvent.for_message(uuid).each do |pending|
       record = pending.record
@@ -125,17 +139,72 @@ module PostmarkWebhooks
       pending.destroy
     rescue StandardError => e
       ErrorReport.error(e)
+
+      note_attribution_error!(pending, e)
     end
   end
 
-  # The hourly sweep (HousekeepingJob): replay what can now be attributed, and
-  # drop what has waited longer than a send row can take. Answers what it did,
-  # because a rising "dropped" count is the shape of a real bug — a mailer
-  # whose send rows are not being written at all.
-  def sweep_pending!(now: Time.current)
-    PendingEmailEvent.distinct.pluck(:provider_message_id).each { |uuid| attribute_pending!(uuid) }
+  # Kept, counted and named. `update_columns` on purpose: the row is being
+  # written from inside a rescue, and validations or callbacks failing here
+  # would swallow the very thing we are recording.
+  def note_attribution_error!(pending, error)
+    pending.update_columns(attempts: pending.attempts.to_i + 1,
+                           attribution_error: "#{error.class}: #{error.message}".first(MAX_ERROR),
+                           last_attempted_at: Time.current,
+                           updated_at: Time.current)
+  rescue StandardError => e
+    ErrorReport.error(e)
+  end
 
-    { pending: PendingEmailEvent.count, dropped: PendingEmailEvent.expired(now).delete_all }
+  # The hourly sweep (HousekeepingJob): replay what can now be attributed, drop
+  # what has waited longer than a send row can take, and say what is stuck.
+  # Answers what it did, because a rising `dropped` count is the shape of a
+  # real bug — a mailer whose send rows are not being written at all — and a
+  # rising `errored` count is the shape of another: a replay that keeps
+  # throwing.
+  #
+  # Bounded on purpose. The walk used to visit every parked message id on
+  # every tick, which with a three-day wait is two queries per parked message
+  # per hour for ever; it now takes the oldest SWEEP_BATCH and lets the next
+  # tick pick up the rest. Nothing is lost: the order is by id, and a row that
+  # is not reached this hour is reached the next.
+  #
+  # `dropped` is counted BEFORE `pending`, because the deletion is what
+  # decides how many are left — the other way round the summary counted the
+  # rows it was about to delete as still waiting (review 2, L8).
+  def sweep_pending!(now: Time.current)
+    PendingEmailEvent.order(:id).limit(SWEEP_BATCH).pluck(:provider_message_id).uniq.each do |uuid|
+      attribute_pending!(uuid)
+    end
+
+    dropped = PendingEmailEvent.expired(now).delete_all
+    errored = PendingEmailEvent.failed.count
+
+    maybe_alert_stuck_replays!
+
+    { pending: PendingEmailEvent.count, dropped:, errored: }
+  end
+
+  # One alert, when a failed replay has been retried enough times that it is
+  # not a blip. It names the rows so an operator can go and look at them; it
+  # never raises, because the sweep has other work after it.
+  def maybe_alert_stuck_replays!
+    stuck = PendingEmailEvent.failed.where(attempts: MAX_REPLAY_ATTEMPTS..).order(:id).limit(20).to_a
+
+    return if stuck.empty?
+
+    lines = stuck.map do |pending|
+      "pending_email_events ##{pending.id} message #{pending.provider_message_id} " \
+        "attempts #{pending.attempts}: #{pending.attribution_error}"
+    end
+
+    OperatorAlert.deliver(
+      subject: "#{stuck.size} Postmark webhook#{'s' if stuck.size > 1} cannot be replayed",
+      body: "These parked Postmark callbacks have failed to replay #{MAX_REPLAY_ATTEMPTS} times or more. " \
+            "They are kept, not dropped, and every hourly sweep tries again.\n\n#{lines.join("\n")}"
+    )
+  rescue StandardError => e
+    ErrorReport.error(e)
   end
 
   # The uuid our own mailer stamped on the message (ApplicationMailer#

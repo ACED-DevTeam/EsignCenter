@@ -53,16 +53,17 @@ module HelpCenter
 
     return cached.last if cached && cached.first == mtime
 
-    CACHE_LOCK.synchronize do
-      cached = @cache
+    # Parsed OUTSIDE the lock, which only publishes the result: the parse
+    # builds `Article`s and can trigger a Zeitwerk load, and a load cannot
+    # complete while another thread is parked on this mutex holding the
+    # executor's share lock (review 1 loop 2, N4 — see OpenapiDocument.json).
+    # Two threads racing a cold cache both parse the same file into the same
+    # answer.
+    loaded = load_articles
 
-      return cached.last if cached && cached.first == mtime
+    CACHE_LOCK.synchronize { @cache = [mtime, loaded].freeze }
 
-      loaded = load_articles
-      @cache = [mtime, loaded].freeze
-
-      loaded
-    end
+    loaded
   end
 
   def load_articles

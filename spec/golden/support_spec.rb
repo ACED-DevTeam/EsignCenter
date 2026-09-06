@@ -15,13 +15,17 @@
 #     other, exactly as it does on sign-up;
 #   * nothing is written to the database at all.
 RSpec.describe 'Support form', type: :request do
-  stash_env 'TURNSTILE_SITE_KEY', 'TURNSTILE_SECRET_KEY', clear: true
+  stash_env 'REGISTRATION_ENABLED', 'TURNSTILE_SITE_KEY', 'TURNSTILE_SECRET_KEY', clear: true
 
   let(:deliveries) { ActionMailer::Base.deliveries }
   let(:message) { 'My signer says the link has expired and I cannot work out how to send it again.' }
 
   before do
     create(:user, account: create(:account, :operator))
+    # /sign_up exists only with the switch on, and one example below reads its
+    # <head>. Said out loud here so the example does not depend on whatever
+    # the container's environment happens to hold.
+    ENV['REGISTRATION_ENABLED'] = 'true'
     ENV['TURNSTILE_SITE_KEY'] = 'turnstile-site-key'
     ENV['TURNSTILE_SECRET_KEY'] = 'turnstile-secret-key'
     RateLimit.store.clear

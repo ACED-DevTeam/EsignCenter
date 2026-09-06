@@ -318,6 +318,41 @@ database.
 6. Delete `/tmp/rehearsal.env` (`rm /tmp/rehearsal.env`) and the
    `esigncenter-rehearsal` database.
 
+#### Duplicate submitter uuids
+
+One migration can stop the rehearsal on purpose. The unique index on
+`submitters (submission_id, uuid)` refuses to be added while any submission
+holds two people in one role, and prints the first twenty offenders. A
+submitter's `uuid` is the ROLE it fills, so two rows sharing one mean one
+signer has a link nobody will ever use, both show up in the audit trail and
+both are counted. This should never exist on a database created by this code —
+the race that produced it is what the index closes — but a restored copy from
+before the index can have it.
+
+To see all of them, with who they are and what each has done:
+
+```sh
+docker run --rm --env-file /tmp/rehearsal.env esigncenter-release bundle exec rake submitters:duplicate_uuids
+```
+
+For each pair, keep the row that is really the party:
+
+- **One of them has completed or declined and the other has not** — keep the
+  one that acted; it is the one in the evidence. Delete the other.
+- **Neither has acted** — keep the one that was sent first (`sent_at`, else the
+  lower id) and delete the later one, then tell the sender, because somebody
+  has a link that will stop working.
+- **Both have completed** — do not delete anything. Two people really signed
+  one role, so the document's evidence is what it is; leave the rows, skip the
+  index for this deploy (comment out the migration), and decide with the
+  customer what the document says.
+
+Re-run the rake task until it prints "No duplicate (submission_id, uuid)
+pairs", then run the migrations again. The index is built `CONCURRENTLY`, so
+signing keeps working while it is created; if a build fails it leaves an
+INVALID index behind — drop it (`DROP INDEX index_submitters_on_submission_id_and_uuid`)
+and run the migration again, which is safe because it is `if_not_exists`.
+
 ### 2.4 Deploy dark
 
 1. Confirm `REGISTRATION_ENABLED` and `BILLING_ENABLED` are unset (or

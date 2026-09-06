@@ -123,7 +123,16 @@ RSpec.describe 'Marketing pages in the browser' do
 
     find("footer a[href='#{support_path}']", match: :first).click
 
-    expect(page).to have_css('h1', text: 'Contact support')
+    # Settle the navigation before touching the DOM. A real page load swaps the
+    # document out from under Capybara, and a node looked up mid-swap comes back
+    # as `<<ERROR>>` rather than being retried — which is how this example went
+    # red on a loaded box while the screenshot showed the support page rendered
+    # perfectly (review 1 loop 2, N8). The URL settles first, then the heading.
+    expect(page).to have_current_path(support_path)
+    expect(page).to have_css('h1', text: 'Contact support', wait: 10)
+
+    # The proof is unchanged: the mark lived on the previous document's window,
+    # so only a real navigation can have thrown it away.
     expect(page.evaluate_script('window.__sameDocument')).to be_nil
     expect(page).to have_css('meta[name="turbo-visit-control"][content="reload"]', visible: :all)
   end

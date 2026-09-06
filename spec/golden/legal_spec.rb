@@ -675,6 +675,16 @@ RSpec.describe 'Legal documents', type: :request do
   end
 
   describe 'the agreement sentence' do
+    # These examples switch sign-up and the Google button on. They used to put
+    # the variables back by DELETING them, which is not the same as putting
+    # them back: the test container runs with REGISTRATION_ENABLED=true, so
+    # every later example in the same process saw sign-up switched off and
+    # /sign_up answering 404 (it reddened spec/golden/support_spec.rb's
+    # turbo-visit-control example in the full suite, never on its own).
+    # `stash_env` restores the value that was there.
+    stash_env 'REGISTRATION_ENABLED', 'TURNSTILE_SITE_KEY',
+              'GOOGLE_OAUTH_CLIENT_ID', 'GOOGLE_OAUTH_CLIENT_SECRET'
+
     it 'is on the sign-up form, with both links' do
       ENV['REGISTRATION_ENABLED'] = 'true'
       ENV['TURNSTILE_SITE_KEY'] = 'turnstile-site-key'
@@ -683,9 +693,6 @@ RSpec.describe 'Legal documents', type: :request do
 
       expect(response.body).to include('href="/terms"')
       expect(response.body).to include('href="/privacy"')
-    ensure
-      ENV.delete('REGISTRATION_ENABLED')
-      ENV.delete('TURNSTILE_SITE_KEY')
     end
 
     # The sign-in page's Google button creates an account for an address that
@@ -704,10 +711,6 @@ RSpec.describe 'Legal documents', type: :request do
       expect(response.body).to include('href="/privacy"')
       # And the button carries the versions it is displaying.
       LegalDocuments.version_fields.each { |field, value| expect(response.body).to include("#{field}=#{value}") }
-    ensure
-      ENV.delete('REGISTRATION_ENABLED')
-      ENV.delete('GOOGLE_OAUTH_CLIENT_ID')
-      ENV.delete('GOOGLE_OAUTH_CLIENT_SECRET')
     end
 
     it 'is on the invitation form, with both links' do

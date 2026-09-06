@@ -45,10 +45,25 @@ class ApplicationMailer < ActionMailer::Base
     message.instance_variable_set(:@message_metadata, @message_metadata || {})
   end
 
+  # `X-Message-Uuid` is ours: the observer keys the send rows on it, and every
+  # message carries one.
+  #
+  # The Postmark METADATA copy is what makes a provider callback attributable,
+  # and it goes on only when there will be something to attribute it to. A
+  # message with no metadata writes no send row (ActionMailerEventsObserver),
+  # and a callback that carries a uuid with no send row is PARKED for three
+  # days before it is dropped — so OperatorMailer and SupportMailer, which
+  # write to US and name no account, used to park a row per Postmark event
+  # (delivery and open included) for ever. That is also the noise the sweep's
+  # `dropped` alarm has to be able to see through: it is documented as the
+  # signal that a mailer's send rows are not being written, and a permanently
+  # non-zero count can never say that (review 2, M4). Unstamped mail is simply
+  # ignored by the webhook, which is the right answer for mail nobody is
+  # tracking.
   def set_message_uuid
     uuid = SecureRandom.uuid
     message['X-Message-Uuid'] = uuid
-    message['X-PM-Metadata-message-uuid'] = uuid
+    message['X-PM-Metadata-message-uuid'] = uuid if @message_metadata.present?
   end
 
   def assign_message_metadata(tag, record)

@@ -55,14 +55,11 @@ module Submissions
           document.sign(io, **sign_params)
 
           Submissions::GenerateResultAttachments.maybe_enable_ltv(io, sign_params)
-
-          VerifiedDocuments.record!(io.string, submission:, kind: 'audit_trail',
-                                               output_key: "audit_trail:#{submission.id}")
         else
           document.write(io)
         end
 
-        ActiveStorage::Attachment.create!(
+        attachment = ActiveStorage::Attachment.create!(
           blob: ActiveStorage::Blob.create_and_upload!(
             io: io.tap(&:rewind), filename: "#{I18n.t('audit_log')} - " \
                                             "#{submission.name || submission.template.name}.pdf"
@@ -70,6 +67,14 @@ module Submissions
           name: 'audit_trail',
           record: submission
         )
+
+        # Filed only now that the bytes are stored (VerifiedDocuments, H2).
+        if pkcs
+          VerifiedDocuments.record!(io.string, submission:, kind: 'audit_trail',
+                                               output_key: "audit_trail:#{submission.id}")
+        end
+
+        attachment
       end
     end
 

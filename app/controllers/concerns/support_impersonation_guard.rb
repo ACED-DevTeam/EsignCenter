@@ -184,14 +184,21 @@ module SupportImpersonationGuard
   # Ends the session and writes the row that says how long it lasted, how many
   # refusals it collected, and how many changes it made. Returns the account,
   # so the caller knows where to send the operator.
+  #
+  # Through SupportImpersonation.record_end! rather than straight to the log:
+  # the hourly sweep closes abandoned sessions and this request may be racing
+  # a tick of it, so both go through the one writer that takes the start row's
+  # lock and writes at most one ending per start (review 2, M9). The session is
+  # cleared either way — the operator is out of the account whichever writer
+  # got there first.
   def end_support_impersonation!(state, ended_by:)
     account = Account.find_by(id: state['account_id'])
     start = SupportImpersonation.started_at(state)
 
-    OperatorEvents.record!(
-      operator: true_user, action: 'impersonation.end', account:,
+    SupportImpersonation.record_end!(
+      start_event_id: state['event_id'], operator: true_user, account:,
       subject: User.find_by(id: state['user_id']), reason: state['reason'],
-      details: { start_event_id: state['event_id'], ended_by:, mode: state['mode'],
+      details: { ended_by:, mode: state['mode'],
                  duration_seconds: start && (Time.current - start).round,
                  refused_count: state['refused_count'].to_i,
                  action_count: state['action_count'].to_i },

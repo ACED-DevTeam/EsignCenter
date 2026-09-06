@@ -97,6 +97,11 @@ module Submissions
       image_pdfs = []
       original_documents = submission.schema_documents.preload(:blob)
 
+      # What each signed PDF would say on /verify, collected while the bytes
+      # are in hand and filed only once the attachments below are saved —
+      # see the note at the head of VerifiedDocuments (review 2, H2).
+      verifications = []
+
       result_attachments =
         submission.template_schema.filter_map do |item|
           pdf = pdfs_index[item['attachment_uuid']]
@@ -109,33 +114,38 @@ module Submissions
             image_pdfs << pdf
           end
 
-          build_pdf_attachment(pdf:, submitter:, pkcs:, tsa_url:,
+          build_pdf_attachment(pdf:, submitter:, pkcs:, tsa_url:, verifications:,
                                uuid: item['attachment_uuid'],
                                name: item['name'])
         end
 
-      return ApplicationRecord.no_touching { result_attachments.map { |e| e.tap(&:save!) } } if image_pdfs.size < 2
+      attachments =
+        if image_pdfs.size < 2
+          result_attachments
+        else
+          images_pdf =
+            image_pdfs.each_with_object(HexaPDF::Document.new) do |pdf, doc|
+              pdf.pages.each { |page| doc.pages << doc.import(page) }
+            end
 
-      images_pdf =
-        image_pdfs.each_with_object(HexaPDF::Document.new) do |pdf, doc|
-          pdf.pages.each { |page| doc.pages << doc.import(page) }
+          result_attachments + [
+            build_pdf_attachment(
+              pdf: normalize_image_pdf(images_pdf),
+              submitter:,
+              tsa_url:,
+              pkcs:,
+              verifications:,
+              uuid: images_pdf_uuid(original_documents.select(&:image?)),
+              name: submission.name || submission.template.name
+            )
+          ]
         end
 
-      images_pdf = normalize_image_pdf(images_pdf)
+      saved = ApplicationRecord.no_touching { attachments.map { |e| e.tap(&:save!) } }
 
-      images_pdf_attachment =
-        build_pdf_attachment(
-          pdf: images_pdf,
-          submitter:,
-          tsa_url:,
-          pkcs:,
-          uuid: images_pdf_uuid(original_documents.select(&:image?)),
-          name: submission.name || submission.template.name
-        )
+      verifications.each { |verification| VerifiedDocuments.record_digest!(**verification) }
 
-      ApplicationRecord.no_touching do
-        (result_attachments + [images_pdf_attachment]).map { |e| e.tap(&:save!) }
-      end
+      saved
     end
 
     def generate_pdfs(submitter)
@@ -777,7 +787,7 @@ module Submissions
       pdfs_index
     end
 
-    def build_pdf_attachment(pdf:, submitter:, pkcs:, tsa_url:, uuid:, name:)
+    def build_pdf_attachment(pdf:, submitter:, pkcs:, tsa_url:, uuid:, name:, verifications: [])
       io = StringIO.new
 
       pdf.trailer.info[:Creator] = info_creator
@@ -817,9 +827,13 @@ module Submissions
         # The bytes below are exactly what the blob stores and what a signer
         # downloads: the public /verify page matches uploads against them.
         # Keyed on this submitter's copy of THIS document: a retry re-signs
-        # with a new timestamp and replaces its own row instead of adding one.
-        VerifiedDocuments.record!(io.string, submission: submitter.submission, kind: 'document',
-                                             output_key: "document:#{submitter.id}:#{uuid}")
+        # with a new timestamp and replaces its own row instead of adding one
+        # — but only after the replacement has actually been stored, so the
+        # row for a copy already in a signer's hands is never traded for
+        # bytes that failed to upload (VerifiedDocuments).
+        verifications << { digest: VerifiedDocuments.sha256(io.string),
+                           submission: submitter.submission, kind: 'document',
+                           output_key: "document:#{submitter.id}:#{uuid}" }
       else
         begin
           pdf.write(io, incremental: true, validate: false)
