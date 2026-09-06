@@ -26,10 +26,19 @@ RSpec.describe 'ESIGN consent version', type: :request do
                                 params: { completed: 'true', values: { text_field['uuid'] => 'Jane' }, **consent }
   end
 
-  # Everything a current page sends back with the consent.
-  def current_consent(submitter)
+  # Everything a current page sends back with the consent, the signed locale
+  # pair included — an interactive consent without it is refused (below).
+  def current_consent(submitter, locale: EsignConsent.rendered_locale)
     { esign_consent: 'true', esign_consent_version: EsignConsent::VERSION,
+      esign_consent_locale: locale,
+      esign_consent_locale_token: EsignConsent.locale_token(submitter, locale),
       esign_consent_sender_digest: EsignConsent.sender_digest(submitter) }
+  end
+
+  # A consent with the version and the sender fingerprint but nothing about
+  # the language — what a page that dropped the pair would send.
+  def without_locale_pair(submitter)
+    current_consent(submitter).except(:esign_consent_locale, :esign_consent_locale_token)
   end
 
   describe 'the signing page' do
@@ -133,6 +142,11 @@ RSpec.describe 'ESIGN consent version', type: :request do
   # client-controlled twice over (`?lang=` and Accept-Language) — so the page
   # that did the rendering signs its answer and the form hands it back. The
   # token is what picks the text; the posted locale alone never does.
+  #
+  # Every refusal below answers `esign_consent_locale_invalid`, not
+  # `esign_consent_version_stale`: nothing about the disclosure was updated,
+  # and a product that tells a signer otherwise is lying in the one place it
+  # cannot afford to.
   describe 'the locale the page rendered the disclosure in' do
     let(:french) { { 'HTTP_ACCEPT_LANGUAGE' => 'fr-FR,fr;q=0.9' } }
 
@@ -157,11 +171,11 @@ RSpec.describe 'ESIGN consent version', type: :request do
       expect(issued[:esign_consent_locale]).to eq('fr')
       expect(issued[:esign_consent_locale_token]).to match(/\A\h{64}\z/)
 
-      complete(submitter, headers: french, **issued.merge(esign_consent_locale: 'ar'),
-                          **current_consent(submitter))
+      complete(submitter, headers: french, **current_consent(submitter),
+                          **issued.merge(esign_consent_locale: 'ar'))
 
       expect(response).to have_http_status(:unprocessable_content)
-      expect(response.parsed_body).to eq('error' => 'esign_consent_version_stale')
+      expect(response.parsed_body).to eq('error' => 'esign_consent_locale_invalid')
       expect(consent_events(submitter)).not_to exist
       expect(submitter.reload.completed_at).to be_nil
       expect(ProcessSubmitterCompletionJob.jobs).to be_empty
@@ -177,10 +191,10 @@ RSpec.describe 'ESIGN consent version', type: :request do
 
       put "/s/#{submitter.slug}?lang=ar",
           params: { completed: 'true', values: { text_field['uuid'] => 'Jane' },
-                    **issued.merge(esign_consent_locale: 'ar'), **current_consent(submitter) }
+                    **current_consent(submitter), **issued.merge(esign_consent_locale: 'ar') }
 
       expect(response).to have_http_status(:unprocessable_content)
-      expect(response.parsed_body).to eq('error' => 'esign_consent_version_stale')
+      expect(response.parsed_body).to eq('error' => 'esign_consent_locale_invalid')
       expect(consent_events(submitter)).not_to exist
       expect(submitter.reload.completed_at).to be_nil
       expect(ProcessSubmitterCompletionJob.jobs).to be_empty
@@ -189,14 +203,15 @@ RSpec.describe 'ESIGN consent version', type: :request do
     it 'refuses a consent whose locale token is forged, and one that carries no token at all' do
       issued = issued_by_page(french)
 
-      complete(submitter, headers: french,
-                          **issued.merge(esign_consent_locale_token: 'f' * 64), **current_consent(submitter))
+      complete(submitter, headers: french, **current_consent(submitter),
+                          **issued.merge(esign_consent_locale_token: 'f' * 64))
 
       expect(response).to have_http_status(:unprocessable_content)
-      expect(response.parsed_body).to eq('error' => 'esign_consent_version_stale')
+      expect(response.parsed_body).to eq('error' => 'esign_consent_locale_invalid')
       expect(consent_events(submitter)).not_to exist
 
-      complete(submitter, headers: french, esign_consent_locale: 'fr', **current_consent(submitter))
+      complete(submitter, headers: french, **current_consent(submitter),
+                          esign_consent_locale: 'fr', esign_consent_locale_token: nil)
 
       expect(response).to have_http_status(:unprocessable_content)
       expect(consent_events(submitter)).not_to exist
@@ -208,16 +223,16 @@ RSpec.describe 'ESIGN consent version', type: :request do
 
       expect(other.slug).not_to eq(submitter.slug)
 
-      complete(submitter, esign_consent_locale: 'en',
-                          esign_consent_locale_token: EsignConsent.locale_token(other, 'en'),
-                          **current_consent(submitter))
+      complete(submitter, **current_consent(submitter),
+                          esign_consent_locale: 'en',
+                          esign_consent_locale_token: EsignConsent.locale_token(other, 'en'))
 
       expect(response).to have_http_status(:unprocessable_content)
       expect(consent_events(submitter)).not_to exist
     end
 
     it 'records the digest of the disclosure the page really rendered' do
-      complete(submitter, headers: french, **issued_by_page(french), **current_consent(submitter))
+      complete(submitter, headers: french, **current_consent(submitter), **issued_by_page(french))
 
       expect(response).to have_http_status(:ok)
       expect(consent_events(submitter).sole.data)
@@ -234,7 +249,7 @@ RSpec.describe 'ESIGN consent version', type: :request do
       expect(issued[:esign_consent_locale]).to eq('fr')
 
       complete(submitter, headers: { 'HTTP_ACCEPT_LANGUAGE' => 'en-US,en;q=0.9' },
-                          **issued, **current_consent(submitter))
+                          **current_consent(submitter), **issued)
 
       expect(response).to have_http_status(:ok)
       expect(submitter.reload.completed_at).to be_present
@@ -245,14 +260,64 @@ RSpec.describe 'ESIGN consent version', type: :request do
     it 'refuses a posted locale this product does not speak, which nothing can vouch for' do
       expect(EsignConsent.locale_token(submitter, 'zz-ZZ nonsense')).to be_nil
 
-      complete(submitter, esign_consent_locale: 'zz-ZZ nonsense',
-                          esign_consent_locale_token: EsignConsent.locale_token(submitter, 'en'),
-                          **current_consent(submitter))
+      complete(submitter, **current_consent(submitter),
+                          esign_consent_locale: 'zz-ZZ nonsense',
+                          esign_consent_locale_token: EsignConsent.locale_token(submitter, 'en'))
 
       expect(response).to have_http_status(:unprocessable_content)
-      expect(response.parsed_body).to eq('error' => 'esign_consent_version_stale')
+      expect(response.parsed_body).to eq('error' => 'esign_consent_locale_invalid')
       expect(consent_events(submitter)).not_to exist
       expect(submitter.reload.completed_at).to be_nil
+    end
+
+    # S10 D2, the hole review 9 left open: the pair was only checked when it
+    # was SENT. Omit it and record! fell through to `rendered_locale`, which is
+    # the completion request's own locale — the value the client chooses with
+    # `?lang=` and Accept-Language. So the whole token could simply be dropped
+    # and the language steered anyway. Both interactive callers now require it.
+    [['omits the locale and its token entirely', {}],
+     ['sends a blank locale', { esign_consent_locale: '', esign_consent_locale_token: '' }],
+     ['sends a locale with no token', { esign_consent_locale: 'ar' }]].each do |description, claim|
+      it "refuses a consent that #{description}, whatever `lang` the request carries" do
+        put "/s/#{submitter.slug}?lang=ar",
+            headers: french,
+            params: { completed: 'true', values: { text_field['uuid'] => 'Jane' },
+                      **without_locale_pair(submitter), **claim }
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(response.parsed_body).to eq('error' => 'esign_consent_locale_invalid')
+        expect(consent_events(submitter)).not_to exist
+        expect(submitter.reload.completed_at).to be_nil
+        expect(ProcessSubmitterCompletionJob.jobs).to be_empty
+      end
+
+      it "refuses the invite request that #{description} too" do
+        submitter.update!(values: { text_field['uuid'] => 'Jane' })
+
+        post "/s/#{submitter.slug}/invite?lang=ar", headers: french,
+                                                    params: { **without_locale_pair(submitter), **claim }
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(response.parsed_body).to eq('error' => 'esign_consent_locale_invalid')
+        expect(consent_events(submitter)).not_to exist
+        expect(submitter.reload.completed_at).to be_nil
+      end
+    end
+
+    # The message the refusal shows is its own, and says what happened.
+    it 'gives the locale refusal a message of its own in all 14 locales' do
+      expect(I18n.t('esign_consent_locale_invalid')).not_to eq(I18n.t('esign_consent_version_stale'))
+
+      EsignConsent.locales.each do |locale|
+        message = I18n.t('esign_consent_locale_invalid', locale:, fallback: false, raise: true)
+
+        expect(message).to be_present, locale
+        expect(message).not_to eq(I18n.t('esign_consent_locale_invalid', locale: :en)) unless locale == 'en'
+      end
+
+      get "/s/#{submitter.slug}"
+
+      expect(response.body).to include(ERB::Util.html_escape(I18n.t('esign_consent_locale_invalid')))
     end
 
     it 'resolves the same locale on the invite request as the signing page did' do
@@ -283,7 +348,7 @@ RSpec.describe 'ESIGN consent version', type: :request do
                                                     esign_consent_sender_digest: EsignConsent.sender_digest(submitter) }
 
       expect(response).to have_http_status(:unprocessable_content)
-      expect(response.parsed_body).to eq('error' => 'esign_consent_version_stale')
+      expect(response.parsed_body).to eq('error' => 'esign_consent_locale_invalid')
       expect(consent_events(submitter)).not_to exist
     end
   end
@@ -339,7 +404,7 @@ RSpec.describe 'ESIGN consent version', type: :request do
        { locale: 'not-a-locale', locale_token: EsignConsent.locale_token(submitter, 'en') }].each do |claim|
         expect do
           EsignConsent.record!(submitter, request, version: EsignConsent::VERSION, sender_digest: digest, **claim)
-        end.to raise_error(EsignConsent::StaleVersionError), claim.inspect
+        end.to raise_error(EsignConsent::LocaleInvalidError), claim.inspect
         expect(consent_events(submitter)).not_to exist, claim.inspect
       end
 
@@ -354,12 +419,24 @@ RSpec.describe 'ESIGN consent version', type: :request do
 
     # A caller with no page behind it (record! straight from the server) has no
     # token to offer and stands on the server's own answer, exactly as before.
+    # That path is the default and is reachable only from Ruby: the two
+    # interactive callers pass `require_locale:` and are refused without it.
     it 'stands on the request locale when no locale is posted at all' do
       event = EsignConsent.record!(submitter, request, version: EsignConsent::VERSION,
                                                        sender_digest: EsignConsent.sender_digest(submitter))
 
       expect(event.data).to include('locale' => EsignConsent.rendered_locale)
       expect(event.data).not_to have_key('pdf_opened')
+    end
+
+    it 'refuses the same call once the caller says it came from a page' do
+      expect do
+        EsignConsent.record!(submitter, request, version: EsignConsent::VERSION,
+                                                 sender_digest: EsignConsent.sender_digest(submitter),
+                                                 require_locale: true)
+      end.to raise_error(EsignConsent::LocaleInvalidError, 'esign_consent_locale_invalid')
+
+      expect(consent_events(submitter)).not_to exist
     end
   end
 end

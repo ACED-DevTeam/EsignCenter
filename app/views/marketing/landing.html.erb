@@ -1,5 +1,5 @@
 <% content_for(:html_title, 'EsignCenter — Send it. Get it signed. Prove it.') %>
-<% content_for(:html_description, 'Send a PDF or Word file, get it signed on any device, and keep a sealed, timestamped copy with a full audit trail. Free for 5 documents a month.') %>
+<% content_for(:html_description, "Send a PDF or Word file, get it signed on any device, and keep a sealed, timestamped copy with a full audit trail. Free for #{PricingMatrix.free_completions} documents a month.") %>
 <% content_for(:canonical_url, root_url) %>
 <% content_for(:indexable, 'true') %>
 <%# The public landing page (Session 9). Copy follows the positioning brief: only the earned proof points, no invented numbers, logos or testimonials. Every number is read from PricingMatrix. %>

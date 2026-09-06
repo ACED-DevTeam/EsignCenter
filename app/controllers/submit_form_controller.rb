@@ -32,6 +32,13 @@ class SubmitFormController < ApplicationController
     render json: { error: 'esign_consent_version_stale' }, status: :unprocessable_content
   end
 
+  # The consent named no language, or one this server never signed for this
+  # signer. Nothing was updated, so the signer is not told it was — its own
+  # error and its own message (EsignConsent::LocaleInvalidError).
+  rescue_from EsignConsent::LocaleInvalidError do
+    render json: { error: 'esign_consent_locale_invalid' }, status: :unprocessable_content
+  end
+
   def show
     submission = @submitter.submission
 

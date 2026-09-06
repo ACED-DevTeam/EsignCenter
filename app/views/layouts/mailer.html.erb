@@ -70,7 +70,14 @@
       }
     </style>
   </head>
-  <body dir="<%= TextUtils.rtl?(content) ? 'rtl' : 'auto' %>" style="margin: 0; padding: 0; background-color: #f4f5f7;">
+  <%# Direction comes from the LANGUAGE this mail is being rendered in, not
+      from sniffing the characters in it. Sniffing got both ends wrong: an
+      English notice quoting one Hebrew document name flipped the whole frame
+      to right-to-left, and a Hebrew mail whose visible words were a Latin
+      company name stayed left-to-right. The mailers already render inside
+      `I18n.with_locale` (the account's language for customer mail, English
+      for platform notices), so the locale is the honest answer. %>
+  <body dir="<%= TextUtils.rtl_locale?(I18n.locale) ? 'rtl' : 'auto' %>" style="margin: 0; padding: 0; background-color: #f4f5f7;">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #f4f5f7;">
       <tr>
         <td align="center" style="padding: 24px 12px;">

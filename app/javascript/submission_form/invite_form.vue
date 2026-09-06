@@ -185,7 +185,7 @@ export default {
       default: ''
     }
   },
-  emits: ['success'],
+  emits: ['success', 'consentRefused'],
   data () {
     return {
       isSubmitting: false
@@ -199,13 +199,40 @@ export default {
         method: 'POST',
         body: new FormData(this.$refs.form),
         ...this.fetchOptions
-      }).then((response) => {
+      }).then(async (response) => {
         if (response.status === 200) {
           this.$emit('success')
+
+          return
+        }
+
+        // This request is the last one of an invite-then-complete signing, so
+        // it carries the ESIGN consent and the server refuses it in exactly
+        // the three ways the form step is refused. It used to swallow all of
+        // them: the button simply stopped spinning and the signer was left on
+        // a form that looked fine and would never complete. The refusals are
+        // handed to the parent, which is where the checkbox and its message
+        // live (form.vue, refuseInviteWithoutEsignConsent); anything else is
+        // reported the way any failed request is.
+        const error = response.status === 422 ? await this.readError(response) : null
+
+        if (error && error.startsWith('esign_consent')) {
+          this.$emit('consentRefused', error)
+        } else {
+          alert(this.t('value_is_invalid'))
         }
       }).finally(() => {
         this.isSubmitting = false
       })
+    },
+    // The refusals that carry a reason answer with JSON; the plain ones
+    // (`head :unprocessable_content`) have no body at all.
+    async readError (response) {
+      try {
+        return (await response.json()).error
+      } catch {
+        return null
+      }
     }
   }
 }

@@ -633,6 +633,7 @@
           :config="esignConsent"
           :error="showEsignConsentRequired"
           :stale="esignConsentStale"
+          :locale-invalid="esignConsentLocaleInvalid"
           @pdf-opened="esignConsentPdfOpened = true"
         />
         <div
@@ -687,6 +688,7 @@
         :esign-consent-sender-digest="esignConsent.sender_digest"
         :style="{ maxWidth: isBreakpointMd ? '582px' : '' }"
         @success="[isInvite = false, performComplete($event)]"
+        @consent-refused="refuseInviteWithoutEsignConsent"
       />
       <FormCompleted
         v-else
@@ -1167,7 +1169,8 @@ export default {
       esignConsentChecked: false,
       esignConsentPdfOpened: false,
       showEsignConsentRequired: false,
-      esignConsentStale: false
+      esignConsentStale: false,
+      esignConsentLocaleInvalid: false
     }
   },
   computed: {
@@ -1923,6 +1926,14 @@ export default {
               this.esignConsentChecked = false
               this.esignConsentStale = true
               this.refuseWithoutEsignConsent()
+            } else if (data.error === 'esign_consent_locale_invalid') {
+              // The server could not confirm which language this page showed
+              // the disclosure in. Its own message: nothing was updated, and
+              // a reload issues a fresh, signed language token.
+              this.isEsignConsented = false
+              this.esignConsentChecked = false
+              this.esignConsentLocaleInvalid = true
+              this.refuseWithoutEsignConsent()
             } else if (data.error) {
               const i18nKey = data.error.replace(/\s+/g, '_').toLowerCase()
 
@@ -2015,6 +2026,19 @@ export default {
 
         this.goToStep(this.stepFields.indexOf(step), true)
       }
+    },
+    // The invite request carries the same consent the form step does, so the
+    // server refuses it in the same three ways — and the answer has to be the
+    // same too. The invite screen replaces the form, so the signer is put back
+    // on it: the checkbox is where the message and the reason live.
+    refuseInviteWithoutEsignConsent (error) {
+      this.isInvite = false
+      this.isEsignConsented = false
+      this.esignConsentChecked = false
+      this.esignConsentStale = error === 'esign_consent_version_stale'
+      this.esignConsentLocaleInvalid = error === 'esign_consent_locale_invalid'
+
+      this.refuseWithoutEsignConsent()
     },
     // Every completion path (Next/Complete, header Complete, one-tap Complete,
     // "Complete anyway") lands here when consent is owed and unticked: open the

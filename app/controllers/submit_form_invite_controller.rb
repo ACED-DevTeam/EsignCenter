@@ -9,11 +9,17 @@ class SubmitFormInviteController < ApplicationController
     render json: { error: 'esign_consent_version_stale' }, status: :unprocessable_content
   end
 
-  # The invite request carries the same consent the form step does, so it has
-  # to resolve the same locale the signing page rendered the disclosure under
-  # (SubmitFormController does this for show/update) — otherwise the server's
-  # answer and the page's would differ and EsignConsent.record! would refuse a
-  # perfectly honest consent from a non-English signer.
+  # Same three-way answer the form step gives (SubmitFormController): a locale
+  # refusal is not a stale disclosure and does not say one was updated.
+  rescue_from EsignConsent::LocaleInvalidError do
+    render json: { error: 'esign_consent_locale_invalid' }, status: :unprocessable_content
+  end
+
+  # This request is a signing page's, so it renders in the signer's language
+  # like every other door on the signing flow (SubmitFormController does this
+  # for show/update) — refusal messages included. The consent's own language
+  # is NOT taken from here: it travels as the signed locale pair the page
+  # issued (EsignConsent.record!).
   around_action :with_browser_locale, only: :create
   skip_before_action :authenticate_user!
   skip_authorization_check
@@ -26,6 +32,19 @@ class SubmitFormInviteController < ApplicationController
     invite_submitters = filter_invite_submitters(@submitter, 'invite_by_uuid')
     optional_invite_submitters = filter_invite_submitters(@submitter, 'optional_invite_by_uuid')
 
+    # Inviting a party happens exactly once, whatever else is in flight.
+    # Two invite requests arriving together used to both pass the "is this
+    # uuid already here?" filter and both insert, leaving a submission with
+    # two submitters sharing one role — one of them unreachable, both counted.
+    # The unique index on `submitters (submission_id, uuid)` (migration
+    # 20260906090000) makes that physically impossible; the loser raises
+    # RecordNotUnique, its whole transaction rolls back, and it is answered
+    # with a refusal, which is the honest answer to "somebody else already
+    # did this".
+    #
+    # The completion below stays OUTSIDE this transaction on purpose: it
+    # enqueues the completion job, and a job enqueued inside an open
+    # transaction can start before the rows it needs are committed.
     ApplicationRecord.transaction do
       (invite_submitters + optional_invite_submitters).each do |item|
         attrs = submitters_attributes.find { |e| e[:uuid] == item['uuid'] }
@@ -37,7 +56,10 @@ class SubmitFormInviteController < ApplicationController
 
         @submitter.submission.submitters.create!(uuid: attrs[:uuid], email:, account_id: @submitter.account_id)
 
-        SubmissionEvents.create_with_tracking_data(@submitter, 'invite_party', request, { uuid: @submitter.uuid })
+        # The uuid of the party that was just INVITED, not of the signer doing
+        # the inviting — the event answers "who was brought in", and the
+        # inviter is already the event's own submitter.
+        SubmissionEvents.create_with_tracking_data(@submitter, 'invite_party', request, { uuid: attrs[:uuid] })
       end
 
       @submitter.submission.update!(submitters_order: :preserved)
@@ -52,6 +74,9 @@ class SubmitFormInviteController < ApplicationController
     else
       head :unprocessable_content
     end
+  rescue ActiveRecord::RecordNotUnique
+    # Another request for this submission invited the same party first.
+    head :unprocessable_content
   end
 
   private

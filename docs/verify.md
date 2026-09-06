@@ -52,6 +52,17 @@ The write happens inside the signing job and is never rescued: if the database
 refuses the row, the job fails and Sidekiq retries it, because a signed PDF
 without a record would answer "not on record" forever.
 
+One row per **output**, not one per set of bytes. Each row carries an
+`output_key` naming the thing that was signed — this signer's copy of this
+document, this submission's combined PDF, its audit trail — and a retry
+replaces its own row. That matters because a retry re-signs, and re-signing
+puts a new timestamp inside the signature, so the bytes and their fingerprint
+differ on every attempt: without the key, a job that failed after signing (a
+storage hiccup, a timestamp server that stopped answering) left a permanent
+record of a PDF that was never stored and can never be produced again. Rows
+written before this change keep no key and are left exactly as they are — a
+fingerprint already on record still answers this page.
+
 The date the page shows is the day (UTC) the **last signer completed** the
 submission — not the day the PDF file itself was generated. The two can
 differ: a combined PDF is built at the first download when "combine PDF

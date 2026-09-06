@@ -834,6 +834,45 @@ RSpec.describe 'Feature gating', type: :request do
       expect(signer.text).not_to include('Sent using')
     end
 
+    # S10 D2, two review-9 copy carry-overs about the mail FRAME rather than
+    # its words.
+    it 'takes the mail direction from the language, not from the characters in the body' do
+      # A Hebrew account's signer mail is laid out right to left.
+      free_account.update!(locale: 'he')
+      _submitter, hebrew_html = invitation_html(free_account)
+
+      expect(Nokogiri::HTML(hebrew_html).at_css('body')['dir']).to eq('rtl')
+
+      # An ENGLISH account's mail that happens to quote a Hebrew document name
+      # is still an English mail. Sniffing the characters flipped the whole
+      # frame for it, which is what this replaces.
+      paid_account.update!(locale: 'en')
+      template = create(:template, account: paid_account, author: admin_for(paid_account), name: 'הסכם שירות')
+      submission = create(:submission, :with_submitters, template:, created_by_user: admin_for(paid_account))
+      mail = SubmitterMailer.invitation_email(submission.submitters.first)
+      html = (mail.html_part || mail).body.decoded
+
+      expect(html).to include('הסכם שירות')
+      expect(Nokogiri::HTML(html).at_css('body')['dir']).to eq('auto')
+    end
+
+    it 'renders a platform notice in English however the sender request was set' do
+      create(:account_config, account: free_account, key: AccountConfig::REMOVE_BRANDING_KEY, value: true)
+      free_account.update!(locale: 'he')
+
+      # A notice sent from inside a request made by a Hebrew-reading admin.
+      notice = I18n.with_locale(:he) do
+        SettingsMailer.smtp_successful_setup(admin_for(free_account).email, free_account)
+      end
+      html = (notice.html_part || notice).body.decoded
+
+      # English all the way down, frame included: a right-to-left layout here
+      # would mean the notice had been rendered under the ambient locale.
+      expect(Nokogiri::HTML(html).at_css('body')['dir']).to eq('auto')
+      expect(html).to include(Docuseal::SUPPORT_EMAIL)
+      expect(I18n.locale).to eq(I18n.default_locale)
+    end
+
     it 'honours the flag in every mailer and page: the verification-code email and the embedded builder page' do
       create(:account_config, account: paid_account, key: AccountConfig::REMOVE_BRANDING_KEY, value: true)
       create(:account_config, account: free_account, key: AccountConfig::REMOVE_BRANDING_KEY, value: true)
@@ -900,6 +939,27 @@ RSpec.describe 'Feature gating', type: :request do
            params: { template: { preferences: { request_email_subject: 'Custom subject' } } }
 
       template.reload
+    end
+
+    # S9 carry-over: "reset to default" on the documents-copy form cleared the
+    # subject and the body a customer could see and left the reply-to steering
+    # their mail — and, through Submitters::ReplyTo, the address the ESIGN
+    # disclosure names. Everything the form shows resets together.
+    it 'resets the documents-copy reply-to along with the subject and body' do
+      template = template_for(paid_account)
+      template.update!(preferences: template.preferences.merge(
+        'documents_copy_email_subject' => 'Your signed copy',
+        'documents_copy_email_body' => 'Here it is',
+        'documents_copy_email_reply_to' => 'copies@acme.example'
+      ))
+
+      act_as(paid_account)
+      delete "/templates/#{template.id}/preferences",
+             params: { config_key: AccountConfig::SUBMITTER_DOCUMENTS_COPY_EMAIL_KEY }
+
+      expect(response).to have_http_status(:ok)
+      expect(template.reload.preferences).not_to include('documents_copy_email_subject', 'documents_copy_email_body',
+                                                         'documents_copy_email_reply_to')
     end
 
     it 'refuses the account email template and the per-template copy for a free account, saves both for ' \
@@ -1333,6 +1393,69 @@ RSpec.describe 'Feature gating', type: :request do
       expect(job.build_bcc_addresses(submission.reload)).to eq([])
       expect(template.reload.preferences['bcc_completed']).to eq('legal@example.com')
       expect(paid_account.account_configs.find_by(key: AccountConfig::BCC_EMAILS)&.value).to eq('archive@example.com')
+    end
+  end
+
+  # S10 D2 (review 9 → gating carry-over). A reply-to stored on the signer
+  # (`submitter.preferences['reply_to']`, set by the API and the send form) is
+  # custom email copy like the subject and body beside it, and was the one
+  # piece of it nothing gated. It steered two things at once: the Reply-To on
+  # the outgoing invitation, and — worse — the address the ESIGN disclosure
+  # tells the signer to write to about withdrawing consent or asking for a
+  # paper copy. Both readers get it through one seam now
+  # (Submitters::ReplyTo), and it is honoured only with the entitlement and
+  # only when it is actually an address.
+  describe 'reply-to stored on the signer' do
+    def submitter_with_reply_to(account, value)
+      sent_submitter_for(account).tap { |s| s.update!(preferences: { 'reply_to' => value }) }
+    end
+
+    it 'is ignored on a free account, on the mail header and in the disclosure alike' do
+      submitter = submitter_with_reply_to(free_account, 'Contracts <contracts@acme.example>')
+
+      expect(Submitters::ReplyTo.header(submitter)).to eq(admin_for(free_account).friendly_name)
+      expect(SubmitterMailer.invitation_email(submitter).reply_to)
+        .to eq([admin_for(free_account).email])
+      expect(Submitters::ReplyTo.disclosure(submitter)).to eq(admin_for(free_account).email)
+      expect(EsignConsent.sender_email(submitter)).to eq(admin_for(free_account).email)
+      expect(EsignConsent.disclosure_html(submitter, locale: 'en')).not_to include('contracts@acme.example')
+
+      # D43: nothing is deleted, it is only inert.
+      expect(submitter.reload.preferences['reply_to']).to eq('Contracts <contracts@acme.example>')
+    end
+
+    it 'is honoured on a paid account and on an internal one' do
+      [paid_account, internal_account].each do |account|
+        submitter = submitter_with_reply_to(account, 'Contracts <contracts@acme.example>')
+
+        expect(Submitters::ReplyTo.header(submitter)).to eq('Contracts <contracts@acme.example>')
+        expect(SubmitterMailer.invitation_email(submitter).reply_to).to eq(['contracts@acme.example'])
+        expect(Submitters::ReplyTo.disclosure(submitter)).to eq('contracts@acme.example')
+        expect(EsignConsent.disclosure_html(submitter, locale: 'en')).to include('contracts@acme.example')
+      end
+    end
+
+    # It ends up on an outgoing header and printed in a legal notice as the
+    # place to withdraw consent, so anything that is not an address is worse
+    # than none at all: the resolver keeps going until it finds a real one.
+    ['call me on 555 0101', 'contracts at acme.example', 'Contracts <not-an-address>', ' '].each do |value|
+      it "ignores #{value.strip.presence || 'a blank value'}, which is not an address" do
+        submitter = submitter_with_reply_to(paid_account, value)
+
+        expect(Submitters::ReplyTo.header(submitter)).to eq(admin_for(paid_account).friendly_name)
+        expect(Submitters::ReplyTo.disclosure(submitter)).to eq(admin_for(paid_account).email)
+      end
+    end
+
+    it 'goes inert the day the account stops paying, and comes back when it pays again' do
+      submitter = submitter_with_reply_to(paid_account, 'contracts@acme.example')
+
+      expect(Submitters::ReplyTo.disclosure(submitter)).to eq('contracts@acme.example')
+
+      downgrade_to_free!(paid_account)
+
+      expect(Submitters::ReplyTo.disclosure(submitter.reload)).to eq(admin_for(paid_account).email)
+      expect(submitter.preferences['reply_to']).to eq('contracts@acme.example')
     end
   end
 

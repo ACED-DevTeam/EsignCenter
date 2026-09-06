@@ -11,11 +11,12 @@
         name="esign_consent"
         value="true"
         class="checkbox checkbox-sm mt-0.5 flex-none"
+        :class="{ 'opacity-60': isPdfGateClosed }"
         :checked="modelValue"
-        :disabled="isPdfGateClosed"
+        :aria-disabled="isPdfGateClosed ? 'true' : undefined"
         :aria-invalid="error ? 'true' : undefined"
         :aria-describedby="describedBy"
-        @change="$emit('update:modelValue', $event.target.checked)"
+        @change="onChange"
       >
       <input
         type="hidden"
@@ -100,9 +101,10 @@ export default {
   name: 'EsignConsent',
   props: {
     // { version, locale, locale_token, label, link_text, required_message,
-    // stale_message, modal_id, pdf_url, view_pdf_text, open_pdf_first,
-    // sender_digest } — strings come from the Rails partial so
-    // config/locales/i18n.yml stays the single source. `version`, `locale`,
+    // stale_message, locale_invalid_message, modal_id, pdf_url,
+    // view_pdf_text, open_pdf_first, sender_digest } — strings come from the
+    // Rails partial so config/locales/i18n.yml stays the single source.
+    // `version`, `locale`,
     // `locale_token` and `sender_digest` are sent back with the consent: the
     // server refuses a consent given on an outdated disclosure or one that
     // named a different sender, and records which language the signer read it
@@ -131,6 +133,15 @@ export default {
       required: false,
       default: false
     },
+    // The server could not confirm which language the disclosure was shown
+    // in. A different refusal from `stale` and it says so — nothing was
+    // updated, and telling somebody it was would be a lie in the one place
+    // this product cannot afford one.
+    localeInvalid: {
+      type: Boolean,
+      required: false,
+      default: false
+    },
     modelValue: {
       type: Boolean,
       required: false,
@@ -145,9 +156,16 @@ export default {
   emits: ['update:modelValue', 'pdfOpened'],
   computed: {
     // §7001(c) asks the signer to confirm their device can display the record
-    // before they agree to receive it electronically, so the box stays out of
-    // reach until they have opened the PDF once. No link (the config carries
+    // before they agree to receive it electronically, so the box refuses to
+    // tick until they have opened the PDF once. No link (the config carries
     // no URL), no gate.
+    //
+    // `aria-disabled`, not `disabled`: a disabled checkbox is removed from
+    // the tab order, and a control nobody can reach is a control whose
+    // `aria-describedby` — the sentence explaining WHY it will not tick — is
+    // never announced. A screen-reader user met an unreachable box and no
+    // reason for it. Focusable, announced as disabled, and the change is
+    // refused in onChange instead.
     isPdfGateClosed () {
       return !!this.config.pdf_url && !this.pdfOpened
     },
@@ -160,12 +178,26 @@ export default {
     // when it appears; the always-present sr-only copy describes the disabled
     // action buttons (form.vue points their aria-describedby at it).
     message () {
-      return this.stale ? this.config.stale_message : this.config.required_message
+      if (this.localeInvalid) return this.config.locale_invalid_message
+      if (this.stale) return this.config.stale_message
+
+      return this.config.required_message
     }
   },
   methods: {
     focus () {
       this.$refs.checkbox?.focus()
+    },
+    // The gate, enforced here rather than by `disabled` (isPdfGateClosed).
+    // The box snaps back and the reason beside it stays on screen.
+    onChange (event) {
+      if (this.isPdfGateClosed) {
+        event.target.checked = this.modelValue
+
+        return
+      }
+
+      this.$emit('update:modelValue', event.target.checked)
     },
     // Client attestation, and stored as one: the browser says the link was
     // followed, nothing proves the person read what opened.

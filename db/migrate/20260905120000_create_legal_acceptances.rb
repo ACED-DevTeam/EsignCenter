@@ -10,10 +10,15 @@
 # it, and the superseded text itself is kept under config/legal/archive (see
 # docs/legal.md). Nothing here is ever updated — a new agreement is a new row.
 #
-# `account_id` is the account the person was in when they accepted. It is what
-# the purge deletes by, and it is deliberately NOT a copy of the user's
-# current account: somebody who later joins another team accepted these terms
-# as a member of the account named here.
+# `account_id` is the account the row is filed under, and it FOLLOWS the
+# person: it starts as the account they were in when they accepted, and a
+# later move to another team rewrites it along with everything else that
+# belongs to them (Accounts::MoveUser::MOVED_TABLES). That is deliberate — the
+# alternative is leaving the only record of what somebody agreed to inside an
+# account that is about to be archived and purged. So this column answers
+# "whose account is responsible for this row today?", which is what the purge
+# and the export need; it does not answer "which company were they in when
+# they clicked?" — the row itself is not evidence of that.
 class CreateLegalAcceptances < ActiveRecord::Migration[8.1]
   def change
     create_table :legal_acceptances do |t|

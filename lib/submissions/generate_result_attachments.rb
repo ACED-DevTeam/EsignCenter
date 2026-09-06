@@ -36,6 +36,11 @@ module Submissions
 
     SIGN_REASON = 'Signed with EsignCenter'
 
+    # Field types whose value is the uuid of an attachment this submitter
+    # uploaded, rather than text. Every one of them looks that attachment up
+    # to draw it (see fill_submitter_fields).
+    ATTACHMENT_FIELD_TYPES = %w[image signature initials stamp kba].freeze
+
     RTL_REGEXP = TextUtils::RTL_REGEXP
 
     TEXT_LEFT_MARGIN = 1
@@ -206,6 +211,13 @@ module Submissions
                                                                       file_links_expire_at:)
     end
 
+    # The attachment an attachment-backed field's value points at, or nil when
+    # the value names nothing this submitter uploaded. One lookup for every
+    # caller, so the nil case is answered in one place (fill_submitter_fields).
+    def field_attachment(submitter, value)
+      submitter.attachments.find { |a| a.uuid == value }
+    end
+
     def fill_submitter_fields(submitter, account, pdfs_index, with_signature_id:, is_flatten:, with_headings: nil,
                               with_submitter_timezone: false, with_signature_id_reason: true,
                               with_timestamp_seconds: false, with_file_links: nil,
@@ -284,6 +296,28 @@ module Submissions
 
           next if Array.wrap(value).compact_blank.blank?
 
+          # The value names an attachment that is not this submitter's — a
+          # signature field carrying a string that was never an upload (the
+          # API takes any value a caller sends), or a uuid left behind by an
+          # attachment that no longer exists. Every branch below went straight
+          # to `attachment.uuid` / `.image?` on the result of a `find` that
+          # can return nil, so the whole job died with
+          # `undefined method 'uuid' for nil` — and because
+          # Submissions::EnsureResultGenerated replays the same data on every
+          # attempt, it died again every time: a permanent 500 on the signed
+          # PDF, with no way for the customer to get their document out.
+          #
+          # The area is skipped and reported instead. The document generates,
+          # the empty space where the signature would be is visible in it, and
+          # the report names the submitter and the field so the bad value can
+          # be found — which is a better answer than a document nobody can
+          # ever download.
+          if ATTACHMENT_FIELD_TYPES.include?(field['type']) && field_attachment(submitter, value).nil?
+            ErrorReport.warning("Missing attachment for field #{submitter.id}: #{field['uuid']}")
+
+            next
+          end
+
           if is_flatten
             begin
               page.flatten_annotations
@@ -297,7 +331,7 @@ module Submissions
 
           field_type = field['type']
           field_type = 'file' if field_type == 'image' &&
-                                 !submitter.attachments.find { |a| a.uuid == value }.image?
+                                 !field_attachment(submitter, value).image?
 
           if field_type == 'signature' && field.dig('preferences', 'with_signature_id').in?([true, false])
             with_signature_id = field['preferences']['with_signature_id']
@@ -312,7 +346,7 @@ module Submissions
 
           case field_type
           when ->(type) { type == 'signature' && (with_signature_id || field.dig('preferences', 'reason_field_uuid')) }
-            attachment = submitter.attachments.find { |a| a.uuid == value }
+            attachment = field_attachment(submitter, value)
 
             image =
               begin
@@ -455,7 +489,7 @@ module Submissions
               )
             end
           when 'image', 'signature', 'initials', 'stamp', 'kba'
-            attachment = submitter.attachments.find { |a| a.uuid == value }
+            attachment = field_attachment(submitter, value)
 
             image =
               begin
@@ -782,7 +816,10 @@ module Submissions
 
         # The bytes below are exactly what the blob stores and what a signer
         # downloads: the public /verify page matches uploads against them.
-        VerifiedDocuments.record!(io.string, submission: submitter.submission, kind: 'document')
+        # Keyed on this submitter's copy of THIS document: a retry re-signs
+        # with a new timestamp and replaces its own row instead of adding one.
+        VerifiedDocuments.record!(io.string, submission: submitter.submission, kind: 'document',
+                                             output_key: "document:#{submitter.id}:#{uuid}")
       else
         begin
           pdf.write(io, incremental: true, validate: false)

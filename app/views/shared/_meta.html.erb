@@ -3,7 +3,8 @@
   <meta name="robots" content="noindex">
 <% end %>
 <% title = content_for(:html_title) || (signed_in? ? Docuseal.product_name : "#{Docuseal.product_name} — Send it. Get it signed. Prove it.") %>
-<% description = content_for(:html_description) || 'Send a PDF or Word file, get it signed on any device, and keep a sealed, timestamped copy with a full audit trail. Free for 5 documents a month.' %>
+<%# The free cap comes from the entitlement matrix (PricingMatrix.free_completions → Quotas::Limits), never typed here: a search result promising the wrong number is a promise we did not make. %>
+<% description = content_for(:html_description) || "Send a PDF or Word file, get it signed on any device, and keep a sealed, timestamped copy with a full audit trail. Free for #{PricingMatrix.free_completions} documents a month." %>
 <meta name="description" content="<%= description %>">
 <meta property="og:title" content="<%= title %>">
 <meta property="og:description" content="<%= description %>">

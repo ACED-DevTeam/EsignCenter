@@ -638,6 +638,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_06_100100) do
     t.index ["email"], name: "index_submitters_on_email"
     t.index ["external_id"], name: "index_submitters_on_external_id"
     t.index ["slug"], name: "index_submitters_on_slug", unique: true
+    t.index ["submission_id", "uuid"], name: "index_submitters_on_submission_id_and_uuid", unique: true
     t.index ["submission_id"], name: "index_submitters_on_submission_id"
   end
 
@@ -765,11 +766,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_06_100100) do
     t.bigint "account_id"
     t.datetime "created_at", null: false
     t.string "kind", null: false
+    t.string "output_key"
     t.string "sha256", null: false
     t.datetime "signed_at", null: false
     t.integer "signers_count", null: false
     t.bigint "submission_id"
     t.datetime "updated_at", null: false
+    t.index ["output_key"], name: "index_verified_documents_on_output_key", unique: true
     t.index ["sha256"], name: "index_verified_documents_on_sha256", unique: true
   end
 
