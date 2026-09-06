@@ -249,8 +249,16 @@ module Gates
       rendered_anchor: '<a href="<%= Docuseal::DOCUSEAL_SOURCE_URL'
     },
     {
+      # The printed/scanned QR page is an interactive user interface too, and
+      # rebranding `product_name` had quietly taken the DocuSeal credit off it:
+      # the file still said "Powered by <a>...</a>", but both the wording and
+      # the link had become ours. The DocuSeal anchor is pinned here the same
+      # way it is in the footer above, so the credit cannot be renamed away a
+      # second time.
       file: 'app/views/templates_share_link_qr/_branding.html.erb',
-      snippets: ["t('powered_by')", 'Docuseal::PRODUCT_URL', 'Docuseal.product_name']
+      snippets: ["t('powered_by')", 'Docuseal::PRODUCT_URL', 'Docuseal.product_name',
+                 'Docuseal::DOCUSEAL_SOURCE_URL', '>DocuSeal</a>', 'AGPL LICENSE_ADDITIONAL_TERMS'],
+      rendered_anchor: '<a href="<%= Docuseal::DOCUSEAL_SOURCE_URL'
     },
     {
       file: 'lib/docuseal.rb',
