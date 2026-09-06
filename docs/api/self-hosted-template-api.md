@@ -263,6 +263,10 @@ instead of emailing, set `send_email: false` and open that link in your UI.
 
 See the language‑specific examples in [`docs/api/`](.) (Ruby, Python, Node, PHP, Go,
 Java, C#, JavaScript, TypeScript, Shell) for the full submissions/submitters reference.
+Those files are generated from the upstream description and describe a larger product:
+each one opens with a note listing the operations this app does not route (the
+`/templates/{pdf,docx,html,merge}` and `/submissions/{pdf,docx,html}` endpoints among
+them). The live, accurate list is the API reference at `/docs/api`.
 
 ---
 

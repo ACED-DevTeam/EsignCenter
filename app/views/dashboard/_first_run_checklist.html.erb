@@ -4,8 +4,11 @@
     work was done — dashboard, API or share link — and the card takes itself
     away once all three are done, 30 days after sign-up, or when this person
     dismisses it. Each step links to the action that finishes it: the upload
-    button for the first, the send page of the first template for the other
-    two. The dismiss button is the app tour's pattern — a plain button_to,
+    button for the first, and for the other two the send page of the document
+    they are working on — their own newest template, or a starter when that is
+    all the account holds, or the upload button again when it holds neither
+    (FirstRunChecklist.step_target_template). Never the dashboard they are
+    already on. The dismiss button is the app tour's pattern — a plain button_to,
     with `remove-on-event` taking the card off the page so the person is not
     left looking at what they just dismissed.
 
@@ -18,9 +21,10 @@
 <% steps = local_assigns.fetch(:steps) { FirstRunChecklist.for(account: current_account, user: current_user, can_create_templates: can?(:create, ::Template)) } %>
 <% if steps %>
   <% done_count = FirstRunChecklist.done_count(steps) %>
-  <% first_template = current_account.templates.active.order(:id).first %>
-  <% send_path = first_template ? template_path(first_template) : root_path %>
-  <% step_paths = { 'choose' => templates_path(anchor: 'templates_upload_button'), 'signer' => send_path, 'send' => send_path } %>
+  <% upload_path = templates_path(anchor: 'templates_upload_button') %>
+  <% target = FirstRunChecklist.step_target_template(current_account) %>
+  <% send_path = target ? template_path(target) : upload_path %>
+  <% step_paths = { 'choose' => upload_path, 'signer' => send_path, 'send' => send_path } %>
   <div id="first_run_checklist" class="card bg-base-100 border border-base-300 mb-6" data-first-run-checklist>
     <div class="card-body p-5 md:p-6 gap-4">
       <div class="flex items-start justify-between gap-3">

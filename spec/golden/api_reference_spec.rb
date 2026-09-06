@@ -19,6 +19,30 @@ RSpec.describe 'API reference', type: :request do
     Nokogiri::HTML(response.body)
   end
 
+  # `/api/templates/:id(.:format)` (the router) and `/templates/{id}` (the
+  # document) are the same operation written two ways, and a nested route
+  # names the same value `:template_id` that the document calls `{id}`. Reduce
+  # every parameter on both sides to one placeholder so what is compared is
+  # the LITERAL segments — which is exactly what tells `/templates/{id}`, a
+  # real door, from `/templates/archived`, an invented one that a wildcard
+  # would happily swallow.
+  def path_shape(path)
+    path.delete_suffix('(.:format)').gsub(/:\w+|\{\w+\}/, '{}')
+  end
+
+  # Every verb+path this application really answers under `/api`, in that
+  # shape.
+  def routed_operations
+    Rails.application.routes.routes.filter_map do |route|
+      spec = path_shape(route.path.spec.to_s)
+
+      next unless spec.start_with?('/api/')
+      next if route.verb.blank?
+
+      "#{route.verb} #{spec}"
+    end.uniq
+  end
+
   describe 'GET /docs/openapi.json' do
     it 'parses, points servers[0] at this instance and mentions no placeholder host' do
       get '/docs/openapi.json'
@@ -38,6 +62,113 @@ RSpec.describe 'API reference', type: :request do
 
       expect(JSON.parse(response.body)['paths'].keys).to match_array(OpenapiDocument.authored_paths)
       expect(OpenapiDocument.authored_paths).not_to be_empty
+    end
+
+    # Review 10, A-F1/N-F1. The example above compares the served document to
+    # the file it was built from — it catches a DROPPED operation and nothing
+    # else. Eight of the operations this document advertised were upstream-Pro
+    # endpoints this fork has never routed (`POST /templates/{pdf,docx,html,
+    # merge}`, `POST /submissions/{pdf,docx,html}`, `PUT /templates/{id}/
+    # documents`): Scalar drew them as live operations on OUR origin, so a
+    # developer following the reference got a routing 404 from us. This is the
+    # regression test — every operation the reader is shown has to be one this
+    # application actually answers, checked against the router rather than
+    # against a hand-kept list.
+    #
+    # EXACT match, not `recognize_path` (review 10, loop 2). Recognition asks
+    # "does some route swallow this URL", and a resource's `:id` wildcard
+    # swallows any invented GET sub-path: `GET /templates/archived` recognised
+    # as `templates#show id: "archived"` and passed, while the reader who
+    # followed it got a 404 from the finder. So each documented verb+path has
+    # to EQUAL a route this application declares, segment for segment.
+    it 'advertises no operation this application does not route' do
+      get '/docs/openapi.json'
+
+      routed = routed_operations
+
+      unroutable =
+        JSON.parse(response.body).fetch('paths').flat_map do |path, operations|
+          operations.keys.filter_map do |verb|
+            next unless verb.in?(%w[get post put patch delete])
+
+            operation = "#{verb.upcase} /api#{path_shape(path)}"
+
+            operation unless routed.include?(operation)
+          end
+        end
+
+      expect(routed).not_to be_empty
+      expect(unroutable).to be_empty,
+                            "the published API reference advertises #{unroutable.size} operation(s) this app does " \
+                            "not route, so a developer following it gets a 404 from us: #{unroutable.join(', ')}"
+    end
+
+    it 'points every operation at a controller action that exists' do
+      get '/docs/openapi.json'
+
+      missing =
+        JSON.parse(response.body).fetch('paths').flat_map do |path, operations|
+          operations.keys.filter_map do |verb|
+            next unless verb.in?(%w[get post put patch delete])
+
+            route = Rails.application.routes.recognize_path("/api#{path.gsub(/\{\w+\}/, '1')}", method: verb.to_sym)
+            controller = "#{route[:controller]}_controller".camelize.safe_constantize
+
+            next if controller&.action_methods&.include?(route[:action])
+
+            "#{verb.upcase} #{path} -> #{route[:controller]}##{route[:action]}"
+          end
+        end
+
+      expect(missing).to be_empty, "documented operations resolve to actions that do not exist: #{missing.join(', ')}"
+    end
+
+    # The other half of A-F1: the reference invented four ways to create a
+    # template from a file and omitted the one this fork exists to add. These
+    # are the doors a paying integrator is sold; dropping one from the document
+    # is as bad as inventing one.
+    it 'documents every operation an integrator is promised, including this fork\'s own POST /templates' do
+      get '/docs/openapi.json'
+
+      documented =
+        JSON.parse(response.body).fetch('paths').flat_map do |path, operations|
+          operations.keys.map { |verb| "#{verb.upcase} #{path}" }
+        end
+
+      expect(documented).to include(
+        'POST /templates',            # create a template from a PDF your app generated (this fork)
+        'GET /templates',
+        'GET /templates/{id}',
+        'PUT /templates/{id}',
+        'DELETE /templates/{id}',
+        'POST /templates/{id}/clone',
+        'POST /submissions',          # send it for signing
+        'GET /submissions',
+        'GET /submissions/{id}',
+        'DELETE /submissions/{id}',
+        'GET /submissions/{id}/documents',
+        'POST /submissions/emails',
+        'GET /submitters',
+        'GET /submitters/{id}',
+        'PUT /submitters/{id}',
+        'POST /signing_sessions',     # the embedded doors (this fork)
+        'GET /signing_sessions/{id}',
+        'POST /template_builder_sessions',
+        'GET /template_builder_sessions/{id}',
+        'GET /user'                   # the token check
+      )
+    end
+
+    it 'never brings back the upstream operations this fork does not route' do
+      get '/docs/openapi.json'
+
+      paths = JSON.parse(response.body).fetch('paths')
+
+      expect(paths.keys).not_to include('/templates/pdf', '/templates/docx', '/templates/html', '/templates/merge',
+                                        '/submissions/pdf', '/submissions/docx', '/submissions/html',
+                                        '/templates/{id}/documents')
+      expect(response.body).not_to include('createTemplateFromPdf')
+      expect(response.body).not_to include('mergeTemplate')
     end
 
     it 'rewrites the placeholder origin everywhere it appears, not only in servers' do

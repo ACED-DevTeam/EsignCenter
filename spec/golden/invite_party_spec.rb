@@ -212,25 +212,39 @@ RSpec.describe 'Inviting the next party', type: :request do
     # What the race looked like from outside: the second request is answered
     # with a refusal and leaves nothing behind, rather than adding a second
     # signer for a role already taken.
+    #
+    # The race has to be driven where it really happens — inside the invite
+    # transaction, against a signer who has NOT completed yet. Inviting first
+    # and posting again completes the signer, so the second request is turned
+    # away by `can_invite?` with `document_no_longer_accepting` before it ever
+    # reaches an INSERT, and the RecordNotUnique door goes untested (review
+    # 10, B-F2). So the colliding row is inserted from inside the transaction,
+    # the way the `invite_via_field` sibling above does it: the winner lands
+    # between this request's check and its own insert.
     it 'answers the losing invite request with a refusal and writes nothing' do
-      invite!
-
-      expect(response).to have_http_status(:ok)
-
       before_count = submission.submitters.reload.count
+      raced = false
 
-      # A request that still believes the role is free — exactly the state the
-      # loser of the race is in when it reaches the insert.
-      allow_any_instance_of(SubmitFormInviteController)
-        .to receive(:filter_invite_submitters).and_return([{ 'uuid' => second_uuid }], [])
+      allow(Submissions).to receive(:normalize_email).and_wrap_original do |original, value|
+        unless raced
+          raced = true
+          submission.submitters.create!(uuid: second_uuid, email: 'raced@example.com', account_id: account.id)
+        end
 
-      post "/s/#{submitter.slug}/invite",
-           params: { submission: { submitters: [{ uuid: second_uuid, email: 'third@example.com' }] } }
-                     .merge(consent_params(submitter))
+        original.call(value)
+      end
+
+      invite!(email: 'third@example.com')
 
       expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body['error']).to eq('party_already_invited')
+
+      # Nothing of the refused request survives — not the party it tried to
+      # invite, not the event, not the inviter's own completion.
       expect(submission.submitters.reload.count).to eq(before_count)
       expect(submission.submitters.pluck(:email)).not_to include('third@example.com')
+      expect(invite_events).to be_empty
+      expect(submitter.reload.completed_at).to be_nil
     end
   end
 end
