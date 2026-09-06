@@ -670,31 +670,102 @@ RSpec.describe 'Postmark delivery tracking', type: :request do
       expect(parked.attribution_error).to include('timeline write failed')
       expect(parked.last_attempted_at).to be_present
 
-      # Three days old and still kept, because this one CAN be attributed.
+      # Three days old and still kept, because this one CAN be attributed. The
+      # next try is the next hourly tick: a row that has just failed is left
+      # alone until then (PostmarkWebhooks::RETRY_INTERVAL), so that the small
+      # share of the sweep the failures get is spread over all of them.
       parked.update!(created_at: (PendingEmailEvent::MAX_WAIT + 1.day).ago)
 
-      expect { HousekeepingJob.new.perform }.not_to change(PendingEmailEvent, :count)
-      expect(PendingEmailEvent.sole.attempts).to eq(2)
+      travel(PostmarkWebhooks::RETRY_INTERVAL + 1.minute) do
+        expect { HousekeepingJob.new.perform }.not_to change(PendingEmailEvent, :count)
+        expect(PendingEmailEvent.sole.attempts).to eq(2)
+      end
 
       # And once the write works again, the sweep lands it.
       allow(PostmarkWebhooks).to receive(:persist!).and_call_original
 
-      expect { HousekeepingJob.new.perform }.to change(PendingEmailEvent, :count).by(-1)
+      travel(3 * PostmarkWebhooks::RETRY_INTERVAL) do
+        expect { HousekeepingJob.new.perform }.to change(PendingEmailEvent, :count).by(-1)
+      end
+
       expect(EmailEvent.where(event_type: 'permanent_bounce').sole.message_id).to eq(early_uuid)
     end
 
-    it 'tells the operator once a failed replay has been retried enough times' do
+    # N3. One alert per row, sent by the sweep that takes it OVER the
+    # threshold. Alerting on the STATE instead mailed the operator the same
+    # alert every hour for ever — these rows are retried by every tick and
+    # never expire — and alert fatigue is how the next real alert is ignored.
+    it 'tells the operator when a failed replay crosses the threshold, and not again every hour after' do
       deliver(early_bounce)
 
-      PendingEmailEvent.sole.update!(attempts: PostmarkWebhooks::MAX_REPLAY_ATTEMPTS,
-                                     attribution_error: 'ActiveRecord::StatementInvalid: timeline write failed')
+      create(:email_event, account:, emailable: submitter, event_type: 'send',
+                           message_id: early_uuid, email: 'signer@example.com')
 
+      PendingEmailEvent.sole.update!(attempts: PostmarkWebhooks::MAX_REPLAY_ATTEMPTS - 1,
+                                     attribution_error: 'ActiveRecord::StatementInvalid: timeline write failed',
+                                     last_attempted_at: 2.hours.ago)
+
+      allow(PostmarkWebhooks).to receive(:persist!).and_raise(ActiveRecord::StatementInvalid, 'timeline write failed')
       allow(OperatorAlert).to receive(:deliver)
 
       PostmarkWebhooks.sweep_pending!
 
+      expect(PendingEmailEvent.sole.attempts).to eq(PostmarkWebhooks::MAX_REPLAY_ATTEMPTS)
       expect(OperatorAlert).to have_received(:deliver)
-        .with(hash_including(subject: a_string_including('cannot be replayed')))
+        .with(hash_including(subject: a_string_including('cannot be replayed'))).once
+
+      # An hour later it is the same row failing the same way, which is not
+      # news; the operator is told again only when it is finally dropped.
+      PendingEmailEvent.sole.update!(last_attempted_at: 2.hours.ago)
+
+      PostmarkWebhooks.sweep_pending!
+
+      expect(PendingEmailEvent.sole.attempts).to eq(PostmarkWebhooks::MAX_REPLAY_ATTEMPTS + 1)
+      expect(OperatorAlert).to have_received(:deliver)
+        .with(hash_including(subject: a_string_including('cannot be replayed'))).once
+    end
+
+    # The other end of N3/N4: kept is not kept for ever. A replay that has
+    # failed a full day of hourly retries is a bug to fix from the alert, and
+    # leaving it in the table costs every later row its place in the batch.
+    it 'drops a replay that has failed all day and says out loud what was lost' do
+      deliver(early_bounce)
+
+      PendingEmailEvent.sole.update!(attempts: PostmarkWebhooks::MAX_ATTEMPTS,
+                                     attribution_error: 'ActiveRecord::StatementInvalid: timeline write failed',
+                                     last_attempted_at: 2.hours.ago)
+
+      allow(OperatorAlert).to receive(:deliver)
+
+      expect(PostmarkWebhooks.sweep_pending!).to eq(pending: 0, dropped: 1, errored: 0)
+      expect(OperatorAlert).to have_received(:deliver)
+        .with(hash_including(subject: a_string_including('dropped after failing to replay')))
+    end
+
+    # N4. Failed rows are deliberately never dropped by the three-day clock, so
+    # a batch's worth of them sitting at the head of the table meant the plain
+    # `order(:id).limit` walk retried only those, every hour, for ever: a newer
+    # callback whose send row had since landed was never reached at all and
+    # aged out at three days, losing a real bounce.
+    it 'reaches a newer callback parked behind a full batch of failures' do
+      stub_const('PostmarkWebhooks::SWEEP_BATCH', 1)
+      stub_const('PostmarkWebhooks::FAILED_BATCH', 1)
+
+      deliver(early_bounce)
+      PendingEmailEvent.sole.update!(attempts: 3, last_attempted_at: 2.hours.ago,
+                                     attribution_error: 'ActiveRecord::StatementInvalid: timeline write failed')
+
+      later_uuid = SecureRandom.uuid
+
+      deliver(payload('bounce_hard').merge('ID' => 'later-bounce', 'Metadata' => { 'message-uuid' => later_uuid }))
+
+      create(:email_event, account:, emailable: submitter, event_type: 'send',
+                           message_id: later_uuid, email: 'signer@example.com')
+
+      expect { PostmarkWebhooks.sweep_pending! }.to change(PendingEmailEvent, :count).by(-1)
+      expect(EmailEvent.where(event_type: 'permanent_bounce').sole.message_id).to eq(later_uuid)
+      # The stuck one is still parked, still failed, still being retried.
+      expect(PendingEmailEvent.sole.provider_message_id).to eq(early_uuid)
     end
 
     it 'counts what it dropped without counting it as still waiting' do
@@ -727,6 +798,25 @@ RSpec.describe 'Postmark delivery tracking', type: :request do
       end.not_to change(PendingEmailEvent, :count)
 
       expect(response.parsed_body).to eq('ignored' => true)
+    end
+
+    # N2. SupportMailer names a tag and a topic and no record, so metadata was
+    # PRESENT and the message was stamped — while the observer, which needs the
+    # record the message is ABOUT, still wrote no send row. Every Postmark
+    # callback for a support-form email was parked for three days and then
+    # dropped: exactly the noise M4 was raised to remove.
+    it 'does not stamp mail that names a tag but still no record' do
+      mail = SupportMailer.request_received(name: 'Grace Hopper', email: 'grace@example.com', topic: 'billing',
+                                            topic_label: 'Billing and plans', message: 'A question', ip: '203.0.113.9')
+      mail.deliver_now!
+
+      expect(mail['X-Message-Uuid']).to be_present
+      expect(mail['X-PM-Metadata-message-uuid']).to be_nil
+      expect(EmailEvent.where(tag: 'support_request')).not_to exist
+
+      expect do
+        deliver(payload('bounce_hard').merge('ID' => 'support-mail', 'Metadata' => {}))
+      end.not_to change(PendingEmailEvent, :count)
     end
 
     # Customer mail still is: naming the account is what makes it trackable.

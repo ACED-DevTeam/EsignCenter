@@ -70,7 +70,14 @@ module Api
     # refuse it in words first (Submissions::CreateFromSubmitters), so
     # reaching here means a shape nobody has named yet — still the caller's
     # request to correct, not a server error, and nothing was created.
+    #
+    # THAT index and no other (review 2, N7). Class-wide, this answered every
+    # unique-constraint failure in `/api/*` with a well-formed 422 and filed
+    # it as a warning — the shape of bug that hides for months. Any other
+    # constraint is re-raised and is a 500.
     rescue_from ActiveRecord::RecordNotUnique do |e|
+      raise e unless e.message.include?(Submitter::ROLE_INDEX)
+
       ErrorReport.warning(e)
 
       render json: { error: 'Record already exists' }, status: :unprocessable_content

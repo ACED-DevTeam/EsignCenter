@@ -26,8 +26,15 @@
 # (20260906090000): `verified_documents` grows by a row per signed output and
 # never shrinks — the rows outlive the account — so on a live install this is
 # not a small table, and an ordinary build would hold a SHARE lock on it for
-# the duration. `if_not_exists` makes the step re-runnable after a failed
-# concurrent build, which leaves an INVALID index behind.
+# the duration.
+#
+# `if_not_exists` makes the step re-runnable after a failed concurrent build —
+# and carries that step's one trap with it. A failed build leaves an INVALID
+# index of this name behind; the re-run sees the name, skips the step and
+# reports success, and an invalid unique index still refuses duplicate rows
+# but is never used for reads, so nothing looks wrong. After any failed or
+# interrupted migration run, list the invalid indexes and drop them first:
+# docs/operations.md, "Indexes built CONCURRENTLY".
 class AddOutputKeyToVerifiedDocuments < ActiveRecord::Migration[8.1]
   disable_ddl_transaction!
 

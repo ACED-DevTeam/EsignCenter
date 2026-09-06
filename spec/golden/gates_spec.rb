@@ -43,6 +43,15 @@ RSpec.describe 'Account-kind gate' do
         'Account.find_or_create_by!(name: name)',
         'Account.first_or_create(name: name)',
         'user.accounts.first_or_create!(name: name)',
+        # Review 2 (N5): the same verbs as they are actually written — behind
+        # a scope. `first_or_create` is essentially never spelled without a
+        # `where` in front of it, which is where the fix that added the verb
+        # left the hole it was closing.
+        'Account.where(name: name).first_or_create!(timezone: zone)',
+        'Account.where(name: name).first_or_create',
+        'user.accounts.where(name: name).create!(timezone: zone)',
+        'Account.unscoped.new(name: name)',
+        'Account.where(name: name).where.not(archived_at: nil).first_or_create!(timezone: zone)',
         'account.dup',
         'testing_account = account.dup',
         # A string that merely spells the argument out is not the argument.
@@ -65,6 +74,45 @@ RSpec.describe 'Account-kind gate' do
       expect(Gates.account_kind_violations("# Account.create!(name: name)\n", 'lib/probe.rb')).to be_empty
     end
 
+    # Review 2 (N6). The gate blanks strings and comments before it looks for
+    # creations, and an apostrophe in heredoc PROSE — which is most of the
+    # prose in this codebase — used to open a string that ran to the next
+    # apostrophe anywhere in the file, blanking every line between them. The
+    # gate then reported nothing and looked green: failing open, silently.
+    it 'does not let an apostrophe in heredoc prose blank the code after it' do
+      snippet = <<~RUBY
+        BODY = <<~TXT
+          the customer's name
+        TXT
+
+        def make(name)
+          Account.create!(name: name)
+        end
+
+        NOTE = <<~TXT
+          it's fine
+        TXT
+      RUBY
+
+      expect(Gates.account_kind_violations(snippet, 'lib/probe.rb')).to have_attributes(size: 1)
+    end
+
+    # The same failure without a heredoc: a quoted string is a SINGLE line, so
+    # an unbalanced quote can cost at most the line it is on.
+    it 'does not let an unbalanced quote blank the lines below it' do
+      snippet = "puts 'unterminated\nAccount.create!(name: name)\n"
+
+      expect(Gates.account_kind_violations(snippet, 'lib/probe.rb')).to have_attributes(size: 1)
+    end
+
+    # ...and a heredoc body is still prose: a creation spelled out inside one
+    # creates nothing.
+    it 'ignores a creation inside a heredoc body' do
+      snippet = "DOC = <<~TXT\n  Account.create!(name: name)\nTXT\n"
+
+      expect(Gates.account_kind_violations(snippet, 'lib/probe.rb')).to be_empty
+    end
+
     it 'accepts a creation that names the kind anywhere inside the same call' do
       [
         'Account.new(account_kind: Account::CUSTOMER_KIND)',
@@ -75,7 +123,9 @@ RSpec.describe 'Account-kind gate' do
         'Account.build(name: name, account_kind: kind)',
         'accounts.create!(name: name, account_kind: kind)',
         'Account.find_or_create_by!(name: name, account_kind: kind)',
-        'Account.create name: name, account_kind: kind'
+        'Account.create name: name, account_kind: kind',
+        'Account.where(name: name).first_or_create!(account_kind: kind)',
+        'user.accounts.where(name: name).create!(account_kind: kind)'
       ].each do |snippet|
         expect(Gates.account_kind_violations("#{snippet}\n", 'lib/probe.rb')).to be_empty, snippet
       end
@@ -89,6 +139,19 @@ RSpec.describe 'Account-kind gate' do
       snippet = "account = Account.new(name: name)\naccount.account_kind = Account::INTERNAL_KIND\n"
 
       expect(Gates.account_kind_violations(snippet, 'lib/probe.rb')).to have_attributes(size: 1)
+    end
+
+    # The scope segments are a NAMED list of relation methods for this reason:
+    # the receiver may be an association, so "any chained method" would read
+    # every `account.<association>.create!` in the tree as an account creation.
+    it 'ignores a creation on something else that merely hangs off an account' do
+      [
+        'account.templates.create!(name: name)',
+        'account.users.create!(email: email)',
+        'user.accounts.first.templates.create!(name: name)'
+      ].each do |snippet|
+        expect(Gates.account_kind_violations("#{snippet}\n", 'lib/probe.rb')).to be_empty, snippet
+      end
     end
 
     it 'ignores models whose name merely starts with Account' do

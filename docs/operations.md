@@ -349,9 +349,44 @@ For each pair, keep the row that is really the party:
 
 Re-run the rake task until it prints "No duplicate (submission_id, uuid)
 pairs", then run the migrations again. The index is built `CONCURRENTLY`, so
-signing keeps working while it is created; if a build fails it leaves an
-INVALID index behind — drop it (`DROP INDEX index_submitters_on_submission_id_and_uuid`)
-and run the migration again, which is safe because it is `if_not_exists`.
+signing keeps working while it is created; if the build fails, see
+"Indexes built CONCURRENTLY" immediately below before re-running.
+
+#### Indexes built CONCURRENTLY (check this after any failed migration)
+
+Three migrations build their index `CONCURRENTLY` — outside a transaction, so
+the table stays writable while the index is built and a deploy cannot take
+signing offline:
+
+| migration | index |
+|---|---|
+| `20260906090000` | `index_submitters_on_submission_id_and_uuid` |
+| `20260906090100` | `index_verified_documents_on_output_key` |
+| `20260906110000` | `index_pending_email_events_on_failed_replays` |
+
+The price is that a build which FAILS part-way (a lock timeout, a deploy
+killed mid-flight, a duplicate row) leaves the index behind marked INVALID.
+Postgres will not use an invalid index for reads, and every one of these
+migrations is written `if_not_exists: true` — which is what makes them safe to
+re-run — so a re-run sees the name, skips the step, and reports success over
+an index that is doing nothing. Nothing tells you; the deploy looks clean.
+
+So after any migration run that failed or was interrupted, list the invalid
+indexes before running the migrations again:
+
+```sh
+docker run --rm --env-file /tmp/rehearsal.env esigncenter-release bundle exec rails runner '
+  rows = ActiveRecord::Base.connection.select_rows(%(
+    SELECT c.relname FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid WHERE NOT i.indisvalid
+  ))
+  puts rows.empty? ? "no invalid indexes" : "INVALID: #{rows.flatten.join(", ")}"
+'
+```
+
+Drop each name it prints — `DROP INDEX CONCURRENTLY <name>;` — and run the
+migrations again. Dropping is safe: an invalid index is not being used for
+reads, and the migration rebuilds it. Do the same check on production after a
+failed deploy, not only on the rehearsal copy.
 
 ### 2.4 Deploy dark
 

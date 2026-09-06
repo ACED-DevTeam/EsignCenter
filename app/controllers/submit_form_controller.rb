@@ -46,7 +46,14 @@ class SubmitFormController < ApplicationController
   # completion back — so this door answers the same refusal the invite form's
   # door answers rather than a 500 on the signing page. Nothing was written;
   # pressing Complete again succeeds, because by then the party is on record.
-  rescue_from ActiveRecord::RecordNotUnique do
+  #
+  # ONE constraint, named (review 2, N7). A class-wide rescue would tell a
+  # signer somebody had invited a party whatever unique index a future bug
+  # tripped, and would file that bug as a warning nobody reads; anything else
+  # is re-raised and is a 500, which is what an unexplained conflict is.
+  rescue_from ActiveRecord::RecordNotUnique do |e|
+    raise e unless e.message.include?(Submitter::ROLE_INDEX)
+
     render json: { error: 'party_already_invited' }, status: :unprocessable_content
   end
 

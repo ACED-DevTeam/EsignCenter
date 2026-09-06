@@ -1823,6 +1823,38 @@ RSpec.describe 'Support impersonation', type: :request do
 
       expect { HousekeepingJob.new.perform }.to(change { events('impersonation.end').count }.by(1))
     end
+
+    # N1. The pairing is done in SQL, BEFORE the batch is taken. Doing it after
+    # reads the same and is not: `operator_events` is never purged, so once
+    # SWEEP_BATCH sessions had been opened and properly closed, every tick
+    # fetched the same batch of finished ones, rejected all of them and
+    # returned nothing. The sweep was permanently inert, and every session
+    # abandoned after that point said "In progress" for ever — the exact state
+    # it exists to end.
+    it 'closes an abandoned session hiding behind a full batch of finished ones' do
+      long_ago = (SupportImpersonation::MAX_DURATION + 5.minutes).ago
+      finished = SupportImpersonation::SWEEP_BATCH + 1
+
+      OperatorEvent.insert_all(
+        Array.new(finished) do
+          { action: 'impersonation.start', account_id: account.id, reason:,
+            details: { 'mode' => SupportImpersonation::READ_ONLY_MODE }, created_at: long_ago }
+        end
+      )
+
+      OperatorEvent.insert_all(
+        OperatorEvent.where(action: 'impersonation.start').ids.map do |id|
+          { action: 'impersonation.end', account_id: account.id, reason:,
+            details: { 'start_event_id' => id, 'ended_by' => 'operator' }, created_at: long_ago }
+        end
+      )
+
+      started = abandon!
+      started.update!(created_at: long_ago)
+
+      expect { HousekeepingJob.new.perform }.to(change { events('impersonation.end').count }.by(1))
+      expect(SupportImpersonation.end_row_exists?(started.id)).to be(true)
+    end
   end
 
   # --- 9. one pass through a real browser -------------------------------------------

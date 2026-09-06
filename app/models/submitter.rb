@@ -41,6 +41,12 @@
 #  fk_rails_...  (submission_id => submissions.id)
 #
 class Submitter < ApplicationRecord
+  # The unique index that says one person per role per submission
+  # (db/migrate/20260906090000). Named here because two doors have to tell the
+  # refusal it makes apart from every other constraint failure before they
+  # answer 422 for it — Api::ApiBaseController and SubmitFormController.
+  ROLE_INDEX = 'index_submitters_on_submission_id_and_uuid'
+
   belongs_to :submission
   belongs_to :account
   has_one :template, through: :submission

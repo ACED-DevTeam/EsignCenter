@@ -22,8 +22,11 @@
 # takes a SHARE lock on `submitters` for as long as the build takes, which on
 # a populated table means every signing write blocks — a signing outage on
 # deploy day. `if_not_exists` makes the step re-runnable, which a concurrent
-# build needs: a failed one leaves an INVALID index behind, and the operator
-# drops it and runs the migration again.
+# build needs — and is also its one trap: a failed concurrent build leaves an
+# INVALID index behind under this name, and a re-run then SKIPS the step and
+# reports success over an index Postgres will not use for reads. After any
+# failed or interrupted migration run, list the invalid indexes and drop them
+# first: docs/operations.md, "Indexes built CONCURRENTLY".
 class AddUniqueIndexOnSubmittersSubmissionUuid < ActiveRecord::Migration[8.1]
   disable_ddl_transaction!
 

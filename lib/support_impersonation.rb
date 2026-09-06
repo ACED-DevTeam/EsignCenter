@@ -43,6 +43,18 @@ module SupportImpersonation
   # exact state the sweep exists to end (review 2, M9). The work is bounded by
   # this batch instead — oldest first, and the next tick takes the rest.
   SWEEP_BATCH = 500
+  # A start with no ending, asked of the database rather than of the batch:
+  # the pairing has to happen before the limit, or a log full of properly
+  # closed sessions fills the batch and hides every abandoned one behind it
+  # (review 2, N1). Compared as text, not cast, because an ending written for
+  # a session whose start row we could not name carries a NULL here.
+  NOT_ENDED_SQL = <<~SQL.squish
+    NOT EXISTS (
+      SELECT 1 FROM operator_events AS end_events
+      WHERE end_events.action = 'impersonation.end'
+        AND end_events.details ->> 'start_event_id' = operator_events.id::text
+    )
+  SQL
 
   # The operator's own console. Never refused — it is the surface the session
   # is driven from, it is behind its own 404 gate, and the end door lives in
@@ -545,23 +557,20 @@ module SupportImpersonation
   # further back than SWEEP_BATCH of them. There is no age floor: a session
   # left open by a scheduler outage is still owed its ending however long ago
   # it started.
+  #
+  # The "has no end row" half is decided in SQL, BEFORE the batch is taken
+  # (review 2, N1). Taking the oldest 500 starts and then rejecting the closed
+  # ones reads the same and is not: `operator_events` is never purged, so once
+  # 500 sessions had been opened and normally closed, every tick fetched the
+  # same 500 oldest rows, rejected all of them and returned nothing — the
+  # sweep was permanently inert, and an abandoned session opened afterwards
+  # said "In progress" for ever.
   def abandoned_starts(now = Time.current)
-    starts = OperatorEvent.where(action: 'impersonation.start')
-                          .where(created_at: ...(now - MAX_DURATION))
-                          .order(:id).limit(SWEEP_BATCH)
-                          .preload(:account, :subject).to_a
-
-    return [] if starts.empty?
-
-    ended = ended_start_event_ids(starts.map(&:id))
-
-    starts.reject { |event| ended.include?(event.id) }
-  end
-
-  def ended_start_event_ids(start_ids)
-    OperatorEvent.where(action: 'impersonation.end')
-                 .where("details ->> 'start_event_id' IN (?)", start_ids.map(&:to_s))
-                 .pluck(Arel.sql("details ->> 'start_event_id'")).to_set(&:to_i)
+    OperatorEvent.where(action: 'impersonation.start')
+                 .where(created_at: ...(now - MAX_DURATION))
+                 .where(NOT_ENDED_SQL)
+                 .order(:id).limit(SWEEP_BATCH)
+                 .preload(:account, :subject).to_a
   end
 
   def end_row_exists?(start_event_id)
