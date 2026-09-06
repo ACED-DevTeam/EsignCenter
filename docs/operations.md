@@ -229,6 +229,13 @@ from the pre-deploy snapshot**, never `db:rollback`.
    the container (`rm -rf /root/.cache/rubocop_cache`) and run it again with
    no `DATABASE_URL`, exactly as the command above does.
 
+   **Running the suite in a container that is set up for a staging walk.** The
+   walk recreates the app container with `EMAIL_DELIVERY_MODE=smtp` so mail
+   really leaves. The test process scrubs that variable (and every key the env
+   file declares) before Rails boots, so the suite never inherits a live mail
+   mode; if you ever see an SMTP connection attempt in a spec failure, that
+   scrub is what broke.
+
 ### 2.2 Snapshot
 
 1. Render dashboard → `esigncenter-db` → take a manual backup now (or note

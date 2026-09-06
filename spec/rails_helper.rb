@@ -14,6 +14,12 @@ if File.exist?(env_local)
     ENV.delete(key) if key
   end
 end
+# The same rule for the delivery-mode switch, which the env file does not declare: a dev
+# container recreated for a staging walk with EMAIL_DELIVERY_MODE=smtp otherwise hands
+# that mode to the test process, and a spec that exercises an SMTP setup then opens a
+# real socket (seen 2026-09-06: "getaddrinfo(3): Name does not resolve"). Specs that need
+# a mode set it themselves (spec/support/isolated_smtp_environment.rb).
+ENV.delete('EMAIL_DELIVERY_MODE')
 
 require_relative '../config/environment'
 abort('The Rails environment is running in production mode!') if Rails.env.production? # rubocop:disable Rails/Exit

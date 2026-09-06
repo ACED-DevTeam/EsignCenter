@@ -1341,6 +1341,36 @@ RSpec.describe 'Operator console', type: :request do
       create(:account_subscription, account: create(:account), access_state: state, status:, seats:)
     end
 
+    # A trial cancelled from Stripe's own Customer Portal, made the way
+    # spec/golden/stripe_spec.rb makes it: the capture from the session 10
+    # staging walk, signed and posted to the real webhook door, drained by the
+    # real job. Nothing here hand-writes the row's columns — the point is what
+    # STRIPE says, so Stripe's own event is what writes it.
+    def portal_cancelled_trial
+      row = create(:account_subscription, account: create(:account), access_state: 'trialing', status: 'trialing',
+                                          stripe_customer_id: 'cus_VCyWT6xgIcO6LD')
+
+      stub_request(:get, %r{\Ahttps://api\.stripe\.com/v1/subscriptions/sub_1UCYcm4rEeOqtLcXOgksBnOF})
+        .to_return(status: 200, body: fixture_body('subscription-trialing-portal-cancelled'),
+                   headers: { 'Content-Type' => 'application/json' })
+
+      post_stripe_capture('event-customer.subscription.updated-portal-trial-cancel')
+      ProcessStripeEventJob.drain
+
+      row.reload
+    end
+
+    # Signed exactly the way Stripe signs it, from the raw bytes on disk.
+    def post_stripe_capture(name)
+      payload = fixture_body(name)
+      at = Time.now.utc
+      signature = Stripe::Webhook::Signature.compute_signature(at, payload, webhook_secret)
+
+      post stripe_webhooks_path, params: payload,
+                                 headers: { 'Stripe-Signature' => "t=#{at.to_i},v1=#{signature}",
+                                            'CONTENT_TYPE' => 'application/json' }
+    end
+
     it 'adds up MRR over the states that actually collect, and nothing else' do
       paying_row(3, 'active')
       paying_row(2, 'past_due')
@@ -1378,6 +1408,44 @@ RSpec.describe 'Operator console', type: :request do
       expect(response.body).to include('sub_owed')
       expect(response.body).to match(/data-revenue-conversions[^>]*>\s*1\s*</)
       expect(response.body).to match(/data-revenue-trials[^>]*>\s*1\s*</)
+    end
+
+    # Session 10, seam M1. Cancelling a subscription that is still in its
+    # TRIAL from Stripe's Customer Portal sets a `cancel_at` date rather than
+    # the period-end flag, and the app reads that date as `canceling` — a
+    # PAYING state. So a customer who has never been charged a penny, and has
+    # just told us they are leaving, was booked as revenue for the rest of
+    # their trial and counted as a conversion the moment its end date passed.
+    # Money reads Stripe's own word now: a row Stripe calls a trial is a
+    # trial, whatever access state we gave it.
+    it 'never books a trial cancelled from the Customer Portal as revenue or as a conversion' do
+      paying_row(3, 'active')
+      cancelled = portal_cancelled_trial
+
+      # The state the walk produced, which is the whole premise.
+      expect(cancelled.access_state).to eq('canceling')
+      expect(cancelled.stripe_status).to eq('trialing')
+      expect(cancelled.quantity).to eq(2)
+
+      get operator_billing_path
+
+      expect(response).to have_http_status(:ok)
+      # Three seats at $10 — the cancelled trial's two are not revenue.
+      expect(response.body).to include(ActionController::Base.helpers.number_to_currency(30))
+      expect(response.body).to match(/data-revenue-paying[^>]*>\s*1\s*</)
+      expect(response.body).to include('3 seats')
+      # It is still a trial, and it is counted as one.
+      expect(response.body).to match(/data-revenue-trials[^>]*>\s*1\s*</)
+      # The state census is left alone: `canceling` is the honest answer to
+      # what this account's ACCESS is, and only the money had to change.
+      expect(response.body).to include('data-revenue-state="canceling"')
+
+      # And when the trial's own end date passes, nobody converted: they left.
+      travel_to(cancelled.trial_end + 1.day) do
+        get operator_billing_path
+
+        expect(response.body).to match(/data-revenue-conversions[^>]*>\s*0\s*</)
+      end
     end
 
     describe 'the Stripe event inbox' do

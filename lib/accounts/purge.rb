@@ -55,6 +55,13 @@ module Accounts
     # Tables the purge empties for an account, in dependency order — children
     # before parents. Kept as a list so the docs, the rake task and the golden
     # spec can all read the same one.
+    #
+    # `pending_email_events` is deliberately absent (session 10, seam L3): a
+    # parked Postmark callback has no `account_id` — being unattributed is the
+    # whole reason it is there — so there is nothing for a per-account walk to
+    # find it by. It is bounded instead of purged: an unmatched row is dropped
+    # by the hourly sweep after PendingEmailEvent::MAX_WAIT (three days), and a
+    # matched one becomes an `email_event`, which IS in this list.
     INVENTORY = %w[
       active_storage_attachments
       completed_documents document_generation_events submitter_versions

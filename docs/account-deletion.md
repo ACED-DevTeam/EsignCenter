@@ -215,7 +215,7 @@ explicit list, in this order, children before parents.
 | `templates` | delete | The templates. |
 | `template_folders` | delete | Folders nest, so children are unhooked before parents. |
 | `document_metadata` | delete | Per-blob checksums used for storage accounting. |
-| `email_events`, `email_messages` | delete | Delivery history and stored copies. |
+| `email_events`, `email_messages` | delete | Delivery history and stored copies. This covers both the delivery rows for mail sent to your **signers** and the rows for the platform's own letters to **you** (dunning notices, suspension warnings, quota warnings) — which is why somebody who leaves this account to join another team takes only the signer rows with them, and the letters we sent this company are deleted here with it. |
 | `search_entries` | delete | The full-text index. Rebuildable. |
 | `webhook_attempts`, `webhook_events`, `webhook_urls` | delete | Outbound integration and its delivery log. |
 | `abuse_flags` | delete | Anti-abuse signals for this account. |
@@ -236,6 +236,12 @@ explicit list, in this order, children before parents.
 | `account_subscriptions` | **keep** | Money history (see above). |
 | `verified_documents` | **untouched** | Public verification (see above). |
 | `accounts` | **tombstone** | Renamed, stamped, kept. |
+
+One mail table is deliberately **not** in the walk. `pending_email_events` parks a
+delivery notice from our mail provider that arrived before the message it describes
+was written down; those rows carry no account at all, so there is nothing to purge
+them by — and they clear themselves, because one that never finds its message is
+deleted within three days.
 
 ### Refusals
 

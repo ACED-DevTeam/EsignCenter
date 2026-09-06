@@ -312,6 +312,26 @@ RSpec.describe 'Starter templates', type: :request do
 
       expect(ErrorReport).not_to have_received(:error)
     end
+
+    # And only THAT index (session 10, seam L2). The rescue covers the whole
+    # method — the marker, four templates, their attachments, the document
+    # processing and the reindex — so a unique-index bug in any of them used
+    # to come back as the same well-formed shrug: nothing raised, no
+    # ErrorReport, and an account silently left with no documents. A duplicate
+    # that is not the marker's is a bug, and a bug is reported.
+    it 'reports a duplicate that is not the marker rather than filing it as the race' do
+      allow(ErrorReport).to receive(:error).and_call_original
+      allow(Templates::CreateAttachments).to receive(:call)
+        .and_raise(ActiveRecord::RecordNotUnique,
+                   'PG::UniqueViolation: ERROR: duplicate key value violates unique constraint ' \
+                   '"index_active_storage_blobs_on_key"')
+
+      expect { StarterTemplatesJob.new.perform(account.id) }.not_to change(Template, :count)
+
+      expect(account.account_configs.count).to eq(0)
+      expect(ErrorReport).to have_received(:error).with(instance_of(ActiveRecord::RecordNotUnique),
+                                                        account_id: account.id)
+    end
   end
 
   # (f) The point of the whole feature: a seeded template is a real one.

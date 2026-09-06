@@ -38,6 +38,11 @@ module Accounts
     #   * webhook_urls, encrypted_configs, account_configs, abuse_flags,
     #     counters, limit overrides, the subscription — configuration and
     #     policy belong to the account, not to the person.
+    #   * the platform's OWN letters to the account being left — the dunning
+    #     notices, the suspension warnings, the quota letters. Their delivery
+    #     rows are `EmailEvent`s like a signer's, but with
+    #     `emailable_type: 'Account'` (Session 10, D1), and they are the
+    #     record of what WE sent THAT COMPANY. See MOVED_SCOPES.
     #   * legal_acceptances DO move (Session 9 phase A, review 1). The row is
     #     the person's agreement to the Terms and the Privacy Policy, and it
     #     belongs to the person rather than to the company they were in when
@@ -48,6 +53,23 @@ module Accounts
     #     alone in their account.
     MOVED_TABLES = [Template, TemplateSharing, TemplateVersion, Submission, Submitter, SubmissionEvent,
                     DocumentMetadata, EmailMessage, EmailEvent, SearchEntry, LegalAcceptance].freeze
+
+    # Where "everything on this account" is too much (session 10, seam M2).
+    #
+    # `email_events` holds two different things behind one account_id. A row
+    # about a SIGNER is the delivery history of a document — it belongs with
+    # the document, and the document is moving. A row about the ACCOUNT is the
+    # platform's own mail to that company's administrators: a dunning letter,
+    # a suspension notice, a quota warning. Moving those handed the TEAM the
+    # old account's mail history, addressed to people who are not in it — and
+    # then put them out of the old account's reach forever, because
+    # `Purge#delete_projections!` finds `EmailEvent` by `account_id` and those
+    # rows no longer carried it. The retention promise says that data is
+    # destroyed; it was quietly surviving under a different tenant.
+    #
+    # `EmailMessage` needs no scope: it is the body of a mail a USER composed
+    # and has no platform-mail equivalent.
+    MOVED_SCOPES = { EmailEvent => { emailable_type: 'Submitter' } }.freeze
 
     module_function
 
@@ -101,7 +123,10 @@ module Accounts
 
         merge_folders!(from, to)
         drop_duplicate_document_metadata!(from, to)
-        MOVED_TABLES.each { |model| model.where(account_id: from.id).update_all(account_id: to.id) }
+        drop_untouched_starters!(from, to)
+        MOVED_TABLES.each do |model|
+          model.where(account_id: from.id).where(MOVED_SCOPES.fetch(model, {})).update_all(account_id: to.id)
+        end
 
         # The seat they take in the team is a full one: whatever their old
         # account thought of them, they are a member here now.
@@ -254,6 +279,29 @@ module Accounts
       return if existing.empty?
 
       DocumentMetadata.where(account_id: from.id, blob_checksum: existing).delete_all
+    end
+
+    # Both self-serve doors seed a brand-new account with the same four
+    # ready-made documents (StarterTemplates), so somebody who signed up
+    # alone, never touched theirs and then joined a team that also signed up
+    # self-serve used to land the team with eight cards, four of them the same
+    # name twice, and nothing on the card to tell one from the other (session
+    # 10, seam L1).
+    #
+    # The incoming duplicates are dropped, and only those: still carrying the
+    # starter marker, never used — no submission was ever made from them — and
+    # named the same as a starter the team already holds. A starter the person
+    # actually sent is their work and travels with them like anything else,
+    # and so is one they renamed, because the NAME is what makes it a
+    # duplicate on the screen this is about. The information lost is zero: the
+    # card that survives is the same document.
+    def drop_untouched_starters!(from, to)
+      names = StarterTemplates.marked(Template.where(account_id: to.id)).pluck(:name)
+
+      return if names.empty?
+
+      StarterTemplates.marked(Template.where(account_id: from.id, name: names))
+                      .where.missing(:submissions).each(&:destroy!)
     end
 
     # Folders are merged by NAME, because every account has a "Default" folder
