@@ -24,6 +24,23 @@ module Operator
     #   cancelled  — over. OUT.
     PAYING_STATES = %w[active past_due canceling].freeze
 
+    # And the second half of the same question, because the access state is
+    # not enough on its own (session 10, seam M1). Cancelling a subscription
+    # that is still in its TRIAL from Stripe's Customer Portal sets a
+    # `cancel_at` date rather than the period-end flag, and the app reads that
+    # date as `canceling` — a paying state — while Stripe still calls the
+    # subscription `trialing` and has still charged nobody. Booking that as
+    # revenue for the rest of the trial is exactly the fiction the constant
+    # above was written to prevent, so every MONEY query asks Stripe's own
+    # word as well: a row Stripe calls a trial is a trial, whatever access
+    # state we gave it.
+    #
+    # `IS DISTINCT FROM` rather than `!=` because the column is null for every
+    # row that never came from Stripe at all — a comp, an operator's manual
+    # grant — and a null must read as "not a trial" rather than dropping the
+    # row out of the comparison altogether.
+    TRIALING_STATUS = 'trialing'
+
     # And the rows that are in a paying state but are not paying anybody:
     # a comp the operator granted by hand (`status` 'manual', with or without
     # an expiry date). They are counted separately, on purpose — a comped
@@ -150,19 +167,37 @@ module Operator
       AccountSubscription.where.not(account_id: Account.testing_child_ids)
     end
 
+    # The rows in a paying access state that Stripe is actually collecting
+    # from: the state says the seat is sold, `stripe_status` says the card has
+    # been charged for it at least once.
+    def collecting_rows
+      billing_rows.where(access_state: PAYING_STATES)
+                  .where('stripe_status IS DISTINCT FROM ?', TRIALING_STATUS)
+    end
+
     def load_revenue
-      paying = billing_rows.where(access_state: PAYING_STATES).where(comp_expires_at: nil)
-                           .where('status IS DISTINCT FROM ?', COMP_STATUS)
+      paying = collecting_rows.where(comp_expires_at: nil)
+                              .where('status IS DISTINCT FROM ?', COMP_STATUS)
 
       @paying_rows = paying.count
       @paying_seats = paying.sum(:quantity)
       @mrr = @paying_seats * PRICE_PER_SEAT_USD
       @price_per_seat = PRICE_PER_SEAT_USD
+      # The census is left keyed on the access state, because `canceling` is
+      # the honest answer to "what is this account's access?" — it is only the
+      # MONEY that a cancelled trial must not be counted in. So the trial
+      # sitting in a paying state is added back here rather than moved there.
       @by_state = billing_rows.group(:access_state).count
-      @trials = @by_state.fetch('trialing', 0)
+      @trials = @by_state.fetch('trialing', 0) + cancelling_trials
 
       load_month_numbers
       load_attention_rows
+    end
+
+    # A trial the customer has already called off: still a trial to Stripe,
+    # already `canceling` to us.
+    def cancelling_trials
+      billing_rows.where(access_state: PAYING_STATES, stripe_status: TRIALING_STATUS).count
     end
 
     def load_month_numbers
@@ -175,8 +210,12 @@ module Operator
       # It is the honest reading of the columns we keep — there is no
       # "converted_at" — and the page states the definition rather than
       # printing a number nobody can check.
-      @conversions = billing_rows.where(trial_end: month_start..Time.current)
-                                 .where(access_state: PAYING_STATES).count
+      #
+      # `collecting_rows` rather than the access state alone, or a trial
+      # cancelled from the Portal would be counted as a CONVERSION in the
+      # window between its trial end passing and Stripe's cancellation
+      # reaching us (session 10, seam M1).
+      @conversions = collecting_rows.where(trial_end: month_start..Time.current).count
       @cancelled_this_month = billing_rows.where(access_state: 'cancelled').where(ended_at: month_start..).count
     end
 

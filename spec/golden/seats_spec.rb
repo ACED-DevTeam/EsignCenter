@@ -1588,6 +1588,86 @@ RSpec.describe 'Seats and invitations', type: :request do
       expect(DocumentMetadata.find_by(blob_checksum: 'only-mine').account_id).to eq(account.id)
     end
 
+    # Session 10, seam M2. `email_events` holds two different things behind
+    # one account_id. A row about a SIGNER is the delivery history of a
+    # document — it belongs with the document, and the document is moving. A
+    # row about the ACCOUNT is the platform's own mail to that company's
+    # administrators: a dunning letter, a suspension notice, a quota warning.
+    #
+    # Moving both handed the TEAM the old account's platform-mail history —
+    # somebody else's administrators, somebody else's addresses — and then put
+    # it beyond the old account's reach forever, because the purge finds
+    # EmailEvent by `account_id` and those rows no longer carried it. The
+    # retention promise says that data is destroyed.
+    it 'leaves the platform\'s own letters behind, for the purge of the account being left' do
+      template = create(:template, account: other_account, author: other_user, only_field_types: %w[text])
+      signer = create(:submission, :with_submitters, template:, created_by_user: other_user).submitters.sole
+      signer_event = create(:email_event, account: other_account, emailable: signer, event_type: 'send',
+                                          email: signer.email)
+      platform_event = create(:email_event, account: other_account, emailable: other_account, event_type: 'send',
+                                            email: other_user.email, tag: 'account_suspended')
+      token = invite_row.raw_token
+      act_as(other_user)
+
+      expect { post "/invites/#{token}" }.to change(AccountMove, :count).by(1)
+
+      # The signer's mail follows the document it is about.
+      expect(signer_event.reload.account).to eq(account)
+      # The letters WE sent THAT COMPANY stay with that company.
+      expect(platform_event.reload.account).to eq(other_account)
+
+      # And the promise is kept: purging the archived account destroys them,
+      # while the team keeps the history of its own documents.
+      anonymous!
+      Accounts::Purge.call(other_account)
+
+      expect(EmailEvent.where(id: platform_event.id)).to be_empty
+      expect(EmailEvent.where(id: signer_event.id)).to exist
+    end
+
+    # Session 10, seam L1. Both self-serve doors seed a brand-new account with
+    # the same four ready-made documents, so somebody who signed up alone,
+    # never touched theirs and then joined a team that had also signed up
+    # self-serve landed the team with eight cards: four names twice, and
+    # nothing on the card to tell one from the other.
+    #
+    # Driven through the real seeder, because the duplication is the point —
+    # both sets carry the same four names by construction.
+    it 'drops the starter templates the joiner never touched' do
+      StarterTemplates.seed!(account)
+      incoming = StarterTemplates.seed!(other_account)
+      token = invite_row.raw_token
+      act_as(other_user)
+
+      expect { post "/invites/#{token}" }.to change(AccountMove, :count).by(1)
+
+      # Four cards, one of each name — the team's own.
+      expect(account.templates.count).to eq(4)
+      expect(account.templates.pluck(:name).uniq.size).to eq(4)
+      expect(Template.where(id: incoming.map(&:id))).to be_empty
+      expect(Template.where(account_id: other_account.id)).to be_empty
+    end
+
+    it 'keeps a starter template the joiner actually used' do
+      StarterTemplates.seed!(account)
+      incoming = StarterTemplates.seed!(other_account)
+      used = incoming.first
+
+      create(:submission, template: used, created_by_user: other_user)
+
+      token = invite_row.raw_token
+      act_as(other_user)
+
+      expect { post "/invites/#{token}" }.to change(AccountMove, :count).by(1)
+
+      # The one they sent comes with them, duplicate name and all: it is their
+      # work now. The three they never touched do not.
+      expect(used.reload.account).to eq(account)
+      expect(account.templates.count).to eq(5)
+      expect(account.templates.where(name: used.name).count).to eq(2)
+      expect(Template.where(id: incoming.drop(1).map(&:id))).to be_empty
+    end
+
     it 'refuses, with an explanation, when the account being left is still paying' do
       create(:account_subscription, account: other_account, access_state: 'active', status: 'active', quantity: 1)
       token = invite_row.raw_token

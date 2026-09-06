@@ -1002,6 +1002,13 @@ credential, so it is ended too: the only session that survives the move is the
 browser that pressed the button. Anybody joining a team should expect to
 create a fresh API token afterwards, and to sign in again everywhere else.
 
+Everything they own comes with them, with one small exception. Every new
+account starts with the same four sample documents, so a person who never
+touched theirs would otherwise land the team with eight cards and four
+duplicated names. Those untouched copies are dropped on the way in; a sample
+they actually sent, or renamed, is their own work and moves with them like
+anything else.
+
 One last money case belongs here. If somebody starts a Checkout for their own
 account and only completes it **after** they have joined a team, that payment
 arrives for an account nobody is in any more. It is refused: no paid access is

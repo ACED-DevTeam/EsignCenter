@@ -28,7 +28,26 @@ module StarterTemplates
   # both are authored by the account's admin.
   STARTER_PREFERENCE_KEY = 'starter'
 
+  # The one unique index `seed!` is allowed to swallow a collision on: the
+  # seeding marker's (account_id, key). Anything else that raises
+  # RecordNotUnique under `seed!` is a bug, and a bug reported as "somebody
+  # else did it" is the class of bug that hides for months (loop 3, N7).
+  MARKER_INDEX = 'index_account_configs_on_account_id_and_key'
+
+  # `templates.preferences` is a text column holding JSON, so the marker is
+  # cast for a lookup; an empty string is treated as an empty object rather
+  # than blowing the cast up. FirstRunChecklist::NON_STARTER_TEMPLATE_SQL asks
+  # the negation of this same question.
+  MARKED_SQL = <<~SQL.squish
+    COALESCE(NULLIF(templates.preferences, ''), '{}')::jsonb ->> :key = 'true'
+  SQL
+
   module_function
+
+  # The templates in `relation` that are still one of the four we put there.
+  def marked(relation)
+    relation.where([MARKED_SQL, { key: STARTER_PREFERENCE_KEY }])
+  end
 
   def manifest
     @manifest ||= YAML.safe_load(MANIFEST_PATH.read).fetch('templates').freeze
@@ -73,11 +92,19 @@ module StarterTemplates
     SearchEntries.enqueue_reindex(templates)
 
     templates
-  rescue ActiveRecord::RecordNotUnique
+  rescue ActiveRecord::RecordNotUnique => e
     # Two workers racing the same brand-new account. The marker's unique index
     # rolled this one back before it wrote a document, which is the outcome the
     # idempotency check above is asking for — so it is an ordinary "somebody
     # else did it", not something to wake an operator for.
+    #
+    # Narrowed to THAT index (session 10, seam L2). This rescue covers the
+    # whole method — the marker, four templates, their attachments, the
+    # document processing and the reindex — and a class-wide rescue would file
+    # a unique-index bug in any of them as the same well-formed shrug, with no
+    # ErrorReport, because the exception never reaches StarterTemplatesJob.
+    raise unless e.message.include?(MARKER_INDEX)
+
     nil
   end
 
