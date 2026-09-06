@@ -314,10 +314,13 @@ delegation.
   the version header of the words they actually read; a reader who sees that
   line knows exactly which text to go and find. For an editor this means one
   thing: change a disclosure and you must bump the version and archive the old
-  text, or the evidence for every consent already on record stops printing its
-  wording. CI says so first — `spec/golden/consent_version_spec.rb` pins the
-  live fingerprint of all 14 base locales (and of the self-signing variant),
-  so an unbumped wording edit turns that example red before it can ship.
+  text — the body **and** the three self-signing paragraphs, which are part of
+  the same fingerprint (§6) — or the evidence for every consent already on
+  record stops printing its wording. CI says so first —
+  `spec/golden/consent_version_spec.rb` pins the live fingerprint of all 14
+  base locales, twice each (the plain disclosure and the self-signing
+  variant), so an unbumped wording edit to either turns that example red
+  before it can ship.
 - **Submission events page** in the dashboard — the same event line, with a
   shield-check icon.
 - **API** — `GET /api/submitters/:id` and submission payloads include the
@@ -346,14 +349,20 @@ create is an ordinary human signer who goes through the gated form.
 ## 6. Changing the disclosure text — the version rule
 
 The disclosure text is the locale key `esign_consent_disclosure_body_html`
-(all 14 base locales in `config/locales/i18n.yml`).
+(all 14 base locales in `config/locales/i18n.yml`) **and** the three
+self-signing paragraphs that replace the sender paragraphs for a
+"sign it yourself" signer (§1): `esign_consent_disclosure_self_signing_agreement`,
+`esign_consent_disclosure_self_signing` and
+`esign_consent_disclosure_self_signing_contact`. Both halves are fingerprinted
+on the event, so both are covered by the rule below — editing a self-signing
+paragraph is editing the disclosure.
 
 **Versions so far**
 
 | version | effective | state |
 | --- | --- | --- |
-| `v1` | 2 September 2026 | archived 5 September 2026 in `config/locales/esign_disclosures/v1.yml` (all 14 locales) |
-| `v2` | 5 September 2026 | live — names the sender, links to the document as a PDF, and covers the §7001(c) points v1 left out |
+| `v1` | 2 September 2026 | archived 5 September 2026 in `config/locales/esign_disclosures/v1.yml` (all 14 locales). No self-signing variant: v1 shipped before it existed, so no `v1` consent can carry `self_signing` and the archive records `v1_self_signing: never_published` |
+| `v2` | 5 September 2026 | live — names the sender, links to the document as a PDF, carries the self-signing variant, and covers the §7001(c) points v1 left out |
 
 Nothing had shipped to production under `v1`, but consents had been recorded
 in the development stack, so the bump-and-archive rule below was followed
@@ -387,18 +396,49 @@ reproducible. When you bump:
    the live key. Take the text programmatically (`I18n.t(key, locale:,
    fallback: false)` in a runner) rather than by hand: the fingerprints are
    recomputed from what lands in the file, so a stray space is a real change.
-2. Update the text in every base locale.
-3. Bump `EsignConsent::VERSION` (`v1` → `v2`) and `EsignConsent::EFFECTIVE_DATE`
-   in `lib/esign_consent.rb`.
+2. **Archive the three self-signing paragraphs of that version in the same
+   file**, beside the body, under `<old-version>_self_signing`:
 
-`EsignConsent.disclosure_text(version:, locale:)` then answers "what did a
-signer who consented to `v1` in French read?" from inside the product — the
-live key for the current version, the archive for older ones — and
-`EsignConsent.disclosure_sha256` recomputes the fingerprint stored on each
-event to prove the archived text is that one. Old events keep their old
-version, locale and fingerprint. Signers who consented under an earlier
-version are not asked again — a new version is a new text for new signers,
-not a revocation.
+   ```yaml
+   en:
+     esign_disclosure_archive:
+       v2: |-
+         <p>By checking the box, ...</p>
+       v2_self_signing:
+         esign_consent_disclosure_self_signing_agreement: "By checking the box, ..."
+         esign_consent_disclosure_self_signing: "<strong>You sent this document to yourself.</strong> ..."
+         esign_consent_disclosure_self_signing_contact: "<strong>Your contact details.</strong> ..."
+   ```
+
+   These paragraphs are part of the fingerprinted text: a "sign it yourself"
+   signer's `disclosure_sha256` is of the body **with them spliced in**, so a
+   body archived without them leaves every self-signing consent of that
+   version unreproducible and the audit trail can only print "wording no
+   longer on file" for those signers. A version that genuinely never had a
+   self-signing variant writes `<old-version>_self_signing: never_published`
+   instead (that is what `v1` carries), so "there was nothing to archive" is a
+   fact on the record rather than an omission.
+3. Update the text in every base locale — the body and, if they change, the
+   self-signing paragraphs.
+4. Bump `EsignConsent::VERSION` (`v1` → `v2`) and `EsignConsent::EFFECTIVE_DATE`
+   in `lib/esign_consent.rb`.
+5. Re-pin `ConsentDisclosureDigests::LIVE` in
+   `spec/golden/consent_version_spec.rb` — both digests per locale, the plain
+   text and the self-signing variant.
+
+`EsignConsent.disclosure_text(version:, locale:, self_signing:)` then answers
+"what did a signer who consented to `v1` in French read?" from inside the
+product. Everything a version's text is made of comes from **one place per
+version**: while the version is current, the live locale keys (body and
+self-signing paragraphs); once it is superseded, that version's archive
+snapshot. A version's words are never assembled half from a snapshot and half
+from today's locale file, which is what used to make a later edit of a
+self-signing paragraph silently rewrite — and break — every self-signing
+consent already on record. `EsignConsent.disclosure_sha256` recomputes the
+fingerprint stored on each event to prove the archived text is that one. Old
+events keep their old version, locale and fingerprint. Signers who consented
+under an earlier version are not asked again — a new version is a new text for
+new signers, not a revocation.
 
 The signing page sends back the version it displayed together with the
 consent. A page that was opened before the bump and is only submitted

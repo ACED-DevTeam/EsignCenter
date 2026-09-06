@@ -97,7 +97,7 @@ RSpec.describe 'Legal documents', type: :request do
       expect(response.body).to include('href="/trust"')
 
       # The AGPL attribution the marketing layout carries (rake gates:branding).
-      expect(response.body).to include(Docuseal::DOCUSEAL_URL)
+      expect(response.body).to include(Docuseal::DOCUSEAL_SOURCE_URL)
     end
 
     it 'lets search engines index them' do
@@ -368,7 +368,9 @@ RSpec.describe 'Legal documents', type: :request do
 
   describe 'recording the agreement' do
     stash_env 'REGISTRATION_ENABLED', 'TURNSTILE_SITE_KEY', 'TURNSTILE_SECRET_KEY',
-              'GOOGLE_OAUTH_CLIENT_ID', 'GOOGLE_OAUTH_CLIENT_SECRET', clear: true
+              'GOOGLE_OAUTH_CLIENT_ID', 'GOOGLE_OAUTH_CLIENT_SECRET',
+              'APPLE_OAUTH_CLIENT_ID', 'APPLE_OAUTH_TEAM_ID', 'APPLE_OAUTH_KEY_ID',
+              'APPLE_OAUTH_PRIVATE_KEY', clear: true
 
     before { RateLimit.store.clear }
 
@@ -376,6 +378,7 @@ RSpec.describe 'Legal documents', type: :request do
       RateLimit.store.clear
       OmniAuth.config.test_mode = false
       OmniAuth.config.mock_auth[:google_oauth2] = nil
+      OmniAuth.config.mock_auth[:apple] = nil
     end
 
     def enable_registration!
@@ -399,12 +402,33 @@ RSpec.describe 'Legal documents', type: :request do
                                extra: { raw_info: { email_verified: true } })
     end
 
+    def enable_apple!
+      ENV['APPLE_OAUTH_CLIENT_ID'] = 'com.esigncenter.web'
+      ENV['APPLE_OAUTH_TEAM_ID'] = 'AB1234CD56'
+      ENV['APPLE_OAUTH_KEY_ID'] = 'EF7890GH12'
+      ENV['APPLE_OAUTH_PRIVATE_KEY'] = OpenSSL::PKey::EC.generate('prime256v1').to_pem
+    end
+
+    def mock_apple(email:)
+      OmniAuth.config.test_mode = true
+      OmniAuth.config.mock_auth[:apple] =
+        OmniAuth::AuthHash.new(provider: 'apple', uid: '001234.fedcba9876543210.1234',
+                               info: { email:, name: 'Grace Hopper', email_verified: true })
+    end
+
     # The button puts the displayed versions on the authorize query string, so
     # the real flow hands them to the callback as `omniauth.params`.
     def sign_in_with_google!(versions: LegalDocuments.version_fields)
       post user_google_oauth2_omniauth_authorize_path(versions)
 
       follow_redirect!
+    end
+
+    # The same, with Apple's cross-site form POST in place of the redirect.
+    def sign_in_with_apple!(versions: LegalDocuments.version_fields)
+      post user_apple_omniauth_authorize_path(versions)
+
+      post user_apple_omniauth_callback_path
     end
 
     # Both documents, at their current version, with the digest of the exact
@@ -447,6 +471,35 @@ RSpec.describe 'Legal documents', type: :request do
 
       expect_current_pair(LegalAcceptance.where(user:).to_a,
                           source: LegalAcceptance::SIGNUP_GOOGLE, account: user.account)
+    end
+
+    it 'writes both documents when somebody signs up with Apple' do
+      enable_registration!
+      enable_apple!
+      mock_apple(email: 'grace-apple@example.com')
+
+      expect { sign_in_with_apple! }.to change(LegalAcceptance, :count).by(2)
+
+      user = User.find_by!(email: 'grace-apple@example.com')
+
+      expect_current_pair(LegalAcceptance.where(user:).to_a,
+                          source: LegalAcceptance::SIGNUP_APPLE, account: user.account)
+    end
+
+    # The Apple button carries the versions it displayed on the authorize
+    # query string exactly as the Google one does, so a button drawn before a
+    # wording change records nothing.
+    it 'refuses an Apple sign-up whose button was showing a superseded version' do
+      enable_registration!
+      enable_apple!
+      mock_apple(email: 'stale-apple@example.com')
+      stale = LegalDocuments.version_fields.transform_values { '2020-01-01' }
+
+      expect { sign_in_with_apple!(versions: stale) }.not_to change(LegalAcceptance, :count)
+
+      expect(response).to redirect_to(new_user_session_path)
+      expect(flash[:alert]).to eq(I18n.t('legal_documents_updated_please_review'))
+      expect(User.find_by(email: 'stale-apple@example.com')).to be_nil
     end
 
     it 'writes both documents against the INVITING account when a new person accepts an invitation' do

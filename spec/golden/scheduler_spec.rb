@@ -74,19 +74,20 @@ RSpec.describe 'Scheduler', type: :lib do
     expect(job.cron).to eq('15 * * * *')
     expect(job.queue_name_with_prefix).to eq('billing')
 
-    # One tick, every sweep: a rename that quietly dropped one of them would
-    # leave the dunning clock, the lapsed invitations or the seat count
-    # frozen. The third (review batch 1, F2) is the backstop that brings a
-    # subscription billing for more seats than are occupied back down.
-    allow(BillingLifecycle).to receive(:run_dunning!)
-    allow(BillingLifecycle).to receive(:expire_invites!)
-    allow(BillingLifecycle).to receive(:reconcile_seats!)
+    # One tick, EVERY sweep: a rename that quietly dropped one of them would
+    # leave the dunning clock, the lapsed invitations, the abandoned seat
+    # purchases or the seat count frozen. The fourth (review batch 1, F2) is
+    # the backstop that brings a subscription billing for more seats than are
+    # occupied back down. `discard_parked_invites!` was missing from this list
+    # until checkpoint 10 (C7) — dropping it from the job left every example
+    # here green.
+    sweeps = %i[run_dunning! expire_invites! discard_parked_invites! reconcile_seats!]
+
+    sweeps.each { |sweep| allow(BillingLifecycle).to receive(sweep) }
 
     BillingLifecycleJob.new.perform
 
-    expect(BillingLifecycle).to have_received(:run_dunning!).once
-    expect(BillingLifecycle).to have_received(:expire_invites!).once
-    expect(BillingLifecycle).to have_received(:reconcile_seats!).once
+    sweeps.each { |sweep| expect(BillingLifecycle).to have_received(sweep).once }
     expect(SchedulerStamps.all['billing_lifecycle']).to include('outcome' => 'ok', 'error' => nil)
   end
 

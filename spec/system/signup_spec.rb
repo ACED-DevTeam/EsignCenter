@@ -2,6 +2,7 @@
 
 RSpec.describe 'Sign Up' do
   stash_env 'REGISTRATION_ENABLED', 'TURNSTILE_SITE_KEY', 'GOOGLE_OAUTH_CLIENT_ID', 'GOOGLE_OAUTH_CLIENT_SECRET',
+            'APPLE_OAUTH_CLIENT_ID', 'APPLE_OAUTH_TEAM_ID', 'APPLE_OAUTH_KEY_ID', 'APPLE_OAUTH_PRIVATE_KEY',
             clear: true
 
   before do
@@ -12,6 +13,10 @@ RSpec.describe 'Sign Up' do
     ENV['TURNSTILE_SITE_KEY'] = '1x00000000000000000000AA'
     ENV['GOOGLE_OAUTH_CLIENT_ID'] = 'google-client-id'
     ENV['GOOGLE_OAUTH_CLIENT_SECRET'] = 'google-client-secret'
+    ENV['APPLE_OAUTH_CLIENT_ID'] = 'com.esigncenter.web'
+    ENV['APPLE_OAUTH_TEAM_ID'] = 'AB1234CD56'
+    ENV['APPLE_OAUTH_KEY_ID'] = 'EF7890GH12'
+    ENV['APPLE_OAUTH_PRIVATE_KEY'] = OpenSSL::PKey::EC.generate('prime256v1').to_pem
 
     visit new_registration_path
   end
@@ -38,7 +43,7 @@ RSpec.describe 'Sign Up' do
     expect(page).to have_no_link(href: registration_path)
   end
 
-  it 'renders the sign-up form with the Google button and no upstream attribution' do
+  it 'renders the sign-up form with both provider buttons and no upstream attribution' do
     expect(page).to have_content('Create your free account')
     expect(page).to have_content('Free: 5 completed documents a month, 1 user.')
 
@@ -48,6 +53,7 @@ RSpec.describe 'Sign Up' do
 
     expect(page).to have_css('.cf-turnstile[data-sitekey="1x00000000000000000000AA"]')
     expect(page).to have_button('Continue with Google')
+    expect(page).to have_button('Continue with Apple')
     expect(page).to have_button('Create free account')
     expect(page).to have_link('Terms of Service', href: '/terms')
     expect(page).to have_link('Privacy Policy', href: '/privacy')
@@ -56,6 +62,7 @@ RSpec.describe 'Sign Up' do
     # The Google button carries the browser's timezone on its query string
     # (OmniAuth keeps only the authorize request's query for the callback).
     expect(page).to have_css('form#google_sign_in_form[action*="timezone="]')
+    expect(page).to have_css('form#apple_sign_in_form[action*="timezone="]')
     expect(page).to have_no_content('DocuSeal')
     expect(page).to have_no_content('Powered by')
   end

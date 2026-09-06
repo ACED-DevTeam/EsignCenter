@@ -50,10 +50,17 @@ RSpec.describe 'ESIGN consent in the signing form' do
       expect(page).to have_css('#esign_consent:not([disabled])')
 
       # Reachable, and still refused: clicking it changes nothing.
+      expect(page).to have_no_css('#esign_consent_open_pdf_first[data-nudged]')
+
       find_by_id('esign_consent').click
 
       expect(page).to have_unchecked_field('esign_consent')
       expect(page).to have_css('#submit_form_button[disabled]')
+      # D3: the refused click is not silent. The hint the box already points
+      # at is brought forward — emphasised on screen and announced in the
+      # live region — so a consumer who taps the box learns why it did not
+      # tick instead of meeting a dead control.
+      expect(page).to have_css('#esign_consent_open_pdf_first[data-nudged="true"]')
 
       find_by_id('esign_consent_view_pdf').click
 

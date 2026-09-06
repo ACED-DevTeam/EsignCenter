@@ -1,20 +1,21 @@
 <%= content_for(:canonical_url, new_registration_url) %>
-<%= content_for(:html_title, "#{t('create_your_free_account')} | #{Docuseal.product_name}") %>
+<%= content_for(:html_title, "#{t('create_your_free_account')} — #{Docuseal.product_name}") %>
 <%# Every link into this page carries data-turbo: false, but a link added later would not have to remember: this makes the page itself refuse to be painted inside another document, which is what the widened Turnstile policy below needs (layouts/_head_tags.html.erb). %>
 <% content_for(:turbo_visit_control, 'reload') %>
 <div class="max-w-lg mx-auto px-2">
   <h1 class="text-4xl font-bold text-center mt-8"><%= t('create_your_free_account') %></h1>
   <p class="text-center text-base-content/70 mt-3" dir="auto"><%= t('free_tier_summary') %></p>
-  <% if Registrations.google_enabled? %>
-    <div class="mt-8">
+  <% if Registrations.google_enabled? || Registrations.apple_enabled? %>
+    <div class="mt-8 space-y-3">
       <%= render 'devise/shared/google_button' %>
+      <%= render 'devise/shared/apple_button' %>
     </div>
     <div class="divider my-6 text-base-content/60"><%= t('or_sign_up_with_email') %></div>
   <% end %>
   <%# Full page loads on purpose: the Turnstile widget script has to run again on every render. %>
   <%= form_for(resource, as: resource_name, url: registration_path, html: { class: 'space-y-6 mt-6', autocomplete: 'on' }, data: { turbo: false }) do |f| %>
     <div class="space-y-2" dir="auto">
-      <%= render 'devise/shared/error_messages', resource: %>
+      <%= render 'devise/registrations/errors', resource: %>
       <set-timezone data-input-id="signup_timezone"></set-timezone>
       <%= hidden_field_tag 'user[timezone]', nil, id: 'signup_timezone' %>
       <%# The versions of the Terms and the Privacy Policy this page is showing.

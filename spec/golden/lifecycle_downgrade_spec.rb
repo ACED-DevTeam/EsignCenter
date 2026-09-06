@@ -1008,6 +1008,34 @@ RSpec.describe 'Deleting an account', type: :request do
   describe 'the purge at the end of the window' do
     let!(:webhook) { create(:webhook_url, account:) }
 
+    # The walk above indexes `Purge::INVENTORY` itself, so a table dropped
+    # from the constant simply stops being counted — checkpoint 10 (E3)
+    # removed `legal_acceptances` from it and all 43 examples stayed green.
+    # This one asks the SCHEMA instead: every table that can name an account
+    # or one of its people, directly by column or through a chain of foreign
+    # keys, is either emptied by the purge or has a written reason to survive.
+    # A tenant table added next year that nobody placed fails here, by name.
+    let(:purge_survivors) do
+      {
+        'accounts' => 'the tombstone itself: renamed, stamped, kept, so every id that still points ' \
+                      'at it points at something (docs/account-deletion.md).',
+        'verified_documents' => 'the public /verify records. A SHA-256, a date and a signer count, ' \
+                                'naming nobody — and if they went, every document the account ever ' \
+                                'signed would stop verifying.',
+        'account_subscriptions' => 'the money history: Stripe ids and states, no documents and no people.',
+        'stripe_event_inboxes' => 'the Stripe audit, kept with account_id nullified and the customer ' \
+                                  'scrubbed out of the stored event (asserted below).',
+        'operator_events' => 'the platform\'s own audit of what an operator did — including the purge ' \
+                             'itself — so it has to outlive the account it is about. NOT documented in ' \
+                             'docs/account-deletion.md, and its `details` can still carry an ' \
+                             'impersonated administrator\'s address: raised to the CTO at checkpoint 10 ' \
+                             '(fix-5, E3) rather than silenced here.',
+        'console1984_sessions' => 'a false positive of the column heuristic: its `user_id` is a ' \
+                                  'console1984_users row (who opened a Rails console), never an ' \
+                                  'account user.'
+      }
+    end
+
     # A row in EVERY table Accounts::Purge::INVENTORY names, so the walk is
     # exercised rather than described (review batch 2, K5). A table that is
     # empty in the fixture proves nothing about the line that empties it — and
@@ -1262,6 +1290,58 @@ RSpec.describe 'Deleting an account', type: :request do
 
       # And running it again is a no-op.
       expect(Accounts::Purge.call(account)).to eq(:already_purged)
+    end
+
+    it 'has a place in the inventory, or a written reason to survive, for every table in the schema ' \
+       'that can name an account or a user' do
+      conn = ActiveRecord::Base.connection
+      tables = conn.tables
+
+      # 1. by column: anything carrying account_id or user_id.
+      named = tables.select { |table| conn.columns(table).map(&:name).intersect?(%w[account_id user_id]) }
+
+      # 2. by chain, however many hops away. Two ways a row in this schema
+      #    points at another table and the walk has to know both: a real
+      #    foreign key, and the `<table>_id` convention — neither
+      #    `completed_documents.submitter_id` nor
+      #    `webhook_attempts.webhook_event_id` carries a constraint.
+      references = tables.index_with do |table|
+        columns = conn.columns(table).map(&:name)
+        by_convention = columns.filter_map { |column| column.delete_suffix('_id').pluralize if column.end_with?('_id') }
+
+        (conn.foreign_keys(table).map(&:to_table) | by_convention) & tables
+      end
+      reached = %w[accounts users]
+
+      loop do
+        found = tables.select { |table| reached.exclude?(table) && references[table].intersect?(reached) }
+        break if found.empty?
+
+        reached += found
+      end
+
+      tenant_tables = (named | reached).uniq
+
+      # The derivation has to be real, or this proves nothing: every table the
+      # purge is known to empty is in it, bar the one no schema walk can
+      # reach. ActiveStorage links POLYMORPHICALLY (`record_type` +
+      # `record_id`), so nothing in the schema says an attachment belongs to a
+      # template of this account — which is exactly why the purge names that
+      # table itself and empties it first, through ActiveStorage, before any
+      # `delete_all` can strand a file in the bucket.
+      expect(Accounts::Purge::INVENTORY - tenant_tables).to eq(%w[active_storage_attachments])
+
+      unplaced = tenant_tables - Accounts::Purge::INVENTORY - purge_survivors.keys
+
+      expect(unplaced).to eq([]),
+                          "#{unplaced.join(', ')} can name an account or a user and is neither in " \
+                          'Accounts::Purge::INVENTORY nor in the survivor list above. Decide which, ' \
+                          'and write the reason down.'
+
+      # And the survivor list cannot quietly grow over a table the purge does
+      # empty, or over one that no longer exists.
+      expect(purge_survivors.keys & Accounts::Purge::INVENTORY).to eq([])
+      expect(purge_survivors.keys - tables).to eq([])
     end
 
     it 'keeps the money history and unnames the Stripe audit rather than deleting it' do

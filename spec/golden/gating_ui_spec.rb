@@ -343,7 +343,7 @@ RSpec.describe 'Feature gating UI', type: :request do
     # comment is still a substring of the body but is not attribution.
     def docuseal_attribution_links(body)
       Nokogiri::HTML(body)
-              .css("a[href^='#{Docuseal::DOCUSEAL_URL}']")
+              .css("a[href='#{Docuseal::DOCUSEAL_SOURCE_URL}']")
               .select { |a| a.text.strip == 'DocuSeal' && visibly_rendered?(a) }
     end
 
@@ -482,7 +482,7 @@ RSpec.describe 'Feature gating UI', type: :request do
 
       expect(response).to have_http_status(:ok)
       link = docuseal_attribution_links(response.body).sole
-      expect(link['href']).to eq("#{Docuseal::DOCUSEAL_URL}/start")
+      expect(link['href']).to eq(Docuseal::DOCUSEAL_SOURCE_URL)
     end
 
     it 'renders the share-link QR attribution for free and paid-without-branding accounts alike' do

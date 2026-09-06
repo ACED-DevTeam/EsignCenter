@@ -1,0 +1,8 @@
+<%# "Continue with Apple": only while sign-up is open and all four Apple credentials are real (Registrations.apple_enabled?). Everything about it mirrors the Google button — POST-only (OmniAuth refuses GET), full page load (Turbo would swallow the redirect to Apple), the browser's timezone and the versions of the Terms and the Privacy Policy this page is showing carried on the form's query string, which OmniAuth hands back to the callback as omniauth.params (OmniauthCallbacksController#register). Black background, white Apple mark, "Continue with Apple": Apple's own button guidelines, which are a condition of using Sign in with Apple. %>
+<% if Registrations.apple_enabled? %>
+  <%= button_to user_apple_omniauth_authorize_path(LegalDocuments.version_fields), method: :post, form: { id: 'apple_sign_in_form', data: { turbo: false } }, form_class: 'w-full', class: 'btn w-full text-base normal-case gap-3 bg-black text-white border-black hover:bg-neutral-800 hover:border-neutral-800' do %>
+    <%= svg_icon('brand_apple', class: 'w-5 h-5 shrink-0') %>
+    <span><%= t('continue_with_apple') %></span>
+  <% end %>
+  <set-timezone data-form-id="apple_sign_in_form"></set-timezone>
+<% end %>

@@ -2,6 +2,16 @@
 # older version can still be read back word for word (docs/esign-consent.md §6).
 # Never edit these strings: EsignConsent.disclosure_sha256 fingerprints them, and
 # every v1 consent event on record carries that fingerprint.
+#
+# A version snapshot has TWO halves, because both are fingerprinted: the body
+# (`<version>:`) and the three self-signing paragraphs a sender signing their
+# own document was shown (`<version>_self_signing:`, keyed by the same names as
+# the live locale keys). Archive them together — a body archived without its
+# self-signing paragraphs leaves every self-signing consent of that version
+# unreproducible, and the audit trail can then only say "wording no longer on
+# file". A version that never had a self-signing variant says
+# `never_published` instead, which is a fact on the record rather than an
+# omission somebody has to guess at.
 en:
   esign_disclosure_archive:
     v1: |-
@@ -10,6 +20,10 @@ en:
       <p><strong>Withdrawing consent.</strong> You may withdraw your consent at any time before you complete the document by not signing it and letting the sender know. Withdrawing consent does not affect documents you have already signed.</p>
       <p><strong>Paper copies.</strong> You may request a paper copy of this document at any time by contacting the sender.</p>
       <p><strong>What we record.</strong> Your agreement is recorded together with the date, time and internet (IP) address from which you gave it, and it appears in the document's audit trail.</p>
+    # v1 shipped before the self-signing variant existed, so no v1 consent
+    # can carry `self_signing`: there are no v1 paragraphs to reproduce, and
+    # a v1 self-signing consent cannot exist (docs/esign-consent.md §6).
+    v1_self_signing: never_published
 es:
   esign_disclosure_archive:
     v1: |-
@@ -18,6 +32,10 @@ es:
       <p><strong>Retirar el consentimiento.</strong> Puede retirar su consentimiento en cualquier momento antes de completar el documento: basta con no firmarlo e informar al remitente. Retirar el consentimiento no afecta a los documentos que ya haya firmado.</p>
       <p><strong>Copias en papel.</strong> Puede solicitar una copia en papel de este documento en cualquier momento poniéndose en contacto con el remitente.</p>
       <p><strong>Lo que registramos.</strong> Su aceptación se registra junto con la fecha, la hora y la dirección de internet (IP) desde la que la otorgó, y aparece en el registro de auditoría del documento.</p>
+    # v1 shipped before the self-signing variant existed, so no v1 consent
+    # can carry `self_signing`: there are no v1 paragraphs to reproduce, and
+    # a v1 self-signing consent cannot exist (docs/esign-consent.md §6).
+    v1_self_signing: never_published
 it:
   esign_disclosure_archive:
     v1: |-
@@ -26,6 +44,10 @@ it:
       <p><strong>Revoca del consenso.</strong> Puoi revocare il consenso in qualsiasi momento prima di completare il documento, semplicemente non firmandolo e informando il mittente. La revoca non riguarda i documenti che hai già firmato.</p>
       <p><strong>Copie cartacee.</strong> Puoi richiedere in qualsiasi momento una copia cartacea di questo documento contattando il mittente.</p>
       <p><strong>Cosa registriamo.</strong> Il tuo consenso viene registrato insieme a data, ora e indirizzo internet (IP) da cui è stato prestato, e compare nel registro di audit del documento.</p>
+    # v1 shipped before the self-signing variant existed, so no v1 consent
+    # can carry `self_signing`: there are no v1 paragraphs to reproduce, and
+    # a v1 self-signing consent cannot exist (docs/esign-consent.md §6).
+    v1_self_signing: never_published
 fr:
   esign_disclosure_archive:
     v1: |-
@@ -34,6 +56,10 @@ fr:
       <p><strong>Retrait du consentement.</strong> Vous pouvez retirer votre consentement à tout moment avant de finaliser le document, en ne le signant pas et en prévenant l'expéditeur. Le retrait n'affecte pas les documents que vous avez déjà signés.</p>
       <p><strong>Copies papier.</strong> Vous pouvez demander à tout moment une copie papier de ce document en contactant l'expéditeur.</p>
       <p><strong>Ce que nous enregistrons.</strong> Votre accord est enregistré avec la date, l'heure et l'adresse internet (IP) depuis laquelle vous l'avez donné, et il figure dans la piste d'audit du document.</p>
+    # v1 shipped before the self-signing variant existed, so no v1 consent
+    # can carry `self_signing`: there are no v1 paragraphs to reproduce, and
+    # a v1 self-signing consent cannot exist (docs/esign-consent.md §6).
+    v1_self_signing: never_published
 pt:
   esign_disclosure_archive:
     v1: |-
@@ -42,6 +68,10 @@ pt:
       <p><strong>Retirar o consentimento.</strong> Pode retirar o seu consentimento a qualquer momento antes de concluir o documento, bastando não o assinar e informar o remetente. A retirada não afeta os documentos que já assinou.</p>
       <p><strong>Cópias em papel.</strong> Pode solicitar a qualquer momento uma cópia em papel deste documento contactando o remetente.</p>
       <p><strong>O que registamos.</strong> O seu consentimento é registado juntamente com a data, a hora e o endereço de internet (IP) a partir do qual foi dado, e consta do registo de auditoria do documento.</p>
+    # v1 shipped before the self-signing variant existed, so no v1 consent
+    # can carry `self_signing`: there are no v1 paragraphs to reproduce, and
+    # a v1 self-signing consent cannot exist (docs/esign-consent.md §6).
+    v1_self_signing: never_published
 de:
   esign_disclosure_archive:
     v1: |-
@@ -50,6 +80,10 @@ de:
       <p><strong>Widerruf der Zustimmung.</strong> Sie können Ihre Zustimmung jederzeit vor dem Abschluss des Dokuments widerrufen, indem Sie es nicht unterschreiben und den Absender informieren. Der Widerruf betrifft keine Dokumente, die Sie bereits unterschrieben haben.</p>
       <p><strong>Papierkopien.</strong> Sie können jederzeit eine Papierkopie dieses Dokuments anfordern, indem Sie sich an den Absender wenden.</p>
       <p><strong>Was wir aufzeichnen.</strong> Ihre Zustimmung wird zusammen mit Datum, Uhrzeit und der Internetadresse (IP) aufgezeichnet, von der aus Sie sie erteilt haben, und erscheint im Prüfprotokoll des Dokuments.</p>
+    # v1 shipped before the self-signing variant existed, so no v1 consent
+    # can carry `self_signing`: there are no v1 paragraphs to reproduce, and
+    # a v1 self-signing consent cannot exist (docs/esign-consent.md §6).
+    v1_self_signing: never_published
 pl:
   esign_disclosure_archive:
     v1: |-
@@ -58,6 +92,10 @@ pl:
       <p><strong>Wycofanie zgody.</strong> Możesz wycofać zgodę w dowolnym momencie przed ukończeniem dokumentu – wystarczy go nie podpisywać i poinformować nadawcę. Wycofanie zgody nie dotyczy dokumentów, które już zostały podpisane.</p>
       <p><strong>Kopie papierowe.</strong> W każdej chwili możesz poprosić o papierową kopię tego dokumentu, kontaktując się z nadawcą.</p>
       <p><strong>Co rejestrujemy.</strong> Twoja zgoda jest zapisywana wraz z datą, godziną i adresem internetowym (IP), z którego została udzielona, i pojawia się w dzienniku audytu dokumentu.</p>
+    # v1 shipped before the self-signing variant existed, so no v1 consent
+    # can carry `self_signing`: there are no v1 paragraphs to reproduce, and
+    # a v1 self-signing consent cannot exist (docs/esign-consent.md §6).
+    v1_self_signing: never_published
 uk:
   esign_disclosure_archive:
     v1: |-
@@ -66,6 +104,10 @@ uk:
       <p><strong>Відкликання згоди.</strong> Ви можете відкликати згоду в будь-який момент до завершення документа: просто не підписуйте його та повідомте відправника. Відкликання не стосується документів, які ви вже підписали.</p>
       <p><strong>Паперові копії.</strong> Ви можете будь-коли запросити паперову копію цього документа, звернувшись до відправника.</p>
       <p><strong>Що ми записуємо.</strong> Ваша згода фіксується разом із датою, часом та інтернет-адресою (IP), з якої її було надано, і відображається в журналі аудиту документа.</p>
+    # v1 shipped before the self-signing variant existed, so no v1 consent
+    # can carry `self_signing`: there are no v1 paragraphs to reproduce, and
+    # a v1 self-signing consent cannot exist (docs/esign-consent.md §6).
+    v1_self_signing: never_published
 cs:
   esign_disclosure_archive:
     v1: |-
@@ -74,6 +116,10 @@ cs:
       <p><strong>Odvolání souhlasu.</strong> Souhlas můžete kdykoli před dokončením dokumentu odvolat tak, že dokument nepodepíšete a informujete odesílatele. Odvolání se netýká dokumentů, které jste již podepsali.</p>
       <p><strong>Papírové kopie.</strong> O papírovou kopii tohoto dokumentu můžete kdykoli požádat odesílatele.</p>
       <p><strong>Co zaznamenáváme.</strong> Váš souhlas je zaznamenán spolu s datem, časem a internetovou adresou (IP), ze které byl udělen, a je uveden v auditní stopě dokumentu.</p>
+    # v1 shipped before the self-signing variant existed, so no v1 consent
+    # can carry `self_signing`: there are no v1 paragraphs to reproduce, and
+    # a v1 self-signing consent cannot exist (docs/esign-consent.md §6).
+    v1_self_signing: never_published
 he:
   esign_disclosure_archive:
     v1: |-
@@ -82,6 +128,10 @@ he:
       <p><strong>ביטול ההסכמה.</strong> ניתן לבטל את ההסכמה בכל עת לפני השלמת המסמך, על ידי אי-חתימה עליו ויידוע השולח. ביטול ההסכמה אינו משפיע על מסמכים שכבר נחתמו.</p>
       <p><strong>עותקים מודפסים.</strong> ניתן לבקש עותק מודפס של מסמך זה בכל עת בפנייה לשולח.</p>
       <p><strong>מה אנחנו מתעדים.</strong> ההסכמה שלך נרשמת יחד עם התאריך, השעה וכתובת האינטרנט (IP) שממנה ניתנה, ומופיעה ביומן הביקורת של המסמך.</p>
+    # v1 shipped before the self-signing variant existed, so no v1 consent
+    # can carry `self_signing`: there are no v1 paragraphs to reproduce, and
+    # a v1 self-signing consent cannot exist (docs/esign-consent.md §6).
+    v1_self_signing: never_published
 nl:
   esign_disclosure_archive:
     v1: |-
@@ -90,6 +140,10 @@ nl:
       <p><strong>Toestemming intrekken.</strong> U kunt uw toestemming op elk moment vóór het voltooien van het document intrekken door het niet te ondertekenen en de afzender hiervan op de hoogte te stellen. Intrekken heeft geen gevolgen voor documenten die u al heeft ondertekend.</p>
       <p><strong>Papieren kopieën.</strong> U kunt op elk moment een papieren kopie van dit document aanvragen door contact op te nemen met de afzender.</p>
       <p><strong>Wat wij vastleggen.</strong> Uw akkoord wordt vastgelegd samen met de datum, het tijdstip en het internetadres (IP) van waaruit u het heeft gegeven, en verschijnt in het audittrail van het document.</p>
+    # v1 shipped before the self-signing variant existed, so no v1 consent
+    # can carry `self_signing`: there are no v1 paragraphs to reproduce, and
+    # a v1 self-signing consent cannot exist (docs/esign-consent.md §6).
+    v1_self_signing: never_published
 ar:
   esign_disclosure_archive:
     v1: |-
@@ -98,6 +152,10 @@ ar:
       <p><strong>سحب الموافقة.</strong> يمكنك سحب موافقتك في أي وقت قبل إكمال المستند بعدم توقيعه وإبلاغ المرسل. لا يؤثر سحب الموافقة على المستندات التي وقعتها بالفعل.</p>
       <p><strong>النسخ الورقية.</strong> يمكنك طلب نسخة ورقية من هذا المستند في أي وقت عبر التواصل مع المرسل.</p>
       <p><strong>ما نسجله.</strong> يتم تسجيل موافقتك مع التاريخ والوقت وعنوان الإنترنت (IP) الذي منحتها منه، وتظهر في سجل التدقيق الخاص بالمستند.</p>
+    # v1 shipped before the self-signing variant existed, so no v1 consent
+    # can carry `self_signing`: there are no v1 paragraphs to reproduce, and
+    # a v1 self-signing consent cannot exist (docs/esign-consent.md §6).
+    v1_self_signing: never_published
 ko:
   esign_disclosure_archive:
     v1: |-
@@ -106,6 +164,10 @@ ko:
       <p><strong>동의 철회.</strong> 문서를 완료하기 전에는 언제든지 서명하지 않고 발신자에게 알리는 방법으로 동의를 철회할 수 있습니다. 동의 철회는 이미 서명한 문서에는 영향을 미치지 않습니다.</p>
       <p><strong>종이 사본.</strong> 발신자에게 연락하여 언제든지 이 문서의 종이 사본을 요청할 수 있습니다.</p>
       <p><strong>기록되는 내용.</strong> 귀하의 동의는 동의한 날짜, 시간, 인터넷(IP) 주소와 함께 기록되며 문서의 감사 추적에 표시됩니다.</p>
+    # v1 shipped before the self-signing variant existed, so no v1 consent
+    # can carry `self_signing`: there are no v1 paragraphs to reproduce, and
+    # a v1 self-signing consent cannot exist (docs/esign-consent.md §6).
+    v1_self_signing: never_published
 ja:
   esign_disclosure_archive:
     v1: |-
@@ -114,3 +176,7 @@ ja:
       <p><strong>同意の撤回。</strong> 文書を完了する前であれば、署名せずに送信者に連絡することで、いつでも同意を撤回できます。同意の撤回は、すでに署名した文書には影響しません。</p>
       <p><strong>紙のコピー。</strong> 送信者に連絡すれば、いつでもこの文書の紙のコピーを請求できます。</p>
       <p><strong>記録される内容。</strong> お客様の同意は、同意した日時およびインターネット（IP）アドレスとともに記録され、文書の監査証跡に表示されます。</p>
+    # v1 shipped before the self-signing variant existed, so no v1 consent
+    # can carry `self_signing`: there are no v1 paragraphs to reproduce, and
+    # a v1 self-signing consent cannot exist (docs/esign-consent.md §6).
+    v1_self_signing: never_published

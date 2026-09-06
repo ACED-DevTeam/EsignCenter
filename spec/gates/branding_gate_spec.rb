@@ -53,12 +53,23 @@ RSpec.describe 'Branding gate' do
       expect(Gates.branding_violations(content, 'app/views/probe.html.erb')).to be_empty
     end
 
-    it 'exempts the DOCUSEAL_URL constant only in lib/docuseal.rb' do
+    # The AGPL attribution points at the upstream SOURCE repository, so no app
+    # file needs the commercial domain any more — not even lib/docuseal.rb,
+    # which used to be allowlisted for it.
+    it 'refuses the upstream domain everywhere in app code, lib/docuseal.rb included' do
       snippet = "DOCUSEAL_URL = 'https://www.#{upstream_host}'"
 
-      expect(Gates.branding_violations("module Docuseal\n  #{snippet}\nend\n", 'lib/docuseal.rb')).to be_empty
+      expect(Gates.branding_violations("module Docuseal\n  #{snippet}\nend\n", 'lib/docuseal.rb'))
+        .to contain_exactly("lib/docuseal.rb:2: #{snippet} [#{upstream_host}]")
       expect(Gates.branding_violations("module Docuseal\n  #{snippet}\nend\n", 'lib/other.rb'))
         .to contain_exactly("lib/other.rb:2: #{snippet} [#{upstream_host}]")
+    end
+
+    it 'leaves the source-repo attribution target alone' do
+      snippet = "DOCUSEAL_SOURCE_URL = '#{Docuseal::DOCUSEAL_SOURCE_URL}'"
+
+      expect(Gates.branding_violations("module Docuseal\n  #{snippet}\nend\n", 'lib/docuseal.rb')).to be_empty
+      expect(Docuseal::DOCUSEAL_SOURCE_URL).to eq('https://github.com/docusealco/docuseal')
     end
 
     it 'exempts the README fork statement only in README.md' do
@@ -69,23 +80,26 @@ RSpec.describe 'Branding gate' do
     end
 
     it 'fails a line that carries an allowlisted snippet plus a second banned literal' do
-      line = "DOCUSEAL_URL = 'https://www.#{upstream_host}' # mirrors #{upstream_short_host}/start"
+      line = "EsignCenter is a customized fork of [DocuSeal](https://www.#{upstream_host}) " \
+             "— see #{upstream_short_host}/start"
 
-      expect(Gates.branding_violations("#{line}\n", 'lib/docuseal.rb'))
-        .to contain_exactly("lib/docuseal.rb:1: #{line} [#{upstream_short_host}]")
+      expect(Gates.branding_violations("#{line}\n", 'README.md'))
+        .to contain_exactly("README.md:1: #{line} [#{upstream_short_host}]")
     end
 
     it 'does not exempt a partial rewrite of the allowlisted snippet' do
-      line = "DOCUSEAL_URL = 'https://#{upstream_host}/start'"
+      line = "EsignCenter is a fork of [DocuSeal](https://www.#{upstream_host})"
 
-      expect(Gates.branding_violations("#{line}\n", 'lib/docuseal.rb'))
-        .to contain_exactly("lib/docuseal.rb:1: #{line} [#{upstream_host}]")
+      expect(Gates.branding_violations("#{line}\n", 'README.md'))
+        .to contain_exactly("README.md:1: #{line} [#{upstream_host}]")
     end
   end
 
   describe 'Gates.attribution_failures' do
     let(:powered_by_file) { 'app/views/shared/_powered_by.html.erb' }
-    let(:rendered_anchor) { '<a href="<%= Docuseal::DOCUSEAL_URL %>/start" class="underline">DocuSeal</a>' }
+    let(:rendered_anchor) do
+      '<a href="<%= Docuseal::DOCUSEAL_SOURCE_URL %>" target="_blank" rel="noopener" class="underline">DocuSeal</a>'
+    end
 
     # A minimal passing file: every required snippet plus, where the
     # requirement asks for one, the anchor as real rendered markup.
@@ -121,10 +135,10 @@ RSpec.describe 'Branding gate' do
 
     it 'fails when the DocuSeal anchor, the constant reference or the AGPL comment disappears' do
       expect(attribution_failures_for(powered_by_file => "<%= t('powered_by') %>\n")).to contain_exactly(
-        "#{powered_by_file}: attribution snippet missing: Docuseal::DOCUSEAL_URL",
+        "#{powered_by_file}: attribution snippet missing: Docuseal::DOCUSEAL_SOURCE_URL",
         "#{powered_by_file}: attribution snippet missing: >DocuSeal</a>",
         "#{powered_by_file}: attribution snippet missing: AGPL LICENSE_ADDITIONAL_TERMS",
-        "#{powered_by_file}: attribution anchor is not rendered markup: <a href=\"<%= Docuseal::DOCUSEAL_URL"
+        "#{powered_by_file}: attribution anchor is not rendered markup: <a href=\"<%= Docuseal::DOCUSEAL_SOURCE_URL"
       )
     end
 
@@ -136,8 +150,8 @@ RSpec.describe 'Branding gate' do
       commented = "<%# AGPL LICENSE_ADDITIONAL_TERMS: #{rendered_anchor} %>\n<%= t('powered_by') %>\n"
 
       expect(attribution_failures_for(powered_by_file => commented)).to contain_exactly(
-        "#{powered_by_file}: attribution snippet missing: Docuseal::DOCUSEAL_URL",
-        "#{powered_by_file}: attribution anchor is not rendered markup: <a href=\"<%= Docuseal::DOCUSEAL_URL"
+        "#{powered_by_file}: attribution snippet missing: Docuseal::DOCUSEAL_SOURCE_URL",
+        "#{powered_by_file}: attribution anchor is not rendered markup: <a href=\"<%= Docuseal::DOCUSEAL_SOURCE_URL"
       )
     end
 
@@ -149,9 +163,9 @@ RSpec.describe 'Branding gate' do
                   "<!-- #{rendered_anchor} -->\n<%= t('powered_by') %>\n"
 
       expect(attribution_failures_for(powered_by_file => commented)).to contain_exactly(
-        "#{powered_by_file}: attribution snippet missing: Docuseal::DOCUSEAL_URL",
+        "#{powered_by_file}: attribution snippet missing: Docuseal::DOCUSEAL_SOURCE_URL",
         "#{powered_by_file}: attribution snippet missing: >DocuSeal</a>",
-        "#{powered_by_file}: attribution anchor is not rendered markup: <a href=\"<%= Docuseal::DOCUSEAL_URL"
+        "#{powered_by_file}: attribution anchor is not rendered markup: <a href=\"<%= Docuseal::DOCUSEAL_SOURCE_URL"
       )
     end
 
@@ -166,11 +180,11 @@ RSpec.describe 'Branding gate' do
     end
 
     it 'fails when the constant is mentioned but the anchor is not an href on it' do
-      mention = "<%# AGPL LICENSE_ADDITIONAL_TERMS %>\n<%= link_to 'DocuSeal', Docuseal::DOCUSEAL_URL %>\n" \
+      mention = "<%# AGPL LICENSE_ADDITIONAL_TERMS %>\n<%= link_to 'DocuSeal', Docuseal::DOCUSEAL_SOURCE_URL %>\n" \
                 "<span>>DocuSeal</a></span>\n"
 
       expect(attribution_failures_for(powered_by_file => mention)).to contain_exactly(
-        "#{powered_by_file}: attribution anchor is not rendered markup: <a href=\"<%= Docuseal::DOCUSEAL_URL"
+        "#{powered_by_file}: attribution anchor is not rendered markup: <a href=\"<%= Docuseal::DOCUSEAL_SOURCE_URL"
       )
     end
 
@@ -198,6 +212,88 @@ RSpec.describe 'Branding gate' do
     it 'pins the support email constant' do
       expect(Gates.support_email_failures).to be_empty
       expect(Docuseal::SUPPORT_EMAIL).to eq('evan@processorteam.com')
+    end
+  end
+
+  # A2: the partials surviving is worth nothing if the pages stop rendering
+  # them. Deleting `render 'shared/attribution'` from a signer-facing view used
+  # to leave the whole branding gate green.
+  describe 'Gates.attribution_render_failures' do
+    def write_render_tree(root, overrides = {})
+      sites = Gates::ATTRIBUTION_RENDER_SITES.index_with("<%= #{Gates::ATTRIBUTION_RENDER_CALLS.first} %>")
+      sites[Gates::QR_RENDER_SITE] = "<%= #{Gates::QR_RENDER_CALLS.first} %>"
+
+      sites.merge(overrides).each do |file, content|
+        path = File.join(root, file)
+        FileUtils.mkdir_p(File.dirname(path))
+        File.write(path, "#{content}\n")
+      end
+    end
+
+    def render_failures_for(overrides = {})
+      Dir.mktmpdir do |root|
+        write_render_tree(root, overrides)
+        yield root if block_given?
+
+        Gates.attribution_render_failures(root)
+      end
+    end
+
+    it 'pins every view that renders an attribution partial today' do
+      live = Rails.root.glob('app/views/**/*.erb').select do |path|
+        Gates::ATTRIBUTION_RENDER_CALLS.any? { |call| path.read.include?(call) }
+      end
+      live = live.map { |path| path.relative_path_from(Rails.root).to_s } - ['app/views/shared/_powered_by.html.erb']
+
+      expect(live.sort).to eq(Gates::ATTRIBUTION_RENDER_SITES.sort)
+    end
+
+    it 'passes the real tree' do
+      expect(Gates.attribution_render_failures).to be_empty
+    end
+
+    it 'passes a tree where every pinned view renders a partial' do
+      expect(render_failures_for).to be_empty
+    end
+
+    it 'accepts either partial at a shared render site' do
+      site = Gates::ATTRIBUTION_RENDER_SITES.first
+
+      expect(render_failures_for(site => "<%= #{Gates::ATTRIBUTION_RENDER_CALLS.last} %>")).to be_empty
+    end
+
+    it 'fails when a signer-facing view drops the render call' do
+      site = 'app/views/submit_form/completed.html.erb'
+
+      expect(render_failures_for(site => '<p>Document has been signed!</p>')).to contain_exactly(
+        "#{site}: attribution partial is no longer rendered " \
+        "(expected #{Gates::ATTRIBUTION_RENDER_CALLS.join(' or ')})"
+      )
+    end
+
+    it 'does not count a render call parked in an ERB or HTML comment' do
+      erb = 'app/views/submit_form/declined.html.erb'
+      html = 'app/views/submit_form/expired.html.erb'
+      call = Gates::ATTRIBUTION_RENDER_CALLS.first
+
+      failures = render_failures_for(erb => "<%# <%= #{call} %> %>", html => "<!-- <%= #{call} %> -->")
+
+      expect(failures.map { |failure| failure.split(':').first }).to contain_exactly(erb, html)
+    end
+
+    it 'fails when the QR page stops rendering its branding partial' do
+      site = Gates::QR_RENDER_SITE
+
+      expect(render_failures_for(site => '<div class="qr-branding"></div>')).to contain_exactly(
+        "#{site}: attribution partial is no longer rendered (expected #{Gates::QR_RENDER_CALLS.join(' or ')})"
+      )
+    end
+
+    it 'fails when a pinned view is deleted outright' do
+      site = 'app/views/verify/show.html.erb'
+      failures = render_failures_for { |root| FileUtils.rm(File.join(root, site)) }
+
+      expect(failures).to contain_exactly("#{site}: attribution render site is missing")
     end
   end
 

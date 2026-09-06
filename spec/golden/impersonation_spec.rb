@@ -318,6 +318,7 @@ RSpec.describe 'Support impersonation', type: :request do
         'invitations#update' => 'the same Devise gate',
         'omniauth_callbacks#passthru' => 'the same Devise gate',
         'omniauth_callbacks#google_oauth2' => 'the same Devise gate',
+        'omniauth_callbacks#apple' => 'the same Devise gate',
         'mcp#call' =>
           'the MCP door is ActionController::API and token-authenticated: it has no session for a support ' \
           'session to ride in on, which is why the spec says MCP is unaffected. It answers 401 without a token.',
@@ -346,6 +347,37 @@ RSpec.describe 'Support impersonation', type: :request do
     # rather than the job queue. Both halves are pinned here, so neither can
     # go quietly.
     let(:mounted_routes_without_a_controller) { ['/jobs'] }
+
+    # The sweep above derives its set from the constant, so the promise it
+    # makes shrinks with the constant: dropping `:export` from NEVER left it
+    # green, and the export doors were then held only by CanCan a layer down
+    # (checkpoint 10, E4). Written down here instead — the families the spec
+    # says a support session never reaches, whatever anybody edits: money,
+    # deleting the account, credentials, people and roles, the signer's own
+    # doors, and bulk extraction of the customer's data.
+    let(:forever_shut) do
+      {
+        # never, in either mode, for any verb (NEVER)
+        'account_exports' => :export, 'submissions_export' => :export,
+        'reveal_access_token' => :secret, 'mcp_settings' => :secret, 'webhook_secret' => :secret,
+        'webhook_hmac' => :secret, 'email_smtp_settings' => :secret, 'testing_api_settings' => :secret,
+        'start_form' => :signing, 'start_form_email2fa_send' => :signing, 'submit_form' => :signing,
+        'submit_form_values' => :signing, 'submit_form_decline' => :signing,
+        'submit_form_delegate' => :signing, 'submit_form_invite' => :signing,
+        'submit_form_email2fas' => :signing, 'submit_form_download' => :signing,
+        'submit_form_completed_download' => :signing, 'submit_form_document' => :signing,
+        'submit_form_draw_signature' => :signing, 'submit_form_metadata' => :signing,
+        'send_submission_email' => :signing, 'api/submitters' => :signing,
+        'api/signing_sessions' => :signing, 'api/submitter_form_views' => :signing,
+        'api/submitter_email_clicks' => :signing, 'api/attachments' => :signing,
+        # writes refused in both modes; the page stays readable
+        'billing_settings' => :forbidden, 'accounts' => :forbidden, 'users' => :forbidden,
+        'users_read_only' => :forbidden, 'users_send_reset_password' => :forbidden,
+        'account_invites' => :forbidden, 'invites' => :forbidden, 'invitations' => :forbidden,
+        'passwords' => :forbidden, 'profile' => :forbidden, 'mfa_setup' => :forbidden,
+        'api_settings' => :forbidden
+      }
+    end
 
     it 'sweeps every route but a named list of controller-less mounts' do
       mounted = Rails.application.routes.routes.filter_map do |route|
@@ -419,6 +451,32 @@ RSpec.describe 'Support impersonation', type: :request do
         expect(response).to have_http_status(:forbidden),
                             "#{verb.upcase} #{path} (#{target}) answered #{response.status}"
         expect(last_event.action).to eq('impersonation.refused'), "#{target} was refused with no audit row"
+      end
+    end
+
+    it 'pins the never-in-any-mode kinds and every door in the forbidden families, literally' do
+      expect(SupportImpersonation::NEVER).to contain_exactly(:secret, :signing, :export)
+
+      expect(SupportImpersonation::CLASSIFICATION.slice(*forever_shut.keys)).to eq(forever_shut)
+
+      # And they are all still real controllers, so a rename cannot leave this
+      # list pinning doors that no longer exist.
+      expect(forever_shut.keys - SupportImpersonation::CLASSIFICATION.keys).to eq([])
+    end
+
+    # The export doors for real, in EDIT mode — the wider of the two — because
+    # "never" has to mean the request is refused HERE and audited, not merely
+    # refused by CanCan one layer down with nothing written about it.
+    it 'refuses the account archive and the submissions CSV in edit mode, and audits both' do
+      template = create(:template, account:, author: admin)
+
+      sign_in(operator)
+      start!(mode: SupportImpersonation::EDIT_MODE)
+
+      ['/settings/export', "/templates/#{template.id}/submissions_export"].each do |path|
+        expect { get path, as: :json }.to change { events('impersonation.refused').count }.by(1)
+
+        expect(response).to have_http_status(:forbidden), "GET #{path} answered #{response.status}"
       end
     end
 

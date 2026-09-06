@@ -1,4 +1,4 @@
-<% content_for(:html_title, "#{t('verify_page_title')} | EsignCenter") %>
+<% content_for(:html_title, "#{t('verify_page_title')} — EsignCenter") %>
 <% content_for(:html_description, t('verify_page_intro')) %>
 <%# Public and meant to be found: robots.txt allows /verify, and this lifts the noindex every non-root page carries by default. %>
 <% content_for(:indexable, 'true') %>
@@ -40,4 +40,4 @@
     <% end %>
   </div>
 </main>
-<%= render 'shared/attribution', link_path: '/start' %>
+<%= render 'shared/attribution' %>

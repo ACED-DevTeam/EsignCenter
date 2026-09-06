@@ -82,7 +82,7 @@ class User < ApplicationRecord
   has_many :email_messages, dependent: :destroy, foreign_key: :author_id, inverse_of: :author
 
   devise :two_factor_authenticatable, :confirmable, :recoverable, :rememberable, :validatable, :trackable, :lockable,
-         :registerable, :omniauthable, omniauth_providers: %i[google_oauth2]
+         :registerable, :omniauthable, omniauth_providers: %i[google_oauth2 apple]
 
   attribute :role, :string, default: ADMIN_ROLE
   attribute :uuid, :string, default: -> { SecureRandom.uuid }

@@ -826,6 +826,31 @@ RSpec.describe 'ESIGN consent', type: :request do
       expect(modal_sender_email(submitter)).to eq('contracts@acme.example')
     end
 
+    # The READ seam, which is where the entitlement actually lives
+    # (Submitters::ReplyTo#custom, checkpoint 10 E2). Every other example in
+    # this group sends from a paid account, so removing that check left them
+    # all green: a reply-to stored while the account was paid — or set through
+    # the API on a free one, which nothing at the write door stops — went on
+    # steering both the outgoing header and the address the ESIGN disclosure
+    # tells signers to write to about withdrawing consent. On free it must be
+    # inert, and both readers must fall through to the person who sent the
+    # document. D43: the value is left exactly where the customer put it.
+    it 'ignores a reply-to stored on the signer once the account is free, on the header and in the ' \
+       'disclosure alike, without deleting it' do
+      submitter = emailed_submitter_for(paid_account)
+      submitter.update!(preferences: { 'reply_to' => 'Contracts <contracts@acme.example>' })
+      sender = admin_for(paid_account).email
+
+      expect(invitation_reply_to(submitter)).to eq('contracts@acme.example')
+      expect(modal_sender_email(submitter)).to eq('contracts@acme.example')
+
+      downgrade_to_free!(paid_account)
+
+      expect(invitation_reply_to(submitter.reload)).to eq(sender)
+      expect(modal_sender_email(submitter)).to eq(sender)
+      expect(submitter.reload.preferences['reply_to']).to eq('Contracts <contracts@acme.example>')
+    end
+
     it 'matches when there is no custom reply-to and falls to the sending user' do
       submitter = emailed_submitter_for(account)
 

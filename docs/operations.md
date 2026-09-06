@@ -190,6 +190,37 @@ that cannot be undone — the reason the rollback rule below exists.
 | ★ `20260904041500` | Adds `users.session_version`. **Every signed-in person is signed out of every browser on the day this ships** (humans only — API tokens and the integrating apps' credentials are untouched) |
 | ★ `20260904050000` | Adds `accounts.last_active_at`. Existing rows stay empty on purpose, so no dormancy clock moves — but **any account part-way through a dormancy warning has that warning cleared and starts its notice again** |
 
+Sessions 8 to 10 added the last thirteen. Every one of them is additive — a
+new column, a new table or a new index — so **none destroys data** and the
+rollback rule below still holds. Two marks matter here:
+
+- **‡ built `CONCURRENTLY`.** The index is created outside a transaction so
+  the table stays writable and the deploy cannot take signing offline. The
+  price is that a build which fails part-way leaves an invalid index behind
+  that a re-run silently skips over. After any failed or interrupted migration
+  run, read **"Indexes built CONCURRENTLY"** in section 2.3 *before* running
+  them again — it has the query that lists invalid indexes and the one command
+  that clears them.
+- **★ can refuse to run.** Only `20260906090000` does: it stops the deploy
+  rather than merging two people who hold the same role on one document.
+  Section 2.3, "Duplicate submitter uuids", is the whole procedure.
+
+| Migration | What it does |
+| --- | --- |
+| `20260904060000` | Adds `payment_pending_until` / `pending_quantity` to `account_invites` — the memory of a seat purchase Stripe parked for a card's second step. Existing invitations are left empty, which is exactly what an ordinary invitation looks like |
+| `20260904193000` | Adds `email_events.provider_event_key` — Postmark's own event id, so a webhook Postmark retries is recorded once |
+| `20260905100000` | Creates `operator_events`, the operator console's audit log (one row per change the console makes, written in the same transaction as the change) |
+| `20260905100100` | Adds the three paid review thresholds to `account_limit_overrides`, so fair-use and velocity flags can be tuned for one account without a deploy. Empty = use the plan default |
+| `20260905100200` | Adds `account_subscriptions.comp_expires_at` — the date a complimentary paid plan ends. Empty means "not a comp"; nothing existing changes |
+| `20260905110000` | Creates `account_exports` (the "give me everything in this account as a zip" state machine, plus its seven-day expiry) |
+| `20260905120000` | Creates `legal_acceptances` — one row per legal document a person agreed to at sign-up, with the digest of the exact text they saw |
+| ★ ‡ `20260906090000` | Adds the unique index on `submitters (submission_id, uuid)`: one party per role, per document. **This is the one migration that can stop a rehearsal or a deploy on purpose** — it refuses while any document holds two people in one role and prints the first twenty. See "Duplicate submitter uuids" in section 2.3, and run `rake submitters:duplicate_uuids` for the full list. Nothing is deleted; the decision about who really holds the role is a human one |
+| ‡ `20260906090100` | Adds `verified_documents.output_key` and its unique index, so a signing job that is retried replaces its own record instead of leaving a permanent row for a PDF nobody can ever produce again. The column is added empty and existing records still answer `/verify` |
+| `20260906100000` | Creates `pending_email_events` — the parking bay for a Postmark callback that arrived before the send row it belongs to |
+| `20260906100100` | Adds `accounts.sending_resumed_at` — the watermark an operator's Resume leaves, so the bounces that caused a pause cannot instantly re-pause the account |
+| ‡ `20260906110000` | Adds `attempts` / `attribution_error` / `last_attempted_at` to `pending_email_events` and an index on the failed ones, so a callback whose replay keeps breaking is retried and surfaced instead of being aged out with the rest |
+| `20260906120000` | Adds `account_subscriptions.cancel_at` — the date Stripe will really end the subscription on, which is how the Customer Portal cancels a subscription that is still in its trial. Empty means "not set to end" |
+
 Because most of these are one-way, **rollback of the database is a restore
 from the pre-deploy snapshot**, never `db:rollback`.
 
@@ -228,6 +259,37 @@ from the pre-deploy snapshot**, never `db:rollback`.
    gate ever reports migration offences out of nowhere, clear the cache inside
    the container (`rm -rf /root/.cache/rubocop_cache`) and run it again with
    no `DATABASE_URL`, exactly as the command above does.
+
+4. Run the test suite on the same commit. The gates read the code; the suite
+   actually runs it, and between them they are the whole of "this build is
+   fit to deploy". It is the same shape of command, one word different:
+
+   ```sh
+   docker compose -f docker-compose.dev.yml exec -T -e RAILS_ENV=test app bundle exec rspec
+   ```
+
+   Four things to know before you press return:
+
+   - **It takes about 45 minutes** and prints a dot per test. The last line is
+     the one that matters: it must end `0 failures`. Anything else — even one
+     failure — means do not deploy.
+   - **Run it on its own.** Never at the same time as `rake gates:all`, and
+     never two copies at once. The development virtual machine has under 6 GB
+     of memory and the suite plus a gates run together can exhaust it, which
+     looks like a random test failing rather than like running out of memory.
+   - **If memory is tight, run it in two halves** — the same run, split, and
+     both halves must end `0 failures`:
+
+     ```sh
+     docker compose -f docker-compose.dev.yml exec -T -e RAILS_ENV=test app bundle exec rspec spec/golden
+     docker compose -f docker-compose.dev.yml exec -T -e RAILS_ENV=test app bundle exec rspec --exclude-pattern "golden/**/*_spec.rb"
+     ```
+
+   - **No `DATABASE_URL`, here either.** The suite pins its own environment:
+     it forces `RAILS_ENV=test` and wipes the mail-delivery setting before
+     Rails starts, so it can never touch production data or send a real
+     email — but only if you let it choose, and a `DATABASE_URL` you hand it
+     points it somewhere it should not be.
 
    **Running the suite in a container that is set up for a staging walk.** The
    walk recreates the app container with `EMAIL_DELIVERY_MODE=smtp` so mail
@@ -518,6 +580,11 @@ yet** (Stripe, Apple OAuth) arrive in Sessions 6 and later and are listed
 here when they land. Turnstile and Google OAuth landed with Session 5
 (`docs/signup.md`).
 
+Not everything the app depends on can be an environment variable. One Stripe
+setting lives only in the Stripe dashboard, cannot be read by any code and is
+not checked by `rake stripe:check` — the failed-payment retry schedule, which
+has to outlast our own 14-day grace period. It has its own section: **3.4**.
+
 | Variable | Required? | Where it is read | What happens when missing |
 | --- | --- | --- | --- |
 | `DATABASE_URL` | Required | `config/dotenv.rb`, database config | Boot fails (production has no fallback). Use the database's **Internal** URL. |
@@ -558,6 +625,7 @@ here when they land. Turnstile and Google OAuth landed with Session 5
 | `TURNSTILE_SITE_KEY` | **Required when `REGISTRATION_ENABLED=true`** (Session 5) | `app/views/devise/registrations/new.html.erb`, `lib/registration_config_guard.rb` | The public key the sign-up page hands to Cloudflare's widget. **Boot refuses to start** in production when sign-up is on and this is unset. The dev stack uses Cloudflare's always-passing test key. |
 | `TURNSTILE_SECRET_KEY` | **Required when `REGISTRATION_ENABLED=true`** (Session 5) | `lib/turnstile.rb`, `lib/registration_config_guard.rb` | The server-side key used to ask Cloudflare whether a sign-up token is genuine. **Boot refuses to start** in production when sign-up is on and this is unset; at runtime a blank key fails every email sign-up closed (*Please complete the verification*). Never bypassed by any environment setting. |
 | `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` | Optional (Session 5) | `config/initializers/devise.rb`, `lib/registrations.rb`, `lib/registration_config_guard.rb` | The Google OAuth app behind **Continue with Google**. With either unset the button is hidden on the sign-in and sign-up pages and a warning is reported at boot; email sign-up works regardless. Until the Google app is published it runs in Testing mode and only its listed test users can use the button (launch gate 4b). |
+| `APPLE_OAUTH_CLIENT_ID`, `APPLE_OAUTH_TEAM_ID`, `APPLE_OAUTH_KEY_ID`, `APPLE_OAUTH_PRIVATE_KEY` | Optional (Session 5) | `config/initializers/devise.rb`, `lib/registrations.rb`, `lib/registration_config_guard.rb` | The Apple Service ID, Apple Developer team id, key id and the `.p8` private key behind **Continue with Apple**. All four or nothing: the button is hidden and every `/auth/apple/...` address answers 404 unless all four hold real values, and a value still starting with `PASTE_` (how the env file ships an unfilled slot) counts as unset, as does a team id or key id that is not Apple's ten characters or a private key that is not a `-----BEGIN ... PRIVATE KEY-----` block. The key may be stored on one line with `\n` for the line breaks. A warning is reported at boot when they are missing; email sign-up and the Google button work regardless. Setting them up is launch gate 4b (`docs/render-deploy-checklist.md`). |
 | `POSTMARK_STREAM_PAID`, `POSTMARK_STREAM_FREE` | Optional (Session 5) | `lib/action_mailer_configs_interceptor.rb` (Phase D) | Postmark message-stream ids. When both are set, platform mail for free accounts goes out on the free stream and everything else (paid, internal, operator alerts) on the paid stream, so a spammy free tier cannot hurt paying customers' deliverability. Unset = no stream header, one shared stream. Accounts with their own pinned SMTP server never get the header. |
 | `POSTMARK_WEBHOOK_USERNAME`, `POSTMARK_WEBHOOK_PASSWORD` | Required for delivery webhooks | `lib/postmark_webhooks.rb` | Choose credentials for the webhook URL. These are separate from the SMTP server token. If either is blank, the endpoint returns 503 and records nothing. Wrong or missing credentials return 401. |
 | `POSTMARK_WEBHOOK_IPS` | Optional | `lib/postmark_webhooks.rb` | Comma-separated IP addresses or CIDR ranges allowed to call the webhook. Blank uses `3.134.147.250,50.31.156.6,50.31.156.77,18.217.206.57`. An address outside the list returns 403 even with correct credentials. |
@@ -710,6 +778,57 @@ verification ping creates nothing. The alternative design — answering 500 so
 Postmark retries — was rejected: it loses the event once the retry schedule
 runs out, and it makes a healthy endpoint look broken.
 
+### 3.4 Stripe's failed-payment settings — a launch value no manifest can hold
+
+**Do this once, in the Stripe dashboard, before billing goes live.** Every
+other Stripe setting we depend on is either an environment variable in the
+table above or something `rake stripe:check` asserts. This one is neither: it
+is a per-Stripe-account setting, changed by hand in the dashboard, with no API
+behind it — so nothing in the code can read it, and **`rake stripe:check`
+cannot tell you whether it is right.** It has to be looked at with human eyes,
+here, and again after anybody edits Stripe settings.
+
+**Why it matters.** When a renewal payment fails, two clocks start. Ours gives
+the customer 14 days: we email on days 0, 3, 7 and 13 — each letter naming the
+date the account will be frozen — and freeze it on day 14. Stripe runs its own
+clock at the same time, retrying the card a few times and then giving up. What
+Stripe does when it gives up is the setting below, and if Stripe gives up
+*before* our day 14, our letters become lies:
+
+- Set to **cancel**, Stripe deletes the subscription early. The customer
+  silently drops to the free plan on, say, day 8 — after being told twice that
+  they had until day 14.
+- Set to **mark as unpaid** on a schedule shorter than 14 days, the account is
+  frozen the moment Stripe says so — again, on a day our own letter promised
+  was still inside the grace period.
+
+**The steps.** In the Stripe dashboard, on the **live** account:
+
+1. **Settings** (top right) → **Billing** → **Subscriptions and emails**.
+2. Find **Manage failed payments** (Stripe also calls this *Smart Retries* or
+   the *retry schedule*).
+3. Set the retries so that the **last** retry happens **on or after day 14**
+   from the first failed payment. Stripe's own Smart Retries setting spreads
+   attempts over a window you choose — choose **the longest available window**
+   (Stripe's maximum is 4 weeks; anything at or beyond 14 days is correct).
+4. Set what happens **after all retries fail** to **Mark the subscription as
+   unpaid**. Not "Cancel", and not "Leave the subscription as is".
+   - *Mark as unpaid* is what the app is built for: the account freezes, the
+     customer keeps read and download access, and the subscription is still
+     there to be recovered by a successful payment.
+   - *Cancel* throws the subscription away, which drops the customer to the
+     free plan with no way back except signing up again.
+   - *Leave as is* means an unpaid account keeps its paid features until
+     somebody notices by hand.
+5. Save, then write today's date and the window you chose into the deploy
+   notes. There is nothing else to check afterwards — no command confirms it.
+
+**If the setting is ever wrong, nothing breaks loudly.** The app still handles
+whatever Stripe reports (an early *unpaid* freezes the account, an early
+*cancel* drops it to free), so the only symptom is a customer who was treated
+differently from what our emails told them. That is why this is an eyes-on
+launch step and a line in the deploy checklist, not a monitored value.
+
 ## 4. Health check and scheduler heartbeat
 
 `GET https://<your host>/up` is the health check. It needs no login, sets no
@@ -776,10 +895,11 @@ deploy).
 | `scheduler_heartbeat` | every minute | Writes the timestamp `/up` reports. | Nothing time-based is running at all — see the heartbeat notes above. |
 | `stripe_reconciliation` | `0 6 * * *` (06:00 UTC) | Re-reads every Stripe subscription, repairs drift, cancels duplicate subscriptions, settles refunds an earlier attempt owed, re-enqueues stuck webhook events. Emails the operator **once** if it had anything to fix. | The app's idea of who is paying drifts from Stripe's until it runs again. Safe to run by hand: `StripeReconciliationJob.new.perform` in the console. It is idempotent. |
 | `billing_lifecycle` | `15 * * * *` (hourly) | The dunning clock: past-due reminder emails on days 0, 3, 7 and 13, the suspension on day 14, and the seats of invitations nobody accepted (plus any seat hand-back Stripe refused earlier). | Nobody is suspended and nobody is warned; accounts keep paid features they are not paying for, and lapsed invitations keep holding seats the customer is billed for. Hourly, not daily, because day 14 is a deadline that decides whether an account can write. |
+| `comp_expiry` | `45 * * * *` (hourly) | Ends complimentary paid plans on their expiry date. Every comp the operator grants carries the date it stops (the console refuses a grant without one), and this is what stops it — down exactly the same path as a revoke by hand, so the customer drops to the free plan, extra members are parked read-only and the free counters start from that instant. At :45 so it never contends with the billing clock at :15 for the same account row. | **Paid access nobody is paying for stays on, for ever.** This is the one job whose silent death costs money rather than time: an expired pilot or apology keeps every paid feature until somebody notices by hand. Nothing self-corrects — the expiry date simply sits in the past. Safe to run by hand: `CompExpiryJob.new.perform` in the console, or **Run now** on the Scheduler tab. |
 | `housekeeping` | `5 * * * *` (hourly) | The hourly tidy-up: closes a support session the operator walked away from (writes the audited `expired` ending, so the customer's Support-access card stops saying "In progress"), and replays or drops Postmark callbacks parked because they arrived before their own send row. | The customer's support-access history keeps sessions that ended an hour ago marked as still running, and an early webhook waits in `pending_email_events` until the next tick. Nothing is lost either way. |
 | `account_retention` | `30 4 * * *` (04:30 UTC) | The 90-day deletion clock and the dormant-account clock: warning emails (60/30/7 days before a dormancy deletion, one week before a scheduled one) and the purges whose date has passed — plus the account-export housekeeping: a ready export's zip is deleted the night its seven days are up, a failed export's half-built file is cleared up a day later, and a build whose worker died is released so the account's export door opens again. Every sweep runs even if another raises; the job then ends in an error, so the stamp says which night was incomplete. See **docs/account-deletion.md**. | Nothing is destroyed early — every deadline simply slips until it runs. Deletions and dormancy warnings are late, never wrong. But export zips — a copy of a whole account — stay in the bucket past their advertised seven days, and an export whose worker died keeps that account's export button stuck on "being built" until it runs. |
 
-All five are safe to re-run: each decides from the clock and its own dedupe
+All six are safe to re-run: each decides from the clock and its own dedupe
 counters, so a catch-up run after an outage sends what was missed once, not
 once per missed tick. If the billing sweep first catches up after day 14, it
 sends the missed day-13 reminder alongside the suspension notice, once each.

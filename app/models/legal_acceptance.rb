@@ -47,9 +47,10 @@ class LegalAcceptance < ApplicationRecord
   # programming error rather than a refusal (typo protection).
   SIGNUP_EMAIL = 'signup_email'
   SIGNUP_GOOGLE = 'signup_google'
+  SIGNUP_APPLE = 'signup_apple'
   INVITE = 'invite'
 
-  SOURCES = [SIGNUP_EMAIL, SIGNUP_GOOGLE, INVITE].freeze
+  SOURCES = [SIGNUP_EMAIL, SIGNUP_GOOGLE, SIGNUP_APPLE, INVITE].freeze
 
   belongs_to :user
   belongs_to :account

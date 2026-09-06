@@ -3,13 +3,22 @@
 # Self-serve registration exists only behind REGISTRATION_ENABLED, creates
 # exactly one customer account with an unconfirmed admin who cannot sign in
 # until confirmed, and is protected by Turnstile, a disposable-email blocklist
-# and per-IP limits; Google sign-up creates a confirmed user and never a
-# duplicate.
+# and per-IP limits; Google and Apple sign-up create a confirmed user and never
+# a duplicate.
 RSpec.describe 'Self-serve registration', type: :request do
   stash_env 'REGISTRATION_ENABLED', 'TURNSTILE_SITE_KEY', 'TURNSTILE_SECRET_KEY',
-            'GOOGLE_OAUTH_CLIENT_ID', 'GOOGLE_OAUTH_CLIENT_SECRET', clear: true
+            'GOOGLE_OAUTH_CLIENT_ID', 'GOOGLE_OAUTH_CLIENT_SECRET',
+            'APPLE_OAUTH_CLIENT_ID', 'APPLE_OAUTH_TEAM_ID', 'APPLE_OAUTH_KEY_ID',
+            'APPLE_OAUTH_PRIVATE_KEY', clear: true
 
   let(:google_button) { I18n.t('continue_with_google') }
+  let(:apple_button) { I18n.t('continue_with_apple') }
+
+  # A real prime256v1 key. Apple has no static client secret: the strategy
+  # signs a fresh sixty-second JWT with this key every time a request phase
+  # runs for real, so a fake string would blow up the moment a test drives the
+  # authorize endpoint without OmniAuth's mock in the way.
+  let(:apple_pem) { OpenSSL::PKey::EC.generate('prime256v1').to_pem }
 
   # The instance is set up (the operator exists), so /sign_up is never the
   # first-run setup redirect.
@@ -22,6 +31,7 @@ RSpec.describe 'Self-serve registration', type: :request do
     RateLimit.store.clear
     OmniAuth.config.test_mode = false
     OmniAuth.config.mock_auth[:google_oauth2] = nil
+    OmniAuth.config.mock_auth[:apple] = nil
   end
 
   def enable_registration!
@@ -33,6 +43,16 @@ RSpec.describe 'Self-serve registration', type: :request do
   def enable_google!
     ENV['GOOGLE_OAUTH_CLIENT_ID'] = 'google-client-id'
     ENV['GOOGLE_OAUTH_CLIENT_SECRET'] = 'google-client-secret'
+  end
+
+  # The team id and the key id are ten characters because Apple's always are,
+  # and Registrations checks that rather than trusting the slot to be filled
+  # in properly.
+  def enable_apple!
+    ENV['APPLE_OAUTH_CLIENT_ID'] = 'com.esigncenter.web'
+    ENV['APPLE_OAUTH_TEAM_ID'] = 'AB1234CD56'
+    ENV['APPLE_OAUTH_KEY_ID'] = 'EF7890GH12'
+    ENV['APPLE_OAUTH_PRIVATE_KEY'] = apple_pem
   end
 
   def signup_params(email: 'ada@example.com', name: 'Ada Lovelace', password: 'a-long-password',
@@ -69,6 +89,27 @@ RSpec.describe 'Self-serve registration', type: :request do
     follow_redirect!
   end
 
+  # Apple's auth hash: the address and the name arrive on the FIRST
+  # authorisation only, so `email: nil` is a re-authorisation for somebody we
+  # never created, and `name: nil` is the ordinary second sign-in.
+  def mock_apple(email:, verified: true, name: 'Grace Hopper')
+    OmniAuth.config.test_mode = true
+    OmniAuth.config.mock_auth[:apple] =
+      OmniAuth::AuthHash.new(provider: 'apple', uid: '001234.fedcba9876543210.1234',
+                             info: { email:, name:, email_verified: verified })
+  end
+
+  # Apple answers with a cross-site form POST rather than a redirect, so the
+  # callback is driven with POST here — the same verb a browser would use.
+  def sign_in_with_apple!(**query)
+    post user_apple_omniauth_authorize_path(LegalDocuments.version_fields.merge(query))
+
+    expect(response).to have_http_status(:redirect)
+    expect(response.location).to include(user_apple_omniauth_callback_path)
+
+    post user_apple_omniauth_callback_path
+  end
+
   # OmniAuth's own request phase, with the mock switched off just long enough
   # for the strategy to mint a real `state` and store it in this session (it
   # only builds Google's authorize URL — nothing goes out). Returns that
@@ -77,6 +118,20 @@ RSpec.describe 'Self-serve registration', type: :request do
     OmniAuth.config.test_mode = false
 
     post user_google_oauth2_omniauth_authorize_path(LegalDocuments.version_fields)
+
+    expect(response).to have_http_status(:redirect)
+
+    CGI.parse(URI.parse(response.location).query)['state'].sole
+  ensure
+    OmniAuth.config.test_mode = true
+  end
+
+  # The same for Apple: the request phase really runs (it signs a client
+  # secret with the .p8 key), so the state it mints is a real one.
+  def start_apple_flow!
+    OmniAuth.config.test_mode = false
+
+    post user_apple_omniauth_authorize_path(LegalDocuments.version_fields)
 
     expect(response).to have_http_status(:redirect)
 
@@ -99,6 +154,12 @@ RSpec.describe 'Self-serve registration', type: :request do
     expect(response).to redirect_to(new_user_session_path)
   end
 
+  # Every Set-Cookie the last response wrote, as one string: Rack 3 hands
+  # them back as an array, older stacks as newline-separated text.
+  def session_cookie_header
+    Array(response.headers['set-cookie'] || response.headers['Set-Cookie']).join("\n")
+  end
+
   def signed_up_user(email = 'ada@example.com')
     User.find_by!(email:)
   end
@@ -106,6 +167,7 @@ RSpec.describe 'Self-serve registration', type: :request do
   describe 'the REGISTRATION_ENABLED switch' do
     it 'answers 404 on every sign-up surface and offers no link or button while off' do
       enable_google!
+      enable_apple!
 
       expect { sign_up }.not_to change(Account, :count)
       expect(response).to have_http_status(:not_found)
@@ -122,27 +184,37 @@ RSpec.describe 'Self-serve registration', type: :request do
       get user_google_oauth2_omniauth_callback_path
       expect(response).to have_http_status(:not_found)
 
+      post user_apple_omniauth_authorize_path
+      expect(response).to have_http_status(:not_found)
+
+      post user_apple_omniauth_callback_path
+      expect(response).to have_http_status(:not_found)
+
       get new_user_session_path
       expect(response).to have_http_status(:ok)
       expect(response.body).not_to include(google_button)
+      expect(response.body).not_to include(apple_button)
       expect(response.body).not_to include(new_registration_path)
       expect(response.body).not_to include(I18n.t('create_free_account'))
       expect(User.count).to eq(1)
     end
 
-    it 'serves the sign-up page, the link and the Google button while on' do
+    it 'serves the sign-up page, the link and both provider buttons while on' do
       enable_registration!
       enable_google!
+      enable_apple!
 
       get new_registration_path
       expect(response).to have_http_status(:ok)
       expect(response.body).to include('cf-turnstile')
       expect(response.body).to include('data-sitekey="turnstile-site-key"')
       expect(response.body).to include(google_button)
+      expect(response.body).to include(apple_button)
       expect(response.body).to include(I18n.t('free_tier_summary'))
 
       get new_user_session_path
       expect(response.body).to include(google_button)
+      expect(response.body).to include(apple_button)
       expect(response.body).to include(new_registration_path)
     end
   end
@@ -276,10 +348,12 @@ RSpec.describe 'Self-serve registration', type: :request do
       end.to change(User, :count).by(1)
     end
 
-    # Devise's registerable reveals a taken address ("has already been
-    # taken"); the paranoid setting covers confirmations and passwords, not
-    # this form. Accepted: the alternative is a silent success that leaves a
-    # real person waiting for mail that never comes.
+    # Devise's registerable reveals a taken address; the paranoid setting
+    # covers confirmations and passwords, not this form. Accepted: the
+    # alternative is a silent success that leaves a real person waiting for
+    # mail that never comes. Since review 10 (D6) the page says so in one
+    # sentence and offers the two ways forward rather than printing Devise's
+    # "1 error prohibited this user from being saved" dead end.
     it 'refuses an address that already has a user, whatever its case, and never makes a second account' do
       enable_registration!
       stub_turnstile(success: true)
@@ -287,7 +361,10 @@ RSpec.describe 'Self-serve registration', type: :request do
 
       expect { sign_up(email: 'Taken@Example.com') }.not_to change(Account, :count)
       expect(response).to have_http_status(:unprocessable_content)
-      expect(response.body).to include('already been taken')
+      expect(response.body).to include('There is already an account for')
+      expect(response.body).to include('Sign in instead')
+      expect(response.body).to include(new_user_password_path)
+      expect(response.body).not_to include('prohibited this user from being saved')
       expect(User.where('lower(email) = ?', 'taken@example.com').count).to eq(1)
     end
 
@@ -305,7 +382,7 @@ RSpec.describe 'Self-serve registration', type: :request do
       2.times do
         expect { sign_up(email: 'taken@example.com') }.not_to change(User, :count)
         expect(response).to have_http_status(:unprocessable_content)
-        expect(response.body).to include('already been taken')
+        expect(response.body).to include('There is already an account for')
       end
 
       # Five failures spent nothing: the next five real sign-ups go through...
@@ -350,7 +427,7 @@ RSpec.describe 'Self-serve registration', type: :request do
 
       expect { sign_up(email: 'race@example.com') }.not_to change(Account, :count)
       expect(response).to have_http_status(:unprocessable_content)
-      expect(response.body).to include('already been taken')
+      expect(response.body).to include('There is already an account for')
       expect(User.where(email: 'race@example.com')).not_to exist
     end
   end
@@ -644,6 +721,232 @@ RSpec.describe 'Self-serve registration', type: :request do
     end
   end
 
+  describe 'Apple sign-up and sign-in' do
+    before do
+      enable_registration!
+      enable_apple!
+    end
+
+    it 'creates one customer account with a confirmed admin for a new address, records the agreement, signs them in' do
+      mock_apple(email: 'grace@example.com')
+
+      expect { sign_in_with_apple! }.to change(Account, :count).by(1).and change(User, :count).by(1)
+      expect(response).to redirect_to(root_path)
+
+      user = signed_up_user('grace@example.com')
+      expect(user).to have_attributes(first_name: 'Grace', last_name: 'Hopper', role: User::ADMIN_ROLE)
+      expect(user.confirmed_at).to be_present
+      expect(user.account).to have_attributes(account_kind: Account::CUSTOMER_KIND, name: 'Grace Hopper')
+      expect(LegalAcceptance.where(user:).pluck(:document, :source))
+        .to contain_exactly(['terms', LegalAcceptance::SIGNUP_APPLE], ['privacy', LegalAcceptance::SIGNUP_APPLE])
+      expect(ActionMailer::Base.deliveries).to be_empty
+      expect_signed_in
+    end
+
+    # Apple sends the name once, on the first authorisation, and only if the
+    # person leaves it shared. Without it the account is named after the
+    # address rather than refused.
+    it 'creates the account from the address alone when Apple shares no name' do
+      mock_apple(email: 'quiet@example.com', name: nil)
+
+      expect { sign_in_with_apple! }.to change(Account, :count).by(1)
+      expect(response).to redirect_to(root_path)
+      expect(signed_up_user('quiet@example.com').account.name).to eq('quiet@example.com')
+      expect_signed_in
+    end
+
+    # A private relay forward is a real, deliverable mailbox. Nothing about it
+    # is special-cased, which is the whole assertion.
+    it 'accepts one of Apple\'s private relay addresses like any other' do
+      mock_apple(email: 'abc123xyz@privaterelay.appleid.com')
+
+      expect { sign_in_with_apple! }.to change(User, :count).by(1)
+      expect(response).to redirect_to(root_path)
+      expect(signed_up_user('abc123xyz@privaterelay.appleid.com')).to be_confirmed
+      expect_signed_in
+    end
+
+    it 'signs an existing confirmed user in without touching their account' do
+      user = create(:user, email: 'member@example.com')
+      mock_apple(email: 'Member@example.com')
+
+      expect { sign_in_with_apple! }.not_to change(User, :count)
+      expect(response).to redirect_to(root_path)
+      expect(user.reload.account.users.count).to eq(1)
+      expect_signed_in
+    end
+
+    # THE Apple-specific failure. Apple hands over the address on the first
+    # authorisation and never again, so somebody whose first attempt fell over
+    # comes back with a `sub` and nothing else. There is no account to sign
+    # them into and no honest way to invent an address, so they are told the
+    # one thing that fixes it — and nothing at all is written.
+    it 'refuses a re-authorisation that carries no email address, creating nothing' do
+      mock_apple(email: nil)
+
+      expect { sign_in_with_apple! }.not_to change(User, :count)
+      expect(Account.count).to eq(1)
+      expect(response).to redirect_to(new_user_session_path)
+      expect(flash[:alert]).to eq(I18n.t('apple_did_not_share_an_email_address',
+                                         product_name: Docuseal.product_name))
+      expect(flash[:alert]).to include('Sign in with Apple')
+      expect_signed_out
+
+      # The same for an address Apple declines to vouch for.
+      mock_apple(email: 'unverified@example.com', verified: false)
+
+      expect { sign_in_with_apple! }.not_to change(User, :count)
+      expect(flash[:alert]).to eq(I18n.t('apple_email_not_verified'))
+      expect_signed_out
+    end
+
+    it 'refuses a disposable address and a failed exchange, creating nothing' do
+      mock_apple(email: 'burner@mailinator.com')
+
+      expect { sign_in_with_apple! }.not_to change(User, :count)
+      expect(response).to redirect_to(new_user_session_path)
+      expect(flash[:alert]).to eq(I18n.t('please_use_a_permanent_email_address'))
+      expect_signed_out
+
+      OmniAuth.config.mock_auth[:apple] = :invalid_credentials
+
+      expect { sign_in_with_apple! }.not_to change(User, :count)
+      expect(flash[:alert]).to eq(I18n.t('apple_sign_in_failed'))
+      expect_signed_out
+      expect(Account.count).to eq(1)
+    end
+
+    it 'applies the per-network sign-up limit and the two-factor rule to the Apple door too' do
+      Quotas::Limits::SIGNUPS_PER_IP_PER_HOUR.times { Registrations.assert_ip_allowed!('127.0.0.1') }
+      mock_apple(email: 'late@example.com')
+
+      expect { sign_in_with_apple! }.not_to change(User, :count)
+      expect(flash[:alert]).to eq(I18n.t('too_many_sign_ups_from_this_network'))
+      expect_signed_out
+
+      RateLimit.store.clear
+      careful = create(:user, email: 'careful@example.com', otp_required_for_login: true,
+                              otp_secret: User.generate_otp_secret)
+      mock_apple(email: 'careful@example.com')
+
+      sign_in_with_apple!
+
+      expect(flash[:alert]).to eq(I18n.t('apple_sign_in_not_available_with_2fa'))
+      expect(careful.reload.sign_in_count).to eq(0)
+      expect_signed_out
+    end
+
+    it 'answers 404 for the Apple endpoints and hides the button while the switch is off' do
+      ENV.delete('REGISTRATION_ENABLED')
+      mock_apple(email: 'grace@example.com')
+
+      post user_apple_omniauth_authorize_path
+      expect(response).to have_http_status(:not_found)
+
+      post user_apple_omniauth_callback_path
+      expect(response).to have_http_status(:not_found)
+      expect(User.count).to eq(1)
+    end
+
+    # All four credentials or no Apple, and a slot still carrying the env
+    # file's PASTE_ marker is not a credential. A team id or key id of the
+    # wrong shape is not one either: Apple's are always ten characters, and a
+    # button that bounces to a broken authorize URL is worse than no button.
+    [['APPLE_OAUTH_CLIENT_ID', nil, 'the Service ID is unset'],
+     ['APPLE_OAUTH_TEAM_ID', nil, 'the team id is unset'],
+     ['APPLE_OAUTH_KEY_ID', nil, 'the key id is unset'],
+     ['APPLE_OAUTH_PRIVATE_KEY', nil, 'the private key is unset'],
+     ['APPLE_OAUTH_CLIENT_ID', 'PASTE_apple_service_id', 'the Service ID is still the env file placeholder'],
+     ['APPLE_OAUTH_PRIVATE_KEY', 'PASTE_apple_p8_key', 'the private key is still the env file placeholder'],
+     ['APPLE_OAUTH_PRIVATE_KEY', 'not-a-key-at-all', 'the private key is not a key'],
+     ['APPLE_OAUTH_TEAM_ID', 'TOOLONGTEAMID', 'the team id is not Apple\'s ten characters']]
+      .each do |variable, value, description|
+      it "answers 404 for the Apple endpoints and hides the button while #{description}" do
+        value.nil? ? ENV.delete(variable) : ENV[variable] = value
+        mock_apple(email: 'grace@example.com')
+
+        post user_apple_omniauth_authorize_path
+        expect(response).to have_http_status(:not_found)
+
+        post user_apple_omniauth_callback_path
+        expect(response).to have_http_status(:not_found)
+        expect(User.count).to eq(1)
+
+        get new_registration_path
+        expect(response).to have_http_status(:ok)
+        expect(response.body).not_to include(apple_button)
+      end
+    end
+
+    # The token exchange Apple's callback triggers costs us the same outbound
+    # call Google's does, so it is counted the same way — and, exactly as on
+    # the Google door, only the one request that can reach it: the callback
+    # carrying the state OmniAuth minted for this browser. Apple posts that
+    # state in the BODY rather than the query string, which is the thing this
+    # example is really pinning.
+    it 'counts the state-carrying callback POST against the per-network ceiling, and nothing else' do
+      mock_apple(email: 'grace@example.com')
+      state = start_apple_flow!
+
+      (Quotas::Limits::OAUTH_ATTEMPTS_PER_IP_PER_HOUR + 1).times do
+        post user_apple_omniauth_callback_path
+
+        expect(response).to have_http_status(:redirect)
+      end
+
+      Quotas::Limits::OAUTH_ATTEMPTS_PER_IP_PER_HOUR.times do
+        Registrations.assert_oauth_attempt_allowed!('127.0.0.1')
+      end
+
+      post user_apple_omniauth_callback_path, params: { state: }
+
+      expect(response).to have_http_status(:too_many_requests)
+    end
+
+    # Apple's callback is a form POST made by appleid.apple.com. It carries no
+    # authenticity token of ours and never can, so that one action is exempt —
+    # and the exemption stops there: the Google callback, which is an ordinary
+    # same-site redirect, still refuses an untokened POST.
+    it 'accepts Apple\'s unauthenticated cross-site callback POST, and only Apple\'s' do
+      enable_google!
+      create(:user, email: 'member@example.com')
+      mock_apple(email: 'member@example.com')
+      mock_google(email: 'member@example.com')
+      original = ActionController::Base.allow_forgery_protection
+      ActionController::Base.allow_forgery_protection = true
+
+      post user_apple_omniauth_callback_path
+
+      expect(response).to redirect_to(root_path)
+      expect_signed_in
+
+      expect { post user_google_oauth2_omniauth_callback_path }
+        .to raise_error(ActionController::InvalidAuthenticityToken)
+    ensure
+      ActionController::Base.allow_forgery_protection = original
+    end
+
+    # And the other half of that round trip: a browser will not send a
+    # SameSite=Lax cookie on a cross-site POST, so the session holding
+    # OmniAuth's state would simply not arrive and nobody could ever finish an
+    # Apple sign-in. The Apple authorize response — and no other response —
+    # relaxes it.
+    it 'relaxes SameSite on the Apple authorize response only' do
+      enable_google!
+      OmniAuth.config.test_mode = false
+
+      post user_apple_omniauth_authorize_path(LegalDocuments.version_fields)
+
+      expect(session_cookie_header).to match(/SameSite=None/i)
+      expect(session_cookie_header).not_to match(/SameSite=Lax/i)
+
+      post user_google_oauth2_omniauth_authorize_path(LegalDocuments.version_fields)
+
+      expect(session_cookie_header).to match(/SameSite=Lax/i)
+      expect(session_cookie_header).not_to match(/SameSite=None/i)
+    end
+  end
+
   describe 'routes' do
     it 'draws only new, create and the check-your-email page — never Devise registration editing' do
       route_names = Rails.application.routes.routes.filter_map(&:name).grep(/registration/)
@@ -758,15 +1061,27 @@ RSpec.describe 'Self-serve registration', type: :request do
       expect { described_class.check! }.to raise_error(/TURNSTILE_SECRET_KEY/)
     end
 
-    it 'only warns about missing Google credentials, and stays quiet with everything set' do
+    it 'only warns about missing provider credentials, and stays quiet with everything set' do
       enable_registration!
       production!
 
       expect { described_class.check! }.not_to raise_error
       expect(ErrorReport).to have_received(:warning).with(/GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET/)
       expect(Rails.logger).to have_received(:warn).with(/GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET/)
+      expect(ErrorReport).to have_received(:warning).with(/APPLE_OAUTH_CLIENT_ID, APPLE_OAUTH_TEAM_ID/)
 
+      # A slot filled with the env file's paste marker is still a warning: the
+      # button hides, so saying otherwise would be a lie.
       enable_google!
+      enable_apple!
+      ENV['APPLE_OAUTH_KEY_ID'] = 'PASTE_apple_key_id'
+      RSpec::Mocks.space.proxy_for(ErrorReport).reset
+      allow(ErrorReport).to receive(:warning)
+
+      expect { described_class.check! }.not_to raise_error
+      expect(ErrorReport).to have_received(:warning).with(/APPLE_OAUTH_KEY_ID/)
+
+      enable_apple!
       RSpec::Mocks.space.proxy_for(ErrorReport).reset
       allow(ErrorReport).to receive(:warning)
 

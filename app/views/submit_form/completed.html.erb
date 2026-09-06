@@ -1,3 +1,4 @@
+<% content_for(:html_title, "#{@submitter.submission.name || @submitter.submission.template.name} — EsignCenter") %>
 <main class="max-w-md mx-auto px-2 mt-12 mb-4">
   <div class="space-y-6 mx-auto">
     <div class="space-y-6">
@@ -51,7 +52,7 @@
     <% end %>
   </div>
 </main>
-<%= render 'shared/attribution', link_path: '/start', account: @submitter.account %>
+<%= render 'shared/attribution', account: @submitter.account %>
 <%# Not attribution: the signer's way to tell the operator about an abusive document (ReportsController). %>
 <p class="text-center text-xs mt-2 mb-4">
   <%= link_to t('report_this_document'), report_path(@submitter.slug), class: 'link link-hover text-base-content/50', rel: 'nofollow' %>

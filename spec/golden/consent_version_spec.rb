@@ -16,8 +16,10 @@
 # not quietly rewrite what old evidence says the signer agreed to — it turns
 # this pin RED, and the editor has to do what docs/esign-consent.md §6 asks:
 # archive the superseded text of every base locale under
-# config/locales/esign_disclosures/<old-version>.yml, change the wording, bump
-# EsignConsent::VERSION and EFFECTIVE_DATE, then recompute the digests below
+# config/locales/esign_disclosures/<old-version>.yml — the body AND that
+# version's three self-signing paragraphs, which are part of the same
+# fingerprint — change the wording, bump EsignConsent::VERSION and
+# EFFECTIVE_DATE, then recompute the digests below
 # (`EsignConsent.disclosure_sha256(version:, locale:, self_signing:)`).
 #
 # Computed 2026-09-06 from config/locales/i18n.yml for v2 (effective
@@ -504,6 +506,199 @@ RSpec.describe 'ESIGN consent version', type: :request do
         expect(EsignConsent.disclosure_sha256(version: EsignConsent::VERSION, locale:, self_signing: true))
           .to eq(digests.fetch(:self_signing)), "#{locale} (self-signing)"
       end
+    end
+  end
+
+  # A3: the self-signing paragraphs (EsignConsent::SELF_SIGNING_KEYS) are part
+  # of the fingerprinted text — a "sign it yourself" signer's
+  # `disclosure_sha256` is of the body WITH them spliced in — so they sit under
+  # the version rule with the bodies, not outside it. They used to be read from
+  # the live locale file for every version, which meant one later edit of a
+  # self-signing paragraph rewrote what every self-signing consent ever
+  # recorded says it was, under every version, and the audit trail could only
+  # answer "wording no longer on file" for those signers.
+  #
+  # Now a version's words come from ONE place: the live keys while it is
+  # current, its archive snapshot once it is superseded.
+  describe 'the self-signing paragraphs under the version rule' do
+    # A "sign it yourself" signer: the sender's own login is the signer's email.
+    let(:self_signer) do
+      create(:submission, :with_submitters, template:, created_by_user: admin)
+        .submitters.first.tap { |s| s.update!(sent_at: Time.current, email: admin.email) }
+    end
+
+    # The live paragraphs as this run found them, read BEFORE any example can
+    # edit them and put back afterwards, so the pinned digests above are never
+    # left rewritten for the rest of the suite.
+    let(:live_self_signing) do
+      EsignConsent.locales.index_with do |locale|
+        EsignConsent::SELF_SIGNING_KEYS.index_with { |key| I18n.t(key, locale:, fallback: false) }
+      end
+    end
+
+    # What docs/esign-consent.md §6 tells an editor to write into
+    # config/locales/esign_disclosures/<version>.yml, done in memory: the
+    # version's body AND its three self-signing paragraphs, taken
+    # programmatically so the bytes archived are the bytes published.
+    def archive!(version, locales)
+      locales.each do |locale|
+        I18n.backend.store_translations(
+          locale.to_sym,
+          esign_disclosure_archive: {
+            version => I18n.t(EsignConsent::DISCLOSURE_KEY, locale:, fallback: false),
+            "#{version}#{EsignConsent::SELF_SIGNING_ARCHIVE_SUFFIX}" =>
+              EsignConsent::SELF_SIGNING_KEYS.index_with { |key| I18n.t(key, locale:, fallback: false) }
+          }
+        )
+      end
+    end
+
+    # Translations loaded from the locale files are frozen; a scope this
+    # example wrote to is not, because store_translations merges it into a new
+    # hash. So a frozen scope is one nothing was stored into — nothing to undo.
+    def unarchive!(version, locales)
+      locales.each do |locale|
+        scope = I18n.backend.translations[locale.to_sym][:esign_disclosure_archive]
+
+        next if scope.nil? || scope.frozen?
+
+        scope.delete(version.to_sym)
+        scope.delete(:"#{version}#{EsignConsent::SELF_SIGNING_ARCHIVE_SUFFIX}")
+      end
+    end
+
+    before { live_self_signing }
+
+    after do
+      live_self_signing.each { |locale, keys| I18n.backend.store_translations(locale.to_sym, keys) }
+      unarchive!('v2', EsignConsent.locales)
+    end
+
+    # (b) The resolver and the fingerprint are the same text by construction:
+    # hashing what `disclosure_text` returns, with the one shared function the
+    # audit trail uses, reproduces exactly the digest stamped on the event.
+    it 'reproduces the very bytes each pinned fingerprint was computed over' do
+      ConsentDisclosureDigests::LIVE.each do |locale, digests|
+        plain = EsignConsent.disclosure_text(version: EsignConsent::VERSION, locale:)
+        variant = EsignConsent.disclosure_text(version: EsignConsent::VERSION, locale:, self_signing: true)
+
+        expect(EsignConsent.text_sha256(plain)).to eq(digests.fetch(:text)), locale
+        expect(EsignConsent.text_sha256(variant)).to eq(digests.fetch(:self_signing)), "#{locale} (self-signing)"
+      end
+    end
+
+    # (1) A consent recorded against the CURRENT version resolves its text from
+    # the live locale keys, and the audit trail's own check passes on it.
+    it 'resolves a current-version self-signing consent from the live keys' do
+      complete(self_signer, **current_consent(self_signer))
+
+      expect(response).to have_http_status(:ok)
+
+      event = consent_events(self_signer).sole
+      locale = event.data.fetch('locale')
+
+      expect(event.data).to include('version' => EsignConsent::VERSION, 'self_signing' => true)
+
+      text = EsignConsent.disclosure_text(version: event.data['version'], locale:,
+                                          self_signing: event.data['self_signing'])
+
+      EsignConsent::SELF_SIGNING_KEYS.each { |key| expect(text).to include(I18n.t(key, locale:)), key }
+
+      # Submissions::GenerateAuditTrail#consent_wording_recorded?, in one line.
+      expect(EsignConsent.text_sha256(text)).to eq(event.data['disclosure_sha256'])
+      expect(event.data['disclosure_sha256'])
+        .to eq(ConsentDisclosureDigests::LIVE.fetch(locale).fetch(:self_signing))
+    end
+
+    # (2) The bump this whole rule exists for. v2 is archived (body and
+    # paragraphs together), VERSION moves to v3, and v3 rewrites a self-signing
+    # paragraph. The v2 event's words — and its fingerprint — must not move.
+    it 'keeps an old self-signing consent readable after a bump that rewrites the live paragraphs' do
+      complete(self_signer, **current_consent(self_signer))
+
+      expect(response).to have_http_status(:ok)
+
+      event = consent_events(self_signer).sole
+      as_signed = EsignConsent.disclosure_text(version: 'v2', locale: event.data['locale'], self_signing: true)
+
+      archive!('v2', EsignConsent.locales)
+      stub_const('EsignConsent::VERSION', 'v3')
+
+      EsignConsent.locales.each do |locale|
+        I18n.backend.store_translations(locale.to_sym,
+                                        esign_consent_disclosure_self_signing: "Rewritten for v3 (#{locale}).")
+      end
+
+      text = EsignConsent.disclosure_text(version: event.data['version'], locale: event.data['locale'],
+                                          self_signing: event.data['self_signing'])
+
+      expect(text).to eq(as_signed)
+      expect(text).not_to include('Rewritten for v3')
+      expect(EsignConsent.text_sha256(text)).to eq(event.data['disclosure_sha256'])
+
+      ConsentDisclosureDigests::LIVE.each do |locale, digests|
+        # Every locale's v2 self-signing text still hashes to what it hashed to
+        # before the bump — the digest on record for those signers.
+        expect(EsignConsent.disclosure_sha256(version: 'v2', locale:, self_signing: true))
+          .to eq(digests.fetch(:self_signing)), locale
+        expect(EsignConsent.disclosure_text(version: 'v2', locale:, self_signing: true))
+          .not_to include('Rewritten for v3'), locale
+
+        # And the edit really did land: v3 is a different text, as it should be.
+        expect(EsignConsent.disclosure_text(version: 'v3', locale:, self_signing: true))
+          .to include("Rewritten for v3 (#{locale}).")
+        expect(EsignConsent.disclosure_sha256(version: 'v3', locale:, self_signing: true))
+          .not_to eq(digests.fetch(:self_signing)), "#{locale} (v3)"
+      end
+    end
+
+    # v1 shipped before the variant existed, so no v1 consent can carry
+    # `self_signing`. The archive says that in as many words rather than
+    # leaving a reader to guess whether somebody forgot to archive it — and the
+    # resolver refuses to invent the paragraphs either way.
+    it 'says v1 never had a self-signing variant, and produces no wording for one' do
+      EsignConsent.locales.each do |locale|
+        expect(I18n.t("#{EsignConsent::ARCHIVE_SCOPE}.v1#{EsignConsent::SELF_SIGNING_ARCHIVE_SUFFIX}",
+                      locale:, fallback: false, raise: true))
+          .to eq(EsignConsent::SELF_SIGNING_NEVER_PUBLISHED), locale
+
+        expect(EsignConsent.disclosure_text(version: 'v1', locale:, self_signing: true)).to be_nil, locale
+        expect(EsignConsent.disclosure_sha256(version: 'v1', locale:, self_signing: true)).to be_nil, locale
+
+        # The v1 body itself is untouched by any of this and still reads back.
+        expect(EsignConsent.disclosure_text(version: 'v1', locale:)).to be_present, locale
+      end
+    end
+
+    # A snapshot that is missing, or there but half-written, is not a text
+    # anybody can vouch for: the trail says "wording no longer on file" rather
+    # than splicing today's paragraphs into an old body.
+    it 'produces nothing for a version whose self-signing snapshot is missing or incomplete' do
+      body = "<p>old #{EsignConsent::SENDER_EMAIL_PLACEHOLDER}</p>"
+
+      I18n.backend.store_translations(:en, esign_disclosure_archive: { v0: body })
+
+      expect(EsignConsent.disclosure_text(version: 'v0', locale: 'en')).to eq(body)
+      expect(EsignConsent.disclosure_text(version: 'v0', locale: 'en', self_signing: true)).to be_nil
+
+      I18n.backend.store_translations(
+        :en, esign_disclosure_archive: { v0_self_signing: { EsignConsent::SELF_SIGNING_KEYS.first => 'Only one.' } }
+      )
+
+      expect(EsignConsent.disclosure_text(version: 'v0', locale: 'en', self_signing: true)).to be_nil
+
+      I18n.backend.store_translations(
+        :en,
+        esign_disclosure_archive: {
+          v0_self_signing: EsignConsent::SELF_SIGNING_KEYS.index_with { |key| "#{key} para" }
+        }
+      )
+
+      expect(EsignConsent.disclosure_text(version: 'v0', locale: 'en', self_signing: true))
+        .to eq(EsignConsent::SELF_SIGNING_KEYS.map { |key| "<p>#{key} para</p>" }.join)
+    ensure
+      unarchive!('v0', ['en'])
+      expect(EsignConsent.disclosure_text(version: 'v0', locale: 'en')).to be_nil
     end
   end
 end
