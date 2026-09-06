@@ -1668,6 +1668,37 @@ RSpec.describe 'Seats and invitations', type: :request do
       expect(Template.where(id: incoming.drop(1).map(&:id))).to be_empty
     end
 
+    # Review 10 (A-F2). "Never touched" has to mean never EDITED, not merely
+    # never sent. Somebody who opened a starter, renamed its fields to suit
+    # their business and saved it has written neither a submission nor a share
+    # link — the only two things the drop looked at — so joining a team
+    # DESTROYED that work, versions and all, inside the transaction that
+    # archives their old account, with nothing anywhere saying it had gone.
+    #
+    # The name is left alone on purpose: a renamed template is kept by the
+    # name test above, so it would prove nothing about the edit.
+    it 'keeps a starter template the joiner edited but never sent' do
+      StarterTemplates.seed!(account)
+      incoming = StarterTemplates.seed!(other_account)
+      edited = incoming.first
+      fields = edited.fields
+
+      edited.update!(fields: [fields.first.merge('name' => 'Signed for the practice'), *fields.drop(1)])
+
+      token = invite_row.raw_token
+      act_as(other_user)
+
+      expect { post "/invites/#{token}" }.to change(AccountMove, :count).by(1)
+
+      # Their work comes with them, duplicate name and all. The three they
+      # never opened do not.
+      expect(edited.reload.account).to eq(account)
+      expect(edited.fields.first['name']).to eq('Signed for the practice')
+      expect(account.templates.count).to eq(5)
+      expect(account.templates.where(name: edited.name).count).to eq(2)
+      expect(Template.where(id: incoming.drop(1).map(&:id))).to be_empty
+    end
+
     it 'refuses, with an explanation, when the account being left is still paying' do
       create(:account_subscription, account: other_account, access_state: 'active', status: 'active', quantity: 1)
       token = invite_row.raw_token

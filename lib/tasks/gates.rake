@@ -94,7 +94,17 @@ module Gates
   # bare `accounts.create!` has no dot in front of it. A gate with holes in
   # the ordinary spellings is worse than no gate, because reviewers stop
   # looking.
-  ACCOUNT_CREATION_VERBS = 'new|create!?|build|find_or_create_by!?|first_or_create!?'
+  #
+  # Review 10 (D-F3) added the rest of the vocabulary, proven by a probe file
+  # the gate read and passed: `create_or_find_by` (the find-or-create twin
+  # that races on the unique index instead of on the read), and the four bulk
+  # writers — `insert`, `insert_all`, `upsert`, `upsert_all` — which matter
+  # MORE than the others here, not less: they compile straight to SQL, so the
+  # column's `customer` default is applied by Postgres with no model, no
+  # validation and no callback anywhere in the path. A row minted that way is
+  # a billable tenant nobody named.
+  ACCOUNT_CREATION_VERBS = 'new|create_or_find_by!?|create!?|build|find_or_create_by!?|first_or_create!?|' \
+                           'insert_all!?|insert!?|upsert_all|upsert'
   # `Account` itself, or an association/local whose name ends in `account(s)`
   # — `user.accounts`, a bare `accounts`, `testing_account`.
   ACCOUNT_RECEIVER = '(?:\bAccount|\b[a-z_]*accounts?)'
@@ -106,7 +116,15 @@ module Gates
   # A NAMED list, unlike the config-lookup gate's SCOPE_SEGMENT, because the
   # receiver here can be an association: "any method" would read
   # `account.templates.create!(...)` as an account creation.
-  ACCOUNT_SCOPE_VERBS = 'where|not|unscoped|all|order|limit|offset|includes|joins|distinct|lock|select|find_by!?'
+  #
+  # `create_with` is a scope like the others AND it is where the attributes of
+  # the creation behind it are written — `Account.create_with(name: n)
+  # .find_or_create_by(external_id: id)` — so the kind may honestly be named
+  # in that segment rather than in the final call. The whole chain is one
+  # match, and ACCOUNT_KIND_ARGUMENT is asked of the whole match, so naming it
+  # there passes and naming it nowhere does not (review 10, D-F3).
+  ACCOUNT_SCOPE_VERBS = 'where|not|unscoped|all|order|limit|offset|includes|joins|distinct|lock|select|' \
+                        'find_by!?|create_with'
   ACCOUNT_SCOPE_SEGMENT =
     "\\s*\\.\\s*(?:#{ACCOUNT_SCOPE_VERBS})(?![\\w!?])(?:\\s*\\(#{CALL_ARGS}\\))?".freeze
   # Parenthesised over as many lines as it likes, or paren-less to the end of

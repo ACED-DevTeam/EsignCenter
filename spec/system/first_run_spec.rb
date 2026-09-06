@@ -244,6 +244,32 @@ RSpec.describe 'First-run checklist' do
       expect(page).to have_no_css('[data-first-run-checklist]')
       expect(page).to have_css('#app_tour_manager')
     end
+
+    # The rule itself, pinned (review 10, D-F2). It is the WINDOW that decides
+    # and nothing else. The shape before 78f4976f also stood the card down for
+    # any account that had ever sent a submission, which silently took the
+    # tour's welcome away from established accounts for good — and read
+    # identically on every other example in this file.
+    it 'welcomes an account past the window even though it has sent a document' do
+      sent_submission!(seed_starter_template!)
+      account.update!(created_at: 2.months.ago)
+
+      visit root_path
+
+      expect(page).to have_no_css('[data-first-run-checklist]')
+      expect(page).to have_css('#app_tour_manager')
+    end
+
+    # The other side of the same rule: inside the window the card is stood
+    # down whether or not anything has been sent yet.
+    it 'stands the welcome card down inside the window for an account that has sent nothing' do
+      seed_starter_template!
+      account.update!(created_at: 3.days.ago)
+
+      visit root_path
+
+      expect(page).to have_no_css('#app_tour_manager')
+    end
   end
 
   context 'when the page is read out rather than looked at' do

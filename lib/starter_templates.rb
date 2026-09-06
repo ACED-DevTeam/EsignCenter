@@ -28,6 +28,25 @@ module StarterTemplates
   # both are authored by the account's admin.
   STARTER_PREFERENCE_KEY = 'starter'
 
+  # The second marker, beside the first and in the same place, so nothing new
+  # had to be added to the schema for it (review 10, A-F2).
+  #
+  # It says something narrower than `starter`: this is a starter document
+  # NOBODY HAS OPENED. It is written by `create_template!` as its very last
+  # act — after the file, the schema and the fields are on the row — and it is
+  # taken off again by the first save of any kind
+  # (Template#forget_starter_pristine_marker).
+  #
+  # It exists for one decision: when somebody who signed up alone joins a team
+  # that also signed up self-serve, the four duplicate starters they never
+  # used are dropped rather than landing the team with eight cards
+  # (Accounts::MoveUser). "Never used" was read off submissions and share
+  # links, which are the traces of SENDING a document — and a person who
+  # opened a starter, renamed its fields and saved it has left neither, so
+  # their work was destroyed as a duplicate. Editing always writes the row,
+  # so the row is where the answer is.
+  STARTER_PRISTINE_KEY = 'starter_pristine'
+
   # The one unique index `seed!` is allowed to swallow a collision on: the
   # seeding marker's (account_id, key). Anything else that raises
   # RecordNotUnique under `seed!` is a bug, and a bug reported as "somebody
@@ -62,8 +81,18 @@ module StarterTemplates
     relation.where(not_marked_condition)
   end
 
+  # ...and the ones nobody has opened since we put them there. Same cast, same
+  # column, a different key.
+  def pristine(relation)
+    relation.where(pristine_condition)
+  end
+
   def marked_condition
     [MARKED_SQL, { key: STARTER_PREFERENCE_KEY }]
+  end
+
+  def pristine_condition
+    [MARKED_SQL, { key: STARTER_PRISTINE_KEY }]
   end
 
   def not_marked_condition
@@ -163,6 +192,15 @@ module StarterTemplates
 
     template.update!(schema: [Templates::CreateAttachments.schema_item(document)],
                      fields: build_fields(spec, template, document))
+
+    # LAST, and with `update_columns` on purpose. Seeding a template is
+    # several saves — the row, its attachments, then its schema and fields —
+    # and the marker means "nobody has saved this since we finished", so it
+    # can only be written once we have. `update_columns` is what keeps it
+    # there: an ordinary save would run the callback that takes it off again.
+    template.update_columns(preferences: template.preferences.merge(STARTER_PRISTINE_KEY => true),
+                            updated_at: Time.current)
+    template.reload
 
     template
   end

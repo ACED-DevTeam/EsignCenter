@@ -19,7 +19,14 @@ Rails.application.load_tasks unless Rake::Task.task_defined?('gates:account_kind
 # rubocop:disable RSpec/DescribeClass
 RSpec.describe 'Account-kind gate' do
   describe 'Gates.account_kind_violations' do
-    it 'catches every creation form with no kind named' do
+    # The title used to say "every creation form", which is a promise no
+    # regex can keep: it can only know the spellings somebody has taught it.
+    # What this example really pins is the list below — every idiom in it is
+    # caught, and a new idiom is a new line here plus a new verb in the gate
+    # (review 10, D-F3: a probe file spelling `create_or_find_by`, `insert!`,
+    # `insert_all`, `upsert`, `upsert_all` or `create_with(...)
+    # .find_or_create_by` walked straight through a green gate).
+    it 'catches each creation spelling it knows, with no kind named' do
       [
         'Account.new(name: name)',
         'Account.create(name: name)',
@@ -54,6 +61,23 @@ RSpec.describe 'Account-kind gate' do
         'Account.where(name: name).where.not(archived_at: nil).first_or_create!(timezone: zone)',
         'account.dup',
         'testing_account = account.dup',
+        # Review 10 (D-F3). The rest of Rails' creation vocabulary: the
+        # find-or-create twin that races safely, the three bulk writers that
+        # go straight to SQL — and therefore straight past every model
+        # default the console would have applied — and the scope that carries
+        # the attributes for a `find_or_create_by` in front of it.
+        'Account.create_or_find_by(name: name)',
+        'Account.create_or_find_by!(name: name)',
+        'user.accounts.create_or_find_by!(name: name)',
+        'Account.insert({ name: name })',
+        'Account.insert!({ name: name })',
+        'Account.insert_all([{ name: name }])',
+        'Account.insert_all!([{ name: name }])',
+        'Account.upsert({ name: name })',
+        'Account.upsert_all([{ name: name }])',
+        'Account.create_with(name: name).find_or_create_by(timezone: zone)',
+        'Account.create_with(name: name).first_or_create!',
+        "Account.upsert_all(\n  [{ name: name }],\n  unique_by: :id\n)",
         # A string that merely spells the argument out is not the argument.
         "Account.new(name: 'account_kind: internal')"
       ].each do |snippet|
@@ -125,7 +149,14 @@ RSpec.describe 'Account-kind gate' do
         'Account.find_or_create_by!(name: name, account_kind: kind)',
         'Account.create name: name, account_kind: kind',
         'Account.where(name: name).first_or_create!(account_kind: kind)',
-        'user.accounts.where(name: name).create!(account_kind: kind)'
+        'user.accounts.where(name: name).create!(account_kind: kind)',
+        # Review 10 (D-F3): the new spellings, said properly.
+        'Account.create_or_find_by!(name: name, account_kind: kind)',
+        'Account.insert!({ name: name, account_kind: kind })',
+        'Account.insert_all([{ name: name, account_kind: kind }])',
+        'Account.upsert({ name: name, account_kind: kind })',
+        'Account.upsert_all([{ name: name, account_kind: kind }])',
+        'Account.create_with(account_kind: kind).find_or_create_by(name: name)'
       ].each do |snippet|
         expect(Gates.account_kind_violations("#{snippet}\n", 'lib/probe.rb')).to be_empty, snippet
       end

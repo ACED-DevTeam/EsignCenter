@@ -43,6 +43,26 @@ class AccountExportJob
   # worth trying again is the wall-clock cap: retrying a build that ran for
   # half an hour just spends another hour to say the same thing, so it is
   # marked failed on the spot.
+  #
+  # AND THE ROW IS HANDED BACK BEFORE THE RAISE (review 10, C-F1/C-F6). It
+  # used to be left `running`, signed with this attempt's token, and the raise
+  # was the whole of the failure handling. Sidekiq then retried — and the
+  # retry is a new EXECUTION with a new token, so its `claim` found a running
+  # row owned by somebody else, not yet stale, and returned nil. `perform`
+  # returned nil, which Sidekiq reads as a job that SUCCEEDED: no further
+  # retry, no `sidekiq_retries_exhausted`, and therefore nothing anywhere
+  # writing an ending onto the row. The customer's export sat `running` for
+  # up to two hours with the export door shut behind it and the day's budget
+  # spent on nothing, until the nightly sweep failed it.
+  #
+  # So a retryable failure puts the row back to `pending` with no owner: the
+  # retry claims it like any unclaimed row, and if every retry fails, the row
+  # is still `pending` when `sidekiq_retries_exhausted` runs and that callback
+  # writes the failure, refunds the day and reopens the door. (A released row
+  # is measured by the sweep's SHORT pending fuse rather than the two-hour
+  # one, which is the right answer either way: Sidekiq's backoff for
+  # `retry: 2` is under two minutes, and a retry that somehow never arrives
+  # should reopen the door in fifteen rather than in a hundred and twenty.)
   def perform(export_id)
     export = claim(export_id)
 
@@ -54,6 +74,10 @@ class AccountExportJob
       end
     rescue Timeout::Error => e
       fail!(export, e)
+    rescue StandardError
+      release!(export)
+
+      raise
     end
 
     nil
@@ -297,31 +321,76 @@ class AccountExportJob
     "esigncenter-export-#{export.account_id}-#{stamp}.zip"
   end
 
+  # Gives a claimed row back to whoever comes next, and only ever the row this
+  # execution still owns (review 10, C-F1). A zombie whose build finally blows
+  # up hours after the sweep replaced it must not put the LIVE execution's row
+  # back to `pending` for a third worker to claim out from under it — hence the
+  # same lock and the same ownership question every other write in this file
+  # asks.
+  #
+  # The staged blob pointer is deliberately kept: the half-written zip is
+  # still in the bucket, and the pointer is what the retry's `stage!` and the
+  # nightly sweep use to find and delete it.
+  def release!(export)
+    export.with_lock do
+      next unless export.status == AccountExport::RUNNING
+      next unless owns?(export)
+
+      export.update!(status: AccountExport::PENDING, started_at: nil,
+                     summary: export.summary.except(AccountExport::ATTEMPT_KEY))
+    end
+
+    nil
+  rescue StandardError => e
+    # Best effort on purpose: the failure that is on its way up to Sidekiq is
+    # the one that matters, and a row that could not be handed back is exactly
+    # the row the nightly sweep exists for.
+    ErrorReport.error(e, account_id: export.account_id, account_export_id: export.id)
+
+    nil
+  end
+
   # Failing is a real outcome, not an incident: the row says so, the person
   # who asked is told, and the error is reported once. Deliberately NO
   # OperatorAlert — an export that could not be built wakes nobody up.
+  #
+  # UNDER THE ROW'S LOCK, like every other write in this file (review 10,
+  # C-F1). The decision used to be taken on a plain `reload` and the archive
+  # deleted outside any lock, so it raced the nightly recovery and a
+  # finishing worker over the same row — the one race `finalize!` was locked
+  # to close, left open on the path that DELETES the file. Inside the lock the
+  # row is re-read, the ownership question is asked of the exact execution
+  # token, and the deletion and the status write are one step.
   def fail!(export, error, check_owner: true)
-    export.reload
-
-    return unless export.in_progress?
-    # A row taken over by a live execution is not this one's to fail: doing so
-    # would delete the archive that execution is building.
-    return if check_owner && !owns?(export)
-
     message = "#{error.class}: #{error.message}".first(MAX_ERROR)
+    failed = false
 
-    # Storage first, rows second (review 2, H6). A half-written archive is
-    # still a copy of the customer's whole account, and `archive.purge` would
-    # take the row that names it before the object — so a storage hiccup here
-    # would leave that copy in the bucket for ever with nothing able to find
-    # it again. If the file will not go, the row keeps pointing at it and the
-    # nightly sweep tries again.
-    discard_archive(export)
+    export.with_lock do
+      next unless export.in_progress?
+      # A row taken over by a live execution is not this one's to fail: doing
+      # so would delete the archive that execution is building.
+      next if check_owner && !owns?(export)
 
-    export.update!(status: AccountExport::FAILED, finished_at: Time.current, error: message)
+      # Storage first, rows second (review 2, H6). A half-written archive is
+      # still a copy of the customer's whole account, and `archive.purge`
+      # would take the row that names it before the object — so a storage
+      # hiccup here would leave that copy in the bucket for ever with nothing
+      # able to find it again. If the file will not go, the row keeps pointing
+      # at it and the nightly sweep tries again.
+      discard_archive(export)
 
-    # The day's budget is only spent by exports that produced something
-    # (review 2, Opus #7).
+      export.update!(status: AccountExport::FAILED, finished_at: Time.current, error: message)
+
+      failed = true
+    end
+
+    return nil unless failed
+
+    # Outside the lock, for the reason Accounts::Retention.fail_stale_export!
+    # gives: the day's counter is a different table, and a refund that fails
+    # must not roll the failure — and therefore the reopened export door —
+    # back shut. The day's budget is only spent by exports that produced
+    # something (review 2, Opus #7).
     Accounts::Exports.refund!(export)
 
     ErrorReport.error(error, account_id: export.account_id, account_export_id: export.id)

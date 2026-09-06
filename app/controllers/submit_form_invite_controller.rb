@@ -20,6 +20,25 @@ class SubmitFormInviteController < ApplicationController
     render json: { error: 'esign_consent_locale_invalid' }, status: :unprocessable_content
   end
 
+  # Another request for this submission invited the same party first: the
+  # unique index on `submitters (submission_id, uuid)` refused the loser and
+  # rolled its whole transaction back, so this is the honest answer to
+  # "somebody else already did this".
+  #
+  # THAT index and no other (review 2, N7; review 10, B-F3 — this was the one
+  # door of the three left unscoped). Class-wide, it answered every unique-
+  # constraint failure this request can trip — a duplicate user, a duplicate
+  # search entry, anything a future change adds — with "somebody already
+  # invited this party", a sentence that would be false about a bug nobody
+  # would ever see. Anything else is re-raised and is a 500, which is what an
+  # unexplained conflict is. Said as a `rescue_from` for the same reason
+  # SubmitFormController says it that way: the action is about inviting.
+  rescue_from ActiveRecord::RecordNotUnique do |e|
+    raise e unless e.message.include?(Submitter::ROLE_INDEX)
+
+    render json: { error: 'party_already_invited' }, status: :unprocessable_content
+  end
+
   # This request is a signing page's, so it renders in the signer's language
   # like every other door on the signing flow (SubmitFormController does this
   # for show/update) — refusal messages included. The consent's own language
@@ -96,9 +115,6 @@ class SubmitFormInviteController < ApplicationController
     head :ok
   rescue IncompleteInviteError
     head :unprocessable_content
-  rescue ActiveRecord::RecordNotUnique
-    # Another request for this submission invited the same party first.
-    render json: { error: 'party_already_invited' }, status: :unprocessable_content
   end
 
   private

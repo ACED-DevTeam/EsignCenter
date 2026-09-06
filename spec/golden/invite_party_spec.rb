@@ -246,5 +246,20 @@ RSpec.describe 'Inviting the next party', type: :request do
       expect(invite_events).to be_empty
       expect(submitter.reload.completed_at).to be_nil
     end
+
+    # N7, on the invite door this time (review 10, B-F3). "Somebody already
+    # invited this party" is the answer for ONE index. This rescue used to
+    # catch the class, so any other unique-constraint failure inside the
+    # invite transaction — a duplicate user, a duplicate search entry,
+    # whatever a future change adds — was answered with a sentence that was
+    # not true, and the bug behind it never surfaced. Anything else is
+    # re-raised and is a 500, exactly as the API door does it.
+    it 'does not dress an unrelated unique-constraint failure up as an invite conflict' do
+      allow(Submissions).to receive(:normalize_email)
+        .and_raise(ActiveRecord::RecordNotUnique,
+                   'PG::UniqueViolation: duplicate key value violates unique constraint "index_users_on_email"')
+
+      expect { invite! }.to raise_error(ActiveRecord::RecordNotUnique, /index_users_on_email/)
+    end
   end
 end

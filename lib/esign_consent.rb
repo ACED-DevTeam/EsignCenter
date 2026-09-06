@@ -325,8 +325,19 @@ module EsignConsent
   # trust that the archived text is the one the signer saw. It fingerprints the
   # template, placeholders and all — see the module comment.
   def disclosure_sha256(version:, locale:, self_signing: false)
-    text = disclosure_text(version:, locale:, self_signing:)
+    text_sha256(disclosure_text(version:, locale:, self_signing:))
+  end
 
+  # THE fingerprint function for a disclosure text — one algorithm, one
+  # normalisation (none: the bytes of the template exactly as `disclosure_text`
+  # returns them), used by both ends of the guarantee. The signing door stamps
+  # `disclosure_sha256` on the consent event with it (through
+  # `disclosure_sha256` above), and the audit trail hashes the words it is
+  # about to reproduce with the SAME function before it prints them
+  # (Submissions::GenerateAuditTrail#consent_wording_recorded?). Two copies of
+  # the algorithm could drift apart and the drift would be invisible, which in
+  # this one place is the whole risk being guarded against.
+  def text_sha256(text)
     Digest::SHA256.hexdigest(text) if text
   end
 
