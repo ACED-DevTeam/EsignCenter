@@ -68,10 +68,21 @@ module Submissions
           record: submission
         )
 
-        # Filed only now that the bytes are stored (VerifiedDocuments, H2).
-        if pkcs
-          VerifiedDocuments.record!(io.string, submission:, kind: 'audit_trail',
-                                               output_key: "audit_trail:#{submission.id}")
+        # Filed only now that the bytes are stored (VerifiedDocuments, H2), and
+        # in the same breath as the retirement of what it replaces (review 10,
+        # Q1). `EnsureAuditGenerated` regenerates after a `fail` lock event, so
+        # a second `audit_trail` attachment used to pile up on a `has_one` —
+        # and `submission.audit_trail_attachment` serves the FIRST, whose
+        # fingerprint the new row has just taken away. One decision: the row
+        # moves and the superseded file goes, or neither does.
+        ApplicationRecord.transaction do
+          if pkcs
+            VerifiedDocuments.record!(io.string, submission:, kind: 'audit_trail',
+                                                 output_key: "audit_trail:#{submission.id}")
+          end
+
+          VerifiedDocuments.retire_superseded_output!(record: submission, name: 'audit_trail',
+                                                      keep: attachment, account_id: submission.account_id)
         end
 
         attachment

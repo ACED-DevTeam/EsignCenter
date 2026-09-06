@@ -28,23 +28,40 @@ module Submissions
         pdf.write(io, incremental: true, validate: true)
       end
 
+      name = with_audit ? 'combined_document' : 'merged_document'
+
       attachment = ActiveStorage::Attachment.create!(
         blob: ActiveStorage::Blob.create_and_upload!(
           io: io.tap(&:rewind), filename: "#{submission.name || submission.template.name}.pdf"
         ),
-        name: with_audit ? 'combined_document' : 'merged_document',
+        name:,
         record: submission
       )
 
-      # Filed only now that the bytes are stored (VerifiedDocuments, review 2
-      # H2). The combined PDF with the trail bound in and the plain merged PDF
-      # are two different outputs of one submission, so they are keyed apart.
-      if pkcs
-        VerifiedDocuments.record!(io.string, submission:, kind: 'combined',
-                                             output_key: "combined:#{submission.id}:#{with_audit ? 'audit' : 'merged'}")
-      end
+      file_and_retire!(io, attachment, name:, submission:, with_audit:, signed: pkcs.present?)
 
       attachment
+    end
+
+    # Filed only now that the bytes are stored (VerifiedDocuments, review 2
+    # H2). The combined PDF with the trail bound in and the plain merged PDF
+    # are two different outputs of one submission, so they are keyed apart.
+    #
+    # Rebuilt on demand and after a failed attempt, so the same duplicate a
+    # retried audit trail leaves applies here (review 10, Q1): the row and the
+    # retirement of the copy it supersedes are one transaction.
+    def file_and_retire!(io, attachment, name:, submission:, with_audit:, signed:)
+      ApplicationRecord.transaction do
+        if signed
+          VerifiedDocuments.record!(
+            io.string, submission:, kind: 'combined',
+                       output_key: "combined:#{submission.id}:#{with_audit ? 'audit' : 'merged'}"
+          )
+        end
+
+        VerifiedDocuments.retire_superseded_output!(record: submission, name:, keep: attachment,
+                                                    account_id: submission.account_id)
+      end
     end
 
     def sign_combined!(io, pdf, submitter, pkcs, tsa_url)

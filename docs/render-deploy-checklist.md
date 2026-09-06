@@ -438,9 +438,13 @@ Profiles**.
      Render's editor collapses it, `\n` between the lines works too.
    Save, which redeploys.
 
-7. **Check it.** `FORCE_SSL` must be `true` (it is, in the table in section 2)
-   — Apple's sign-in returns the browser to us in a way that only works over
-   HTTPS. Then open `https://esigncenter.com/sign_in` in a private window: a
+7. **Check it.** The site must be served over HTTPS — Apple's sign-in returns
+   the browser to us in a way that only works over HTTPS, and the session
+   cookie it needs is marked `Secure` from the browser's own scheme (Render
+   passes it through as `X-Forwarded-Proto`), not from `FORCE_SSL`. Leave
+   `FORCE_SSL` at `true` anyway (it is, in the table in section 2), so a plain
+   http:// visit is redirected rather than served. Then open
+   `https://esigncenter.com/sign_in` in a private window: a
    black **Continue with Apple** button now sits under the Google one. Press
    it, sign in with an Apple ID, and choose **Share My Email**. You should
    land signed in, with a new account carrying the four sample documents.

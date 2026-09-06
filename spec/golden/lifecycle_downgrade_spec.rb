@@ -1324,6 +1324,37 @@ RSpec.describe 'Deleting an account', type: :request do
 
       tenant_tables = (named | reached).uniq
 
+      # WHAT THIS WALK CANNOT SEE, said plainly (review 10, Q3). It reaches a
+      # table only through an `account_id`/`user_id` column or an `_id` chain
+      # back to `accounts`/`users`, so a table with neither is invisible to it
+      # — and "invisible" is not the same as "safe". The complement today, and
+      # why each one is accepted rather than overlooked:
+      #
+      # * `pending_email_events` — raw provider delivery notices parked before
+      #   the message they describe was written down. They carry recipient
+      #   addresses but NO account of any kind, so there is nothing to purge
+      #   them by; they clear themselves within three days
+      #   (`HousekeepingJob#sweep_pending_email_events!`). Named as a
+      #   deliberate non-member of the walk in docs/account-deletion.md
+      #   ("One mail table is deliberately not in the walk").
+      # * `lock_events` — a job-coordination key (`result_attachments:<id>`)
+      #   and an event name. No personal data, and the row is meaningless once
+      #   its submission is gone.
+      # * `active_storage_blobs` / `active_storage_variant_records` — every
+      #   customer FILE. Invisible here for the same reason
+      #   `active_storage_attachments` is (the link is polymorphic), and
+      #   handled the same way: the purge empties attachments and blobs itself,
+      #   storage-first, before any `delete_all` can strand a file in the
+      #   bucket. This is the one entry on the list that would be a defect if
+      #   it were merely "not reachable"; it is covered by name instead.
+      # * `console1984_*`, `oauth_applications`, `schema_migrations`,
+      #   `ar_internal_metadata` — operator/console and framework tables that
+      #   hold no customer row at all.
+      #
+      # So the claim this example proves is the narrower one it makes in its
+      # name: every table that CAN name an account or a user is placed. The
+      # tables above are placed by hand, in docs/account-deletion.md.
+
       # The derivation has to be real, or this proves nothing: every table the
       # purge is known to empty is in it, bar the one no schema walk can
       # reach. ActiveStorage links POLYMORPHICALLY (`record_type` +

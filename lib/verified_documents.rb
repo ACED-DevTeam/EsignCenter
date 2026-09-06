@@ -70,6 +70,42 @@ module VerifiedDocuments
     )
   end
 
+  # The other half of "one record per output": one FILE per output (review 10,
+  # Q1, extending B-F1). An output whose job is retried is signed afresh, the
+  # row moves to the new bytes, and the copy the failed attempt saved used to
+  # stay attached — `has_one_attached` then served the OLD one, whose
+  # fingerprint no longer had a row, so the "Audit Log" button, the API and the
+  # export archive all handed out a PDF that /verify answers "not on record"
+  # for. The single-attachment outputs (`audit_trail`, `combined_document`,
+  # `merged_document`) call this in the same transaction that writes the row,
+  # so the record and the retirement are one decision: if the file cannot be
+  # deleted the whole thing rolls back and the old row still describes the old
+  # copy, which is the honest state, and the job retries.
+  #
+  # `keep` is the attachment this run just saved; everything else of that name
+  # on that record is a predecessor of the same output.
+  def retire_superseded_output!(record:, name:, keep:, account_id:)
+    superseded = ActiveStorage::Attachment.where(record:, name:).where.not(id: keep.id).to_a
+
+    retire_attachments!(superseded, account_id:,
+                                    subject: "Could not delete a superseded #{name.tr('_', ' ')}")
+
+    association = :"#{name}_attachment"
+    record.association(association).reset if record.class.reflect_on_association(association)
+
+    superseded
+  end
+
+  # Storage-first, through the same helper an expiring export uses: the object
+  # goes, it is verified gone, and only then the rows that name it —
+  # `ActiveStorage::Blob#purge` is the other way round and would leave the
+  # signed PDF in the bucket with nothing left anywhere able to find it.
+  def retire_attachments!(attachments, account_id:, subject:)
+    attachments.each do |attachment|
+      Accounts::Purge.purge_blob_storage_first!(attachment.blob, account_id:, subject:)
+    end
+  end
+
   def sha256(pdf)
     bytes =
       if pdf.respond_to?(:string)

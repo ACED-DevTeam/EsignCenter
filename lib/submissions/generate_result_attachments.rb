@@ -182,13 +182,8 @@ module Submissions
       superseded = submitter.documents.reload.reject { |a| saved_ids.include?(a.id) }
                             .select { |a| replaced.include?(document_key(a)) }
 
-      superseded.each do |attachment|
-        Accounts::Purge.purge_blob_storage_first!(
-          attachment.blob,
-          account_id: submitter.account_id,
-          subject: 'Could not delete a superseded signed document'
-        )
-      end
+      VerifiedDocuments.retire_attachments!(superseded, account_id: submitter.account_id,
+                                                        subject: 'Could not delete a superseded signed document')
 
       submitter.documents.reset
 

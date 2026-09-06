@@ -58,11 +58,21 @@ class AccountExportJob
   # So a retryable failure puts the row back to `pending` with no owner: the
   # retry claims it like any unclaimed row, and if every retry fails, the row
   # is still `pending` when `sidekiq_retries_exhausted` runs and that callback
-  # writes the failure, refunds the day and reopens the door. (A released row
-  # is measured by the sweep's SHORT pending fuse rather than the two-hour
-  # one, which is the right answer either way: Sidekiq's backoff for
-  # `retry: 2` is under two minutes, and a retry that somehow never arrives
-  # should reopen the door in fifteen rather than in a hundred and twenty.)
+  # writes the failure, refunds the day and reopens the door.
+  #
+  # A released row is then measured by the sweep's SHORT pending fuse rather
+  # than the two-hour one — and that fuse runs from `created_at`, the moment
+  # the customer asked, NOT from the release (`Retention.stale_export?`).
+  # Usually that is the right answer: Sidekiq's backoff for `retry: 2` is
+  # under two minutes, so a retry that never arrives reopens the door in
+  # fifteen minutes rather than in a hundred and twenty. The edge it does not
+  # cover, said plainly rather than papered over (review 10, Q5): a first
+  # attempt that ran for more than fifteen minutes hands back a row that is
+  # already stale, so a 04:30 sweep landing inside the retry's backoff gap
+  # fails and refunds it and the retry's `claim` then returns nil. Narrow, and
+  # the ending is honest — the customer sees "failed" with the day refunded
+  # and the door open — which is why the fuse is left measuring from the
+  # request rather than from the release.
   def perform(export_id)
     export = claim(export_id)
 
