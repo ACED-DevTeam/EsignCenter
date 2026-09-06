@@ -37,7 +37,7 @@ module StripeBilling
     DRIFT_ATTRIBUTES = %i[access_state status stripe_status quantity stripe_item_id stripe_price_id
                           stripe_product_id stripe_subscription_id stripe_customer_id current_period_start
                           current_period_end ended_at trial_end trial_used_at past_due_since
-                          cancel_at_period_end].freeze
+                          cancel_at_period_end cancel_at].freeze
 
     module_function
 
@@ -47,10 +47,36 @@ module StripeBilling
     def access_state_for(stripe_subscription)
       status = field(stripe_subscription, :status).to_s
 
-      return 'canceling' if truthy?(field(stripe_subscription, :cancel_at_period_end)) &&
-                            CANCELING_FROM.include?(status)
+      return 'canceling' if set_to_end?(stripe_subscription) && CANCELING_FROM.include?(status)
 
       STATE_BY_STRIPE_STATUS.fetch(status, 'cancelled')
+    end
+
+    # Has the customer asked for this subscription to end? Stripe says so in
+    # two ways and the app used to read only one of them (session 10 walk,
+    # W1):
+    #
+    #   * `cancel_at_period_end` — the ordinary "cancel" on a subscription
+    #     that is being billed;
+    #   * `cancel_at` — a date Stripe will end it on, which is what the
+    #     Customer Portal sets when the subscription is still in its TRIAL
+    #     (the date is the trial end, and the flag stays false).
+    #
+    # Reading the flag alone left a cancelled trial reading `trialing`: the
+    # billing page kept promising the customer a charge they had just called
+    # off, and nothing keyed on `canceling` ran. Either fact means the same
+    # thing to us, so either one is enough.
+    #
+    # PRESENCE, not "in the future". A `cancel_at` in the past on a
+    # subscription Stripe still calls trialing or active is the same
+    # cancellation, a few minutes before Stripe's own job gets to it — reading
+    # that window as "not cancelling" would put the row back to `active` and
+    # tell the customer their plan renews. Stripe clears `cancel_at` outright
+    # when the cancellation is called off ("Renew plan"), which is what brings
+    # the row back.
+    def set_to_end?(stripe_subscription)
+      truthy?(field(stripe_subscription, :cancel_at_period_end)) ||
+        timestamp(field(stripe_subscription, :cancel_at)).present?
     end
 
     # How apply_vanished! marks its object, so the missing-price warning in
@@ -312,6 +338,11 @@ module StripeBilling
         trial_used_at: account_subscription.trial_used_at || (trial_end && Time.current),
         past_due_since: past_due_since_for(account_subscription, access_state),
         cancel_at_period_end: truthy?(field(stripe_subscription, :cancel_at_period_end)),
+        # The date Stripe will end it on, when Stripe named one. Written every
+        # time rather than kept: Stripe CLEARS it when the customer resumes,
+        # and a stale date would leave the billing page quoting an ending that
+        # is no longer coming.
+        cancel_at: timestamp(field(stripe_subscription, :cancel_at)),
         synced_at: Time.current
       }
     end

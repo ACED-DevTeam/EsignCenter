@@ -5,7 +5,7 @@
     and stepping inside a customer's account is not something a borrowed laptop
     should be able to do. Locals: user. %>
 <% uuid = "operator_impersonate_#{user.id}" %>
-<modal-button data-target="<%= uuid %>" class="flex">
+<modal-button data-modal-id="<%= uuid %>" class="flex">
   <button class="btn btn-xs btn-outline" data-operator-impersonate="<%= user.id %>">
     <%= t('support_impersonation_start_button') %>
   </button>

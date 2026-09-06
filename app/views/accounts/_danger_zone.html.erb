@@ -25,7 +25,7 @@
         <p class="text-sm">
           <%= t('account_deletion_card_hint', days: Accounts::Deletion::WINDOW_DAYS) %>
         </p>
-        <modal-button data-target="<%= modal_id %>" class="flex">
+        <modal-button data-modal-id="<%= modal_id %>" class="flex">
           <button class="btn btn-outline btn-error" data-delete-account-button>
             <%= t('delete_my_account') %>
           </button>

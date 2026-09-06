@@ -50,6 +50,69 @@ and you receive the finished, legally‑signed PDF.
 - Always send it in the **`X-Auth-Token`** request header (never in the URL).
 - Use HTTPS for your EsignCenter server.
 
+### Or let your app create the workspace — `POST /api/admin/accounts`
+
+If your own application manages workspaces (one per firm, say), it can create
+one — account, admin user, API token, signing certificates and, optionally, a
+webhook subscription — in a single call. This endpoint is guarded by its own
+secret, `ADMIN_PROVISION_TOKEN`, sent in the **`X-Admin-Token`** header, and it
+is switched off entirely when that variable is not set.
+
+```sh
+curl -sS -X POST "$ESIGNCENTER_BASE_URL/api/admin/accounts" \
+  -H "X-Admin-Token: $ADMIN_PROVISION_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Veterans First LLC",
+    "email": "esign-team-abc123@example.com",
+    "timezone": "America/Chicago",
+    "idempotency_key": "firm-abc123",
+    "webhook_url": "https://crm.example.com/api/esigncenter/webhook",
+    "webhook_events": ["form.completed", "submission.completed"]
+  }'
+```
+
+```json
+{
+  "account_id": 42,
+  "account_uuid": "…",
+  "user_id": 108,
+  "email": "esign-team-abc123@example.com",
+  "api_token": "…",
+  "webhook_url_id": 7,
+  "webhook_hmac_secret": "…"
+}
+```
+
+`api_token` is the token section 3 onwards uses, and `webhook_hmac_secret` is
+returned **once** — it is the key every delivery's `X-Docuseal-Signature`
+header is signed with, so store it when you receive it.
+
+**The webhook can be described either way.** Flat, as above
+(`webhook_url`, `webhook_events`, and `webhook_secret` for extra delivery
+headers), or nested:
+
+```json
+{
+  "webhook": {
+    "url": "https://crm.example.com/api/esigncenter/webhook",
+    "events": ["form.completed", "submission.completed"],
+    "secret": { "Authorization": "Bearer …" }
+  }
+}
+```
+
+Both are accepted; if a request somehow carries both, the nested one is used.
+Leave the webhook out altogether and the account is created without one
+(`webhook_url_id` comes back `null`). Unknown event names are ignored, and a
+webhook with no recognised event gets the default set — `form.completed`,
+`form.declined`, `submission.completed`, `submission.expired`.
+
+**`idempotency_key` is worth sending.** Repeating the same call with the same
+key returns the same account and the same token with `200` instead of creating
+a second workspace; reusing a key with a *different* email is refused with
+`409`.
+
 ---
 
 ## 3. Create a template from a generated PDF — `POST /api/templates`
@@ -265,6 +328,7 @@ These can be added later if needed.
 
 | Action | Method & path | Status |
 | --- | --- | --- |
+| Provision a workspace (account + token + webhook) | `POST /api/admin/accounts` | **New (this repo)** |
 | Create template from PDF/image | `POST /api/templates` | **New (this repo)** |
 | Create embeddable CRM template builder session | `POST /api/template_builder_sessions` | **New (this repo)** |
 | Create embeddable signing session | `POST /api/signing_sessions` | **New (this repo)** |
@@ -274,4 +338,5 @@ These can be added later if needed.
 | Download signed documents | `GET /api/submissions/{id}/documents` | Built‑in |
 | Read a signer's submitted data | `GET /api/submitters[/{id}]` | Built‑in |
 
-All endpoints authenticate with the `X-Auth-Token` header and are scoped to your account.
+All endpoints authenticate with the `X-Auth-Token` header and are scoped to your account —
+except provisioning, which is the one that creates the account and uses `X-Admin-Token`.

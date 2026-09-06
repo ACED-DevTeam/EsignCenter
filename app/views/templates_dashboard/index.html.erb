@@ -14,10 +14,8 @@
     themselves whether there is anything to show, so the two dashboards ask
     the same question in the same words. %>
 <%# Worked out ONCE, here, and passed down: `FirstRunChecklist.for` runs the
-    three done-state queries, and this page needs the answer twice — to draw
-    the card, and to decide whether the app tour's welcome card stands aside
-    for it further down. Asking twice ran six queries, one of them a jsonb scan
-    with no index behind it. %>
+    three done-state queries, and asking twice ran six of them, one a jsonb
+    scan with no index behind it. %>
 <% first_run_steps = signed_in? && current_account.customer? ? FirstRunChecklist.for(account: current_account, user: current_user, can_create_templates:) : nil %>
 <% if signed_in? && current_account.customer? %>
   <%= render 'dashboard/first_run_checklist', steps: first_run_steps %>
@@ -88,15 +86,20 @@
           offer, 200 pixels apart, on a brand-new account's first screen is one
           too many, and the checklist is the one that ticks itself off from the
           real data. The tour itself is untouched and stays reachable from the
-          template builder; only its "Welcome / Start tour" card is suppressed,
-          and only while the checklist is on the page. %>
-      <% first_run_showing = first_run_steps.present? %>
+          template builder; only its "Welcome / Start tour" card is suppressed.
+
+          Asked of the ACCOUNT rather than of today's card (session 10 walk,
+          W2): a checklist that has just ticked its third step retires itself,
+          and reading "is the card on the page?" put the tour's welcome back
+          on the screen of somebody who had that moment sent their first
+          document. %>
+      <% tour_welcome_superseded = signed_in? && FirstRunChecklist.supersedes_app_tour?(current_account) %>
       <% if (show_dropzone && current_user.created_at > 2.weeks.ago && current_user == true_user) || params[:tour] == 'true' %>
         <% user_config = current_user.user_configs.find_or_initialize_by(key: UserConfig::SHOW_APP_TOUR) %>
         <% if user_config.new_record? || user_config.value || params[:tour] == 'true' %>
           <div class="hidden md:block">
             <app-tour id="app_tour" data-show-tour="<%= params[:tour] == 'true' || user_config.value %>" data-type="dashboard" data-next-page-path="<%= @templates.first && can?(:edit, @templates.first) ? edit_template_path(@templates.first, params.permit(:tour)) : settings_account_path %>" data-i18n="<%= t('app_tour').merge(support_description: t('app_tour.support_description', support_email: Docuseal::SUPPORT_EMAIL)).to_json %>"></app-tour>
-            <% if user_config.new_record? && !params.key?(:tour) && !first_run_showing %>
+            <% if user_config.new_record? && !params.key?(:tour) && !tour_welcome_superseded %>
               <div id="app_tour_manager" class="h-36 rounded-2xl pt-3 px-7 w-full border border-dashed border-base-300">
                 <div class="text-xl text-center font-semibold text-base-content">
                   <%= t('welcome_to_docuseal') %>

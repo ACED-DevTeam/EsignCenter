@@ -11,7 +11,7 @@
     Locals: key, url, label, hint.
     Optional: uuid_prefix, button_class, confirm_class, extra_field. %>
 <% uuid = "#{local_assigns.fetch(:uuid_prefix, 'operator_console_action_')}#{key}" %>
-<modal-button data-target="<%= uuid %>" class="flex">
+<modal-button data-modal-id="<%= uuid %>" class="flex">
   <button class="btn btn-sm <%= local_assigns.fetch(:button_class, 'btn-outline') %>" data-operator-action="<%= key %>">
     <%= label %>
   </button>

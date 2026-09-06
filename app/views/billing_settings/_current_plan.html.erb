@@ -5,16 +5,22 @@
 <%# Review-6 S3: a subscription set to cancel at period end still ENDS on that
     date even when its state is the payment problem rather than `canceling`
     (Stripe reports a past_due subscription with the flag on, and the state
-    card has to say the more useful of the two). Driven off the flag itself,
-    never off access_state. %>
-<% cancels_on = @subscription&.cancel_at_period_end && ends_on %>
+    card has to say the more useful of the two). Driven off what Stripe said,
+    never off access_state.
+
+    Stripe names the ending in two ways (session 10 walk, W1): the date itself
+    in `cancel_at` — which is what the Customer Portal sets, and which is not
+    always the end of the period the customer is in — or the flag, which means
+    "when this period runs out". The date wins when there is one, because it
+    is the one Stripe will actually act on. %>
+<% cancels_on = @subscription&.cancel_at || (@subscription&.cancel_at_period_end && ends_on) %>
 <%# A trial the customer cancelled while it was still running. Stripe reads
-    it as `canceling` (the flag outranks the status), so the card used to
-    quote "$10 per month" with no trial note at all — a price for a charge
-    that is never going to happen. The trial's own end date is the useful
-    one, and the honest amount is nothing. %>
+    it as `canceling`, so the card used to quote "$10 per month" with no trial
+    note at all — a price for a charge that is never going to happen. The date
+    the trial actually stops on is the useful one, and the honest amount is
+    nothing. %>
 <% trial_cancelled = @in_trial && @view_state == 'canceling' %>
-<% trial_ends_on = @subscription&.trial_end || ends_on %>
+<% trial_ends_on = cancels_on || @subscription&.trial_end || ends_on %>
 <div class="card bg-base-100 border border-base-300" data-billing-card="<%= @view_state %>">
   <div class="card-body p-5 md:p-6 gap-4">
     <div class="flex items-start gap-4">

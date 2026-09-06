@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_06_110000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_06_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gin"
   enable_extension "pg_catalog.plpgsql"
@@ -150,6 +150,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_06_110000) do
   create_table "account_subscriptions", force: :cascade do |t|
     t.string "access_state", null: false
     t.bigint "account_id", null: false
+    t.datetime "cancel_at"
     t.boolean "cancel_at_period_end", default: false, null: false
     t.datetime "comp_expires_at"
     t.datetime "created_at", null: false

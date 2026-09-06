@@ -47,6 +47,29 @@ module FirstRunChecklist
     self.for(account:, user:, can_create_templates:).present?
   end
 
+  # Does this checklist OWN the account's onboarding — whether or not there is
+  # a card to draw today?
+  #
+  # The upstream app tour's "Welcome to EsignCenter / Start tour" card makes
+  # the same offer as the checklist, and the checklist is the one that ticks
+  # itself off from real work. Standing the tour card down only while the
+  # checklist was actually ON THE PAGE put it straight back the moment the
+  # third step was ticked (session 10 staging walk, W2): the account had just
+  # sent its first document, the checklist retired itself, and the dashboard
+  # congratulated them by offering a beginner's tour.
+  #
+  # So the question is about the ACCOUNT and not about today's card. A
+  # customer account inside the checklist's window has been offered the
+  # checklist, and one that has sent anything at all is past being welcomed —
+  # either way the tour's welcome card has nothing left to say. Only that card
+  # is affected: the tour itself is untouched and still runs from the template
+  # builder and from `?tour=true`.
+  def supersedes_app_tour?(account)
+    return false unless account.customer?
+
+    account.created_at >= WINDOW.ago || account.submissions.exists?
+  end
+
   def dismissed?(user)
     user.user_configs.find_by(key: UserConfig::SHOW_FIRST_RUN_CHECKLIST)&.value == false
   end

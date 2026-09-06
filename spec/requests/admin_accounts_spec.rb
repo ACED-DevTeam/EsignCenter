@@ -81,6 +81,57 @@ describe 'Admin Accounts API' do
         .to eq(%w[form.completed form.declined submission.completed submission.expired])
     end
 
+    # W4 (session 10 staging walk). A caller that sends the flat `webhook_url`
+    # instead of the nested `webhook[url]` used to get a 201 with
+    # `webhook_url_id: null` and no subscription at all — nothing in the answer
+    # said the webhook had been dropped, so the first missing event was the
+    # first anybody knew.
+    it 'accepts the flat webhook_url and webhook_events aliases' do
+      expect do
+        post '/api/admin/accounts', headers: headers, params: {
+          name: 'Flat Firm', email: 'esign-flat@example.com',
+          webhook_url: 'https://crm.example.com/api/docuseal/webhook',
+          webhook_events: ['form.completed', 'submission.completed']
+        }.to_json
+      end.to change(WebhookUrl, :count).by(1)
+
+      expect(response).to have_http_status(:created)
+
+      webhook_url = WebhookUrl.last
+
+      expect(response.parsed_body['webhook_url_id']).to eq(webhook_url.id)
+      expect(response.parsed_body['webhook_hmac_secret']).to eq(webhook_url.hmac_secret)
+      expect(webhook_url.url).to eq('https://crm.example.com/api/docuseal/webhook')
+      expect(webhook_url.events).to eq(['form.completed', 'submission.completed'])
+    end
+
+    # The same alias with the events as one comma-separated string, which is
+    # what a form post or a query string carries.
+    it 'reads flat webhook_events sent as one comma-separated string' do
+      post '/api/admin/accounts', headers: headers, params: {
+        name: 'Flat Firm', email: 'esign-flat-csv@example.com',
+        webhook_url: 'https://crm.example.com/hook',
+        webhook_events: 'form.completed, submission.completed'
+      }.to_json
+
+      expect(response).to have_http_status(:created)
+      expect(WebhookUrl.last.events).to eq(['form.completed', 'submission.completed'])
+    end
+
+    # Both shapes at once is a caller who is unsure, not a caller asking for
+    # two webhooks: the documented nested one is the one that counts.
+    it 'keeps the nested webhook when both shapes are sent' do
+      expect do
+        post '/api/admin/accounts', headers: headers, params: {
+          name: 'Both Firm', email: 'esign-both@example.com',
+          webhook: { url: 'https://crm.example.com/nested', events: ['form.completed'] },
+          webhook_url: 'https://crm.example.com/flat'
+        }.to_json
+      end.to change(WebhookUrl, :count).by(1)
+
+      expect(WebhookUrl.last.url).to eq('https://crm.example.com/nested')
+    end
+
     it 'rejects requests with a wrong admin token' do
       expect do
         post '/api/admin/accounts',

@@ -128,7 +128,7 @@ RSpec.describe 'First-run checklist' do
   context 'when the app tour would draw its welcome card too' do
     # Two onboarding widgets making the same offer, 200 pixels apart, on a
     # brand-new account's first screen. The checklist supersedes the tour's
-    # welcome card while it is showing; the tour itself is untouched.
+    # welcome card; the tour itself is untouched.
     it 'takes the app tour\'s welcome card off the dashboard while it is showing' do
       seed_starter_template!
 
@@ -139,7 +139,23 @@ RSpec.describe 'First-run checklist' do
       expect(page).to have_no_content('Start tour')
     end
 
-    it 'gives the welcome card back once the checklist has been dismissed' do
+    # W2 (session 10 staging walk). The checklist retires itself the moment
+    # the third step is ticked, and the tour's welcome card used to take the
+    # space back: the account had just sent its first document and the
+    # dashboard offered it a beginner's tour. Superseded means superseded.
+    it 'does not put the welcome card back when the checklist completes' do
+      sent_submission!(seed_starter_template!)
+
+      visit root_path
+
+      expect(page).to have_no_css('[data-first-run-checklist]')
+      expect(page).to have_no_css('#app_tour_manager')
+      expect(page).to have_no_content('Start tour')
+    end
+
+    # Same for the other way the card goes away: somebody who has put the
+    # checklist away has said they do not want to be walked through this.
+    it 'does not put the welcome card back when the checklist is dismissed' do
       seed_starter_template!
 
       visit root_path
@@ -149,6 +165,18 @@ RSpec.describe 'First-run checklist' do
 
       visit root_path
 
+      expect(page).to have_no_css('#app_tour_manager')
+    end
+
+    # And the tour's welcome card is not gone from the product: an account the
+    # checklist never applies to still gets it.
+    it 'still welcomes an account the checklist does not apply to' do
+      account.update!(created_at: 2.months.ago)
+      create(:template, account:, author: user, only_field_types: %w[text], name: 'Our supplier contract')
+
+      visit root_path
+
+      expect(page).to have_no_css('[data-first-run-checklist]')
       expect(page).to have_css('#app_tour_manager')
     end
   end
