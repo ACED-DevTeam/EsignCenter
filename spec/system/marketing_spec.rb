@@ -108,6 +108,26 @@ RSpec.describe 'Marketing pages in the browser' do
     end
   end
 
+  # --- review 1 regression (Codex 1) -----------------------------------------
+
+  # /support widens its security policy for the Turnstile widget. A Turbo visit
+  # paints it inside the previous document, which still carries the ordinary
+  # `script-src 'self'`, so the widget can never load and the form can never be
+  # submitted. Reaching it from the footer has to be a REAL navigation.
+  it 'reaches the support form from a marketing link as a full page load' do
+    visit '/pricing'
+
+    # A mark on the window object of THIS document. A Turbo visit keeps the
+    # document (and the mark); a real navigation throws both away.
+    page.execute_script('window.__sameDocument = true')
+
+    find("footer a[href='#{support_path}']", match: :first).click
+
+    expect(page).to have_css('h1', text: 'Contact support')
+    expect(page.evaluate_script('window.__sameDocument')).to be_nil
+    expect(page).to have_css('meta[name="turbo-visit-control"][content="reload"]', visible: :all)
+  end
+
   it 'opens and closes the phone menu from the keyboard' do
     page.driver.resize(390, 844)
     visit '/'

@@ -106,6 +106,112 @@ RSpec.describe 'API reference', type: :request do
     end
   end
 
+  # --- review 1 regressions --------------------------------------------------
+
+  describe 'the description is IN the production image (C1)' do
+    # Nothing in the runtime stage copies the repository root, so docs/ is in
+    # the image only because a line puts it there. Without it PATH.mtime raises
+    # Errno::ENOENT on the first request and both /docs/api and
+    # /docs/openapi.json are dead on the deployed instance while every test
+    # here passes against a checked-out tree.
+    let(:dockerfile) { Rails.root.join('Dockerfile').read }
+
+    it 'is copied into the runtime stage' do
+      expect(OpenapiDocument::PATH).to exist
+
+      relative = OpenapiDocument::PATH.relative_path_from(Rails.root).to_s
+      expect(relative).to eq('docs/openapi.json')
+
+      runtime_stage = dockerfile.split(/^FROM /).last
+      copied = runtime_stage.scan(%r{^COPY[^\n]*?\s\./(\S+)}).flatten
+
+      expect(copied).to include(a_string_matching(%r{\Adocs(/openapi\.json)?\z})),
+                        'the Dockerfile runtime stage does not COPY docs/openapi.json, so the deployed ' \
+                        'image has no API description and /docs/api is dead'
+    end
+  end
+
+  describe 'a cold process serving several requests at once (H1)' do
+    # The cache used to publish the file's mtime BEFORE the value existed, so a
+    # second caller arriving in that window was handed a nil and served it with
+    # a public, hour-long max-age — an empty API description cached for an hour
+    # by every browser and proxy that asked during a deploy.
+    #
+    # Every ivar the module has ever cached in is cleared, so this describes
+    # the behaviour of a cold process rather than the shape of the cache.
+    def cold!
+      %i[@cache @mtime @json].each do |ivar|
+        OpenapiDocument.remove_instance_variable(ivar) if OpenapiDocument.instance_variable_defined?(ivar)
+      end
+    end
+
+    it 'gives every concurrent caller the real document, never a half-built cache' do
+      cold!
+
+      results = Array.new(4).map { Thread.new { OpenapiDocument.json } }.map(&:value)
+
+      expect(results).to all(be_a(String))
+      expect(results.map { |json| JSON.parse(json)['openapi'] }).to all(be_present)
+    end
+
+    it 'does not mark the cache current when the read fails, so the next request tries again' do
+      cold!
+      allow(OpenapiDocument).to receive(:document).and_raise(Errno::ENOENT)
+
+      expect { OpenapiDocument.json }.to raise_error(Errno::ENOENT)
+
+      allow(OpenapiDocument).to receive(:document).and_call_original
+
+      expect(JSON.parse(OpenapiDocument.json)['openapi']).to be_present
+    end
+  end
+
+  describe 'the sample files the document sends developers to (M2)' do
+    # The origin rewrite turns the upstream's hosted samples into OUR host, so
+    # every one of them has to exist here or the two most-followed
+    # getting-started paths in the reference end at a 404 on our own domain.
+    it 'serves every example file it links to on this origin' do
+      get '/docs/openapi.json'
+
+      linked = response.body.scan(/href=\\?"#{Regexp.escape(OpenapiDocument.app_url)}([^"\\]*)/).flatten.uniq
+
+      expect(linked).not_to be_empty
+      linked.each do |path|
+        file = Rails.public_path.join(path.delete_prefix('/'))
+        routed = begin
+          Rails.application.routes.recognize_path(path)
+        rescue StandardError
+          nil
+        end
+
+        expect(file.file? || routed).to be_truthy,
+                                        "the served document links to #{path} on our own origin, and nothing " \
+                                        'answers there'
+      end
+    end
+  end
+
+  describe 'what the contact block and the introduction say (L2, M3)' do
+    let(:info) { JSON.parse(OpenapiDocument.json).fetch('info') }
+
+    it 'publishes the support form and no email address on this public endpoint' do
+      expect(info['contact']).not_to have_key('email')
+      expect(info['contact']['url']).to eq(OpenapiDocument::CONTACT_URL)
+      expect(OpenapiDocument.json).not_to include(Docuseal::SUPPORT_EMAIL)
+    end
+
+    it 'introduces the API as a product rather than as an engineering note' do
+      # The same list spec/golden/marketing_spec.rb holds the public pages to.
+      upstream_phrases = ['a customized fork', 'self-hosted', 'Docker', 'Open Source Document Signing']
+
+      expect(info['description']).to be_present
+      upstream_phrases.each do |phrase|
+        expect(info['description']).not_to include(phrase), "the API description says #{phrase}"
+      end
+      expect(info['description']).to include('EsignCenter')
+    end
+  end
+
   describe 'the in-app button' do
     it 'sends a paid account from API settings to this page rather than to a source tree' do
       user = create(:user, account: create(:account, :paid))

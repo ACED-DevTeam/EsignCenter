@@ -30,17 +30,36 @@ module OpenapiDocument
   # re-downloads half a megabyte on every visit is its own problem.
   CACHE_MAX_AGE = 1.hour
 
+  # Puma serves this from several threads at once, and the very first requests
+  # after a deploy arrive together. The cached pair is published as ONE frozen
+  # array under this lock, after the value exists — a thread that arrives while
+  # another is still generating waits for it rather than being handed the
+  # half-built cache, and a read that raises leaves no pair behind at all, so
+  # the next request tries again instead of serving `null` for an hour behind a
+  # public max-age.
+  CACHE_LOCK = Mutex.new
+
   module_function
 
   # The served JSON, as a String (already generated: nothing downstream needs
   # to re-serialize half a megabyte).
   def json
     mtime = PATH.mtime
+    cached = @cache
 
-    return @json if defined?(@mtime) && @mtime == mtime
+    return cached.last if cached && cached.first == mtime
 
-    @mtime = mtime
-    @json = JSON.generate(document)
+    CACHE_LOCK.synchronize do
+      # Another thread may have generated it while this one waited.
+      cached = @cache
+
+      return cached.last if cached && cached.first == mtime
+
+      generated = JSON.generate(document)
+      @cache = [mtime, generated].freeze
+
+      generated
+    end
   end
 
   # The parsed, rewritten document. Public so the golden spec can assert
@@ -50,7 +69,12 @@ module OpenapiDocument
 
     parsed['servers'] = [{ 'url' => api_url, 'description' => "#{Docuseal.product_name} API" }]
     parsed['info'] ||= {}
-    parsed['info']['contact'] = parsed['info'].fetch('contact', {}).merge('url' => CONTACT_URL)
+    # The support FORM is the whole contact block. `email` is dropped rather
+    # than repointed: /docs/openapi.json is a public, indexable, machine-read
+    # endpoint, and an address published there is an address harvested there —
+    # the form is the door with a person behind it, and it is the one the rest
+    # of the site sends people to.
+    parsed['info']['contact'] = parsed['info'].fetch('contact', {}).except('email').merge('url' => CONTACT_URL)
 
     parsed
   end

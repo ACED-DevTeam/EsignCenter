@@ -32,6 +32,7 @@
 </div>
 
 <%# The mount point is EMPTY, and the no-JavaScript fallback is its sibling rather than its child: Scalar hydrates instead of mounting when it finds children, and hydrating markup that was never server-rendered logs a mismatch. min-height, not height: the reference fills a desktop viewport but is free to grow past it on a phone, where a fixed-height scroll container inside a scrolling page is miserable to use. %>
+<%# The mount sits in the SAME horizontal container as the intro above it (review 1): full-bleed, its sidebar ran to the left edge of the window while the intro started 150px in, and the seam between the two halves of the page was the first thing a reader saw. On a phone the container is also what gives the reference the page's own gutters instead of running edge to edge under the marketing header. %>
 <div class="mt-8 border-t border-base-content/10">
   <noscript>
     <div class="max-w-6xl mx-auto px-4 md:px-2 py-16 text-center">
@@ -39,5 +40,7 @@
       <p class="mt-2 text-base-content/70">The description itself is plain JSON and needs nothing: <%= link_to '/docs/openapi.json', openapi_document_path, class: 'link font-medium font-mono' %>.</p>
     </div>
   </noscript>
-  <div id="api-reference" data-spec-url="<%= openapi_document_path %>" class="min-h-[70vh]"></div>
+  <div class="max-w-6xl mx-auto px-4 md:px-2">
+    <div id="api-reference" data-spec-url="<%= openapi_document_path %>" class="min-h-[70vh]"></div>
+  </div>
 </div>

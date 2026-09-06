@@ -6,19 +6,16 @@
 #
 #  id                  :bigint           not null, primary key
 #  provider_event_key  :string           not null
-#  provider_message_id :string           not null
 #  record              :jsonb            not null
 #  created_at          :datetime         not null
 #  updated_at          :datetime         not null
+#  provider_message_id :string           not null
 #
 # Indexes
 #
 #  index_pending_email_events_on_created_at           (created_at)
 #  index_pending_email_events_on_provider_event_key   (provider_event_key) UNIQUE
 #  index_pending_email_events_on_provider_message_id  (provider_message_id)
-#
-# A Postmark webhook we could not attribute YET: the send row it belongs to
-# had not been written when it arrived (Session 10, review 8 D8).
 #
 # It is a parking space, never a destination. Every row here is either
 # replayed into `email_events` — by the observer the moment the send row is

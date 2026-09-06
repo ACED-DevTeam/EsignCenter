@@ -230,6 +230,90 @@ RSpec.describe 'Starter templates', type: :request do
     end
   end
 
+  # --- review 1 regressions --------------------------------------------------
+
+  describe 'when the QUEUE is down (Codex 3)' do
+    # The job swallows its own failures once it runs; a failure to ENQUEUE it
+    # happens out in Registrations.save_signup, after the account has been
+    # created, and used to escape into the sign-up response — a person left
+    # with a 500, an account that exists and an address that is now taken.
+    it 'still completes the sign-up, and reports the enqueue failure' do
+      allow(StarterTemplatesJob).to receive(:perform_later).and_raise(StandardError, 'redis is down')
+      allow(ErrorReport).to receive(:error).and_call_original
+
+      expect { sign_up }.to change(User, :count).by(1)
+
+      expect(response).to redirect_to(confirm_registration_path)
+      account = account_for('ada@example.com')
+      expect(account.templates.count).to eq(0)
+      expect(ErrorReport).to have_received(:error).with(instance_of(StandardError), account_id: account.id)
+    end
+
+    it 'reports it on the Google door too, where the failure would swallow the sign-in' do
+      allow(StarterTemplatesJob).to receive(:perform_later).and_raise(StandardError, 'redis is down')
+      allow(ErrorReport).to receive(:error).and_call_original
+
+      sign_up_with_google!
+
+      expect(User.find_by(email: 'grace@example.com')).to be_present
+      expect(ErrorReport).to have_received(:error).with(instance_of(StandardError), account_id: anything)
+    end
+  end
+
+  describe 'a headless caller (Codex 6)' do
+    # `save_signup` supports `source: nil` for a console or a provisioning
+    # script — a caller with no human in front of it. A script that creates a
+    # customer account is not somebody who needs four sample documents.
+    it 'seeds nothing when the save names no self-serve door' do
+      user = Registrations.build_signup(name: 'Head Less', email: 'headless@example.com',
+                                        password: 'a-long-password', timezone: 'UTC')
+
+      allow(StarterTemplatesJob).to receive(:perform_later).and_call_original
+
+      expect(Registrations.save_signup(user, source: nil)).to be(true)
+      expect(user.account).to be_customer
+      expect(StarterTemplatesJob).not_to have_received(:perform_later)
+      expect(user.account.templates.count).to eq(0)
+    end
+
+    it 'seeds for each of the two doors the feature is for' do
+      allow(StarterTemplatesJob).to receive(:perform_later).and_call_original
+
+      Registrations::SELF_SERVE_SOURCES.each_with_index do |source, index|
+        user = Registrations.build_signup(name: 'Door Person', email: "door#{index}@example.com",
+                                          password: 'a-long-password', timezone: 'UTC')
+
+        expect(Registrations.save_signup(user, source:, versions: LegalDocuments.current_versions)).to be(true)
+        expect(StarterTemplatesJob).to have_received(:perform_later).with(user.account_id)
+      end
+
+      expect(Registrations::SELF_SERVE_SOURCES)
+        .to eq([LegalAcceptance::SIGNUP_EMAIL, LegalAcceptance::SIGNUP_GOOGLE])
+    end
+  end
+
+  describe 'two workers racing the same new account (L4)' do
+    let(:account) { create(:account) }
+
+    before { create(:user, account:) }
+
+    # The marker's unique index is what makes the race safe, and the loser
+    # raising RecordNotUnique is the idempotency working — not something to
+    # wake an operator for.
+    it 'declines quietly rather than reporting a benign duplicate' do
+      allow(ErrorReport).to receive(:error).and_call_original
+      account.account_configs.create!(key: AccountConfig::STARTER_TEMPLATES_SEEDED_KEY, value: {})
+
+      # The marker check happens before the transaction, so this is the loser
+      # arriving with the marker already written under it.
+      allow(StarterTemplates).to receive(:seeded?).and_return(false)
+
+      expect { StarterTemplatesJob.new.perform(account.id) }.not_to change(Template, :count)
+
+      expect(ErrorReport).not_to have_received(:error)
+    end
+  end
+
   # (f) The point of the whole feature: a seeded template is a real one.
   describe 'sending a seeded template' do
     it 'sends the mutual NDA and produces a signed PDF', sidekiq: :inline do
@@ -265,8 +349,13 @@ RSpec.describe 'Starter templates', type: :request do
 
       expect(values.size).to be_positive
 
+      # The same consent envelope spec/support/signing_helpers.rb posts; this
+      # one spells the PUT out because it fills every field type, not one.
       put "/s/#{submitter.slug}", params: { completed: 'true', esign_consent: 'true',
                                             esign_consent_version: EsignConsent::VERSION,
+                                            esign_consent_locale: EsignConsent.rendered_locale,
+                                            esign_consent_locale_token:
+                                              EsignConsent.locale_token(submitter, EsignConsent.rendered_locale),
                                             esign_consent_sender_digest: EsignConsent.sender_digest(submitter),
                                             values: }
 

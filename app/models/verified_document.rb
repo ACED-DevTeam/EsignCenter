@@ -6,6 +6,7 @@
 #
 #  id            :bigint           not null, primary key
 #  kind          :string           not null
+#  output_key    :string
 #  sha256        :string           not null
 #  signed_at     :datetime         not null
 #  signers_count :integer          not null
@@ -16,7 +17,8 @@
 #
 # Indexes
 #
-#  index_verified_documents_on_sha256  (sha256) UNIQUE
+#  index_verified_documents_on_output_key  (output_key) UNIQUE
+#  index_verified_documents_on_sha256      (sha256) UNIQUE
 #
 # This record survives account and submission purge FOREVER (D43): no
 # associations, no `dependent`, no foreign keys, and account_id/submission_id

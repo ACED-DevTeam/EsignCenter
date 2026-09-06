@@ -5,6 +5,10 @@
 # who may create an account, and what that account looks like. See
 # docs/signup.md.
 module Registrations
+  # The two doors a human can walk through. `LegalAcceptance::SOURCES` also
+  # holds INVITE, which joins an account somebody else already owns.
+  SELF_SERVE_SOURCES = [LegalAcceptance::SIGNUP_EMAIL, LegalAcceptance::SIGNUP_GOOGLE].freeze
+
   module_function
 
   # Both credentials, or no Google: with only the id the button would render
@@ -83,24 +87,42 @@ module Registrations
       LegalDocuments.record_acceptance!(user, request:, source:, versions:) if saved && source
     end
 
-    # The four starter templates (D50). Enqueued HERE, from the one place both
-    # self-serve doors save through, so the email form and the Google button
-    # seed by construction rather than because each remembered to. Never for
-    # anything else: only an account that was created by this very save gets
-    # them, which is what keeps an invitee joining an existing account — and
-    # any headless caller reusing this method later — out of it.
-    # StarterTemplatesJob holds its own enqueue until this transaction has
-    # committed, and swallows and reports its own failures: nobody's sign-up
-    # fails because a sample document did.
-    if saved && user.account.customer? && user.account.previously_new_record?
-      StarterTemplatesJob.perform_later(user.account_id)
-    end
+    seed_starter_templates(user, source) if saved
 
     saved
   rescue ActiveRecord::RecordNotUnique
     user.errors.add(:email, :taken)
 
     false
+  end
+
+  # The four starter templates (D50). Enqueued HERE, from the one place both
+  # self-serve doors save through, so the email form and the Google button
+  # seed by construction rather than because each remembered to.
+  #
+  # Three conditions, and all three are about the SAME question — is this a
+  # stranger's brand-new account, created by a human at a sign-up page?
+  #
+  #   * `source` is one of the two self-serve doors. A headless caller passes
+  #     `source: nil` (a console, a provisioning script), and a script that
+  #     creates a customer account is not a person who needs four sample
+  #     documents to look at;
+  #   * the account is a customer one, not internal, operator or testing;
+  #   * this very save created it, which keeps an invitee joining an account
+  #     that already exists out of it.
+  #
+  # StarterTemplatesJob holds its own enqueue until the sign-up transaction has
+  # committed and swallows its own failures once it runs — but a queue that is
+  # DOWN fails at the enqueue, out here, where the account already exists and
+  # the person is mid-sign-up. Nobody's sign-up fails because a sample document
+  # did, so that failure is reported and dropped too.
+  def seed_starter_templates(user, source)
+    return unless SELF_SERVE_SOURCES.include?(source)
+    return unless user.account.customer? && user.account.previously_new_record?
+
+    StarterTemplatesJob.perform_later(user.account_id)
+  rescue StandardError => e
+    ErrorReport.error(e, account_id: user.account_id)
   end
 
   # A brand-new customer account for a stranger, with its admin user

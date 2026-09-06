@@ -130,11 +130,23 @@ RSpec.describe 'API reference in the browser' do
 
     expect(page).to have_content("#{Docuseal::DEFAULT_APP_URL}/api")
     expect(page).to have_content('X-Auth-Token')
-    wait_for_the_reference
+
+    # The reference sits in the page's own column at this width (review 1 L9),
+    # and Scalar folds its sidebar behind its own button there — so what proves
+    # it rendered is the operation list in the content column, and the folded
+    # sidebar is opened afterwards to prove that control works rather than
+    # merely existing.
+    expect(page).to have_css('#api-reference[data-mounted="true"]', wait: 10)
+    expect(page).to have_content('EsignCenter API', wait: 60)
+    expect(page).to have_content('/submissions/pdf')
 
     expect(no_horizontal_overflow?).to be(true), '/docs/api scrolls sideways at 390px'
     expect(csp_violations).to eq([])
     screenshot('api-reference-390.png')
+
+    find('button', text: 'Open Menu', match: :first).click
+
+    expect(page).to have_content('List all submissions', wait: 10)
   end
 
   it 'serves the description from this origin, so the page needs nothing off it' do

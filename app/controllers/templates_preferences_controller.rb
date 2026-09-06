@@ -7,7 +7,12 @@ class TemplatesPreferencesController < ApplicationController
     AccountConfig::SUBMITTER_INVITATION_EMAIL_KEY => %w[request_email_subject request_email_body submitters],
     AccountConfig::SUBMITTER_INVITATION_REMINDER_EMAIL_KEY => %w[invitation_reminder_email_subject
                                                                  invitation_reminder_email_body],
-    AccountConfig::SUBMITTER_DOCUMENTS_COPY_EMAIL_KEY => %w[documents_copy_email_subject documents_copy_email_body],
+    # The reply-to belongs to this form and resets with it. Left out, "reset to
+    # default" cleared the subject and body a customer could see and quietly
+    # left the reply-to steering their mail — and, through
+    # Submitters::ReplyTo, the address the ESIGN disclosure names.
+    AccountConfig::SUBMITTER_DOCUMENTS_COPY_EMAIL_KEY => %w[documents_copy_email_subject documents_copy_email_body
+                                                            documents_copy_email_reply_to],
     AccountConfig::SUBMITTER_COMPLETED_EMAIL_KEY => %w[completed_notification_email_subject
                                                        completed_notification_email_body]
   }.freeze

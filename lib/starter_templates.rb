@@ -73,6 +73,12 @@ module StarterTemplates
     SearchEntries.enqueue_reindex(templates)
 
     templates
+  rescue ActiveRecord::RecordNotUnique
+    # Two workers racing the same brand-new account. The marker's unique index
+    # rolled this one back before it wrote a document, which is the outcome the
+    # idempotency check above is asking for — so it is an ordinary "somebody
+    # else did it", not something to wake an operator for.
+    nil
   end
 
   def seeded?(account)

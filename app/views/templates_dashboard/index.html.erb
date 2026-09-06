@@ -14,9 +14,7 @@
     themselves whether there is anything to show, so the two dashboards ask
     the same question in the same words. %>
 <% if signed_in? && current_account.customer? %>
-  <% if FirstRunChecklist.show?(account: current_account, user: current_user, can_create_templates: can?(:create, ::Template)) %>
-    <%= render 'dashboard/first_run_checklist' %>
-  <% end %>
+  <%= render 'dashboard/first_run_checklist' %>
   <%= render 'dashboard/first_completion_prompt' %>
 <% end %>
 <dashboard-dropzone>
@@ -79,12 +77,20 @@
   <% if @templates.present? %>
     <div class="grid gap-4 md:grid-cols-3">
       <%= render partial: 'templates/template', collection: @templates %>
+      <%# The app tour's welcome card stands aside for the first-run checklist
+          above (Session 10 review 1): two onboarding widgets making the same
+          offer, 200 pixels apart, on a brand-new account's first screen is one
+          too many, and the checklist is the one that ticks itself off from the
+          real data. The tour itself is untouched and stays reachable from the
+          template builder; only its "Welcome / Start tour" card is suppressed,
+          and only while the checklist is on the page. %>
+      <% first_run_showing = signed_in? && current_account.customer? && FirstRunChecklist.show?(account: current_account, user: current_user, can_create_templates:) %>
       <% if (show_dropzone && current_user.created_at > 2.weeks.ago && current_user == true_user) || params[:tour] == 'true' %>
         <% user_config = current_user.user_configs.find_or_initialize_by(key: UserConfig::SHOW_APP_TOUR) %>
         <% if user_config.new_record? || user_config.value || params[:tour] == 'true' %>
           <div class="hidden md:block">
             <app-tour id="app_tour" data-show-tour="<%= params[:tour] == 'true' || user_config.value %>" data-type="dashboard" data-next-page-path="<%= @templates.first && can?(:edit, @templates.first) ? edit_template_path(@templates.first, params.permit(:tour)) : settings_account_path %>" data-i18n="<%= t('app_tour').merge(support_description: t('app_tour.support_description', support_email: Docuseal::SUPPORT_EMAIL)).to_json %>"></app-tour>
-            <% if user_config.new_record? && !params.key?(:tour) %>
+            <% if user_config.new_record? && !params.key?(:tour) && !first_run_showing %>
               <div id="app_tour_manager" class="h-36 rounded-2xl pt-3 px-7 w-full border border-dashed border-base-300">
                 <div class="text-xl text-center font-semibold text-base-content">
                   <%= t('welcome_to_docuseal') %>

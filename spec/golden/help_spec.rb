@@ -43,7 +43,7 @@ RSpec.describe 'Help centre', type: :request do
     it 'holds exactly the ten articles of the brief, each with a partial beside it' do
       expect(HelpCenter.slugs).to eq(%w[getting-started sending-a-document signing-a-document templates-and-fields
                                         free-plan-limits teams-and-seats billing-and-trial verify-a-signed-document
-                                        api-and-webhooks your-data-and-deletion])
+                                        your-data-and-deletion api-and-webhooks])
       HelpCenter.articles.each do |article|
         expect(HelpCenter::ARTICLES_DIR.join("#{article.slug}.html.erb")).to exist
         expect(article.title).to be_present
@@ -164,6 +164,150 @@ RSpec.describe 'Help centre', type: :request do
     end
   end
 
+  # --- review 1 regressions --------------------------------------------------
+
+  describe 'a cold process serving several requests at once (H1)' do
+    # The registry cache used to publish the file's mtime BEFORE the parsed
+    # articles existed, so a second thread arriving in that window was handed a
+    # nil and `sections` blew up on it — a 500 on a public, indexable page.
+    # Every ivar the module has ever cached in, so this describes the behaviour
+    # of a cold process rather than the shape of the cache.
+    def cold!
+      %i[@cache @registry_mtime @articles].each do |ivar|
+        HelpCenter.remove_instance_variable(ivar) if HelpCenter.instance_variable_defined?(ivar)
+      end
+    end
+
+    it 'gives every concurrent caller the real registry, never a half-built cache' do
+      cold!
+
+      results = Array.new(4).map { Thread.new { HelpCenter.articles } }.map(&:value)
+
+      expect(results.map { |articles| articles&.size }).to all(eq(HelpCenter.slugs.size))
+    end
+
+    it 'does not mark the cache current when the parse fails, so the next request tries again' do
+      cold!
+      allow(HelpCenter).to receive(:load_articles).and_raise(Psych::SyntaxError.new('f', 1, 1, 0, nil, nil))
+
+      expect { HelpCenter.articles }.to raise_error(Psych::SyntaxError)
+
+      allow(HelpCenter).to receive(:load_articles).and_call_original
+
+      # Under the broken cache this answered nil, and /help 500ed on it.
+      expect(HelpCenter.articles.size).to eq(HelpCenter.slugs.size)
+    end
+  end
+
+  describe 'the field types the article promises (review 1 H1)' do
+    # An article that names a field the builder does not offer is the one kind
+    # of help-centre error that is unambiguously the product's fault, and it
+    # generates a support ticket every time. The offered palette is derived
+    # from the builder itself; the display names are pinned here because they
+    # are prose, and the two are checked against each other.
+    let(:builder_source) { Rails.root.join('app/javascript/template_builder/field_type.vue').read }
+
+    # Prose name => the builder's type. Everything in the article's list must
+    # appear here, and every type here must be one the builder offers.
+    let(:named_types) do
+      { 'Signature' => 'signature', 'Initials' => 'initials', 'Text' => 'text', 'Number' => 'number',
+        'Cells' => 'cells', 'Date' => 'date', 'Checkbox' => 'checkbox', 'Multiple choice' => 'multiple',
+        'Radio' => 'radio', 'Select' => 'select', 'File' => 'file', 'Image' => 'image', 'Stamp' => 'stamp' }
+    end
+
+    # The four types this build hides behind withPhone/withPayment/
+    # withVerification/withKba, which no ERB view turns on.
+    let(:hidden_types) { %w[phone payment verification kba] }
+
+    let(:icon_types) do
+      builder_source[/fieldIcons \(\) \{.*?return \{(.*?)\}/m, 1].to_s.scan(/^\s*(\w+):/).flatten
+    end
+
+    let(:skipped_types) do
+      builder_source[/skipTypes \(\) \{\s*return \[(.*?)\]/m, 1].to_s.scan(/'(\w+)'/).flatten
+    end
+
+    let(:offered_types) { icon_types - skipped_types - hidden_types }
+
+    it 'names only fields a customer can actually find in the builder' do
+      # The palette really was read out of the builder, not guessed at.
+      expect(icon_types).not_to be_empty
+      expect(skipped_types).to match_array(%w[heading datenow strikethrough])
+
+      get help_article_path('templates-and-fields')
+
+      list = doc.css('article.help-article h2').find { |h| h.text.include?('fields you can place') }.next_element
+      promised = list.css('strong').map { |node| node.text.squish }
+
+      expect(promised).not_to be_empty
+      promised.each do |name|
+        type = named_types[name]
+
+        expect(type).to be_present, "the article promises a #{name.inspect} field nobody has mapped to a type"
+        expect(offered_types).to include(type),
+                                 "the article promises #{name.inspect}, but the builder filters #{type} out of " \
+                                 'its palette'
+      end
+    end
+
+    it 'does not promise the three types the builder filters out' do
+      get help_article_path('templates-and-fields')
+
+      body = doc.at_css('article.help-article').text
+
+      ['Date signed', 'Heading', 'Strikethrough'].each do |name|
+        expect(body).not_to include(name), "the article still promises #{name}"
+      end
+    end
+  end
+
+  describe 'the sitemap and robots.txt (review 1 M5)' do
+    let(:sitemap) { Nokogiri::XML(Rails.public_path.join('sitemap.xml').read) }
+    let(:robots) { Rails.public_path.join('robots.txt').read }
+
+    it 'lists exactly the articles the registry holds, no more and no fewer' do
+      listed = sitemap.css('url loc').map(&:text).filter_map { |url| url[%r{/help/(.+)\z}, 1] }
+
+      expect(listed).to eq(HelpCenter.slugs)
+    end
+
+    it 'points crawlers at the sitemap and allows the pages it lists' do
+      expect(robots).to match(%r{^Sitemap: https://\S+/sitemap\.xml$})
+      %w[/help /support /docs/api].each do |path|
+        expect(robots).to include("Allow: #{path}\n"), "robots.txt does not allow #{path}"
+      end
+    end
+  end
+
+  describe 'prev/next stays inside the section (review 1 M6)' do
+    it 'walks the same order the index draws' do
+      expect(HelpCenter.ordered_articles.map(&:slug)).to eq(HelpCenter.slugs)
+      # Each section is contiguous: a section's articles are never split by an
+      # article belonging to another one.
+      sections = HelpCenter.articles.map(&:section)
+      expect(sections.chunk_while { |a, b| a == b }.map(&:first)).to eq(sections.uniq)
+    end
+
+    it 'never sends a reader out of a section while a sibling is still unread' do
+      HelpCenter.articles.each do |article|
+        get help_article_path(article.slug)
+
+        next_link = doc.at_css("a[rel='next']")
+        next unless next_link
+
+        next_slug = next_link['href'].delete_prefix('/help/')
+        next_article = HelpCenter.article(next_slug)
+        remaining = HelpCenter.sections.fetch(article.section)
+        position = remaining.index(article)
+
+        if position < remaining.size - 1
+          expect(next_article).to eq(remaining[position + 1]),
+                                  "#{article.slug} skips a sibling in #{article.section}"
+        end
+      end
+    end
+  end
+
   # --- the numbers -----------------------------------------------------------
 
   describe 'every product number comes from its constant' do
@@ -187,12 +331,15 @@ RSpec.describe 'Help centre', type: :request do
       expect(body).to include(limits::FREE_COMPLETIONS_WARNING_AT.to_s)
     end
 
-    it 'renders the trial length and the seat price from StripeBilling' do
+    it 'renders the trial length, the seat price and the dunning count from their constants' do
       get help_article_path('billing-and-trial')
 
       body = doc.at_css('article.help-article').text
       expect(body).to include(StripeBilling::TRIAL_PERIOD_DAYS.to_s)
       expect(body).to include(StripeBilling::PRICE_PER_SEAT_USD.to_s)
+      # Spelled as a word ("four times"), the digit scan below could not see it
+      # and a change to the ladder would have made the page silently false.
+      expect(body).to include("#{BillingLifecycle::DUNNING_DAYS.size} times")
     end
 
     it 'renders the retention and recovery windows from the constants that enforce them' do

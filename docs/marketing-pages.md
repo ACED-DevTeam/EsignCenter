@@ -43,7 +43,14 @@ non-product numbers. A help page cannot promise a limit the app does not apply.
 
 To add an article: write `app/views/help/articles/<slug>.html.erb`, add its row
 to `REGISTRY.yml`, and add its path to `public/sitemap.xml`. The spec fails if a
-file has no registry row or a row has no file.
+file has no registry row, a row has no file, or the sitemap and the registry
+disagree.
+
+Keep the articles of a section together in `REGISTRY.yml`. The index groups the
+cards by section and the "previous / next" links at the foot of an article walk
+that same grouping, so a row parked away from its section would send a reader
+out of the section they are working through and past the sibling card they had
+just seen next to it.
 
 ## The support form
 
@@ -57,6 +64,25 @@ on the server, never read from the form.
 Three brakes, in this order: five messages an hour from one network; a honeypot
 field, which answers with the ordinary receipt and sends nothing, so a script is
 never told it was caught; and Cloudflare Turnstile.
+
+The honeypot's field name is deliberately meaningless. A field called `website`
+or `url` is one browsers and password managers offer to fill, and a false catch
+is the worst way this form can fail: the visitor gets the receipt, believes they
+have written to us, and no mail is ever sent.
+
+A signed-in visitor's name and address come from their profile and are shown
+read-only, so they are not held to this form's own rules — a profile may carry
+no name at all, a longer one than the form allows, or an address with a
+character the form's pattern rejects, and none of that should 422 somebody on
+the one page that exists to reach a human. A profile with no name falls back to
+the address. What the visitor actually types — the topic and the message — is
+validated as before.
+
+The page is always a real browser load, never a Turbo visit: it carries its own
+widened security policy for the Turnstile widget, and a Turbo visit would paint
+it inside the previous document, which still has the ordinary policy — the
+widget could never load. `<meta name="turbo-visit-control" content="reload">`
+says so, from the page itself, so a link added later cannot forget.
 
 Turnstile is enforced when the instance has both Cloudflare keys and skipped
 when it does not — the one place this form differs from sign-up, which fails
@@ -89,9 +115,20 @@ console errors and zero security-policy violations.
 `/docs/openapi.json` is `docs/openapi.json` — the authored document, reviewed
 and shipped with the code — with its generic `your-instance.example.com` example
 host rewritten to this instance's `APP_URL`, `servers[0]` pointed at this
-instance's `/api`, and the contact link pointed at `/support`
-(`lib/openapi_document.rb`). It is built once per process and rebuilt only when
-the file on disk changes, and served with `Cache-Control: public, max-age=3600`.
+instance's `/api`, and the contact block pointed at `/support`
+(`lib/openapi_document.rb`). The email address in the authored contact block is
+dropped rather than repointed: this is a public, indexable, machine-read
+endpoint, and an address published there is an address harvested there. It is
+built once per process and rebuilt only when the file on disk changes, and
+served with `Cache-Control: public, max-age=3600`.
+
+Because the whole document has its host rewritten, the sample files it sends
+developers to become URLs on **our** domain. They are real files, under
+`public/examples/`, regenerated with `rake api_examples:generate` and committed;
+`spec/golden/api_reference_spec.rb` fails if the served document links to
+anything on this origin that nothing answers. The description itself has to be
+in the deployed image, so the `Dockerfile` copies `docs/openapi.json` explicitly
+— the same spec reads the `Dockerfile` and goes red if that line is dropped.
 
 ## The sitemap
 
@@ -100,7 +137,9 @@ legal pages, verify, the help centre and its ten articles, the API reference and
 the support form — and nothing else, because the rest of the application is
 private to an account. It is a static file on purpose: adding a page is a code
 change, so a generated sitemap would only move the same edit somewhere less
-visible.
+visible. `public/robots.txt` carries the `Sitemap:` line that points crawlers at
+it, and `spec/golden/help_spec.rb` fails when the sitemap's help articles and
+the registry disagree.
 
 ## The pricing table cannot drift from the product
 

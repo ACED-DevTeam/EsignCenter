@@ -115,13 +115,16 @@ Rules worth knowing:
 
 - Only the two self-serve doors seed. Accepting a team invitation joins an
   account that already exists, so nothing is added; provisioned, internal and
-  operator accounts never get them.
+  operator accounts never get them, and neither does an account created from a
+  console or a script (a caller with no human in front of it does not need four
+  sample documents to look at).
 - They are seeded **once**. An account that deletes all four does not get them
   back, and an account that already holds a template of its own is left alone.
 - They cost nothing — see **[docs/quotas-and-limits.md](quotas-and-limits.md)**.
-- If seeding fails for any reason (a storage problem, say), the sign-up itself
-  is unaffected: the person still has their account, and the problem is
-  reported to the operator.
+- If seeding fails for any reason — a storage problem, or the background queue
+  being down so the work cannot even be scheduled — the sign-up itself is
+  unaffected: the person still has their account, and the problem is reported to
+  the operator.
 
 ### The first-run checklist
 
@@ -130,7 +133,9 @@ For 30 days after sign-up, the top of the dashboard shows a three-step card —
 the real data as the work is done, however it was done (dashboard, API or a
 share link). It disappears by itself once all three are done, and anybody can
 put it away sooner with the **×**. Each person on the account dismisses it for
-themselves.
+themselves. While it is showing, the app tour's "Welcome" card stands aside —
+two onboarding cards making the same offer on one screen is one too many, and
+the tour is still there from the template builder.
 
 ### After the first signed document
 
@@ -139,7 +144,15 @@ banner appears on the dashboard for that account's administrators: *Your first
 document is signed*, with a sentence about what the paid plan adds and a button
 to the billing page. It is written once, ever — dismissing it puts it away for
 the whole account, and it never comes back at a month rollover or after a
-change of plan.
+change of plan. An account that is suspended, or a person parked read-only, is
+not shown it at all: they would not be allowed to dismiss it, and a card that
+cannot be put away is worse than no card.
+
+"First ever" is decided from the completion that has just been recorded, not
+from a count taken afterwards, so a first document with two signers finishing
+together, or two documents finishing in the same second, still arms it exactly
+once. A completion that lands on a linked child account arms the parent that
+pays.
 
 ## 6. What signing up records
 

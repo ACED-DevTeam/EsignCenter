@@ -56,8 +56,9 @@
   retrying the card and you get
   <%= BillingLifecycle::PAST_DUE_GRACE_DAYS %> days of grace, during which
   everything works exactly as before, paid features included. We email your
-  administrators four times in that window, each message naming the date the
-  account would be suspended and linking straight to the billing page.
+  administrators <%= BillingLifecycle::DUNNING_DAYS.size %> times in that
+  window, each message naming the date the account would be suspended and
+  linking straight to the billing page.
 </p>
 
 <p>
