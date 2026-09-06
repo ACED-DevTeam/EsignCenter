@@ -36,17 +36,44 @@ module StarterTemplates
 
   # `templates.preferences` is a text column holding JSON, so the marker is
   # cast for a lookup; an empty string is treated as an empty object rather
-  # than blowing the cast up. FirstRunChecklist::NON_STARTER_TEMPLATE_SQL asks
-  # the negation of this same question.
-  MARKED_SQL = <<~SQL.squish
-    COALESCE(NULLIF(templates.preferences, ''), '{}')::jsonb ->> :key = 'true'
+  # than blowing the cast up.
+  MARKER_SQL = <<~SQL.squish
+    COALESCE(NULLIF(templates.preferences, ''), '{}')::jsonb ->> :key
   SQL
+
+  # The two directions of ONE question, both built from the cast above. The
+  # first-run checklist asks the negation of what seeding asks, and it used to
+  # ask it in a SQL string of its own, in a file of its own — two hand-written
+  # copies of the same cast, either of which could be corrected without the
+  # other. `IS DISTINCT FROM` rather than `<>`, because a template that carries
+  # no marker at all reads NULL and NULL is not a starter.
+  MARKED_SQL = "#{MARKER_SQL} = 'true'".freeze
+  NOT_MARKED_SQL = "#{MARKER_SQL} IS DISTINCT FROM 'true'".freeze
 
   module_function
 
   # The templates in `relation` that are still one of the four we put there.
   def marked(relation)
-    relation.where([MARKED_SQL, { key: STARTER_PREFERENCE_KEY }])
+    relation.where(marked_condition)
+  end
+
+  # ...and the ones in it that are not: a document of the account's own.
+  def not_marked(relation)
+    relation.where(not_marked_condition)
+  end
+
+  def marked_condition
+    [MARKED_SQL, { key: STARTER_PREFERENCE_KEY }]
+  end
+
+  def not_marked_condition
+    [NOT_MARKED_SQL, { key: STARTER_PREFERENCE_KEY }]
+  end
+
+  # The same question as a finished SQL fragment, for the one caller that needs
+  # it somewhere `where` cannot go: the checklist's ORDER BY.
+  def not_marked_sql
+    Template.sanitize_sql_array(not_marked_condition)
   end
 
   def manifest

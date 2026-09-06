@@ -87,16 +87,24 @@ module Submitters
       value
     end
 
+    # `Name <a@b.com>` (the shape a custom reply-to and User#friendly_name
+    # take) down to the bare address. Written once and asked by both readers:
+    # the header's format check and the disclosure's reachability check apply
+    # different rules, but they must not disagree about which part of the
+    # string is the address in the first place.
+    def bare(value)
+      (value.to_s[/<([^>]+)>/, 1] || value.to_s).strip
+    end
+
     # `Name <a@b.com>` or a bare address — the two shapes a reply-to is
     # written in — and nothing else.
     def address?(value)
-      (value.to_s[/<([^>]+)>/, 1] || value.to_s).strip.match?(URI::MailTo::EMAIL_REGEXP)
+      bare(value).match?(URI::MailTo::EMAIL_REGEXP)
     end
 
-    # `Name <a@b.com>` (the shape a custom reply-to and User#friendly_name
-    # take) down to the bare address, and nothing that no-replies.
+    # The bare address, and nothing that no-replies.
     def reachable(value)
-      address = (value.to_s[/<([^>]+)>/, 1] || value.to_s).strip
+      address = bare(value)
 
       return if address.blank? || address.exclude?('@') || address.match?(SubmitterMailer::NO_REPLY_REGEXP)
 
@@ -119,6 +127,6 @@ module Submitters
       account.users.active.full_access.admins.order(:id).first&.email
     end
 
-    private_class_method :custom, :address?, :reachable, :sending_user_address, :admin_address
+    private_class_method :custom, :bare, :address?, :reachable, :sending_user_address, :admin_address
   end
 end

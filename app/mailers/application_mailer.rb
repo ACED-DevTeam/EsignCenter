@@ -73,11 +73,11 @@ class ApplicationMailer < ActionMailer::Base
 
   # Exactly what ActionMailerEventsObserver requires before it writes a send
   # row: the record the message is ABOUT. With no record there is nothing for
-  # a callback to be attributed to, so there is no reason to invite one.
+  # a callback to be attributed to, so there is no reason to invite one — and
+  # the question is ASKED of the observer rather than restated here, so the two
+  # can never drift into stamping mail whose send row is never written.
   def attributable_metadata?
-    metadata = @message_metadata
-
-    metadata.present? && metadata.values_at('tag', 'record_id', 'record_type').all?(&:present?)
+    ActionMailerEventsObserver.attributable?(@message_metadata)
   end
 
   def assign_message_metadata(tag, record)

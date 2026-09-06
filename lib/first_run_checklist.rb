@@ -16,14 +16,20 @@ module FirstRunChecklist
   # it is not part of the furniture.
   WINDOW = 30.days
 
-  # A template we seeded is not a document they chose. `preferences` is a text
-  # column holding JSON, so it is cast for the lookup; an empty string is
-  # treated as an empty object rather than blowing the cast up.
-  NON_STARTER_TEMPLATE_SQL = <<~SQL.squish
-    COALESCE(NULLIF(templates.preferences, ''), '{}')::jsonb ->> :key IS DISTINCT FROM 'true'
-  SQL
-
   module_function
+
+  # Is this account one the checklist is offered to at all — a customer
+  # account, still inside the window?
+  #
+  # Asked twice: by `for`, which draws the card, and by `supersedes_app_tour?`,
+  # which stands the app tour's welcome card down for the accounts this
+  # checklist owns. It is ONE predicate because those two must be the same
+  # answer — the tour card yielding on a rule of its own is how a dashboard
+  # ended up offering a beginner's tour to somebody who had just been walked
+  # through the checklist (session 10 staging walk, W2).
+  def inside_window?(account)
+    account.customer? && account.created_at >= WINDOW.ago
+  end
 
   # The steps to draw for this person on this account, or nil when the card is
   # not offered at all. The steps come BACK rather than being asked for a
@@ -34,8 +40,7 @@ module FirstRunChecklist
   # separately.
   def for(account:, user:, can_create_templates:)
     return unless can_create_templates
-    return unless account.customer?
-    return if account.created_at < WINDOW.ago
+    return unless inside_window?(account)
     return if dismissed?(user)
 
     steps = steps_for(account)
@@ -66,9 +71,7 @@ module FirstRunChecklist
   # that card is affected: the tour itself is untouched and still runs from the
   # template builder and from `?tour=true`.
   def supersedes_app_tour?(account)
-    return false unless account.customer?
-
-    account.created_at >= WINDOW.ago
+    inside_window?(account)
   end
 
   def dismissed?(user)
@@ -104,8 +107,7 @@ module FirstRunChecklist
   # preferred kind. Nil — an account with no template at all, which is what a
   # failed StarterTemplatesJob leaves — is the caller's to answer.
   def step_target_template(account)
-    non_starter = Template.sanitize_sql_array([NON_STARTER_TEMPLATE_SQL,
-                                               { key: StarterTemplates::STARTER_PREFERENCE_KEY }])
+    non_starter = StarterTemplates.not_marked_sql
 
     account.templates.active.order(Arel.sql("(#{non_starter}) DESC"), id: :desc).first
   end
@@ -116,8 +118,7 @@ module FirstRunChecklist
   # would be perverse to leave the step unticked for somebody who took the
   # shortcut the starter templates exist to offer.
   def chose_document?(account)
-    account.templates.exists?([NON_STARTER_TEMPLATE_SQL, { key: StarterTemplates::STARTER_PREFERENCE_KEY }]) ||
-      account.submissions.exists?
+    StarterTemplates.not_marked(account.templates).exists? || account.submissions.exists?
   end
 
   # Step 2. Somebody was actually named on a document.
