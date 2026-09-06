@@ -31,6 +31,13 @@ require 'simplecov' if ENV['COVERAGE']
 
 Capybara.server = :puma, { Silent: true }
 Capybara.disable_animation = true
+# Capybara's own default is 2 seconds, which is what a headless Chrome inside
+# Docker on a busy box takes to finish an ordinary form POST, redirect and full
+# page swap. Every system-spec flake this project has recorded looks the same:
+# the screenshot taken after the timeout shows the page rendered perfectly.
+# Five seconds costs nothing when things are quick — a wait ends the moment the
+# expectation holds — and stops the suite reporting slowness as failure.
+Capybara.default_max_wait_time = 5
 
 Capybara.register_driver(:headless_cuprite) do |app|
   Capybara::Cuprite::Driver.new(app, window_size: [1200, 800],

@@ -116,6 +116,29 @@ describe 'Signing Sessions API' do
       expect(result_pdf.images.count).to be_positive
     end
 
+    # Same rule as POST /api/submissions: the uuid is the signing role, and two
+    # entries resolving to one used to reach the database and come back as a
+    # 500 (review 2, H3). Placed below the example at :79 on purpose — that one
+    # is the suite's known baseline failure and is referred to by its line.
+    it 'refuses two submitters that name the same uuid, creating nothing' do
+      template = create(:template, account:, author:, submitter_count: 2)
+      shared_uuid = template.submitters.first['uuid']
+
+      expect do
+        post '/api/signing_sessions', headers: headers, params: {
+          template_id: template.id,
+          embed_origin: 'https://app-a.example.com',
+          submitters: [
+            { uuid: shared_uuid, role: 'First Party', email: 'first@example.com' },
+            { uuid: shared_uuid, role: 'Second Party', email: 'second@example.com' }
+          ]
+        }.to_json
+      end.not_to change(Submission, :count)
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body).to eq({ 'error' => 'uuid must be unique in `submitters`.' })
+    end
+
     it 'rejects existing templates without fields' do
       template = create(:template, account:, author:)
       template.update!(fields: [])

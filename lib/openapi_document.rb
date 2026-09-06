@@ -49,17 +49,19 @@ module OpenapiDocument
 
     return cached.last if cached && cached.first == mtime
 
-    CACHE_LOCK.synchronize do
-      # Another thread may have generated it while this one waited.
-      cached = @cache
+    # Generated OUTSIDE the lock, and the lock only publishes the result.
+    # `document` reads `Docuseal`, an autoloadable lib/ constant: in
+    # development a thread that triggers a Zeitwerk load needs the exclusive
+    # load interlock, which a second thread parked on this mutex cannot yield
+    # — the classic custom-mutex-plus-autoload hang (review 1 loop 2, N4).
+    # Nothing that can load anything is held under the lock now. Two threads
+    # racing a cold cache both parse, which costs one extra parse and cannot
+    # hang; they write the same bytes.
+    generated = JSON.generate(document)
 
-      return cached.last if cached && cached.first == mtime
+    CACHE_LOCK.synchronize { @cache = [mtime, generated].freeze }
 
-      generated = JSON.generate(document)
-      @cache = [mtime, generated].freeze
-
-      generated
-    end
+    generated
   end
 
   # The parsed, rewritten document. Public so the golden spec can assert

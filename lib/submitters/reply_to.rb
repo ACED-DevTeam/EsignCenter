@@ -32,7 +32,12 @@ module Submitters
     # nil means it has none, and that step is simply skipped.
     def header(submitter, email_config: nil, documents_copy_reply_to: nil)
       value = custom(submitter)
-      value ||= documents_copy_reply_to.presence
+      # The template-level documents-copy reply-to is entitlement-gated at the
+      # read seam (Accounts.custom_email_copy) but was never format-checked, so
+      # an account that typed "call me on 555 0101" into it put that on an
+      # outgoing header — the same hole `custom` above closes, half-applied
+      # (review 2, L6).
+      value ||= documents_copy_reply_to.presence&.then { |candidate| candidate if address?(candidate) }
       value ||= email_config.value['reply_to'].presence if email_config
       value ||= sending_user_address(submitter)
 

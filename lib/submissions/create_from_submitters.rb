@@ -132,6 +132,17 @@ module Submissions
           raise BaseError, 'Recipient emails should differ' if submission_emails.uniq.size != submission_emails.size
         end
 
+        # The uuid IS the signing role, so two entries that resolve to the
+        # same one are two people in one role — refused by the unique index on
+        # `submitters (submission_id, uuid)`, which the API used to answer with
+        # a 500 (review 2, H3). A caller reaches this by naming the same `uuid`
+        # twice, or by naming two roles that resolve to one. Same shape as the
+        # duplicate-`role` rule the params validator already applies, and last
+        # of the batch's rules so the counts and the emails still answer first.
+        submitter_uuids = submission.submitters.map(&:uuid)
+
+        raise BaseError, 'uuid must be unique in `submitters`.' if submitter_uuids.uniq.size != submitter_uuids.size
+
         next if submission.submitters.blank?
 
         maybe_add_invite_submitters(submission, template, attrs[:submitters])

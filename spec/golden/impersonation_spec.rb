@@ -1777,6 +1777,52 @@ RSpec.describe 'Support impersonation', type: :request do
 
       expect { HousekeepingJob.new.perform }.not_to(change { events('impersonation.end').count })
     end
+
+    # M9. The sweep and the operator's own next request are two writers for one
+    # ending. The guard used to write unconditionally, so an operator who came
+    # back after the sweep had closed the session added a SECOND end row — and
+    # the customer's card pairs start with end, so it printed one and orphaned
+    # the other. Both go through SupportImpersonation.record_end! now, which
+    # decides under the start row's lock.
+    it 'writes one ending when the sweep closes it and the operator then comes back' do
+      sign_in(operator)
+      start!
+
+      travel(SupportImpersonation::MAX_DURATION + 5.minutes) do
+        expect(SupportImpersonation.expire_abandoned!).to eq(1)
+
+        # The operator's browser still holds the session cookie, and their next
+        # request finds the hour up and ends the session. The session is
+        # theirs to leave — but the LOG already says how it ended, and one
+        # start has one ending.
+        get templates_path
+
+        expect(events('impersonation.end').count).to eq(1)
+        expect(events('impersonation.end').first.details['ended_by']).to eq('expired')
+      end
+    end
+
+    it 'writes one ending when two sweeps run over the same start' do
+      abandon!
+
+      OperatorEvent.where(action: 'impersonation.start').update_all(
+        created_at: (SupportImpersonation::MAX_DURATION + 5.minutes).ago
+      )
+
+      expect(SupportImpersonation.expire_abandoned!).to eq(1)
+      expect(SupportImpersonation.expire_abandoned!).to eq(0)
+      expect(events('impersonation.end').count).to eq(1)
+    end
+
+    # There is no age floor any more: a seven-day window meant a scheduler
+    # outage longer than a week left those sessions saying "In progress" for
+    # ever, which is the state the sweep exists to end.
+    it 'still closes a session abandoned longer ago than a week' do
+      started = abandon!
+      started.update!(created_at: 30.days.ago)
+
+      expect { HousekeepingJob.new.perform }.to(change { events('impersonation.end').count }.by(1))
+    end
   end
 
   # --- 9. one pass through a real browser -------------------------------------------

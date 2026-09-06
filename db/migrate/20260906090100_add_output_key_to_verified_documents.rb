@@ -21,10 +21,25 @@
 # do not collide in a Postgres unique index, so no existing row can violate
 # it. Rows written before this migration keep a NULL key and are left exactly
 # as they are — a fingerprint already on record still answers /verify.
+#
+# The index is built CONCURRENTLY for the same reason as the submitters one
+# (20260906090000): `verified_documents` grows by a row per signed output and
+# never shrinks — the rows outlive the account — so on a live install this is
+# not a small table, and an ordinary build would hold a SHARE lock on it for
+# the duration. `if_not_exists` makes the step re-runnable after a failed
+# concurrent build, which leaves an INVALID index behind.
 class AddOutputKeyToVerifiedDocuments < ActiveRecord::Migration[8.1]
-  def change
-    add_column :verified_documents, :output_key, :string
+  disable_ddl_transaction!
 
-    add_index :verified_documents, :output_key, unique: true
+  def up
+    add_column :verified_documents, :output_key, :string, if_not_exists: true
+
+    add_index :verified_documents, :output_key, unique: true, algorithm: :concurrently, if_not_exists: true
+  end
+
+  def down
+    remove_index :verified_documents, :output_key, algorithm: :concurrently, if_exists: true
+
+    remove_column :verified_documents, :output_key, if_exists: true
   end
 end

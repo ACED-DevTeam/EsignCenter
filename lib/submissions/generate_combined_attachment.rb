@@ -23,30 +23,39 @@ module Submissions
       end
 
       if pkcs
-        sign_params = {
-          reason: Submissions::GenerateResultAttachments.single_sign_reason(submitter),
-          **Submissions::GenerateResultAttachments.build_signing_params(submitter, pkcs, tsa_url)
-        }
-
-        sign_pdf(io, pdf, sign_params)
-
-        Submissions::GenerateResultAttachments.maybe_enable_ltv(io, sign_params)
-
-        # The combined PDF with the trail bound in and the plain merged PDF
-        # are two different outputs of one submission, so they are keyed apart.
-        VerifiedDocuments.record!(io.string, submission:, kind: 'combined',
-                                             output_key: "combined:#{submission.id}:#{with_audit ? 'audit' : 'merged'}")
+        sign_combined!(io, pdf, submitter, pkcs, tsa_url)
       else
         pdf.write(io, incremental: true, validate: true)
       end
 
-      ActiveStorage::Attachment.create!(
+      attachment = ActiveStorage::Attachment.create!(
         blob: ActiveStorage::Blob.create_and_upload!(
           io: io.tap(&:rewind), filename: "#{submission.name || submission.template.name}.pdf"
         ),
         name: with_audit ? 'combined_document' : 'merged_document',
         record: submission
       )
+
+      # Filed only now that the bytes are stored (VerifiedDocuments, review 2
+      # H2). The combined PDF with the trail bound in and the plain merged PDF
+      # are two different outputs of one submission, so they are keyed apart.
+      if pkcs
+        VerifiedDocuments.record!(io.string, submission:, kind: 'combined',
+                                             output_key: "combined:#{submission.id}:#{with_audit ? 'audit' : 'merged'}")
+      end
+
+      attachment
+    end
+
+    def sign_combined!(io, pdf, submitter, pkcs, tsa_url)
+      sign_params = {
+        reason: Submissions::GenerateResultAttachments.single_sign_reason(submitter),
+        **Submissions::GenerateResultAttachments.build_signing_params(submitter, pkcs, tsa_url)
+      }
+
+      sign_pdf(io, pdf, sign_params)
+
+      Submissions::GenerateResultAttachments.maybe_enable_ltv(io, sign_params)
     end
 
     def sign_pdf(io, pdf, sign_params)

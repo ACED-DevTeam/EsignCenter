@@ -212,12 +212,22 @@ export default {
         // them: the button simply stopped spinning and the signer was left on
         // a form that looked fine and would never complete. The refusals are
         // handed to the parent, which is where the checkbox and its message
-        // live (form.vue, refuseInviteWithoutEsignConsent); anything else is
-        // reported the way any failed request is.
+        // live (form.vue, refuseInviteWithoutEsignConsent).
+        //
+        // Every other named refusal is looked up the way form.vue looks its
+        // own up. "Value is invalid" describes none of the cases it used to
+        // fire on — a document archived or expired while the signer had it
+        // open, or a party somebody else invited first — so those now say what
+        // actually happened, and the generic message is left for a refusal
+        // that really is about a value (an invitee with no address).
         const error = response.status === 422 ? await this.readError(response) : null
 
         if (error && error.startsWith('esign_consent')) {
           this.$emit('consentRefused', error)
+        } else if (error) {
+          const i18nKey = error.replace(/\s+/g, '_').toLowerCase()
+
+          alert(this.t(i18nKey) !== i18nKey ? this.t(i18nKey) : error)
         } else {
           alert(this.t('value_is_invalid'))
         }

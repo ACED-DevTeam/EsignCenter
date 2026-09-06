@@ -13,8 +13,14 @@
     upgrade nudge after the first signed document. Both partials decide for
     themselves whether there is anything to show, so the two dashboards ask
     the same question in the same words. %>
+<%# Worked out ONCE, here, and passed down: `FirstRunChecklist.for` runs the
+    three done-state queries, and this page needs the answer twice — to draw
+    the card, and to decide whether the app tour's welcome card stands aside
+    for it further down. Asking twice ran six queries, one of them a jsonb scan
+    with no index behind it. %>
+<% first_run_steps = signed_in? && current_account.customer? ? FirstRunChecklist.for(account: current_account, user: current_user, can_create_templates:) : nil %>
 <% if signed_in? && current_account.customer? %>
-  <%= render 'dashboard/first_run_checklist' %>
+  <%= render 'dashboard/first_run_checklist', steps: first_run_steps %>
   <%= render 'dashboard/first_completion_prompt' %>
 <% end %>
 <dashboard-dropzone>
@@ -84,7 +90,7 @@
           real data. The tour itself is untouched and stays reachable from the
           template builder; only its "Welcome / Start tour" card is suppressed,
           and only while the checklist is on the page. %>
-      <% first_run_showing = signed_in? && current_account.customer? && FirstRunChecklist.show?(account: current_account, user: current_user, can_create_templates:) %>
+      <% first_run_showing = first_run_steps.present? %>
       <% if (show_dropzone && current_user.created_at > 2.weeks.ago && current_user == true_user) || params[:tour] == 'true' %>
         <% user_config = current_user.user_configs.find_or_initialize_by(key: UserConfig::SHOW_APP_TOUR) %>
         <% if user_config.new_record? || user_config.value || params[:tour] == 'true' %>

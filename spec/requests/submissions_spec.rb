@@ -183,6 +183,29 @@ describe 'Submission API' do
       expect(response.parsed_body).to eq({ 'error' => 'role must be unique in `submitters`.' })
     end
 
+    # The uuid IS the role, so two entries resolving to one are two people in
+    # one role. The database refuses that (the unique index on
+    # `submitters (submission_id, uuid)`); before this rule the caller got a
+    # 500 and an error report for the same mistake that, spelled with `role`,
+    # gets the 422 above (review 2, H3).
+    it 'returns an error if two submitters name the same uuid' do
+      shared_uuid = multiple_submitters_template.submitters.first['uuid']
+
+      expect do
+        post '/api/submissions', headers: { 'x-auth-token': author.access_token.token }, params: {
+          template_id: multiple_submitters_template.id,
+          send_email: true,
+          submitters: [
+            { uuid: shared_uuid, role: 'First Party', email: 'john.doe@example.com' },
+            { uuid: shared_uuid, role: 'Second Party', email: 'jane.doe@example.com' }
+          ]
+        }.to_json
+      end.not_to change(Submission, :count)
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body).to eq({ 'error' => 'uuid must be unique in `submitters`.' })
+    end
+
     it 'returns an error if number of submitters more than in the template' do
       post '/api/submissions', headers: { 'x-auth-token': author.access_token.token }, params: {
         template_id: templates[0].id,

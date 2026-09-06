@@ -61,14 +61,19 @@ RSpec.describe 'Webhook Settings' do
 
     fill_in 'webhook_url[url]', with: 'https://example.com/webhook'
 
+    # `click_button` returns when the click is DISPATCHED, so counting rows
+    # straight after it counts them before the POST has reached the server.
+    # The flash the server sent back is what says the request is finished; the
+    # count is taken inside the block so it is still `by(1)` across the click.
     expect do
       click_button 'Save'
+
+      expect(page).to have_content('Webhook URL has been saved.')
     end.to change(WebhookUrl, :count).by(1)
 
     webhook_url = account.webhook_urls.first
 
     expect(webhook_url.url).to eq('https://example.com/webhook')
-    expect(page).to have_content('Webhook URL has been saved.')
     expect(page.current_path).to eq(settings_webhooks_path)
   end
 
@@ -80,10 +85,10 @@ RSpec.describe 'Webhook Settings' do
     fill_in 'webhook_url[url]', with: 'https://example.org/webhook'
     click_button 'Save'
 
-    webhook_url.reload
-
-    expect(webhook_url.url).to eq('https://example.org/webhook')
+    # Same race: settle on the page the server sent back before reading the row.
     expect(page).to have_content('Webhook URL has been updated.')
+
+    expect(webhook_url.reload.url).to eq('https://example.org/webhook')
     expect(page.current_path).to eq(settings_webhooks_path)
   end
 
@@ -96,9 +101,10 @@ RSpec.describe 'Webhook Settings' do
       accept_confirm('Are you sure?') do
         click_button 'Delete'
       end
+
+      expect(page).to have_content('Webhook URL has been deleted.')
     end.to change(WebhookUrl, :count).by(-1)
 
-    expect(page).to have_content('Webhook URL has been deleted.')
     expect(page.current_path).to eq(settings_webhooks_path)
   end
 
@@ -111,9 +117,9 @@ RSpec.describe 'Webhook Settings' do
 
     check('submission.created')
 
-    webhook_url.reload
-
-    expect(webhook_url.events).to include('submission.created')
+    # This form answers `head :ok`: nothing on the page changes, so there is no
+    # page state to settle on — re-read the row until the write lands.
+    eventually { expect(webhook_url.reload.events).to include('submission.created') }
   end
 
   it 'adds a secret to the webhook' do
@@ -131,9 +137,7 @@ RSpec.describe 'Webhook Settings' do
 
       click_button 'Submit'
 
-      webhook_url.reload
-
-      expect(webhook_url.secret).to eq({ 'X-Signature' => 'secret-value' })
+      eventually { expect(webhook_url.reload.secret).to eq({ 'X-Signature' => 'secret-value' }) }
     end
 
     expect(page).to have_link('Security')
@@ -153,9 +157,7 @@ RSpec.describe 'Webhook Settings' do
 
       click_button 'Submit'
 
-      webhook_url.reload
-
-      expect(webhook_url.secret).to eq({})
+      eventually { expect(webhook_url.reload.secret).to eq({}) }
     end
 
     expect(page).to have_link('Security')
@@ -191,13 +193,14 @@ RSpec.describe 'Webhook Settings' do
 
       expect do
         click_button 'Test Webhook'
+
+        expect(page).to have_content('Webhook request has been sent.')
       end.to change(SendTestWebhookRequestJob.jobs, :size).by(1)
 
       args = SendTestWebhookRequestJob.jobs.last['args'].first
 
       expect(args['webhook_url_id']).to eq(webhook_url.id)
       expect(args['submitter_id']).to eq(submitter.id)
-      expect(page).to have_content('Webhook request has been sent.')
     end
   end
 end

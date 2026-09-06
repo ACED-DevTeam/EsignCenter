@@ -44,9 +44,17 @@ module EsignConsent
   # an old text from ever shadowing the live DISCLOSURE_KEY.
   ARCHIVE_SCOPE = 'esign_disclosure_archive'
   VERSION_FORMAT = /\Av\d+\z/
-  # The placeholder that marks a "write to the sender" paragraph, spelled out
-  # so it is not read as a format token (self_signing_body).
+  # The placeholders that mark a paragraph as one that names the SENDER,
+  # spelled out so they are not read as format tokens (self_signing_body).
   SENDER_EMAIL_PLACEHOLDER = ['%', '{sender_email}'].join.freeze
+  SENDER_NAME_PLACEHOLDER = ['%', '{sender_name}'].join.freeze
+  SENDER_PLACEHOLDERS = [SENDER_NAME_PLACEHOLDER, SENDER_EMAIL_PLACEHOLDER].freeze
+  # What goes in their place for a self-signer, in this order: the agreement
+  # itself, then what is true about copies and stopping, then where documents
+  # are sent (self_signing_body).
+  SELF_SIGNING_KEYS = %w[esign_consent_disclosure_self_signing_agreement
+                         esign_consent_disclosure_self_signing
+                         esign_consent_disclosure_self_signing_contact].freeze
 
   ConsentRequiredError = Class.new(StandardError)
   StaleVersionError = Class.new(StandardError)
@@ -101,10 +109,13 @@ module EsignConsent
   #     the pair and silently fall through to the request locale, which is the
   #     `?lang=`/Accept-Language value the client chose — the exact hole the
   #     token exists to close.
-  #   * A SERVER-SIDE caller with no page behind it (record! straight from
-  #     Ruby) has no token to offer and stands on this request's own rendered
-  #     locale. That path is the default, and it is server-side by
-  #     construction: no controller reaches it.
+  #   * The DEFAULT (false) stands on this request's own rendered locale
+  #     instead. Nothing in this application uses it: both callers pass true,
+  #     and there is no path by which a browser reaches it. A Ruby caller that
+  #     took it — a console session, a future backfill — would still have to
+  #     hand over the current version and the sender digest, which are checked
+  #     above before the locale is looked at, so the only thing it changes is
+  #     where the language comes from.
   #
   # `sender_name` and `sender_email` are the details the disclosure named as
   # the sender. They are read off the server's own records here, so the event
@@ -268,28 +279,36 @@ module EsignConsent
   # to email themselves for a paper copy or to withdraw. That is not a notice,
   # it is a joke at the signer's expense in a legal record.
   #
-  # So the paragraphs that name an address to write to — "Who sent this",
-  # "Withdrawing consent", "Paper copies" — come out, and one sentence saying
-  # what is actually true goes in their place. They are picked out by the
-  # `%{sender_email}` placeholder rather than by position, so this holds in
-  # every locale without touching a word of the published bodies (whose bytes
-  # the version digest pins). The rest of the disclosure is unchanged: what
-  # you need, keeping a copy, and what we record all still apply.
+  # So EVERY paragraph that names the sender comes out — the ones with an
+  # address to write to ("Who sent this", "Withdrawing consent", "Paper
+  # copies") and the ones that merely name them ("Your copy", "Your contact
+  # details"), which said "ask them for a copy" one line after the variant
+  # says there is nobody to ask, and told the account holder they "do not
+  # have an account with us to update" (review 2, M1). The self-signing
+  # paragraphs go in their place, at the position of the first one removed:
+  # the agreement itself, what is true about copies and stopping, and where
+  # documents are sent.
+  #
+  # Paragraphs are picked out by the placeholders rather than by position, so
+  # this holds in every locale without touching a word of the published bodies
+  # — whose bytes the version digest pins. What survives is what never named
+  # the sender in the first place: what you need, keeping a copy, and what we
+  # record.
   #
   # The substitution happens BEFORE the fingerprint is taken, so the event's
   # `disclosure_sha256` is of the text this signer really saw, and the audit
   # trail rebuilds the same text from the event's `self_signing` flag.
   def self_signing_body(body, locale:)
-    paragraphs = body.to_s.split(%r{(?<=</p>)})
+    replacement = SELF_SIGNING_KEYS.map { |key| "<p>#{I18n.t(key, locale:)}</p>" }.join
     replaced = false
 
-    paragraphs.filter_map do |paragraph|
-      next paragraph unless paragraph.include?(SENDER_EMAIL_PLACEHOLDER)
+    body.to_s.split(%r{(?<=</p>)}).filter_map do |paragraph|
+      next paragraph unless SENDER_PLACEHOLDERS.any? { |placeholder| paragraph.include?(placeholder) }
       next if replaced
 
       replaced = true
 
-      "<p>#{I18n.t('esign_consent_disclosure_self_signing', locale:)}</p>"
+      replacement
     end.join
   end
 

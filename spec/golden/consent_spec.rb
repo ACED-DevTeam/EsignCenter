@@ -32,7 +32,8 @@ module ConsentSpecSupport
                     esign_consent_pdf_not_opened esign_consent_pdf_not_recorded esign_consent_the_sender
                     esign_consent_document_too_many_requests esign_consent_view_first_pdf
                     esign_consent_locale_invalid esign_consent_wording_not_on_file
-                    esign_consent_disclosure_self_signing
+                    esign_consent_disclosure_self_signing esign_consent_disclosure_self_signing_agreement
+                    esign_consent_disclosure_self_signing_contact
                     consented_to_electronic_signatures close
                     submission_event_names.esign_consent_by_html].freeze
 end
@@ -1195,19 +1196,26 @@ RSpec.describe 'ESIGN consent', type: :request do
     end
   end
 
-  # S9 final pass → S10 D2. When the sender IS the signer ("sign it
-  # yourself"), Submitters::ReplyTo.disclosure falls through to the account's
-  # own administrator — the signer — so the notice told somebody to email
-  # themselves for a paper copy or to withdraw consent. The paragraphs that
-  # name an address to write to are replaced by one sentence that says what is
-  # actually true, and the audit trail reproduces exactly that.
+  # S9 final pass → S10 D2, corrected in review 2 (M1). When the sender IS the
+  # signer ("sign it yourself"), Submitters::ReplyTo.disclosure falls through
+  # to the account's own administrator — the signer — so the notice told
+  # somebody to email themselves for a paper copy or to withdraw consent.
+  # EVERY paragraph that names the sender is replaced by the self-signing
+  # paragraphs, and the audit trail reproduces exactly that. The first fix
+  # dropped only the paragraphs naming an ADDRESS, which left two behind that
+  # contradicted the replacement: "ask them for a copy" one line after "there
+  # is nobody else to ask", and "you do not have an account with us to update"
+  # told to the account holder.
   describe 'a document the sender signs themselves' do
-    # The paragraphs picked out for replacement are the ones that name an
-    # address, which is structural rather than positional and so holds in
-    # every locale.
-    def contact_paragraphs(locale)
+    # The paragraphs picked out for replacement are the ones that name the
+    # sender, which is structural rather than positional and so holds in every
+    # locale.
+    def sender_paragraphs(locale)
       EsignConsent.plain_paragraphs(I18n.t('esign_consent_disclosure_body_html', locale:))
-                  .select { |paragraph| paragraph.include?(ConsentSpecSupport::SENDER_EMAIL_PLACEHOLDER) }
+                  .select do |paragraph|
+                    paragraph.include?(ConsentSpecSupport::SENDER_PLACEHOLDER) ||
+                      paragraph.include?(ConsentSpecSupport::SENDER_EMAIL_PLACEHOLDER)
+                  end
     end
 
     def self_signed_submitter(account)
@@ -1217,26 +1225,43 @@ RSpec.describe 'ESIGN consent', type: :request do
       submission.submitters.first.tap { |s| s.update!(sent_at: Time.current, email: admin_for(account).email) }
     end
 
-    it 'drops the write-to-the-sender paragraphs and says what is true instead' do
+    it 'drops every paragraph that names the sender and says what is true instead' do
       submitter = self_signed_submitter(account)
 
-      expect(contact_paragraphs('en')).not_to be_empty
+      expect(sender_paragraphs('en')).not_to be_empty
 
       html = EsignConsent.disclosure_html(submitter, locale: 'en')
+      paragraphs = EsignConsent.plain_paragraphs(html)
 
-      expect(html).to include(I18n.t('esign_consent_disclosure_self_signing', locale: 'en'))
-      expect(html).not_to include(admin_for(account).email)
-
-      contact_paragraphs('en').each do |paragraph|
-        first_words = paragraph.split(/\s+/).first(6).join(' ')
-
-        expect(EsignConsent.plain_paragraphs(html).join(' ')).not_to include(first_words)
+      EsignConsent::SELF_SIGNING_KEYS.each do |key|
+        expect(html).to include(I18n.t(key, locale: 'en')), key
       end
 
+      # Neither the address nor the name is anywhere in the notice, so nothing
+      # in it can tell this signer to go and ask themselves.
+      expect(html).not_to include(admin_for(account).email)
+      expect(html).not_to include(EsignConsent.sender_name(submitter))
+
+      # The two sentences that used to survive and contradict the replacement.
+      expect(paragraphs.join(' ')).not_to include('can also provide one on request')
+      expect(paragraphs.join(' ')).not_to include('you do not have an account with us to update')
+
       # Everything else the notice owes the signer is still there.
-      expect(EsignConsent.plain_paragraphs(html).size)
+      expect(paragraphs.size)
         .to eq(EsignConsent.plain_paragraphs(I18n.t('esign_consent_disclosure_body_html', locale: 'en')).size -
-               contact_paragraphs('en').size + 1)
+               sender_paragraphs('en').size + EsignConsent::SELF_SIGNING_KEYS.size)
+    end
+
+    # The whole point, said once per language: after the substitution there is
+    # no sender left to fill in, so no paragraph can name one.
+    it 'leaves no sender placeholder anywhere in the variant, in every locale' do
+      EsignConsent.locales.each do |locale|
+        text = EsignConsent.disclosure_text(version: EsignConsent::VERSION, locale:, self_signing: true)
+
+        expect(text).to be_present, locale
+        expect(text).not_to include(ConsentSpecSupport::SENDER_PLACEHOLDER), locale
+        expect(text).not_to include(ConsentSpecSupport::SENDER_EMAIL_PLACEHOLDER), locale
+      end
     end
 
     it 'leaves the disclosure alone for a document sent to somebody else' do
@@ -1278,9 +1303,10 @@ RSpec.describe 'ESIGN consent', type: :request do
       # the appendix reproduced without pinning a whole paragraph's wrapping.
       expect(text).to match(pdf_phrase(sentence.split(/\s+/).first(12).join(' ')))
 
-      contact_paragraphs('en').each do |paragraph|
-        expect(text).not_to match(pdf_phrase(paragraph.split(/\s+/).first(6).join(' ')))
-      end
+      # And the sentences the variant contradicts are out of the evidence too.
+      expect(text).not_to match(pdf_phrase('can also provide one on request'))
+      expect(text).not_to match(pdf_phrase('you do not have an account with us to update'))
+      expect(text).not_to match(pdf_phrase('You may request a paper copy'))
     end
   end
 
@@ -1324,7 +1350,8 @@ RSpec.describe 'ESIGN consent', type: :request do
                    esign_consent_document_too_many_requests esign_consent_view_first_pdf
                    esign_consent_shown_to esign_consent_sender_not_recorded
                    esign_consent_locale_invalid esign_consent_wording_not_on_file
-                   esign_consent_disclosure_self_signing].index_with do |key|
+                   esign_consent_disclosure_self_signing esign_consent_disclosure_self_signing_agreement
+                   esign_consent_disclosure_self_signing_contact].index_with do |key|
         I18n.t(key, locale: :en)
       end
 

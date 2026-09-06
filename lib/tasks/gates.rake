@@ -87,8 +87,32 @@ module Gates
   # Multiline-aware like the config-lookup scan: the argument list may run over
   # as many lines as it likes, and `account_kind:` counts wherever it sits
   # inside the call's own parentheses.
-  ACCOUNT_CREATION = /(?:\bAccount|\.\s*accounts)\s*\.\s*(?:new|create!?)\s*\(#{CALL_ARGS}\)/m
+  #
+  # Every idiom Rails offers for making one, not just the two the first
+  # version knew (review 2, M2/M3): `build` and `find_or_create_by` are the
+  # commonest of all, `Account.create name: x` needs no parentheses, and a
+  # bare `accounts.create!` has no dot in front of it. A gate with holes in
+  # the ordinary spellings is worse than no gate, because reviewers stop
+  # looking.
+  ACCOUNT_CREATION_VERBS = 'new|create!?|build|find_or_create_by!?|first_or_create!?'
+  # `Account` itself, or an association/local whose name ends in `account(s)`
+  # — `user.accounts`, a bare `accounts`, `testing_account`.
+  ACCOUNT_RECEIVER = '(?:\bAccount|\b[a-z_]*accounts?)'
+  # Parenthesised over as many lines as it likes, or paren-less to the end of
+  # the line (`Account.create name: x`, and `Account.new` on its own).
+  ACCOUNT_CREATION =
+    /#{ACCOUNT_RECEIVER}\s*\.\s*(?:#{ACCOUNT_CREATION_VERBS})(?![\w!?])(?:\s*\(#{CALL_ARGS}\)|[^\n]*)/m
+  # `account.dup` is how the tree's only two real creators work. It is its own
+  # pattern, with no argument list to look in, so it can only ever pass by
+  # being allowlisted — which is the point: somebody has to say out loud that
+  # a copy inherits the original's kind.
+  ACCOUNT_DUP = /#{ACCOUNT_RECEIVER}\s*\.\s*dup(?![\w!?])/
   ACCOUNT_KIND_ARGUMENT = /\baccount_kind\s*:/
+  # Quoted text and comments are not code: `Account.new(name: 'account_kind:')`
+  # names no kind, and a snippet inside a comment creates no account. Blanked
+  # rather than deleted so every offset still lines up — line numbers and the
+  # allowlist's snippet ranges are taken against the same string.
+  CODE_NOISE = /'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|\#[^\n]*/m
   # Pinned file AND snippet, exactly like the isolation allowlist: an entry
   # exempts the one expression it names and nothing else on the line.
   ACCOUNT_KIND_ALLOWLIST = [
@@ -116,6 +140,12 @@ module Gates
       file: 'lib/templates/serialize_for_api.rb',
       snippet: 'Account.new(id: template.account_id)',
       reason: 'unsaved stand-in for an id, never validated or saved: Accounts.link_expires_at reads account_id only'
+    },
+    {
+      file: 'lib/accounts.rb',
+      snippet: 'account.dup',
+      reason: 'dup copies every attribute of the original, account_kind included, and both sites reassign it ' \
+              'explicitly on the next line (create_duplicate, find_or_create_testing_user)'
     }
   ].freeze
 
@@ -255,12 +285,20 @@ module Gates
   def account_kind_violations(content, relative_path)
     return [] unless relative_path.start_with?('app/', 'lib/')
 
-    scan_matches(content, ACCOUNT_CREATION).filter_map do |match|
+    code = blank_code_noise(content)
+
+    unique_matches(code, [ACCOUNT_CREATION, ACCOUNT_DUP]).filter_map do |match|
       next if match[0].match?(ACCOUNT_KIND_ARGUMENT)
       next if allowlisted?(ACCOUNT_KIND_ALLOWLIST, relative_path, content, match)
 
       "#{format_violation(content, relative_path, match)} [account_kind: is missing]"
     end
+  end
+
+  # Strings and comments blanked out, character for character, newlines kept
+  # (CODE_NOISE).
+  def blank_code_noise(content)
+    content.gsub(CODE_NOISE) { |noise| noise.gsub(/[^\n]/, ' ') }
   end
 
   # --- branding ----------------------------------------------------------------

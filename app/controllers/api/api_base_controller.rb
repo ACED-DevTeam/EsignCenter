@@ -64,6 +64,18 @@ module Api
       render json: { error: e.message }, status: :unprocessable_content
     end
 
+    # Backstop for the one refusal a database constraint can make on a
+    # creation door: two signers in one role on a submission
+    # (`submitters (submission_id, uuid)`). The doors that can produce it
+    # refuse it in words first (Submissions::CreateFromSubmitters), so
+    # reaching here means a shape nobody has named yet — still the caller's
+    # request to correct, not a server error, and nothing was created.
+    rescue_from ActiveRecord::RecordNotUnique do |e|
+      ErrorReport.warning(e)
+
+      render json: { error: 'Record already exists' }, status: :unprocessable_content
+    end
+
     rescue_from RateLimit::LimitApproached do |e|
       ErrorReport.error(e)
 
