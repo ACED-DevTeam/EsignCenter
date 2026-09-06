@@ -460,4 +460,50 @@ RSpec.describe 'Starter templates', type: :request do
       expect(AccountCounters.value(account.id, 'submissions_created')).to eq(0)
     end
   end
+
+  # (h) A copy is the customer's OWN document. Both seeding markers say
+  # something about how the document GOT there, and neither is true of a
+  # template somebody asked us to duplicate (review 10 cycle 2, Q4).
+  describe 'cloning a starter template' do
+    let(:account) { create(:account) }
+    let(:user) { create(:user, account:) }
+
+    before { user }
+
+    it 'gives the copy neither starter marker, so it counts as their own document' do
+      starter = StarterTemplates.seed!(account).first
+
+      expect(starter.preferences).to include(StarterTemplates::STARTER_PREFERENCE_KEY => true,
+                                             StarterTemplates::STARTER_PRISTINE_KEY => true)
+
+      clone = Templates::Clone.call(starter, author: user)
+
+      expect(clone.preferences).not_to have_key(StarterTemplates::STARTER_PREFERENCE_KEY)
+      expect(clone.preferences).not_to have_key(StarterTemplates::STARTER_PRISTINE_KEY)
+
+      clone.save!
+
+      expect(StarterTemplates.marked(account.templates)).not_to include(clone)
+      expect(StarterTemplates.pristine(account.templates)).not_to include(clone)
+      expect(StarterTemplates.not_marked(account.templates)).to include(clone)
+
+      # The original is untouched: it is still one of the four we put there.
+      expect(StarterTemplates.marked(account.templates)).to include(starter.reload)
+    end
+
+    # The consequence the markers actually drive: the first-run checklist's
+    # "have they chosen a document of their own yet?" and the document its
+    # next two steps point at.
+    it 'ticks the first-run checklist and becomes the document its steps point at' do
+      starter = StarterTemplates.seed!(account).first
+
+      expect(FirstRunChecklist.chose_document?(account)).to be(false)
+
+      clone = Templates::Clone.call(starter, author: user)
+      clone.save!
+
+      expect(FirstRunChecklist.chose_document?(account)).to be(true)
+      expect(FirstRunChecklist.step_target_template(account)).to eq(clone)
+    end
+  end
 end
