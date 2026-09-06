@@ -2,6 +2,12 @@
 
 module TextUtils
   RTL_REGEXP = /[\p{Hebrew}\p{Arabic}]/
+  # Languages written right to left. Direction is a property of the LANGUAGE a
+  # text is written in, not of the characters that happen to appear in it: an
+  # English mail quoting one Hebrew word is still an English mail, and a
+  # Hebrew mail whose only visible words are a Latin company name is still
+  # Hebrew. Anything choosing a direction for a whole document asks this.
+  RTL_LOCALES = %w[he ar].freeze
   MASK_REGEXP = /[^\s\-_\[\]()+?.,]/
   MASK_SYMBOL = 'X'
 
@@ -11,6 +17,11 @@ module TextUtils
   TRANSLITERATION_REGEXP = Regexp.union(TRANSLITERATIONS.keys)
 
   module_function
+
+  # The direction of a locale, for anything laying out a whole document.
+  def rtl_locale?(locale)
+    locale.to_s.split('-').first.in?(RTL_LOCALES)
+  end
 
   def rtl?(text)
     return false if text.blank?

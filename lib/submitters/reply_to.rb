@@ -31,7 +31,7 @@ module Submitters
     # `email_config` is the custom email copy the caller is sending under —
     # nil means it has none, and that step is simply skipped.
     def header(submitter, email_config: nil, documents_copy_reply_to: nil)
-      value = submitter.preferences['reply_to'].presence
+      value = custom(submitter)
       value ||= documents_copy_reply_to.presence
       value ||= email_config.value['reply_to'].presence if email_config
       value ||= sending_user_address(submitter)
@@ -47,12 +47,45 @@ module Submitters
       account = submitter.submission.account
       config = Accounts.custom_email_config(account, AccountConfig::SUBMITTER_INVITATION_EMAIL_KEY)
 
-      candidates = [submitter.preferences['reply_to'],
+      candidates = [custom(submitter),
                     config&.value&.dig('reply_to'),
                     sending_user_address(submitter),
                     admin_address(account)]
 
       candidates.filter_map { |candidate| reachable(candidate) }.first
+    end
+
+    # The reply-to a sender stored on THIS signer (API `reply_to`, the send
+    # form), and the one seam both readers get it through.
+    #
+    # Two conditions, and each closes a real hole:
+    #
+    #   * it is a custom email template, so it follows the
+    #     `custom_email_templates` entitlement like the subject and body
+    #     beside it. Free accounts never had that feature; without this check
+    #     a value stored while an account was paid — or set through the API on
+    #     a free account, which nothing stopped — kept steering both the mail
+    #     header and, worse, the address the ESIGN disclosure told signers to
+    #     write to. D43 holds: the value is left exactly where the customer
+    #     put it and comes back the day they pay again, it is simply inert.
+    #   * it looks like an address. This string ends up on an outgoing header
+    #     and printed in a legal notice as the place to withdraw consent, so
+    #     "call me" or a half-typed address is worse than none at all: the
+    #     resolver falls through to somewhere that really reaches a person.
+    def custom(submitter)
+      value = submitter.preferences['reply_to'].presence
+
+      return if value.blank?
+      return unless Entitlements.allowed?(submitter.submission.account, :custom_email_templates)
+      return unless address?(value)
+
+      value
+    end
+
+    # `Name <a@b.com>` or a bare address — the two shapes a reply-to is
+    # written in — and nothing else.
+    def address?(value)
+      (value.to_s[/<([^>]+)>/, 1] || value.to_s).strip.match?(URI::MailTo::EMAIL_REGEXP)
     end
 
     # `Name <a@b.com>` (the shape a custom reply-to and User#friendly_name
@@ -81,6 +114,6 @@ module Submitters
       account.users.active.full_access.admins.order(:id).first&.email
     end
 
-    private_class_method :reachable, :sending_user_address, :admin_address
+    private_class_method :custom, :address?, :reachable, :sending_user_address, :admin_address
   end
 end

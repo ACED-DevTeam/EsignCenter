@@ -28,8 +28,11 @@ time they open a document they have not yet agreed on:
   with its version and effective date.
 - Next to the checkbox is a **View this document as a PDF** link. It opens the
   unsigned original — the same pages the form is showing — in a new tab, and
-  **the checkbox stays disabled until it has been used once**, with the hint
-  "Open the document as a PDF before you agree." underneath. That is the
+  **the checkbox will not tick until it has been used once**, with the hint
+  "Open the document as a PDF before you agree." underneath. The box stays
+  focusable and is marked `aria-disabled` rather than `disabled`, so a screen
+  reader reaches it and reads that hint out; a genuinely disabled control is
+  skipped by the keyboard and the reason for it is never announced. That is the
   §7001(c) "confirm your device can display the record" step: the signer
   proves to themselves that they can open a PDF before agreeing to be sent
   one. The link is served by `GET /s/:slug/document.pdf`
@@ -70,6 +73,19 @@ time they open a document they have not yet agreed on:
   the builder) so senders see exactly what signers will see. The preview never
   sends anything to the server.
 
+**"Sign it yourself".** When the sender and the signer are the same person,
+the sender IS the address the disclosure would tell them to write to — so the
+notice would end up telling somebody to email themselves for a paper copy or
+to withdraw. Those three paragraphs ("Who sent this", "Withdrawing consent",
+"Paper copies") are replaced by one sentence that says what is actually true:
+you sent this to yourself, you already hold the document, you can download and
+keep the PDF when you finish, you can stop at any time before you complete it,
+nothing costs anything either way, and stopping does not affect documents you
+have already signed. Everything else — what you need, keeping a copy, what we
+record — is unchanged, because it still applies. The event carries a
+`self_signing` flag and fingerprints that variant, so the audit trail
+reproduces exactly the words this signer read.
+
 This applies on every path a person can sign through: the emailed link, a
 share link, an embedded signing session, a resubmitted form, a delegated
 form, an email-2FA protected form, a form that invites the next party, and
@@ -91,13 +107,36 @@ signer (`submission_events`) — one for the original signer and, after a
 delegation, one more for the person the form was handed to — stamped with:
 
 - `version` — the disclosure version the signer saw (`v2` today),
-- `locale` — the language the disclosure was shown in (`en`, `fr`, ... — the
-  page sends back the locale it rendered; if it sends none, or one the
-  product does not speak, the request's locale is recorded instead). The
-  locale is browser-attested, like the `Accept-Language` header it comes
-  from: the page sends it, and the fallback is the browser locale the
-  signing page was rendered under — the server cannot prove which language
-  the person actually read,
+- `locale` — the language the disclosure was shown in (`en`, `fr`, ...). It is
+  **not** browser-attested. The signing page mints a short signature over
+  (this signer, this disclosure version, this language) — `EsignConsent
+  .locale_token`, an HMAC with this server's own key — and the form hands it
+  back with the consent. The server recomputes it and compares in constant
+  time. What that pair proves is one sentence, and only one:
+
+  > this server rendered this disclosure, in this language, for this signer.
+
+  It does **not** prove the box was ticked on that page, and the record never
+  claims it did — nothing in a browser can prove that. What it buys is that
+  the language stamped on the evidence, and therefore the exact words the
+  audit trail reproduces years later, is a language this server really
+  published to this person. Without it the language would come from the
+  completion request, whose locale the client chooses twice over (`?lang=`
+  and `Accept-Language`): a signer could post `lang=ar` beside
+  `esign_consent_locale=ar` against an English page and have the Arabic
+  disclosure filed as the text they read.
+
+  Both interactive callers — the form step and the invite request, which are
+  the only two paths a real consent takes — REQUIRE the pair. A consent with
+  no locale, a blank one, an unsigned one, a forged token, or a language this
+  product does not speak is refused with `esign_consent_locale_invalid` and
+  nothing is written. That refusal has its own message ("We could not confirm
+  which language this disclosure was shown in. Please reload the page and
+  agree again.") and is deliberately not the stale-version message: nothing
+  was updated, and saying so would be a lie in the one place this product
+  cannot afford one. A server-side caller with no page behind it — `record!`
+  invoked straight from Ruby — has no token to offer and stands on the
+  locale of its own request; no controller reaches that path,
 - `disclosure_sha256` — the SHA-256 fingerprint of the disclosure **template**
   in that version and language: the locale string with its `%{sender_name}`,
   `%{sender_email}` and `%{product_name}` placeholders still in it, not the
@@ -124,6 +163,16 @@ delegation, one more for the person the form was handed to — stamped with:
   nobody), then the account's first active administrator, and platform
   support only if an account has nothing reachable at all.
 
+  The reply-to stored on the signer is **custom email copy**, so it follows
+  the `custom_email_templates` entitlement like the subject and body beside
+  it, and it has to look like an address. A free account's stored value is
+  ignored on both the mail header and the disclosure — it is not deleted
+  (D43), it is inert, and it works again the day the account pays. A value
+  that is not an address ("call me on 555 0101") is ignored on any plan: this
+  string is printed in a legal notice as the place to withdraw consent, so
+  something unreachable there is worse than falling through to the
+  administrator.
+
   **The one case where the two halves differ.** A mail header is published to
   whoever receives it, so it stays conservative: a configured no-reply address
   or a self-signed document means **no Reply-To header at all**, and an
@@ -141,12 +190,28 @@ delegation, one more for the person the form was handed to — stamped with:
   it differs — an account renamed while the modal sat open cannot file one
   sender against a disclosure that named another. The signer reloads and
   agrees to the disclosure they can actually see,
-- `pdf_opened` — `true` or `false`: whether the signer used the "View this
-  document as a PDF" link before ticking the box. This is the **one** field on
-  the event the browser asserts. A browser can post anything, so it is stored
-  and printed as what it is: the audit trail says "The signer's browser
-  reported opening the PDF", or "The signer did not open the PDF before
-  agreeing" — never a bare claim of fact, and never silence,
+- `pdf_opened` — whether the signer used the "View this document as a PDF"
+  link before ticking the box. This is the **one** field on the event the
+  browser asserts, and it has **three** states, not two:
+
+  | state | what it means | what the trail prints |
+  | --- | --- | --- |
+  | `true` | the browser reported following the link | "The signer's browser reported opening the PDF" |
+  | `false` | a link was offered and the browser reported it unfollowed | "The signer did not open the PDF before agreeing" |
+  | absent (no key on the event) | the page offered no link, so the question was never put — or the consent predates this product asking it | "Whether the signer opened the PDF was not recorded with this consent" |
+
+  The absent state is why the key is left off the event entirely rather than
+  written as `false`. A page has no link to offer when the submission's
+  documents cannot be served as one PDF; writing `false` there would assert,
+  in signed evidence, that a person declined to open something they were
+  never shown. A browser can post anything, so none of the three is printed
+  as a bare fact — the trail always says whose claim it is, and never stays
+  silent,
+- `self_signing` — `true` when the sender and the signer are the same person
+  ("sign it yourself"). The disclosure they were shown drops the paragraphs
+  that name an address to write to and carries one sentence in their place
+  (§1), so the flag is what lets the audit trail rebuild the exact text they
+  read; `disclosure_sha256` is of that variant,
 - `ip`, `ua` (browser user agent), `sid` (session) — the same tracking data
   every signing event carries — and `uid`, the user id, when the person who
   consented was signed in to the dashboard (the sender signing their own
@@ -204,13 +269,21 @@ delegation.
   self-contained: a reader years later does not need this product, or its
   locale files, to see what the person agreed to. An event recorded before the
   sender was named prints the template as it stands, above a line saying the
-  sender's details were not recorded with that consent.
+  sender's details were not recorded with that consent. A self-signed document
+  reproduces the self-signing variant (§1), which is what that signer saw.
+
+  When the words genuinely cannot be produced — a version whose text was never
+  archived, or a language since dropped — the block is still drawn, and under
+  the heading it says "Disclosure wording no longer on file (version X, locale
+  Y, digest Z)". Skipping the signer silently would be worse than useless:
+  their block would simply be absent and the appendix would read as though
+  they had agreed to whatever the signer above them did.
 - **Submission events page** in the dashboard — the same event line, with a
   shield-check icon.
 - **API** — `GET /api/submitters/:id` and submission payloads include the
   `esign_consent` event with `data.version`, `data.locale`,
-  `data.disclosure_sha256`, `data.sender_name`, `data.sender_email` and
-  `data.pdf_opened`.
+  `data.disclosure_sha256`, `data.sender_name`, `data.sender_email`,
+  `data.self_signing` and — when the question was put — `data.pdf_opened`.
 
 ## 5. The exemption: sender-attested completions
 
@@ -298,9 +371,15 @@ names the current version is recorded.
 
 ## 7. Locale rule
 
+Which language a consent is FILED under is decided by the signed locale pair,
+not by the request — see §2 (`locale`). This section is about the strings
+themselves.
+
 Every consent string — the checkbox label, the disclosure link and title,
-the disclosure body, the version label, the required message, the reload
-message shown for a stale version, the audit-trail line and the event-log
+the disclosure body, the self-signing sentence, the version label, the
+required message, the reload message shown for a stale version, the
+"we could not confirm which language" message, the "wording no longer on
+file" line, the audit-trail line and the event-log
 line — exists as a real translation in all 14 base locales
 (`en es it fr pt de pl uk cs he nl ar ko ja`; the regional variants inherit
 them) — as do the "View this document as a PDF" link, the "open the PDF

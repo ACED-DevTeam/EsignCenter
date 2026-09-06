@@ -1987,6 +1987,9 @@ RSpec.describe 'Deleting an account', type: :request do
 
       put "/s/#{submitter.slug}", params: { completed: 'true', esign_consent: 'true',
                                             esign_consent_version: EsignConsent::VERSION,
+                                            esign_consent_locale: EsignConsent.rendered_locale,
+                                            esign_consent_locale_token:
+                                              EsignConsent.locale_token(submitter, EsignConsent.rendered_locale),
                                             esign_consent_sender_digest: EsignConsent.sender_digest(submitter),
                                             values: { text_field(submitter)['uuid'] => 'Jane' } }
 

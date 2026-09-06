@@ -32,7 +32,10 @@ module Submissions
 
         Submissions::GenerateResultAttachments.maybe_enable_ltv(io, sign_params)
 
-        VerifiedDocuments.record!(io.string, submission:, kind: 'combined')
+        # The combined PDF with the trail bound in and the plain merged PDF
+        # are two different outputs of one submission, so they are keyed apart.
+        VerifiedDocuments.record!(io.string, submission:, kind: 'combined',
+                                             output_key: "combined:#{submission.id}:#{with_audit ? 'audit' : 'merged'}")
       else
         pdf.write(io, incremental: true, validate: true)
       end

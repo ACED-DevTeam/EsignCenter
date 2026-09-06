@@ -7,6 +7,13 @@
 #
 # The row is only worth having if the words behind it can still be produced,
 # which is what `version` and `sha256` are for — see docs/legal.md.
+#
+# The row FOLLOWS the person. `account_id` starts as the account they were in
+# when they accepted and is rewritten if they later move to another team
+# (Accounts::MoveUser::MOVED_TABLES), because the alternative is leaving the
+# only record of what somebody agreed to inside an account that is about to be
+# archived and purged. Read it as "whose account holds this row today", never
+# as "which company they were in when they clicked".
 # == Schema Information
 #
 # Table name: legal_acceptances

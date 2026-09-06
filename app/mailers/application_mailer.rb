@@ -16,12 +16,29 @@ class ApplicationMailer < ActionMailer::Base
     ActiveStorage::Current.url_options = Docuseal.default_url_options
   end
 
+  # Platform notices are written in English (mail_greeting says so, and every
+  # template is English prose). Until now they were only WRITTEN in English —
+  # they were rendered under whatever locale happened to be current, which is
+  # the reader's browser language when a notice is sent from inside a web
+  # request. Anything the templates share with the rest of the app — a
+  # translated partial, a date format, the layout's own direction — then came
+  # out in that language, so a German admin got an English bill reminder laid
+  # out with German dates. Rendered in English, one language all the way down.
+  #
+  # Customer mail is untouched: SubmitterMailer and UserMailer open their own
+  # `I18n.with_locale(account.locale)` inside the action, which wins.
+  around_action :with_platform_notice_locale
+
   after_action :set_message_metadata
   after_action :set_message_uuid
   after_action :set_mail_account_header
 
   def default_url_options
     Docuseal.default_url_options.merge(host: ENV.fetch('EMAIL_HOST', Docuseal.default_url_options[:host]))
+  end
+
+  def with_platform_notice_locale(&)
+    platform_notice? ? I18n.with_locale(:en, &) : yield
   end
 
   def set_message_metadata

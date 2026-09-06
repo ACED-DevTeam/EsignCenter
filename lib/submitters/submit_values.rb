@@ -29,11 +29,19 @@ module Submitters
       end
 
       if params[:esign_consent].to_s == 'true'
+        # Every consent that reaches this module came from a signing page —
+        # the form step and the invite request are the only two callers — so
+        # the signed locale pair that page issued is REQUIRED here
+        # (`require_locale:`). Without it a request could simply omit the
+        # pair and have the record fall back to its own locale, which is the
+        # `?lang=`/Accept-Language value the client chose. See
+        # EsignConsent.record!.
         EsignConsent.record!(submitter, request, version: params[:esign_consent_version].presence,
                                                  locale: params[:esign_consent_locale].presence,
                                                  locale_token: params[:esign_consent_locale_token].presence,
                                                  pdf_opened: params[:esign_consent_pdf_opened],
-                                                 sender_digest: params[:esign_consent_sender_digest].presence)
+                                                 sender_digest: params[:esign_consent_sender_digest].presence,
+                                                 require_locale: true)
       end
 
       update_submitter!(submitter, params, request, validate_required:)
@@ -490,7 +498,9 @@ module Submitters
 
         submission.submitters.create!(uuid: s['uuid'], email:, phone:, account_id: submitter.account_id)
 
-        SubmissionEvents.create_with_tracking_data(submitter, 'invite_party', request, { uuid: submitter.uuid })
+        # The uuid of the party this field just invited, not of the signer who
+        # filled the field in — the event answers "who was brought in".
+        SubmissionEvents.create_with_tracking_data(submitter, 'invite_party', request, { uuid: s['uuid'] })
 
         is_invited = true
       end

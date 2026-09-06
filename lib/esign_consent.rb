@@ -15,6 +15,11 @@
 # (`sender_name`, `sender_email`), taken from the server, never the browser.
 # `disclosure_html` fills the placeholders in for display.
 #
+# One thing does change the template itself: a person signing their own
+# document is shown the self-signing variant (self_signing_body), so the event
+# carries a `self_signing` flag and a digest of that variant. Version, locale
+# and flag together name one exact text, which is all a later reader needs.
+#
 # Bump VERSION (and EFFECTIVE_DATE) the first time the disclosure text
 # (`esign_consent_disclosure_body_html` in config/locales/i18n.yml) changes
 # after a production consent has been recorded under the current version, and
@@ -39,9 +44,16 @@ module EsignConsent
   # an old text from ever shadowing the live DISCLOSURE_KEY.
   ARCHIVE_SCOPE = 'esign_disclosure_archive'
   VERSION_FORMAT = /\Av\d+\z/
+  # The placeholder that marks a "write to the sender" paragraph, spelled out
+  # so it is not read as a format token (self_signing_body).
+  SENDER_EMAIL_PLACEHOLDER = ['%', '{sender_email}'].join.freeze
 
   ConsentRequiredError = Class.new(StandardError)
   StaleVersionError = Class.new(StandardError)
+  # A locale refusal is not a stale version, and telling a signer to reload
+  # because "the disclosure was updated" when nothing was updated is a lie in
+  # the one place the product cannot afford one. Its own error, its own key.
+  LocaleInvalidError = Class.new(StandardError)
 
   module_function
 
@@ -57,25 +69,42 @@ module EsignConsent
   # existed saw a text this code can no longer vouch for): refused, and the
   # signer reloads and agrees again.
   #
-  # `locale` is the language the page rendered the disclosure in, and
-  # `locale_token` is this server's own signature over it (locale_token):
-  # together they are the page's answer, not the browser's claim. The token
-  # is recomputed here for (this submitter, this VERSION, the posted locale)
-  # and compared in constant time; anything that does not match is refused
-  # (StaleVersionError). Comparing the posted locale with the locale of THIS
+  # `locale` and `locale_token` are ONE thing, and it is not "the language the
+  # signer's browser asked for". The token is this server's own HMAC over
+  # (this signer's slug, this VERSION, this locale), minted by the page that
+  # rendered the disclosure — so the pair says exactly, and only:
+  #
+  #     this server rendered this disclosure, in this language, for this signer.
+  #
+  # It deliberately does NOT say "this is the page the box was ticked on":
+  # nothing in a browser can prove that, and the record never claims it. What
+  # it does buy is that the language stamped on the evidence — and therefore
+  # the disclosure text the audit trail reproduces years later — is a language
+  # this server really published to this person, not one the client picked at
+  # completion time. Comparing the posted locale with the locale of THIS
   # request would not do, because the completion request's locale is itself
   # client-controlled (`?lang=` and Accept-Language, ApplicationController#
-  # with_browser_locale) — a signer could post `lang=ar` beside
+  # with_browser_locale): a signer could post `lang=ar` beside
   # `esign_consent_locale=ar` against an English page and have the Arabic
-  # disclosure digested and reproduced in the audit trail as the text they
-  # read, while an honest `/s/:slug?lang=fr` link was refused because the
-  # form posts to a bare `/s/:slug`. A signed token is issued by the page
-  # that did the rendering, so it survives the trip and cannot be minted by
-  # the browser. A posted locale with no token, a forged token, or a locale
-  # this product does not speak (nothing can vouch for it) is refused. A
-  # request with no locale at all is the pre-form caller (record! called
-  # directly, no page involved) and stands on the server's own answer for
-  # this request (rendered_locale) alone.
+  # disclosure digested and reproduced as the text they read, while an honest
+  # `/s/:slug?lang=fr` link was refused because the form posts to a bare
+  # `/s/:slug`. The token survives that trip and cannot be minted by a browser.
+  #
+  # `require_locale:` is what separates the two kinds of caller.
+  #
+  #   * An INTERACTIVE consent — one that came from a signing page, which is
+  #     every consent the product actually records (Submitters::SubmitValues,
+  #     for both the form step and the invite request) — passes it. The pair
+  #     is then mandatory: omitted, blank, unsigned, forged, or naming a
+  #     language this product does not speak, all refuse with
+  #     LocaleInvalidError and write nothing. Without that, a page could omit
+  #     the pair and silently fall through to the request locale, which is the
+  #     `?lang=`/Accept-Language value the client chose — the exact hole the
+  #     token exists to close.
+  #   * A SERVER-SIDE caller with no page behind it (record! straight from
+  #     Ruby) has no token to offer and stands on this request's own rendered
+  #     locale. That path is the default, and it is server-side by
+  #     construction: no controller reaches it.
   #
   # `sender_name` and `sender_email` are the details the disclosure named as
   # the sender. They are read off the server's own records here, so the event
@@ -90,22 +119,30 @@ module EsignConsent
   # the same reason a request without a version is: nothing vouches for what
   # that page put in front of the signer.
   #
-  # `pdf_opened` is the one client attestation on the event: the browser says
-  # whether the signer followed the "View this document as a PDF" link before
-  # ticking the box. The server cannot prove it — a browser can post anything
-  # — so it is stored as what it is, the page's own claim, and the audit trail
-  # prints it as such. When the page offered no link at all there is no
-  # question to answer and the form posts nothing: the key is then left OFF
-  # the event entirely, and the trail says the answer was not recorded rather
-  # than stating, in signed evidence, that the signer declined to open a link
-  # they were never shown.
+  # `pdf_opened` is the one client attestation on the event, and it has THREE
+  # answers, not two:
+  #
+  #   * `true`  — the browser reported following the "View this document as a
+  #     PDF" link before the box was ticked;
+  #   * `false` — a link was offered and the browser reported it unfollowed;
+  #   * ABSENT  — the key is not on the event at all. That is what a page with
+  #     no link to offer posts (a submission whose documents cannot be served
+  #     as one PDF), and what every consent recorded before this product asked
+  #     the question carries.
+  #
+  # The server cannot prove any of it — a browser can post anything — so it is
+  # stored as what it is, the page's own claim, and the audit trail prints it
+  # as such, with a third line for the absent case. Writing `false` where the
+  # question was never put would assert, in signed evidence, that a person
+  # declined to open a link they were never shown.
   #
   # The submitter row is locked while the event is looked up and created, so
   # two requests arriving together (a save-step and a completion, say) still
   # produce exactly one event: the second waits for the lock, then finds the
   # first one's event. One event per human: after a delegation the next
   # person's consent is a new event (consent_scope).
-  def record!(submitter, request, version: nil, locale: nil, locale_token: nil, pdf_opened: nil, sender_digest: nil)
+  def record!(submitter, request, version: nil, locale: nil, locale_token: nil, pdf_opened: nil, sender_digest: nil,
+              require_locale: false)
     raise StaleVersionError, 'esign_consent_version_stale' unless version == VERSION
 
     name = sender_name(submitter)
@@ -113,12 +150,14 @@ module EsignConsent
 
     raise StaleVersionError, 'esign_consent_version_stale' unless sender_digest == digest_of(name, email)
 
-    locale = locale.presence ? verified_locale!(submitter, locale, locale_token) : rendered_locale
+    locale = resolve_locale!(submitter, locale, locale_token, require_locale:)
+    self_signing = self_signing?(submitter)
 
     data = {
       version: VERSION,
       locale:,
-      disclosure_sha256: disclosure_sha256(version: VERSION, locale:),
+      self_signing:,
+      disclosure_sha256: disclosure_sha256(version: VERSION, locale:, self_signing:),
       sender_name: name,
       sender_email: email
     }
@@ -133,6 +172,16 @@ module EsignConsent
     end
   end
 
+  # Which language this consent is filed under (see record! for the rule).
+  # An interactive caller must hand over a signed pair; a server-side one
+  # stands on the locale this request rendered in.
+  def resolve_locale!(submitter, locale, token, require_locale: false)
+    return verified_locale!(submitter, locale, token) if locale.presence
+    raise LocaleInvalidError, 'esign_consent_locale_invalid' if require_locale
+
+    rendered_locale
+  end
+
   # The locale the page says it rendered the disclosure in, accepted only on
   # this server's own signature over it (see record!). Returns the normalized
   # locale; raises for a locale we do not speak, a missing token or a token
@@ -142,7 +191,7 @@ module EsignConsent
 
     unless expected && token.present? &&
            ActiveSupport::SecurityUtils.secure_compare(expected, token.to_s)
-      raise StaleVersionError, 'esign_consent_version_stale'
+      raise LocaleInvalidError, 'esign_consent_locale_invalid'
     end
 
     normalize_locale(locale)
@@ -195,23 +244,69 @@ module EsignConsent
   # The disclosure body (the HTML the modal renders) for a version and locale:
   # the live locale key for the current version, the archive scope for a
   # superseded one. nil when that pair was never published.
-  def disclosure_text(version:, locale:)
+  #
+  # `self_signing:` returns the variant a person signing their OWN document is
+  # shown (self_signing_body) — the same words, minus the paragraphs that tell
+  # them to write to themselves.
+  def disclosure_text(version:, locale:, self_signing: false)
     locale = normalize_locale(locale)
 
     return if locale.nil? || !version.to_s.match?(VERSION_FORMAT)
 
     key = version == VERSION ? DISCLOSURE_KEY : "#{ARCHIVE_SCOPE}.#{version}"
 
-    I18n.t(key, locale:, fallback: false, raise: true)
+    body = I18n.t(key, locale:, fallback: false, raise: true)
+
+    self_signing ? self_signing_body(body, locale:) : body
   rescue I18n::MissingTranslationData
     nil
+  end
+
+  # "Sign it yourself": the sender and the signer are the same person, so
+  # Submitters::ReplyTo.disclosure falls through to the account's own
+  # administrator — themselves — and the disclosure ends up telling somebody
+  # to email themselves for a paper copy or to withdraw. That is not a notice,
+  # it is a joke at the signer's expense in a legal record.
+  #
+  # So the paragraphs that name an address to write to — "Who sent this",
+  # "Withdrawing consent", "Paper copies" — come out, and one sentence saying
+  # what is actually true goes in their place. They are picked out by the
+  # `%{sender_email}` placeholder rather than by position, so this holds in
+  # every locale without touching a word of the published bodies (whose bytes
+  # the version digest pins). The rest of the disclosure is unchanged: what
+  # you need, keeping a copy, and what we record all still apply.
+  #
+  # The substitution happens BEFORE the fingerprint is taken, so the event's
+  # `disclosure_sha256` is of the text this signer really saw, and the audit
+  # trail rebuilds the same text from the event's `self_signing` flag.
+  def self_signing_body(body, locale:)
+    paragraphs = body.to_s.split(%r{(?<=</p>)})
+    replaced = false
+
+    paragraphs.filter_map do |paragraph|
+      next paragraph unless paragraph.include?(SENDER_EMAIL_PLACEHOLDER)
+      next if replaced
+
+      replaced = true
+
+      "<p>#{I18n.t('esign_consent_disclosure_self_signing', locale:)}</p>"
+    end.join
+  end
+
+  # Whether this signer is the person who sent the document — the "sign it
+  # yourself" flow, where the sender's own login is the signer's email.
+  def self_signing?(submitter)
+    submission = submitter.submission
+    sender = submission.created_by_user || submitter.template&.author
+
+    sender.present? && submitter.email.present? && sender.email == submitter.email
   end
 
   # What a consent event's `disclosure_sha256` must equal for a later reader to
   # trust that the archived text is the one the signer saw. It fingerprints the
   # template, placeholders and all — see the module comment.
-  def disclosure_sha256(version:, locale:)
-    text = disclosure_text(version:, locale:)
+  def disclosure_sha256(version:, locale:, self_signing: false)
+    text = disclosure_text(version:, locale:, self_signing:)
 
     Digest::SHA256.hexdigest(text) if text
   end
@@ -222,7 +317,7 @@ module EsignConsent
   # signer through their own account name.
   def disclosure_html(submitter, locale: nil)
     locale = normalize_locale(locale) || rendered_locale
-    text = disclosure_text(version: VERSION, locale:)
+    text = disclosure_text(version: VERSION, locale:, self_signing: self_signing?(submitter))
 
     return ActiveSupport::SafeBuffer.new if text.nil?
 
@@ -310,5 +405,5 @@ module EsignConsent
     events.where(SubmissionEvent.arel_table[:event_timestamp].gt(delegated_at))
   end
 
-  private_class_method :consent_scope, :verified_locale!, :locale_token_key
+  private_class_method :consent_scope, :resolve_locale!, :verified_locale!, :locale_token_key, :self_signing_body
 end

@@ -21,9 +21,7 @@ module Submissions
     TESTING_FOOTER = GenerateResultAttachments::TESTING_FOOTER
 
     RTL_REGEXP = TextUtils::RTL_REGEXP
-    # Languages written right to left. Direction is a property of the LANGUAGE
-    # a text is written in, not of the characters that happen to appear in it.
-    RTL_LOCALES = %w[he ar].freeze
+    RTL_LOCALES = TextUtils::RTL_LOCALES
     MAX_IMAGE_HEIGHT = 100
 
     CHECKSUM_LIMIT = 30
@@ -58,7 +56,8 @@ module Submissions
 
           Submissions::GenerateResultAttachments.maybe_enable_ltv(io, sign_params)
 
-          VerifiedDocuments.record!(io.string, submission:, kind: 'audit_trail')
+          VerifiedDocuments.record!(io.string, submission:, kind: 'audit_trail',
+                                               output_key: "audit_trail:#{submission.id}")
         else
           document.write(io)
         end
@@ -579,12 +578,37 @@ module Submissions
                        rtl: rtl_locale?(I18n.locale), font_size: 12, padding: [10, 0, 15, 0])
 
       consent_events.each do |event|
-        text = EsignConsent.disclosure_text(version: event.data['version'], locale: event.data['locale'])
+        text = EsignConsent.disclosure_text(version: event.data['version'], locale: event.data['locale'],
+                                            self_signing: event.data['self_signing'].present?)
 
-        next if text.blank?
-
-        add_consent_disclosure(composer, submission, event, text, versions_index)
+        if text.blank?
+          add_consent_wording_not_on_file(composer, submission, event, versions_index)
+        else
+          add_consent_disclosure(composer, submission, event, text, versions_index)
+        end
       end
+    end
+
+    # The disclosure this consent names cannot be produced any more: a version
+    # whose text was never archived, or a language that has since been
+    # dropped. Saying nothing would be the worst answer — the appendix would
+    # simply skip that signer and read as though they had agreed to whatever
+    # the signer above them did. So the heading still goes in, and under it a
+    # line naming the version, the language and the fingerprint that was
+    # recorded, which is exactly what somebody would need to go and find the
+    # words in the archive (config/locales/esign_disclosures, docs/legal.md).
+    def add_consent_wording_not_on_file(composer, submission, event, versions_index)
+      rtl = rtl_locale?(I18n.locale)
+
+      add_consent_text(composer, consent_appendix_heading(submission, event, versions_index, rtl:),
+                       rtl:, font: [FONT_NAME, { variant: :bold }])
+
+      add_consent_text(composer,
+                       I18n.t('esign_consent_wording_not_on_file',
+                              version: event.data['version'].presence || '—',
+                              language: event.data['locale'].presence || '—',
+                              digest: event.data['disclosure_sha256'].presence || '—'),
+                       rtl:, line_spacing: 1.3)
     end
 
     def add_consent_disclosure(composer, submission, event, text, versions_index)
