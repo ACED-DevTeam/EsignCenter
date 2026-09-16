@@ -3,8 +3,9 @@
     working — for a suspended account and one that has asked to be deleted:
     taking your data with you is the promise the 90-day window rests on. %>
 <% export = @export %>
+<% export_status = export&.expired? ? AccountExport::EXPIRED : export&.status %>
 <% building = export&.in_progress? %>
-<% request_label = case export&.status
+<% request_label = case export_status
                    when AccountExport::READY then t('account_export_new_button')
                    when AccountExport::FAILED then t('account_export_retry_button')
                    else t('account_export_request_button')
@@ -12,7 +13,7 @@
 <div class="flex-wrap space-y-4 md:flex md:flex-nowrap md:space-y-0 md:space-x-10">
   <%= render 'shared/settings_nav' %>
   <div class="md:flex-grow">
-    <div class="max-w-2xl" data-account-export-state="<%= export&.status || 'none' %>">
+    <div class="max-w-2xl" data-account-export-state="<%= export_status || 'none' %>">
       <% if building %>
         <%# A build takes minutes on a large account, so the page brings itself
             back rather than asking the reader to press reload. %>
@@ -30,7 +31,7 @@
 
       <div class="card bg-base-200 border border-base-300 mb-5">
         <div class="card-body p-5 gap-3">
-          <% case export&.status %>
+          <% case export_status %>
           <% when AccountExport::PENDING, AccountExport::RUNNING %>
             <p class="font-semibold" dir="auto"><%= t('account_export_building_headline') %></p>
             <p class="text-sm text-base-content/70" dir="auto"><%= t('account_export_building_hint') %></p>

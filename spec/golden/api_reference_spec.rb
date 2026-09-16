@@ -155,8 +155,26 @@ RSpec.describe 'API reference', type: :request do
         'GET /signing_sessions/{id}',
         'POST /template_builder_sessions',
         'GET /template_builder_sessions/{id}',
+        'POST /template_preview_sessions',
         'GET /user'                   # the token check
       )
+    end
+
+    it 'documents the preview and application palette limits' do
+      get '/docs/openapi.json'
+
+      paths = JSON.parse(response.body).fetch('paths')
+      builder = paths.dig('/template_builder_sessions', 'post', 'requestBody', 'content',
+                          'application/json', 'schema', 'properties', 'custom_fields')
+      expect(builder['maxItems']).to eq(Params::TemplateBuilderSessionCreateValidator::MAX_CUSTOM_FIELDS)
+      expect(builder.dig('items', 'properties', 'type', 'enum'))
+        .to eq(Params::TemplateBuilderSessionCreateValidator::CUSTOM_FIELD_TYPES)
+      preview = paths.dig('/template_preview_sessions', 'post', 'requestBody', 'content',
+                          'application/json', 'schema')
+      expect(preview['required']).to contain_exactly('template_id', 'embed_origin')
+      expect(preview.dig('properties', 'values', 'maxProperties'))
+        .to eq(Params::TemplatePreviewSessionCreateValidator::MAX_VALUES)
+      expect(preview.dig('properties', 'values', 'additionalProperties', 'type')).to eq('string')
     end
 
     it 'never brings back the upstream operations this fork does not route' do

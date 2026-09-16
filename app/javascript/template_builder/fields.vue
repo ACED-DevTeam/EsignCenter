@@ -54,7 +54,7 @@
       :with-prefillable="withPrefillable"
       :default-field="defaultFieldsIndex[field.name]"
       :draggable="editable"
-      :with-custom-fields="withCustomFields"
+      :with-custom-fields="withCustomFields && !customFieldsReadonly"
       class="mb-1.5"
       @add-custom-field="addCustomField"
       @dragstart="[fieldsDragFieldRef.value = field, removeDragOverlay($event), setDragPlaceholder($event)]"
@@ -222,6 +222,7 @@
       <CustomField
         v-for="field in filteredCustomFields"
         :key="field.uuid"
+        :readonly="customFieldsReadonly"
         :data-uuid="field.uuid"
         :field="field"
         :draggable="true"
@@ -379,6 +380,10 @@ export default {
       type: Array,
       required: false,
       default: () => []
+    },
+    customFieldsReadonly: {
+      type: Boolean,
+      default: false
     },
     withCustomFields: {
       type: Boolean,
@@ -591,6 +596,8 @@ export default {
       }
     },
     addCustomField (field) {
+      if (this.customFieldsReadonly) return
+
       const customField = JSON.parse(JSON.stringify(field))
 
       customField.uuid = v4()
@@ -627,6 +634,8 @@ export default {
       this.showCustomTab = type === 'custom'
     },
     saveCustomFields () {
+      if (this.customFieldsReadonly) return Promise.resolve()
+
       return this.baseFetch('/account_custom_fields', {
         method: 'POST',
         body: JSON.stringify({
@@ -906,6 +915,8 @@ export default {
       this.saveCustomFields()
     },
     onCustomFieldDragover (e) {
+      if (this.customFieldsReadonly) return
+
       if (this.customDragFieldRef.value && this.customFields.includes(this.customDragFieldRef.value)) {
         const container = this.$refs.customFieldsList
         const targetField = e.target.closest('[data-uuid]')
@@ -925,6 +936,8 @@ export default {
       }
     },
     reorderCustomFields () {
+      if (this.customFieldsReadonly) return
+
       if (!this.customFields.includes(this.customDragFieldRef.value)) {
         return
       }

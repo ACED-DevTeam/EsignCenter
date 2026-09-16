@@ -14,8 +14,9 @@ class Ability
   # Roles:
   # - viewer: read-only access to documents + manage own profile/personal settings.
   # - editor: viewer + full document management (templates, submissions, submitters).
-  # - admin (and the API-only `integration` role / any legacy role): full access,
-  #   including user management, account/integration settings, API tokens and webhooks.
+  # - integration: same-account document API work, webhooks and entitled MCP.
+  # - admin: account administration, API tokens and webhooks.
+  # - unknown roles: viewer access; never an implicit administrator.
   #
   # `support_impersonation:` is the mode of a platform-operator support session
   # ('read_only' or 'edit', SupportImpersonation::MODES) when the person acting
@@ -103,7 +104,7 @@ class Ability
 
     # Their own profile stays theirs: changing a password or a name is not
     # something a failed payment should stop.
-    can :manage, User, id: user.id
+    can :manage, User, id: user.id unless user.role == 'integration'
   end
 
   # What a support session loses, in BOTH of its modes.
@@ -174,19 +175,32 @@ class Ability
   end
 
   def role_abilities(user)
-    personal_abilities(user)
-
-    if user.role == User::VIEWER_ROLE
-      read_abilities(user)
+    if user.role == 'integration'
+      integration_abilities(user)
 
       return
     end
 
-    document_abilities(user)
+    personal_abilities(user)
 
-    return if user.role == User::EDITOR_ROLE
+    case user.role
+    when User::ADMIN_ROLE
+      document_abilities(user)
+      admin_abilities(user)
+    when User::EDITOR_ROLE
+      document_abilities(user)
+    else
+      read_abilities(user)
+    end
+  end
 
-    admin_abilities(user)
+  # Imported API identities are robots, not company administrators (D78).
+  # Unlike human editors, even a testing-account robot must never use a
+  # cross-account template share. Token entitlement/state guards still apply.
+  def integration_abilities(user)
+    can :read, User, id: user.id
+    can :manage, [Template, TemplateFolder, Submission, Submitter, WebhookUrl], account_id: user.account_id
+    can :manage, :mcp
   end
 
   # Plan-keyed feature abilities, for every role: `can :use, :embed` etc. is
@@ -245,7 +259,7 @@ class Ability
     can :manage, Submitter, account_id: user.account_id
   end
 
-  # Account administration (admin / integration / legacy roles only).
+  # Account administration (explicit admin role only).
   def admin_abilities(user)
     can :manage, User, account_id: user.account_id
     can :manage, EncryptedConfig, account_id: user.account_id

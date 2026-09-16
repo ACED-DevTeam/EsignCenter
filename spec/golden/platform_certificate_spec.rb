@@ -378,7 +378,9 @@ RSpec.describe 'Platform certificate', type: :request do
   end
 
   describe 'certificate and timestamp-server management is operator-only' do
-    let(:operator_account) { create(:account, :operator) }
+    # Seed the certificate on the same operator that signs in below. Otherwise
+    # platform_certificate! creates a second operator before this lazy fixture.
+    let!(:operator_account) { create(:account, :operator) }
     let(:operator) do
       enroll_two_factor(create(:user, :admin, account: operator_account, platform_operator: true))
     end

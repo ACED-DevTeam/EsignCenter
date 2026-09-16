@@ -23,11 +23,11 @@ module RegistrationConfigGuard
             'is not set; sign-up cannot verify visitors without Turnstile'
     end
 
-    warn_about(GOOGLE_KEYS.select { |key| ENV[key].blank? }, 'Google')
+    warn_about(GOOGLE_KEYS.reject { |key| Registrations.configured?(ENV.fetch(key, nil)) }, 'Google')
 
-    # Apple has a fourth failure mode Google does not: a slot that is present
-    # but still carries the env file's PASTE_ marker, or an id or a key of the
-    # wrong shape. Registrations.apple_configured? is the same question the
+    # Both providers reject the env file's PASTE_ markers. Apple also checks
+    # that its ids and private key have the right shape.
+    # Registrations.apple_configured? is the same question the
     # button asks, so the warning and the hidden button can never disagree.
     warn_about(Registrations.apple_configured? ? [] : Registrations::APPLE_KEYS, 'Apple')
   end

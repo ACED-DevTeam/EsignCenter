@@ -93,6 +93,12 @@ module Api
       rescue_from CanCan::AccessDenied do |e|
         record_support_impersonation_refusal!(support_impersonation, 'refused_by' => 'ability')
 
+        if current_user&.role == 'integration'
+          ErrorReport.warning('Legacy integration access refused', user_id: current_user.id,
+                                                                   account_id: current_user.account_id,
+                                                                   door: "#{controller_path}##{action_name}")
+        end
+
         render json: { error: access_denied_error_message(e) }, status: :forbidden
       end
 
@@ -106,6 +112,11 @@ module Api
     private
 
     def access_denied_error_message(error)
+      if current_user&.role == 'integration'
+        return "Legacy API integrations cannot access #{controller_name.humanize.downcase} for this action. " \
+               'Ask a human account administrator to do this.'
+      end
+
       return 'Not authorized' if request.headers['X-Auth-Token'].blank?
       return 'Not authorized' unless error.subject.is_a?(ActiveRecord::Base)
       return 'Not authorized' unless error.subject.respond_to?(:account_id)

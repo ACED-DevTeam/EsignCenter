@@ -94,13 +94,54 @@ describe Ability do
     end
   end
 
-  describe 'integration and legacy roles keep full access' do
+  describe 'legacy integration role' do
     let(:user) { create(:user, account:, role: 'integration') }
 
-    it 'behaves like an admin (no regression for API users)' do
-      expect(ability).to be_able_to(:create, Template.new(account_id: account.id))
-      expect(ability).to be_able_to(:manage, account)
-      expect(ability).to be_able_to(:manage, WebhookUrl.new(account_id: account.id))
+    it 'keeps document and webhook work on its own account' do
+      [Template, TemplateFolder, Submission, Submitter, WebhookUrl].each do |model|
+        expect(ability).to be_able_to(:manage, model.new(account_id: account.id))
+        expect(ability).not_to be_able_to(:read, model.new(account_id: other_account.id))
+        expect(ability).not_to be_able_to(:update, model.new(account_id: other_account.id))
+      end
+      expect(ability).to be_able_to(:read, user)
+      expect(ability).to be_able_to(:manage, :mcp)
+    end
+
+    it 'cannot administer the company, people or credentials' do
+      %i[read manage billing administer export destroy].each do |action|
+        expect(ability).not_to be_able_to(action, account)
+      end
+      [User, AccountInvite, AccountConfig, EncryptedConfig].each do |model|
+        expect(ability).not_to be_able_to(:manage, model.new(account_id: account.id))
+      end
+      [AccessToken, McpToken, UserConfig, EncryptedUserConfig].each do |model|
+        expect(ability).not_to be_able_to(:manage, model.new(user_id: user.id))
+      end
+      expect(ability).not_to be_able_to(:update, user)
+      expect(ability).not_to be_able_to(:manage, TemplateSharing.new)
+    end
+
+    it 'does not recover profile writes when its seat is read-only' do
+      user.update!(read_only_at: Time.current)
+
+      expect(ability).not_to be_able_to(:update, user)
+      expect(ability).not_to be_able_to(:create, Template.new(account_id: account.id))
+      expect(ability).not_to be_able_to(:manage, :mcp)
+      expect(ability).to be_able_to(:read, Template.new(account_id: account.id))
+    end
+  end
+
+  describe 'unknown role' do
+    let(:user) { create(:user, account:, role: 'unrecognized_legacy_role') }
+
+    it 'falls back to viewer privileges' do
+      expect(ability).to be_able_to(:read, Template.new(account_id: account.id))
+      expect(ability).to be_able_to(:manage, user)
+      expect(ability).not_to be_able_to(:create, Template.new(account_id: account.id))
+      expect(ability).not_to be_able_to(:manage, account)
+      expect(ability).not_to be_able_to(:billing, account)
+      expect(ability).not_to be_able_to(:create, User.new(account_id: account.id))
+      expect(ability).not_to be_able_to(:manage, WebhookUrl.new(account_id: account.id))
     end
   end
 end

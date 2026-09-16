@@ -119,6 +119,7 @@ module SupportImpersonation
     'api/templates' => :edit,
     'api/templates_clone' => :edit,
     'api/template_builder_sessions' => :edit,
+    'api/template_preview_sessions' => :edit,
     'api/submissions' => :edit,
     # ActiveStorage's two upload doors have their own base controller,
     # outside ApplicationController, so this rule never runs for them. Listed
@@ -265,6 +266,7 @@ module SupportImpersonation
     'mcp' => :anonymous,        # token-authenticated, no session
     'api/tools' => :anonymous,  # stateless merge/verify
     'api/admin/accounts' => :anonymous, # provisioning, admin-token only
+    'embed_template_preview' => :anonymous,
     'embed_template_builder' => :anonymous # token-authenticated
   }.freeze
 

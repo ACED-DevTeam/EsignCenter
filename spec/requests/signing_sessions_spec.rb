@@ -104,10 +104,37 @@ describe 'Signing Sessions API' do
 
       expect(response).to have_http_status(:ok)
       expect(response.body).to include(signature_attachment.uuid)
-      expect(response.body).to include(signature_attachment.url)
+      form = Nokogiri::HTML(response.body).at_css('submission-form')
+      attachments = JSON.parse(form['data-attachments'])
+      rendered_signature = attachments.find { |attachment| attachment['uuid'] == signature_attachment.uuid }
+      expect(rendered_signature).to be_present
+      expect(rendered_signature['url']).to be_present
+
+      get URI(rendered_signature['url']).request_uri
+
+      expect(response).to have_http_status(:ok)
+      expect(response.media_type).to eq('image/png')
+      expect(response.body.b).to eq(signature_data)
 
       platform_certificate!
-      submitter.update!(completed_at: Time.current)
+      consent = JSON.parse(form['data-esign-consent'])
+      get consent.fetch('pdf_url')
+      follow_redirect! if response.redirect?
+      expect(response).to have_http_status(:ok)
+      expect(response.media_type).to eq('application/pdf')
+
+      # Finish through the same route as the embedded signer. Its first save
+      # snapshots the template before the completion worker renders the PDF.
+      put "/s/#{submitter.slug}", params: {
+        completed: 'true', esign_consent: 'true', esign_consent_pdf_opened: 'true',
+        esign_consent_version: consent.fetch('version'), esign_consent_locale: consent.fetch('locale'),
+        esign_consent_locale_token: consent.fetch('locale_token'),
+        esign_consent_sender_digest: consent.fetch('sender_digest'),
+        values: { signature_field['uuid'] => signature_attachment.uuid }
+      }
+      expect(response).to have_http_status(:ok)
+      expect(submitter.reload.completed_at).to be_present
+      expect(submitter.submission.reload.template_schema).to be_present
 
       expect { Submissions::GenerateResultAttachments.call(submitter.reload) }.not_to raise_error
 
@@ -118,8 +145,7 @@ describe 'Signing Sessions API' do
 
     # Same rule as POST /api/submissions: the uuid is the signing role, and two
     # entries resolving to one used to reach the database and come back as a
-    # 500 (review 2, H3). Placed below the example at :79 on purpose — that one
-    # is the suite's known baseline failure and is referred to by its line.
+    # 500 (review 2, H3). Refuse the duplicate before creating any records.
     it 'refuses two submitters that name the same uuid, creating nothing' do
       template = create(:template, account:, author:, submitter_count: 2)
       shared_uuid = template.submitters.first['uuid']

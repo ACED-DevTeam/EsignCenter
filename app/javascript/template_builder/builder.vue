@@ -560,6 +560,7 @@
             :default-submitters="defaultSubmitters"
             :draw-field-type="drawFieldType"
             :custom-fields="customFields"
+            :custom-fields-readonly="embedded"
             :with-custom-fields="withCustomFields"
             :with-fields-search="withFieldsSearch"
             :default-fields="[...defaultRequiredFields, ...defaultFields]"
@@ -752,7 +753,7 @@ export default {
       isPaymentConnected: this.isPaymentConnected,
       withFormula: this.withFormula,
       withConditions: this.withConditions,
-      withCustomFields: this.withCustomFields,
+      withCustomFields: this.withCustomFields && !this.embedded,
       isInlineSize: this.isInlineSize,
       defaultDrawFieldType: this.defaultDrawFieldType,
       selectedAreasRef: computed(() => this.selectedAreasRef),

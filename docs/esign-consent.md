@@ -114,6 +114,10 @@ first person's agreement is not erased — it stays in the event log, dated
 before the hand-over — but it never counts for the person who signs after the
 delegation.
 
+Text and character-box fields keep their field names available to screen readers
+even when the compact signing form hides the visible heading. This also applies
+when a text field is switched to multiple lines.
+
 ## 2. What is recorded
 
 Ticking the box creates **one** `esign_consent` event per person on the

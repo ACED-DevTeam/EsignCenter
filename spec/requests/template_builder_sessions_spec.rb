@@ -172,6 +172,200 @@ describe 'Template Builder Sessions API' do
       expect(response).to have_http_status(:unprocessable_content)
       expect(response.parsed_body['error']).to include('embed_origin must be an https origin')
     end
+
+    it 'stores an optional custom field palette on the builder session' do
+      template = create(:template, account:, author:)
+
+      post '/api/template_builder_sessions', headers:, params: {
+        template_id: template.id,
+        embed_origin: 'https://crm.example.com',
+        custom_fields: [
+          { name: 'Loan Number', type: 'text', role: 'Borrower', title: 'Loan number' },
+          { name: 'Closing Date', type: 'date' }
+        ]
+      }.to_json
+
+      expect(response).to have_http_status(:ok)
+
+      custom_fields = template.reload.preferences.dig('embed_builder', 'custom_fields')
+
+      # A uuid is generated server-side for every entry — the builder keys and
+      # reorders its palette by it — and a missing type defaults to 'text'.
+      expect(custom_fields.map { |f| f.except('uuid') }).to eq(
+        [
+          { 'name' => 'Loan Number', 'type' => 'text', 'role' => 'Borrower', 'title' => 'Loan number' },
+          { 'name' => 'Closing Date', 'type' => 'date' }
+        ]
+      )
+      expect(custom_fields.pluck('uuid')).to all(match(/\A[0-9a-f-]{36}\z/))
+      expect(custom_fields.pluck('uuid').uniq.size).to eq(2)
+    end
+
+    it 'defaults a custom field with no type to a text field' do
+      template = create(:template, account:, author:)
+
+      post '/api/template_builder_sessions', headers:, params: {
+        template_id: template.id,
+        embed_origin: 'https://crm.example.com',
+        custom_fields: [{ name: 'Loan Number' }]
+      }.to_json
+
+      expect(response).to have_http_status(:ok)
+      expect(template.reload.preferences.dig('embed_builder', 'custom_fields').first['type']).to eq('text')
+    end
+
+    it 'gives duplicate custom field names their own uuids' do
+      template = create(:template, account:, author:)
+
+      post '/api/template_builder_sessions', headers:, params: {
+        template_id: template.id,
+        embed_origin: 'https://crm.example.com',
+        custom_fields: [{ name: 'Loan Number' }, { name: 'Loan Number' }]
+      }.to_json
+
+      expect(response).to have_http_status(:ok)
+
+      custom_fields = template.reload.preferences.dig('embed_builder', 'custom_fields')
+
+      expect(custom_fields.pluck('name')).to eq(['Loan Number', 'Loan Number'])
+      expect(custom_fields.pluck('uuid').uniq.size).to eq(2)
+    end
+
+    it 'rejects a custom field type the embedded builder cannot place' do
+      %w[payment verification kba phone heading datenow strikethrough bogus].each do |type|
+        post '/api/template_builder_sessions', headers:, params: {
+          template_id: create(:template, account:, author:).id,
+          embed_origin: 'https://crm.example.com',
+          custom_fields: [{ name: 'Loan Number', type: }]
+        }.to_json
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(response.parsed_body['error']).to include('type must be one of')
+      end
+    end
+
+    it 'accepts every custom field type the embedded builder can place' do
+      template = create(:template, account:, author:)
+      types = Params::TemplateBuilderSessionCreateValidator::CUSTOM_FIELD_TYPES
+
+      post '/api/template_builder_sessions', headers:, params: {
+        template_id: template.id,
+        embed_origin: 'https://crm.example.com',
+        custom_fields: types.map { |type| { name: "Field #{type}", type: } }
+      }.to_json
+
+      expect(response).to have_http_status(:ok)
+      expect(template.reload.preferences.dig('embed_builder', 'custom_fields').pluck('type')).to eq(types)
+    end
+
+    it 'rejects an over-long custom field name, role or title' do
+      %i[name role title].each do |key|
+        custom_field = { name: 'Loan Number', key => 'a' * 121 }
+
+        post '/api/template_builder_sessions', headers:, params: {
+          template_id: create(:template, account:, author:).id,
+          embed_origin: 'https://crm.example.com',
+          custom_fields: [custom_field]
+        }.to_json
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(response.parsed_body['error']).to include("#{key} must be 120 characters or fewer")
+      end
+    end
+
+    it 'rejects a custom field palette larger than 8 KB' do
+      post '/api/template_builder_sessions', headers:, params: {
+        template_id: create(:template, account:, author:).id,
+        embed_origin: 'https://crm.example.com',
+        custom_fields: Array.new(100) { |i| { name: "Field #{i} #{'x' * 100}" } }
+      }.to_json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body['error']).to include('custom_fields must be 8192 bytes or fewer')
+    end
+
+    # Rails strips nulls out of param arrays (ActionDispatch deep_munge) before
+    # any of our code runs, so a null entry can only ever vanish. Pinned here so
+    # the day that changes, this spec says so. The validator carries its own
+    # null guard for callers that reach the service directly.
+    it 'drops a null custom field entry rather than storing or crashing on it' do
+      template = create(:template, account:, author:)
+
+      post '/api/template_builder_sessions', headers:, params: {
+        template_id: template.id,
+        embed_origin: 'https://crm.example.com',
+        custom_fields: [{ name: 'Loan Number' }, nil]
+      }.to_json
+
+      expect(response).to have_http_status(:ok)
+      expect(template.reload.preferences.dig('embed_builder', 'custom_fields').map { |f| f.except('uuid') })
+        .to eq([{ 'name' => 'Loan Number', 'type' => 'text' }])
+    end
+
+    it 'rejects a null custom field entry reaching the validator directly' do
+      expect do
+        Params::TemplateBuilderSessionCreateValidator.call(
+          { embed_origin: 'https://crm.example.com', custom_fields: [{ 'name' => 'Loan Number' }, nil] }
+            .with_indifferent_access
+        )
+      end.to raise_error(Params::BaseValidator::InvalidParameterError, /custom_fields item must be an Object/)
+    end
+
+    it 'does not store a custom fields key when none are given' do
+      template = create(:template, account:, author:)
+
+      post '/api/template_builder_sessions', headers:, params: {
+        template_id: template.id,
+        embed_origin: 'https://crm.example.com'
+      }.to_json
+
+      expect(response).to have_http_status(:ok)
+      expect(template.reload.preferences['embed_builder']).not_to have_key('custom_fields')
+    end
+
+    it 'rejects custom fields without a name' do
+      post '/api/template_builder_sessions', headers:, params: {
+        template_id: create(:template, account:, author:).id,
+        embed_origin: 'https://crm.example.com',
+        custom_fields: [{ name: 'Loan Number' }, { type: 'text' }]
+      }.to_json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body['error']).to include('name is required')
+    end
+
+    it 'rejects custom fields that are not objects' do
+      post '/api/template_builder_sessions', headers:, params: {
+        template_id: create(:template, account:, author:).id,
+        embed_origin: 'https://crm.example.com',
+        custom_fields: ['Loan Number']
+      }.to_json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body['error']).to include('custom_fields item must be an Object')
+    end
+
+    it 'rejects a custom field name that is not a string' do
+      post '/api/template_builder_sessions', headers:, params: {
+        template_id: create(:template, account:, author:).id,
+        embed_origin: 'https://crm.example.com',
+        custom_fields: [{ name: 42 }]
+      }.to_json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body['error']).to include('name must be a String')
+    end
+
+    it 'rejects more than 200 custom fields' do
+      post '/api/template_builder_sessions', headers:, params: {
+        template_id: create(:template, account:, author:).id,
+        embed_origin: 'https://crm.example.com',
+        custom_fields: Array.new(201) { |i| { name: "Field #{i}" } }
+      }.to_json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body['error']).to include('custom_fields must contain 200 items or fewer')
+    end
   end
 
   describe 'GET /api/template_builder_sessions/:id' do
@@ -256,6 +450,98 @@ describe 'Template Builder Sessions API' do
       expect(response.body).to match(%r{data-base-url="http://[^"]+/embed/template_builder/})
       expect(response.body).to include(Docuseal.product_name)
       expect(response.body).to include('/embed/template_builder/')
+    end
+
+    # A session created WITHOUT custom_fields must render exactly what this page
+    # rendered before the palette option existed. The golden string below is the
+    # element as the standalone builder emits it; only the volatile data-template payload (signed
+    # document URLs) is lifted out before comparing.
+    it 'renders the builder element byte-for-byte as before when the session has no custom fields' do
+      post '/api/template_builder_sessions', headers:, params: {
+        template_id: create(:template, account:, author:).id,
+        embed_origin: 'https://crm.example.com'
+      }.to_json
+
+      builder_src = response.parsed_body['builder_src']
+
+      get URI.parse(builder_src).path
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include('data-custom-fields="[]"')
+      expect(response.body).to include('data-with-custom-fields="false"')
+
+      element = response.body[%r{<template-builder.*?</template-builder>}m]
+
+      expect(element).to be_present
+
+      expect(element.sub(/\n  data-template="[^"]*"/, '')).to eq(<<~HTML.strip)
+        <template-builder
+          class="grid"
+          data-embed-origin="https://crm.example.com"
+          data-base-url="#{builder_src}"
+          data-embedded="true"
+          data-custom-fields="[]"
+          data-with-logo="false"
+          data-with-custom-fields="false"
+          data-with-send-button="false"
+          data-with-save-button="false"
+          data-with-sign-yourself-button="false"
+          data-with-revisions="false"
+          data-with-revisions-menu="false"
+          data-with-fields-detection="true"
+          data-with-google-drive="false"
+          data-with-dynamic-documents="false"
+          data-with-payment="false"
+          data-with-replace-and-clone-upload="false"
+          data-with-download="false"
+          data-with-conditions="true"
+          data-with-formula="false"
+          data-with-phone="false"
+          data-locale="#{I18n.locale}"
+          data-accept-file-types="#{Templates::CreateAttachments.builder_accept_file_types if Docuseal.advanced_formats?}"></template-builder>
+      HTML
+    end
+
+    it 'escapes hostile HTML in a custom field name instead of emitting markup' do
+      hostile = %(Loan "><script>alert('xss')</script>)
+
+      post '/api/template_builder_sessions', headers:, params: {
+        template_id: create(:template, account:, author:).id,
+        embed_origin: 'https://crm.example.com',
+        custom_fields: [{ name: hostile }]
+      }.to_json
+
+      expect(response).to have_http_status(:ok)
+
+      get URI.parse(response.parsed_body['builder_src']).path
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).not_to include('<script>alert(')
+      expect(response.body).to include(CGI.escapeHTML(hostile.to_json[1..-2]))
+    end
+
+    it 'hands the builder the session custom fields' do
+      template = create(:template, account:, author:)
+      custom_fields = [
+        { name: 'Loan Number', type: 'text', role: 'Borrower', title: 'Loan number' },
+        { name: 'Closing Date', type: 'date' }
+      ]
+
+      post '/api/template_builder_sessions', headers:, params: {
+        template_id: template.id,
+        embed_origin: 'https://crm.example.com',
+        custom_fields:
+      }.to_json
+
+      get URI.parse(response.parsed_body['builder_src']).path
+
+      stored = template.reload.preferences.dig('embed_builder', 'custom_fields')
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include("data-custom-fields=\"#{CGI.escapeHTML(stored.to_json)}\"")
+      expect(response.body).to include('data-with-custom-fields="true"')
+      expect(response.body).not_to include('data-custom-fields="[]"')
+      expect(stored.pluck('uuid')).to all(be_present)
     end
 
     it 'rejects expired embedded builder sessions' do

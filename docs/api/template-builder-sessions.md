@@ -75,6 +75,42 @@ Choose one source mode:
 }
 ```
 
+### Optional: seed the builder's custom field palette
+
+Add `custom_fields` to pre-load the field list the user drags onto the document, so the other app's own merge fields are one click away instead of typed by hand:
+
+```json
+{
+  "template_id": 456,
+  "embed_origin": "https://crm.example.com",
+  "custom_fields": [
+    {
+      "name": "Loan Number",
+      "type": "text",
+      "role": "Borrower",
+      "title": "Loan number"
+    },
+    {
+      "name": "Closing Date",
+      "type": "date"
+    }
+  ]
+}
+```
+
+Only `name` is required on each entry; `type`, `role` and `title` are optional strings. Leave `custom_fields` out entirely and the builder opens with no palette, exactly as before.
+
+Rules for each entry:
+
+- `name` is required, and `name`, `role` and `title` are capped at 120 characters each.
+- `type` defaults to `text`. It must be one of: `text`, `signature`, `initials`, `date`, `number`, `image`, `checkbox`, `multiple`, `file`, `radio`, `select`, `cells`, `stamp`. Anything else — including `payment`, `phone`, `verification` and `kba`, which the embedded builder deliberately turns off — is rejected with a `422`.
+- An identifier for each entry is generated for you. Do not send one.
+- At most 200 entries, and 8 KB of JSON for the whole list.
+
+#### Palette entries belong to the embedding app
+
+Entries are placeable but read-only inside the embedded builder. Rename, settings, delete, and save-as-custom controls are hidden because the calling application owns this palette. To change it, create a new builder session with the `custom_fields` you want. Fields already placed on the document remain editable normally.
+
 The response includes:
 
 ```json
@@ -155,7 +191,7 @@ For an in-app signing portal:
 }
 ```
 
-Embed the returned `embed_src` with the MIT `@docuseal/react` signing form or the self-hosted `/js/form.js` script.
+Embed the returned `embed_src` using the self-hosted `/js/form.js` script and its `esigncenter-form` element (see [Signing sessions](signing-sessions.md)).
 
 For a client email flow, set `send_email` to `true` or send the returned signer link from your app.
 
