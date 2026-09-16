@@ -614,6 +614,7 @@ RSpec.describe 'Support impersonation', type: :request do
           api/templates#create api/templates#update api/templates#destroy
           api/templates_clone#create
           api/template_builder_sessions#create
+          api/template_preview_sessions#create
           api/submissions#create api/submissions#destroy
         ]
       end

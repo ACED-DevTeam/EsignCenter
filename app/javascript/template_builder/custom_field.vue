@@ -33,8 +33,9 @@
             :icon-width="18"
             :min-width="isNew ? '100px' : '2px'"
             :icon-stroke-width="1.6"
+            :editable="!readonly"
             :editable-on-button="!isNew"
-            :with-button="!isNew"
+            :with-button="!isNew && !readonly"
             :class="{ 'cursor-pointer': !isNew }"
             @click-contenteditable="$emit('click', field)"
             @focus="onNameFocus"
@@ -45,7 +46,7 @@
           class="flex items-center space-x-1"
         >
           <PaymentSettings
-            v-if="field.type === 'payment' && !isNew"
+            v-if="field.type === 'payment' && !isNew && !readonly"
             :field="field"
             :with-condition="false"
             :with-force-open="false"
@@ -53,7 +54,7 @@
             @click-formula="isShowFormulaModal = true"
           />
           <span
-            v-else-if="!isNew"
+            v-else-if="!isNew && !readonly"
             class="dropdown dropdown-end field-settings-dropdown"
             @mouseenter="renderDropdown = true"
             @touchstart="renderDropdown = true"
@@ -104,6 +105,7 @@
             />
           </button>
           <button
+            v-if="!readonly"
             class="relative group-hover:text-base-content pr-1 field-remove-button"
             :class="isNew ? 'text-base-content' : 'text-transparent group-hover:text-base-content'"
             :title="t('remove')"
@@ -187,6 +189,10 @@ export default {
     field: {
       type: Object,
       required: true
+    },
+    readonly: {
+      type: Boolean,
+      default: false
     },
     isNew: {
       type: Boolean,

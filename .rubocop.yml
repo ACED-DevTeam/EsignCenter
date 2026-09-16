@@ -10,6 +10,10 @@ AllCops:
     - node_modules/**/*
     - bin/*
     - vendor/**/*
+    # Generated documents, screenshots and assets are not Ruby source.
+    - tmp/**/*
+    - log/**/*
+    - public/packs*/**/*
   TargetRubyVersion: '4.0'
   SuggestExtensions: false
 

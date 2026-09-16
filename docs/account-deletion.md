@@ -143,6 +143,9 @@ Things worth knowing:
   its zip is included in that: the export row names the file it is uploading
   before the upload starts, so the copy it left behind is found and deleted
   like any other, and never sits in storage with nothing pointing at it.
+  At the seven-day deadline the page immediately shows **Expired** and removes
+  Download, even if that night's cleanup has not run yet. You can request a
+  fresh export from the same page.
 * The **link** the Download button makes is good for **10 minutes**, not 7
   days. It is a bearer link — anyone holding it can fetch the file — so it is
   deliberately short-lived, is never stored by a shared cache, and a fresh one

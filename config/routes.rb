@@ -45,6 +45,7 @@ Rails.application.routes.draw do
     resources :submitter_form_views, only: %i[create]
     resources :submitters, only: %i[index show update]
     resources :template_builder_sessions, only: %i[create show]
+    resources :template_preview_sessions, only: %i[create]
     resources :signing_sessions, only: %i[create show]
     resources :submissions, only: %i[index show create destroy] do
       resources :documents, only: %i[index], controller: 'submission_documents'
@@ -335,6 +336,9 @@ Rails.application.routes.draw do
   match '/mcp', to: 'mcp#call', via: %i[get post]
 
   get '/js/:filename', to: 'embed_scripts#show', as: :embed_script
+  get '/embed/template_preview/:token/document', to: 'embed_template_preview#document',
+                                                 as: :embed_template_preview_document
+  get '/embed/template_preview/:token', to: 'embed_template_preview#show', as: :embed_template_preview
   get '/embed/template_builder/:token', to: 'embed_template_builder#show', as: :embed_template_builder
   put '/embed/template_builder/:token/templates/:template_id', to: 'embed_template_builder#update_template'
   get '/embed/template_builder/:token/templates/:template_id/documents', to: 'embed_template_builder#documents'

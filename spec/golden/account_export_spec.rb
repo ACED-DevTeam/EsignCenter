@@ -770,6 +770,29 @@ RSpec.describe 'The account export', type: :request do
   # --- 4. the seven days ----------------------------------------------------
 
   describe 'expiry' do
+    it 'shows an expired export without a download button before the retention job runs' do
+      export = build_export!
+
+      travel_to(export.expires_at + 1.second) do
+        act_as(admin)
+
+        get '/settings/export'
+
+        expect(response).to have_http_status(:ok)
+        expect(export.reload.status).to eq(AccountExport::READY)
+        expect(export.archive).to be_attached
+        expect(response.body).to include('data-account-export-state="expired"')
+        expect(response.body).to include(I18n.t('account_export_expired_headline'))
+        expect(response.body).not_to include('data-account-export-download')
+        expect(response.body).to include('data-account-export-request')
+
+        get "/settings/export/download/#{export.id}"
+
+        expect(response).to redirect_to('/settings/export')
+        expect(flash[:alert]).to eq(I18n.t('account_export_download_unavailable'))
+      end
+    end
+
     it 'deletes the file and closes the door after seven days' do
       export = build_export!
       blob = export.archive.blob

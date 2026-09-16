@@ -57,6 +57,7 @@ module Api
         :expires_in_minutes,
         {
           metadata: {},
+          custom_fields: [%i[name type role title]],
           documents: [%i[name file]],
           submitters: [%i[name role]],
           fields: [[:uuid, :name, :type, :role, :required, :readonly, :title, :description, :default_value,

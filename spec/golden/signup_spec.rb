@@ -639,11 +639,13 @@ RSpec.describe 'Self-serve registration', type: :request do
     # Either credential missing is the same answer: no Google endpoints and no
     # button — both are required (with only the id the button would render and
     # the exchange would fail after the bounce to Google).
-    [['GOOGLE_OAUTH_CLIENT_ID', 'the Google client id is unset, instead of bouncing to Google'],
-     ['GOOGLE_OAUTH_CLIENT_SECRET', 'only the client secret is unset (both credentials are required)']]
-      .each do |variable, description|
+    [['GOOGLE_OAUTH_CLIENT_ID', nil, 'the Google client id is unset, instead of bouncing to Google'],
+     ['GOOGLE_OAUTH_CLIENT_SECRET', nil, 'only the client secret is unset (both credentials are required)'],
+     ['GOOGLE_OAUTH_CLIENT_ID', 'PASTE_google_client_id', 'the client id is still a placeholder'],
+     ['GOOGLE_OAUTH_CLIENT_SECRET', 'PASTE_google_client_secret', 'the client secret is still a placeholder']]
+      .each do |variable, value, description|
       it "answers 404 for the Google endpoints while #{description}" do
-        ENV.delete(variable)
+        value.nil? ? ENV.delete(variable) : ENV[variable] = value
         mock_google(email: 'grace@example.com')
 
         post user_google_oauth2_omniauth_authorize_path
@@ -655,6 +657,9 @@ RSpec.describe 'Self-serve registration', type: :request do
 
         get new_registration_path
         expect(response).to have_http_status(:ok)
+        expect(response.body).not_to include(google_button)
+
+        get new_user_session_path
         expect(response.body).not_to include(google_button)
       end
     end
@@ -1151,6 +1156,19 @@ RSpec.describe 'Self-serve registration', type: :request do
 
       expect { described_class.check! }.not_to raise_error
       expect(ErrorReport).not_to have_received(:warning)
+    end
+
+    it 'warns when Google credentials still contain paste placeholders' do
+      enable_registration!
+      enable_google!
+      enable_apple!
+      production!
+      ENV['GOOGLE_OAUTH_CLIENT_SECRET'] = 'PASTE_google_client_secret'
+
+      expect { described_class.check! }.not_to raise_error
+      expect(Registrations.google_enabled?).to be(false)
+      expect(ErrorReport).to have_received(:warning).with(/GOOGLE_OAUTH_CLIENT_SECRET.*Google sign-in button is hidden/)
+      expect(Rails.logger).to have_received(:warn).with(/GOOGLE_OAUTH_CLIENT_SECRET.*Google sign-in button is hidden/)
     end
 
     it 'does nothing while registration is off or outside production' do

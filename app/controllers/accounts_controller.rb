@@ -24,12 +24,8 @@ class AccountsController < ApplicationController
   # (lib/ability.rb) — and every other refusal below is spelled out in code.
   authorize_resource :account, except: %i[destroy cancel_deletion deletion_code]
 
-  # And on top of the ability, the plainest possible statement of who may end
-  # the company's account (review batch 2, K8). `:administer` is granted by
-  # `admin_abilities`, which every role that is not viewer/editor falls into —
-  # the API-only `integration` role and any legacy role included. An API robot
-  # holding a session must not be able to delete the company, so the three
-  # deletion doors ask for a real, seat-holding administrator as well.
+  # Defense in depth: deletion requires an explicit, seat-holding human
+  # administrator, in addition to the account ability.
   before_action :require_account_administrator!, only: %i[destroy cancel_deletion deletion_code]
   before_action :refuse_while_impersonating!, only: %i[destroy cancel_deletion deletion_code]
 

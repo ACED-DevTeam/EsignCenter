@@ -64,6 +64,10 @@ in Google's console it runs in **Testing** mode: only the test users listed
 there can use the button (launch-gate item 4b). Everyone else still has the
 email path.
 
+Both Google credentials must be filled in. A value still starting with
+`PASTE_` counts as unconfigured: the button stays hidden, the Google endpoints
+answer 404, and production startup warns which credential needs attention.
+
 ## 2b. Continue with Apple
 
 The **Continue with Apple** button sits next to the Google one, on the same

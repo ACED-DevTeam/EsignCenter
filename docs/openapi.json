@@ -49,6 +49,10 @@
     {
       "name": "Account",
       "description": "The user an API token belongs to."
+    },
+    {
+      "name": "Template Preview Sessions",
+      "description": "Read-only embedded previews with synthetic values; no signing submission is created."
     }
   ],
   "paths": {
@@ -6374,6 +6378,51 @@
                         }
                       }
                     }
+                  },
+                  "custom_fields": {
+                    "type": "array",
+                    "maxItems": 200,
+                    "description": "Optional application-owned field palette. Maximum 8 KB serialized JSON. Entries can be placed but cannot be renamed, edited, deleted or reordered in the embed. Omit to open without a palette.",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "name"
+                      ],
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 120
+                        },
+                        "type": {
+                          "type": "string",
+                          "default": "text",
+                          "enum": [
+                            "text",
+                            "signature",
+                            "initials",
+                            "date",
+                            "number",
+                            "image",
+                            "checkbox",
+                            "multiple",
+                            "file",
+                            "radio",
+                            "select",
+                            "cells",
+                            "stamp"
+                          ]
+                        },
+                        "role": {
+                          "type": "string",
+                          "maxLength": 120
+                        },
+                        "title": {
+                          "type": "string",
+                          "maxLength": 120
+                        }
+                      }
+                    }
                   }
                 },
                 "oneOf": [
@@ -6703,6 +6752,181 @@
           },
           "403": {
             "description": "Forbidden - the API is not included in this account's plan. The token itself is valid."
+          }
+        }
+      }
+    },
+    "/template_preview_sessions": {
+      "post": {
+        "security": [
+          {
+            "AuthToken": []
+          }
+        ],
+        "tags": [
+          "Template Preview Sessions"
+        ],
+        "summary": "Create a read-only embedded template preview",
+        "description": "Creates an expiring iframe URL for a template owned by the API account without creating a submission or signer. Paid customer and internal integration accounts may use it. The preview and its consent PDF are revoked when the account is suspended, archived, or loses embedding access. Keep the API token on the server. Use synthetic values: the signed URL payload is readable.",
+        "operationId": "createTemplatePreviewSession",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "template_id",
+                  "embed_origin"
+                ],
+                "properties": {
+                  "template_id": {
+                    "type": "integer"
+                  },
+                  "embed_origin": {
+                    "type": "string",
+                    "description": "Exact HTTPS origin allowed to frame the preview; localhost HTTP is permitted in development."
+                  },
+                  "expires_in_minutes": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "default": 120,
+                    "description": "Requested lifetime, capped at 1440 minutes."
+                  },
+                  "values": {
+                    "type": "object",
+                    "maxProperties": 200,
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "description": "Synthetic sample values keyed by field name or UUID; maximum 4096 bytes serialized JSON. Unknown and attachment-backed fields are ignored."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Preview session created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "token",
+                    "template_id",
+                    "name",
+                    "preview_src",
+                    "embed_origin",
+                    "expires_at"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "Signed preview token, also returned as token."
+                    },
+                    "token": {
+                      "type": "string"
+                    },
+                    "template_id": {
+                      "type": "integer"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "preview_src": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "Expiring bearer URL to iframe; share only with authorized viewers."
+                    },
+                    "embed_origin": {
+                      "type": "string"
+                    },
+                    "expires_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Account inactive or embedding not entitled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Template not found in this account",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid preview parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }

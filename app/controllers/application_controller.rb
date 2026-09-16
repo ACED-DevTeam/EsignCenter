@@ -72,7 +72,17 @@ class ApplicationController < ActionController::Base
       # customer's audit log has to say so (review batch 2).
       record_support_impersonation_refusal!(support_impersonation, 'refused_by' => 'ability')
 
-      redirect_to root_path, alert: I18n.t('access_denied_alert')
+      if current_user&.role == 'integration'
+        ErrorReport.warning('Legacy integration access refused', user_id: current_user.id,
+                                                                 account_id: current_user.account_id,
+                                                                 door: "#{controller_path}##{action_name}")
+        redirect_to root_path,
+                    alert: "Legacy API integrations cannot access #{controller_name.humanize.downcase} " \
+                           'for this action. ' \
+                           'Ask a human account administrator to do this.'
+      else
+        redirect_to root_path, alert: I18n.t('access_denied_alert')
+      end
     end
   end
 

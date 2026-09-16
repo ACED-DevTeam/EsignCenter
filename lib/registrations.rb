@@ -27,7 +27,7 @@ module Registrations
   # and the exchange with Google would fail after the bounce.
   def google_enabled?
     Docuseal.registration_enabled? &&
-      ENV['GOOGLE_OAUTH_CLIENT_ID'].present? && ENV['GOOGLE_OAUTH_CLIENT_SECRET'].present?
+      configured?(ENV.fetch('GOOGLE_OAUTH_CLIENT_ID', nil)) && configured?(ENV.fetch('GOOGLE_OAUTH_CLIENT_SECRET', nil))
   end
 
   # All four, or no Apple — the same all-or-nothing rule Google gets, for the

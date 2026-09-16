@@ -74,25 +74,21 @@ The response includes:
 }
 ```
 
-## Embed in React
+## Embed the signing form
 
-Application A can use the MIT `@docuseal/react` package and point it at this self-hosted EsignCenter app:
+Load the script from the same EsignCenter deployment that created the session, then give its `esigncenter-form` element the returned `embed_src`:
 
-```jsx
-import { EsigncenterForm } from '@docuseal/react'
-
-export function SigningScreen({ signingSession }) {
-  return (
-    <EsigncenterForm
-      host="your-instance.example.com"
-      src={signingSession.embed_src}
-      onComplete={(event) => {
-        console.log('Signing completed', event.submitter.completed_at)
-      }}
-    />
-  )
-}
+```html
+<script src="https://your-instance.example.com/js/form.js"></script>
+<esigncenter-form data-src="https://your-instance.example.com/s/submitter_slug"></esigncenter-form>
+<script>
+  document.querySelector('esigncenter-form').addEventListener('completed', (event) => {
+    console.log('Signing completed', event.detail)
+  })
+</script>
 ```
+
+In React, load this script once and render the same custom element. Attach event listeners with a ref and remove them when the component unmounts. This fork supplies its own element and event bridge; the upstream React package does not export `EsigncenterForm`.
 
 The completion event includes fresh `submitter` data and a `signing_session` status object. The signed document can be fetched from `documents_url` after the session status is `completed`. The existing EsignCenter webhook settings can also notify your app when `form.completed` or `submission.completed` happens.
 

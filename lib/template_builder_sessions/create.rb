@@ -4,6 +4,8 @@ module TemplateBuilderSessions
   class Create
     DEFAULT_EXPIRES_IN = 2.hours
     MAX_EXPIRES_IN = 24.hours
+    CUSTOM_FIELD_KEYS = %w[name type role title].freeze
+    DEFAULT_CUSTOM_FIELD_TYPE = 'text'
 
     def self.call(...)
       new(...).call
@@ -107,9 +109,54 @@ module TemplateBuilderSessions
           'origin' => EmbedOrigins.normalize(attrs[:embed_origin]),
           'external_id' => attrs[:external_id].presence || attrs[:application_key].presence,
           'metadata' => attrs[:metadata].presence,
+          'custom_fields' => custom_fields,
           'expires_at' => expires_at.iso8601
         }.compact_blank
       )
+    end
+
+    # Optional builder-only field palette handed to the embedded builder Vue app.
+    # `compact_blank` above drops the key entirely when none are given, so a
+    # session created without `custom_fields` keeps the exact preferences shape
+    # it had before this option existed.
+    #
+    # Every entry is rebuilt here rather than passed through: the builder keys
+    # its palette on `field.uuid` (fields.vue renders `:key="field.uuid"` and
+    # reorders by `data-uuid`), so a uuid is generated server-side for each
+    # entry, the type falls back to a plain text field, and the caller's strings
+    # are hard-capped. Params::TemplateBuilderSessionCreateValidator has already
+    # rejected anything outside these bounds; this is the floor under it.
+    def custom_fields
+      Array(attrs[:custom_fields]).filter_map do |custom_field|
+        next unless custom_field.respond_to?(:to_h)
+
+        normalize_custom_field(custom_field.to_h.with_indifferent_access.slice(*CUSTOM_FIELD_KEYS))
+      end.presence
+    end
+
+    def normalize_custom_field(entry)
+      name = truncate_custom_field_value(entry[:name])
+
+      return if name.blank?
+
+      {
+        'uuid' => SecureRandom.uuid,
+        'name' => name,
+        'type' => custom_field_type(entry[:type]),
+        'role' => truncate_custom_field_value(entry[:role]),
+        'title' => truncate_custom_field_value(entry[:title])
+      }.compact_blank
+    end
+
+    def custom_field_type(type)
+      type = type.to_s.strip
+      allowed = Params::TemplateBuilderSessionCreateValidator::CUSTOM_FIELD_TYPES
+
+      allowed.include?(type) ? type : DEFAULT_CUSTOM_FIELD_TYPE
+    end
+
+    def truncate_custom_field_value(value)
+      value.to_s.strip.first(Params::TemplateBuilderSessionCreateValidator::MAX_CUSTOM_FIELD_STRING_LENGTH).presence
     end
 
     def expires_at

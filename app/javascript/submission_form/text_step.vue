@@ -1,10 +1,13 @@
 <template>
   <label
-    v-if="showFieldNames && (field.name || field.title)"
+    v-if="field.name || field.title"
     :for="field.uuid"
     dir="auto"
-    class="label text-xl sm:text-2xl py-0 mb-2 sm:mb-3.5 field-name-label"
-    :class="{ 'mb-2': !field.description }"
+    class="field-name-label"
+    :class="[
+      showFieldNames ? 'label text-xl sm:text-2xl py-0 mb-2 sm:mb-3.5' : 'sr-only',
+      { 'mb-2': showFieldNames && !field.description }
+    ]"
   >
     <MarkdownContent
       v-if="field.title"
