@@ -1,0 +1,74 @@
+# Production-mode preview on this Mac; isolated from deployed and dev data.
+# Start: docker compose -f docker-compose.local-production.yml up -d --build
+# App: http://localhost:3010    Local email inbox: http://localhost:3011
+name: esigncenter-local-production
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.local-production
+      additional_contexts:
+        compiled_assets: ./public/packs
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+    ports:
+      - "127.0.0.1:3010:3000"
+    volumes:
+      - ./tmp/local-production/data/app:/data/docuseal
+    environment:
+      RAILS_ENV: production
+      NODE_ENV: production
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/esigncenter
+      WORKDIR: /data/docuseal
+      HOST: localhost:3010
+      APP_URL: http://localhost:3010
+      FORCE_SSL: "false"
+      # The app generates and persists its local secret in data/app/docuseal.env.
+      REGISTRATION_ENABLED: "true"
+      # Production mode requires live Stripe keys. Leave checkout off locally.
+      BILLING_ENABLED: "false"
+      # Cloudflare's official localhost test keys; never use this file publicly.
+      TURNSTILE_SITE_KEY: 1x00000000000000000000AA
+      TURNSTILE_SECRET_KEY: 1x0000000000000000000000000000000AA
+      EMAIL_DELIVERY_MODE: smtp
+      SMTP_ADDRESS: mailpit
+      SMTP_PORT: "1025"
+      SMTP_FROM: EsignCenter <noreply@esigncenter.local>
+      SMTP_ENABLE_STARTTLS: "false"
+      TIMESERVER_URL: http://timestamp.digicert.com
+    healthcheck:
+      test: ["CMD", "ruby", "-rnet/http", "-e", "exit(Net::HTTP.get_response(URI('http://127.0.0.1:3000/up')).code == '200' ? 0 : 1)"]
+      interval: 30s
+      timeout: 10s
+      start_period: 120s
+      retries: 3
+
+  postgres:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: esigncenter
+    volumes:
+      - ./tmp/local-production/data/postgres:/var/lib/postgresql/18/docker
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d esigncenter"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  mailpit:
+    image: axllent/mailpit:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3011:8025"
+    volumes:
+      - ./tmp/local-production/data/mail:/data
+    environment:
+      MP_DATABASE: /data/mailpit.db

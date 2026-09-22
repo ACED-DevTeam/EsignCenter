@@ -29,3 +29,5 @@
 /docuseal
 .DS_Store
 .env
+.env.*
+/plans
