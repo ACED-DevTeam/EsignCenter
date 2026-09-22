@@ -61,6 +61,9 @@ sudo HOST=your-domain-name.com docker compose up
 
 For local development with hot reload, see [docs/local-development-hotreload.md](docs/local-development-hotreload.md).
 
+For a fast local preview with production-mode Rails and precompiled assets, see
+[docs/local-production-preview.md](docs/local-production-preview.md).
+
 ## License
 
 Distributed under the AGPLv3 License with Section 7(b) Additional Terms. See [LICENSE](LICENSE) and [LICENSE_ADDITIONAL_TERMS](LICENSE_ADDITIONAL_TERMS) for more information.

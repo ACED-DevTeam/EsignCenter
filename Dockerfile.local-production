@@ -1,0 +1,28 @@
+# Mac preview: reuse the existing native dependencies and reviewed compiled packs.
+# The public deployment continues to build everything with ./Dockerfile.
+FROM esigncenter-app:latest
+
+ENV RAILS_ENV=production
+ENV NODE_ENV=production
+ENV BUNDLE_WITHOUT="development:test"
+ENV WORKDIR=/data/docuseal
+
+WORKDIR /app
+COPY Gemfile Gemfile.lock ./
+RUN bundle install --jobs 2
+
+COPY bin ./bin
+COPY app ./app
+COPY config ./config
+COPY db/migrate ./db/migrate
+COPY lib ./lib
+COPY public ./public
+COPY docs/openapi.json ./docs/openapi.json
+COPY LICENSE LICENSE_ADDITIONAL_TERMS README.md Rakefile config.ru .version ./
+COPY --from=compiled_assets . ./public/packs
+RUN mkdir -p log tmp/cache public/fonts /data/docuseal && \
+    cp /opt/docuseal/model.onnx tmp/model.onnx && \
+    ln -sf /fonts/DancingScript-Regular.otf public/fonts/DancingScript-Regular.otf && \
+    chown -R 2000:2000 tmp log
+
+CMD ["bundle", "exec", "puma", "-C", "config/puma.rb"]
