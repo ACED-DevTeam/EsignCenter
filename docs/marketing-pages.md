@@ -9,9 +9,21 @@ Plain English first, for anyone who needs to change what the public sees.
   people land on their dashboard instead (`DashboardController#maybe_render_landing`).
 - **`/pricing`** — two plan cards, the full Free-vs-Paid comparison table, the
   small print and a short FAQ.
-- **`/trust`** — where data lives, the sub-processor list, the **claim
-  register** (every marketing claim with the evidence behind it and, in an ERB
-  comment beside each row, the file that proves it) and what we do not claim.
+- **`/trust`** — where data lives, the **claim register** (every marketing
+  claim with the evidence behind it and, in an ERB comment beside each row, the
+  file that proves it) and what we do not claim. Linked from the footer and the
+  landing page, not the top nav.
+- **`/trust/subprocessors`** — the sub-processor list: each service, its
+  purpose and what it receives. Keep it in step with the table in
+  `config/legal/privacy.html.erb`.
+
+The one certification wording the site may use is **"Built on SOC 2 Type II
+audited infrastructure."** It is true because our hosting and storage providers
+hold SOC 2 Type II reports; EsignCenter has none of its own, and the
+"what we do not claim" paragraph on `/trust` says so. The line deliberately
+names no provider. `spec/golden/marketing_spec.rb` allows that exact sentence
+and still fails on any other "SOC 2" wording (for example "SOC 2 compliant"),
+and on "HIPAA" anywhere outside the disclaimer.
 - **`/help`** and **`/help/<slug>`** — the help centre: ten articles anybody can
   read, grouped into sections.
 - **`/support`** — the support form: one email to the support mailbox, and a
@@ -150,8 +162,8 @@ plain text at the same time, so nothing sends a reader to a file we deleted.)
 
 ## The sitemap
 
-`public/sitemap.xml` lists every public page — the landing, pricing, trust, the
-legal pages, verify, the help centre and its ten articles, the API reference and
+`public/sitemap.xml` lists every public page — the landing, pricing, trust and
+sub-processors, the legal pages, verify, the help centre and its ten articles, the API reference and
 the support form — and nothing else, because the rest of the application is
 private to an account. It is a static file on purpose: adding a page is a code
 change, so a generated sitemap would only move the same edit somewhere less
