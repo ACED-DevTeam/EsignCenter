@@ -7,7 +7,7 @@ module Docuseal
   # so this is the repo URL; the upstream domain appears nowhere in app code
   # and `rake gates:branding` refuses it (BANNED_LITERALS, no allowlist entry).
   DOCUSEAL_SOURCE_URL = 'https://github.com/docusealco/docuseal'
-  PRODUCT_URL = 'https://github.com/AmishHillBilly/EsignCenter'
+  PRODUCT_URL = 'https://github.com/ACED-DevTeam/EsignCenter'
   PRODUCT_NAME = 'EsignCenter'
   DEFAULT_APP_URL = ENV.fetch('APP_URL', 'http://localhost:3000')
   # Where the "Sent using EsignCenter" line in a signer's mail points. That
@@ -15,7 +15,7 @@ module Docuseal
   # signer who follows it wants the product, not our source tree — so it is the
   # app's own address, overridable per deployment.
   PRODUCT_EMAIL_URL = ENV.fetch('PRODUCT_EMAIL_URL', DEFAULT_APP_URL)
-  GITHUB_URL = 'https://github.com/AmishHillBilly/EsignCenter'
+  GITHUB_URL = 'https://github.com/ACED-DevTeam/EsignCenter'
   SUPPORT_EMAIL = 'evan@processorteam.com'
 
   # There is no environment escape hatch for signing certificates: every
@@ -64,9 +64,9 @@ module Docuseal
     ENV['ACTIVE_STORAGE_PUBLIC'] == 'true'
   end
 
-  # The same predicate config/environments/production.rb uses for force_ssl /
-  # assume_ssl, so generated links agree with how the app is actually served:
-  # FORCE_SSL='false' means http.
+  # Local environments may deliberately build HTTP links. Production's boot
+  # guard requires the literal value "true", so production links and Rails'
+  # unconditional HTTPS handling cannot disagree.
   def force_ssl?
     ENV['FORCE_SSL'].present? && ENV['FORCE_SSL'] != 'false'
   end

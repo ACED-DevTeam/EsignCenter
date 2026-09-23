@@ -278,6 +278,204 @@ RSpec.describe 'Webhook hardening' do
       expect(a_request(:post, 'http://localhost/webhook')).to have_been_made.once
       expect(WebhookEvent.find_by!(webhook_url:).status).to eq('success')
     end
+
+    describe 'private, resolved and production targets' do
+      def production!
+        allow(Rails.env).to receive(:production?).and_return(true)
+      end
+
+      def paid_webhook(url)
+        create(:webhook_url, account: create(:account, :paid)).tap do |webhook_url|
+          webhook_url.update_column(:url, url)
+        end
+      end
+
+      ['https://10.0.0.5/hook', 'https://192.168.1.10/hook', 'https://172.16.4.4/hook', 'https://100.64.0.1/hook',
+       'https://[fd00::1]/hook', 'https://[::ffff:10.0.0.5]/hook', 'https://127.0.0.2/hook',
+       'https://[fec0::1]/hook', 'https://[64:ff9b:1::a00:5]/hook'].each do |url|
+        it "refuses the private literal #{url} for a customer at save time and at delivery" do
+          webhook_url = build(:webhook_url, account: create(:account, :paid), url:)
+
+          expect(webhook_url).to be_invalid
+          expect(webhook_url.errors.full_messages)
+            .to eq(['Webhook URL must not point at localhost or a private/metadata address'])
+
+          saved = paid_webhook(url)
+          response = deliver(saved, build_submitter(saved.account))
+
+          expect(response.final).to be(true)
+          expect(a_request(:any, /.*/)).not_to have_been_made
+          expect(WebhookEvent.find_by!(webhook_url: saved).webhook_attempts.sole.response_body)
+            .to eq("Can't send to a private address.")
+        end
+      end
+
+      it 'refuses a customer hostname that resolves to a private address, without a request' do
+        allow(SendWebhookRequest).to receive(:resolve_addresses).with('internal.example.com')
+                                                                .and_return([IPAddr.new('10.1.2.3')])
+        webhook_url = paid_webhook('https://internal.example.com/hook')
+
+        response = deliver(webhook_url, build_submitter(webhook_url.account))
+
+        expect(response.final).to be(true)
+        expect(a_request(:any, /.*/)).not_to have_been_made
+        expect(WebhookEvent.find_by!(webhook_url:).webhook_attempts.sole.response_body)
+          .to eq("Can't send to a private address.")
+      end
+
+      it 'refuses a hostname when ANY resolved address is private or metadata' do
+        allow(SendWebhookRequest).to receive(:resolve_addresses).with('mixed.example.com')
+                                                                .and_return([IPAddr.new('93.184.215.14'),
+                                                                             IPAddr.new('169.254.169.254')])
+        webhook_url = paid_webhook('https://mixed.example.com/hook')
+
+        deliver(webhook_url, build_submitter(webhook_url.account))
+
+        expect(a_request(:any, /.*/)).not_to have_been_made
+        expect(WebhookEvent.find_by!(webhook_url:).webhook_attempts.sole.response_body)
+          .to eq("Can't send to a link-local/metadata address.")
+      end
+
+      it 'pins the connection to the address it checked (no second lookup to rebind)' do
+        allow(SendWebhookRequest).to receive(:resolve_addresses).with('hooks.example.com')
+                                                                .and_return([IPAddr.new('93.184.215.14')])
+        webhook_url = paid_webhook('https://hooks.example.com/hook')
+        stub_request(:post, 'https://hooks.example.com/hook').to_return(status: 200)
+        pinned = []
+        allow_any_instance_of(Net::HTTP).to receive(:ipaddr=).and_wrap_original do |original, value|
+          pinned << value
+          original.call(value)
+        end
+
+        deliver(webhook_url, build_submitter(webhook_url.account))
+
+        expect(pinned).to eq(['93.184.215.14'])
+        expect(a_request(:post, 'https://hooks.example.com/hook')).to have_been_made.once
+        expect(WebhookEvent.find_by!(webhook_url:).status).to eq('success')
+      end
+
+      it 'does not follow a redirect toward an internal address' do
+        webhook_url = paid_webhook('https://hooks.example.com/redirect')
+        stub_request(:post, 'https://hooks.example.com/redirect')
+          .to_return(status: 302, headers: { 'Location' => 'http://169.254.169.254/latest/meta-data' })
+
+        deliver(webhook_url, build_submitter(webhook_url.account))
+
+        expect(a_request(:post, 'https://hooks.example.com/redirect')).to have_been_made.once
+        expect(a_request(:any, /169\.254\.169\.254/)).not_to have_been_made
+      end
+
+      it 'treats an unresolvable host as a retryable connection failure and sends nothing' do
+        allow(SendWebhookRequest).to receive(:resolve_addresses).with('nowhere.example.com').and_return([])
+        webhook_url = paid_webhook('https://nowhere.example.com/hook')
+
+        response = deliver(webhook_url, build_submitter(webhook_url.account))
+
+        expect(response).to be_nil
+        expect(a_request(:any, /.*/)).not_to have_been_made
+        expect(WebhookEvent.find_by!(webhook_url:).webhook_attempts.sole.response_body).to eq('ConnectionFailed')
+      end
+
+      it 'resolves real names through the hosts file (localhost is loopback, so refused)' do
+        allow(OutboundAddress).to receive(:resolve).and_call_original
+
+        expect(SendWebhookRequest.resolve_addresses('localhost')).to include(IPAddr.new('127.0.0.1'))
+      end
+
+      it 'refuses a development-mode internal hostname aliasing the metadata address, without a request' do
+        account = create(:account, :internal)
+        allow(SendWebhookRequest).to receive(:resolve_addresses).with('metadata-alias.test')
+                                                                .and_return([IPAddr.new('169.254.169.254')])
+        webhook_url = create(:webhook_url, account:, url: 'http://metadata-alias.test/hook')
+
+        response = deliver(webhook_url, build_submitter(account))
+
+        expect(response.final).to be(true)
+        expect(a_request(:any, /.*/)).not_to have_been_made
+      end
+
+      it 'does not pin a development-mode internal delivery (localhost keeps its IPv4/IPv6 fallback)' do
+        account = create(:account, :internal)
+        webhook_url = create(:webhook_url, account:, url: 'http://localhost:3000/hook')
+
+        expect(SendWebhookRequest.deliverable_address!(URI(webhook_url.url), account)).to be_nil
+      end
+
+      describe 'internal accounts in production' do
+        let(:account) { create(:account, :internal) }
+
+        before { production! }
+
+        it 'refuses http, localhost and private addresses (the development allowance is off)' do
+          { 'http://hooks.example.com/hook' => SendWebhookRequest::HttpsError,
+            'https://localhost/hook' => SendWebhookRequest::LocalhostError,
+            'https://10.0.0.5/hook' => SendWebhookRequest::PrivateAddressError }.each do |url, error|
+            webhook_url = create(:webhook_url, account:)
+            webhook_url.update_column(:url, url)
+
+            expect { SendWebhookRequest.validate_webhook_uri!(webhook_url) }.to raise_error(error)
+          end
+        end
+
+        it 'refuses the unsafe URL when it is saved (provisioning answers 422 instead of a silent dead hook)' do
+          webhook_url = build(:webhook_url, account:, url: 'http://localhost:3000/hook')
+
+          expect(webhook_url).to be_invalid
+        end
+
+        it 'records a hostname resolving to a private address as a terminal error without a request' do
+          allow(SendWebhookRequest).to receive(:resolve_addresses).with('render-internal.example.com')
+                                                                  .and_return([IPAddr.new('10.9.8.7')])
+          webhook_url = create(:webhook_url, account:, url: 'https://render-internal.example.com/hook')
+
+          response = deliver(webhook_url, build_submitter(account))
+
+          expect(response.final).to be(true)
+          expect(a_request(:any, /.*/)).not_to have_been_made
+        end
+
+        it 'still delivers a public HTTPS receiver with both signature headers' do
+          webhook_url = create(:webhook_url, account:, url: 'https://app.example.com/api/esigncenter/webhook')
+          captured = nil
+          stub_request(:post, webhook_url.url).with { |request| captured = request }.to_return(status: 200)
+
+          deliver(webhook_url, build_submitter(account))
+
+          expect(captured.headers['X-Docuseal-Signature']).to be_present
+          expect(captured.headers['X-Esigncenter-Signature']).to be_present
+          expect(WebhookEvent.find_by!(webhook_url:).status).to eq('success')
+        end
+
+        it 'ignores a legacy allow_http config: HTTPS stays required in production' do
+          create(:account_config, account:, key: :allow_http, value: true)
+          webhook_url = create(:webhook_url, account:)
+          webhook_url.update_column(:url, 'http://hooks.example.com/hook')
+
+          expect { SendWebhookRequest.validate_webhook_uri!(webhook_url) }
+            .to raise_error(SendWebhookRequest::HttpsError, 'Only HTTPS is allowed.')
+
+          response = deliver(webhook_url, build_submitter(account))
+
+          expect(response.final).to be(true)
+          expect(a_request(:any, /.*/)).not_to have_been_made
+        end
+
+        it 'connects directly to the pinned address even when an HTTP(S)_PROXY is set' do
+          allow(ENV).to receive(:[]).and_call_original
+          %w[http_proxy HTTP_PROXY https_proxy HTTPS_PROXY].each do |key|
+            allow(ENV).to receive(:[]).with(key).and_return('http://proxy.internal:3128')
+          end
+          allow(Net::HTTP).to receive(:new).and_call_original
+          webhook_url = create(:webhook_url, account:, url: 'https://hooks.example.com/hook')
+          stub_request(:post, webhook_url.url).to_return(status: 200)
+
+          deliver(webhook_url, build_submitter(account))
+
+          expect(Net::HTTP).to have_received(:new).with('hooks.example.com', 443, nil)
+          expect(a_request(:post, webhook_url.url)).to have_been_made.once
+        end
+      end
+    end
   end
 
   describe 'launch kill switches' do

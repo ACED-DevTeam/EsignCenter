@@ -380,6 +380,19 @@ describe 'Template Preview Sessions API' do
       end
     end
 
+    it 'refuses to mint a preview for an archived template, and archiving revokes an issued one' do
+      body = create_preview_session(preview_params)
+      path = URI.parse(body['preview_src']).path
+
+      template.update!(archived_at: Time.current)
+
+      expect { get path }.to raise_error(ActionController::RoutingError)
+      expect { get "#{path}/document" }.to raise_error(ActionController::RoutingError)
+
+      create_preview_session(preview_params)
+      expect(response).to have_http_status(:not_found)
+    end
+
     it 'stops serving the same PDF URL after the preview expires' do
       body = create_preview_session(preview_params.merge(expires_in_minutes: 1))
       path = "#{URI.parse(body['preview_src']).path}/document"

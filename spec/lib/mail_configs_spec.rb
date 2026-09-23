@@ -166,6 +166,59 @@ RSpec.describe MailConfigs, type: :lib do
         .to raise_error(RuntimeError, /SMTP delivery mode but SMTP_ADDRESS is not set/)
     end
 
+    it 'raises at boot in production when SMTP credentials are missing' do
+      ENV['SMTP_ADDRESS'] = 'platform.smtp.example'
+      ENV['SMTP_FROM'] = 'EsignCenter <noreply@example.com>'
+      allow(Rails).to receive(:env).and_return(ActiveSupport::EnvironmentInquirer.new('production'))
+
+      expect { described_class.check! }
+        .to raise_error(RuntimeError, /SMTP credentials are not set/)
+    end
+
+    it 'raises at boot when production explicitly disables SMTP delivery' do
+      ENV['EMAIL_DELIVERY_MODE'] = 'test'
+      allow(Rails).to receive(:env).and_return(ActiveSupport::EnvironmentInquirer.new('production'))
+
+      expect { described_class.check! }
+        .to raise_error(RuntimeError, /Production EMAIL_DELIVERY_MODE must be smtp/)
+    end
+
+    it 'raises at boot when production disables every SMTP encryption mode' do
+      ENV['SMTP_ADDRESS'] = 'platform.smtp.example'
+      ENV['SMTP_FROM'] = 'EsignCenter <noreply@example.com>'
+      ENV['SMTP_USERNAME'] = 'smtp-user'
+      ENV['SMTP_PASSWORD'] = 'smtp-password'
+      ENV['SMTP_ENABLE_STARTTLS'] = 'false'
+      allow(Rails).to receive(:env).and_return(ActiveSupport::EnvironmentInquirer.new('production'))
+
+      expect { described_class.check! }
+        .to raise_error(RuntimeError, /requires STARTTLS, SSL, or TLS/)
+    end
+
+    it 'raises at boot when production disables SMTP certificate verification' do
+      ENV['SMTP_ADDRESS'] = 'platform.smtp.example'
+      ENV['SMTP_FROM'] = 'EsignCenter <noreply@example.com>'
+      ENV['SMTP_USERNAME'] = 'smtp-user'
+      ENV['SMTP_PASSWORD'] = 'smtp-password'
+      ENV['SMTP_SSL_VERIFY'] = 'false'
+      allow(Rails).to receive(:env).and_return(ActiveSupport::EnvironmentInquirer.new('production'))
+
+      expect { described_class.check! }
+        .to raise_error(RuntimeError, /SMTP_SSL_VERIFY=false is not allowed/)
+    end
+
+    it 'allows production SMTP over direct TLS when STARTTLS is disabled' do
+      ENV['SMTP_ADDRESS'] = 'platform.smtp.example'
+      ENV['SMTP_FROM'] = 'EsignCenter <noreply@example.com>'
+      ENV['SMTP_USERNAME'] = 'smtp-user'
+      ENV['SMTP_PASSWORD'] = 'smtp-password'
+      ENV['SMTP_ENABLE_STARTTLS'] = 'false'
+      ENV['SMTP_ENABLE_SSL'] = 'true'
+      allow(Rails).to receive(:env).and_return(ActiveSupport::EnvironmentInquirer.new('production'))
+
+      expect { described_class.check! }.not_to raise_error
+    end
+
     it 'raises at boot in production for an invalid explicit mode value' do
       ENV['EMAIL_DELIVERY_MODE'] = 'tes'
       allow(Rails).to receive(:env).and_return(ActiveSupport::EnvironmentInquirer.new('production'))

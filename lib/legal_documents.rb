@@ -41,16 +41,19 @@ module LegalDocuments
   # still hashes to the digest recorded on the day it was published.
   DOCUMENTS = {
     terms: {
-      version: '2026-09-05',
-      effective_on: Date.new(2026, 9, 5),
-      sha256: '0373405efc70654fa0f0fed41caf7281ea925402406d091bf68a93153b78d3de',
-      archived: {}.freeze
+      version: '2026-09-23',
+      effective_on: Date.new(2026, 9, 23),
+      sha256: 'ecc0015b0000da5ed3d1c5a282b7014aa25c732fe49cfd21b60aa769b8611577',
+      archived: { '2026-09-05' => '0373405efc70654fa0f0fed41caf7281ea925402406d091bf68a93153b78d3de' }.freeze
     }.freeze,
     privacy: {
-      version: '2026-09-06',
-      effective_on: Date.new(2026, 9, 6),
-      sha256: 'c8ea3037ba549f7e97b495e3290253ab799ceead6648606faa374ffad7d2c42c',
-      archived: { '2026-09-05' => '1be7833ba2a2ff38d2b7a5018e45146510a304ddd59f5d3f826488086d52243e' }.freeze
+      version: '2026-09-23',
+      effective_on: Date.new(2026, 9, 23),
+      sha256: '4e1eed5cb3fc050655d489a94b0d40a9ac13b4a916032ab4630bac9f658050f2',
+      archived: {
+        '2026-09-05' => '1be7833ba2a2ff38d2b7a5018e45146510a304ddd59f5d3f826488086d52243e',
+        '2026-09-06' => 'c8ea3037ba549f7e97b495e3290253ab799ceead6648606faa374ffad7d2c42c'
+      }.freeze
     }.freeze
   }.freeze
 
@@ -86,19 +89,14 @@ module LegalDocuments
   # on the day, whatever host happened to serve them.
   SITE_HOST = 'esigncenter.com'
 
-  # The two things in either document a lawyer still has to fill in. Left as
-  # marked brackets on purpose so they are impossible to miss, and they are the
-  # ONLY brackets either document is allowed to contain — spec/golden/
-  # legal_spec.rb fails on a third (docs/legal.md).
-  OPERATOR_LEGAL_NAME = '[OPERATOR LEGAL NAME]'
+  # Operator identity confirmed by Evan on 2026-09-23. Changing either value
+  # requires archiving and versioning both documents (docs/legal.md).
+  OPERATOR_LEGAL_NAME = 'EsignCenter LLC'
   # A postal address is not decoration: US commercial email law requires a
   # physical mailing address on the notices we send, and both documents point
   # at this one.
-  OPERATOR_POSTAL_ADDRESS = '[OPERATOR POSTAL ADDRESS]'
+  OPERATOR_POSTAL_ADDRESS = '1911 S National Ave STE 104, Springfield, MO 65802'
   GOVERNING_LAW_STATE = 'Missouri'
-
-  # Every bracket a document may contain, in the order a reader meets them.
-  LAWYER_PLACEHOLDERS = [OPERATOR_LEGAL_NAME, OPERATOR_POSTAL_ADDRESS].freeze
 
   module_function
 
