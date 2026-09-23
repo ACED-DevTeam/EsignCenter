@@ -24,6 +24,8 @@ module TemplatePreviewSessions
       # for the template's full contents, so it is minted only for templates
       # this account actually owns.
       raise ActiveRecord::RecordNotFound if template.account_id != user.account_id
+      # An archived template is gone as far as the sender is concerned.
+      raise ActiveRecord::RecordNotFound if template.archived_at?
 
       origin = EmbedOrigins.normalize(attrs[:embed_origin])
       values = normalized_values

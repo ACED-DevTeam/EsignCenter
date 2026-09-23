@@ -27,7 +27,7 @@ class TemplatesCloneController < ApplicationController
 
     authorize!(:create, @template)
 
-    if params[:account_id].present? && true_ability.can?(:manage, Account.find(params[:account_id]))
+    if clone_into_other_account?
       @template.account_id = params[:account_id]
       @template.author = true_user if true_user.account_id == @template.account_id
       @template.folder = @template.account.default_template_folder if @template.account_id != current_account.id
@@ -51,6 +51,14 @@ class TemplatesCloneController < ApplicationController
   end
 
   private
+
+  # A support session clones inside the customer's account only: true_ability
+  # is the OPERATOR's, so honouring account_id here would let a support
+  # session copy the customer's documents out to the operator account.
+  def clone_into_other_account?
+    params[:account_id].present? && !support_impersonation? &&
+      true_ability.can?(:manage, Account.find(params[:account_id]))
+  end
 
   def maybe_redirect_to_template(template)
     if template.account == current_account

@@ -1,6 +1,6 @@
 <%= form_for @template, url: template_clone_index_path(@base_template), data: { turbo_frame: :_top }, html: { autocomplete: :off } do |f| %>
   <% accounts = Account.accessible_by(true_ability).where.not(id: true_user.account.testing_accounts).where(User.where(User.arel_table[:account_id].eq(Account.arel_table[:id])).arel.exists).active %>
-  <% if (can?(:manage, :tenants) || true_user != current_user) && accounts.where.not(id: current_account.id).exists? %>
+  <% if !support_impersonation? && (can?(:manage, :tenants) || true_user != current_user) && accounts.where.not(id: current_account.id).exists? %>
     <div class="form-control -mb-2 mt-2">
       <%= select_tag :account_id, options_for_select([current_account, *accounts.order(:name)].uniq.map { |e| [e.name, e.id] }, current_account.id), required: true, class: 'base-select' %>
     </div>

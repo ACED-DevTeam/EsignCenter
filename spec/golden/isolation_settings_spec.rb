@@ -288,9 +288,9 @@ RSpec.describe 'Tenant-isolated settings', type: :request do
         .to eq(host: 'host.example.test', protocol: 'https')
     end
 
-    # The same predicate production uses for force_ssl/assume_ssl: the literal
-    # value 'false' switches SSL off, so links must be http too.
-    it 'treats FORCE_SSL=false as http, matching the production SSL setting' do
+    # Local development may deliberately opt out; production refuses to boot
+    # with this value before any generated HTTP link can leave the service.
+    it 'treats FORCE_SSL=false as http for local development' do
       expect(url_options_with('HOST' => 'host.example.test', 'FORCE_SSL' => 'false'))
         .to eq(host: 'host.example.test', protocol: 'http')
       expect(url_options_with('HOST' => 'host.example.test', 'FORCE_SSL' => 'true'))

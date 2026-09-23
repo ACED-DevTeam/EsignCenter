@@ -14,6 +14,21 @@ module Api
       skip_before_action :authenticate_user!
       skip_authorization_check
 
+      PROVISION_RATE_LIMIT = 20
+      PROVISION_RATE_WINDOW = 1.minute
+
+      # Each call mints an account, certificates and an API token, and every
+      # call (good token or not) is a guess at ADMIN_PROVISION_TOKEN. Legitimate
+      # callers provision one workspace per sign-up, so a per-IP ceiling costs
+      # them nothing. Declared before the token check so failed guesses count.
+      rate_limit(
+        to: PROVISION_RATE_LIMIT,
+        within: PROVISION_RATE_WINDOW,
+        only: %i[create],
+        store: RateLimit.store,
+        with: -> { render json: { error: 'Too many requests' }, status: :too_many_requests }
+      )
+
       before_action :authenticate_admin_token!
 
       DEFAULT_WEBHOOK_EVENTS = %w[form.completed form.declined submission.completed submission.expired].freeze
