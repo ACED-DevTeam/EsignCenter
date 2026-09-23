@@ -756,6 +756,7 @@ en: &en
   attach_audit_log_pdf: Attach audit log PDF
   attach_documents: Attach documents
   settings_have_been_saved: Settings have been saved.
+  your_change_could_not_be_saved_please_try_again: Your change could not be saved. Please try again.
   display_your_company_name_and_logo_when_signing_documents: Display your company name and logo when signing documents.
   profile: Profile
   signature: Signature
@@ -2650,6 +2651,7 @@ es: &es
   attach_audit_log_pdf: Adjuntar PDF del registro de auditoría
   attach_documents: Adjuntar documentos
   settings_have_been_saved: Los ajustes han sido guardados.
+  your_change_could_not_be_saved_please_try_again: No se pudo guardar el cambio. Inténtalo de nuevo.
   display_your_company_name_and_logo_when_signing_documents: Muestra el nombre y logotipo de tu empresa al firmar documentos.
   profile: Perfil
   signature: Firma
@@ -4051,6 +4053,7 @@ it: &it
   attach_audit_log_pdf: Allegare il PDF del registro di audit
   attach_documents: Allegare documenti
   settings_have_been_saved: Le impostazioni sono state salvate.
+  your_change_could_not_be_saved_please_try_again: Impossibile salvare la modifica. Riprova.
   display_your_company_name_and_logo_when_signing_documents: Mostra il nome e il logo della tua azienda quando firmi i documenti.
   profile: Profilo
   signature: Firma
@@ -5452,6 +5455,7 @@ fr: &fr
   attach_audit_log_pdf: Joindre le PDF du journal d’audit
   attach_documents: Joindre les documents
   settings_have_been_saved: Les paramètres ont été enregistrés.
+  your_change_could_not_be_saved_please_try_again: Votre modification n’a pas pu être enregistrée. Veuillez réessayer.
   display_your_company_name_and_logo_when_signing_documents: Afficher le nom et le logo de votre entreprise lors de la signature des documents.
   profile: Profil
   signature: Signature
@@ -6853,6 +6857,7 @@ pt: &pt
   attach_audit_log_pdf: Anexar PDF do log de auditoria
   attach_documents: Anexar documentos
   settings_have_been_saved: As configurações foram salvas.
+  your_change_could_not_be_saved_please_try_again: Não foi possível guardar a alteração. Tente novamente.
   display_your_company_name_and_logo_when_signing_documents: Exibir o nome e o logotipo da sua empresa ao assinar documentos.
   profile: Perfil
   signature: Assinatura
@@ -8254,6 +8259,7 @@ de: &de
   attach_audit_log_pdf: Prüfprotokoll-PDF anhängen
   attach_documents: Dokumente anhängen
   settings_have_been_saved: Die Einstellungen wurden gespeichert.
+  your_change_could_not_be_saved_please_try_again: Ihre Änderung konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.
   display_your_company_name_and_logo_when_signing_documents: Zeigen Sie den Namen und das Logo Ihres Unternehmens beim Signieren von Dokumenten an.
   profile: Profil
   signature: Unterschrift
@@ -11566,6 +11572,7 @@ nl: &nl
   attach_audit_log_pdf: Auditlogboek-PDF bijvoegen
   attach_documents: Documenten bijvoegen
   settings_have_been_saved: Instellingen zijn opgeslagen.
+  your_change_could_not_be_saved_please_try_again: Je wijziging kon niet worden opgeslagen. Probeer het opnieuw.
   display_your_company_name_and_logo_when_signing_documents: Toon uw bedrijfsnaam en logo bij het ondertekenen van documenten.
   profile: Profiel
   signature: Handtekening
