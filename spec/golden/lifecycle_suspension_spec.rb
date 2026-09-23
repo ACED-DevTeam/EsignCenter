@@ -18,6 +18,8 @@
 # real CLI captures (spec/fixtures/stripe) fed to the ONE mapping every
 # Stripe door shares (StripeBilling::SubscriptionSync.apply!).
 RSpec.describe 'Account suspension', type: :request do # rubocop:disable RSpec/MultipleDescribes
+  stash_env 'BILLING_ENABLED'
+
   let(:account) { create(:account, :paid) }
   let(:admin) { create(:user, account:) }
   let(:template) { create(:template, account:, author: admin, only_field_types: %w[text]) }
@@ -660,6 +662,9 @@ RSpec.describe 'Account suspension', type: :request do # rubocop:disable RSpec/M
     # The two doors this account still needs, and the one thing it may still
     # change about itself.
     it 'leaves the billing doors and their own profile open' do
+      # This tests suspension permissions after billing has launched. A dark
+      # deploy correctly returns 404 regardless of the account's permissions.
+      ENV['BILLING_ENABLED'] = 'true'
       suspend!
       act_as(admin)
 
