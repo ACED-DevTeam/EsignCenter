@@ -27,15 +27,17 @@ time they open a document they have not yet agreed on:
   email address documents are sent to, and what is recorded. The notice ends
   with its version and effective date.
 - Next to the checkbox is a **View this document as a PDF** link. It opens the
-  unsigned original — the same pages the form is showing — in a new tab, and
-  **the checkbox will not tick until it has been used once**, with the hint
-  "Open the document as a PDF before you agree." underneath. The box stays
-  focusable and is marked `aria-disabled` rather than `disabled`, so a screen
-  reader reaches it and reads that hint out; a genuinely disabled control is
-  skipped by the keyboard and the reason for it is never announced. That is the
-  §7001(c) "confirm your device can display the record" step: the signer
-  proves to themselves that they can open a PDF before agreeing to be sent
-  one. The link is served by `GET /s/:slug/document.pdf`
+  unsigned original — the same pages the form is showing — in a new tab.
+  **Opening it is optional** (since v3): the checkbox ticks straight away.
+  The §7001(c) "reasonably demonstrates" step is carried by the disclosure's
+  "What you need" paragraph instead, which says that by checking the box the
+  signer confirms they can open this document as a PDF and save or print it,
+  and that the link next to the checkbox is there to check. This is the
+  attestation pattern the major e-signature services use. Until v3 the box
+  refused to tick until the link had been used once; that forced step was
+  unlike anything signers meet elsewhere and was removed on 23 September 2026.
+  Whether the link was followed is still recorded (`pdf_opened`, §2). The
+  link is served by `GET /s/:slug/document.pdf`
   (`SubmitFormDocumentController`), keyed on the signing slug, behind the same
   email/link 2FA gate as the signing page and refusing on exactly the same
   terms — archived account, archived template or submission, expired, declined,
@@ -124,7 +126,7 @@ Ticking the box creates **one** `esign_consent` event per person on the
 signer (`submission_events`) — one for the original signer and, after a
 delegation, one more for the person the form was handed to — stamped with:
 
-- `version` — the disclosure version the signer saw (`v2` today),
+- `version` — the disclosure version the signer saw (`v3` today),
 - `locale` — the language the disclosure was shown in (`en`, `fr`, ...). It is
   **not** browser-attested. The signing page mints a short signature over
   (this signer, this disclosure version, this language) — `EsignConsent
@@ -214,7 +216,8 @@ delegation, one more for the person the form was handed to — stamped with:
   sender against a disclosure that named another. The signer reloads and
   agrees to the disclosure they can actually see,
 - `pdf_opened` — whether the signer used the "View this document as a PDF"
-  link before ticking the box. This is the **one** field on the event the
+  link before the consent was sent. Following it is optional, so `false` is
+  an ordinary answer, not a refusal. This is the **one** field on the event the
   browser asserts, and it has **three** states, not two:
 
   | state | what it means | what the trail prints |
@@ -269,11 +272,11 @@ delegation.
 ## 4. Where it shows
 
 - **Audit trail PDF** — each signer's block shows
-  "Consented to electronic signatures (v2, fr): <date and time>" — the
+  "Consented to electronic signatures (v3, fr): <date and time>" — the
   version and the language the signer read the disclosure in — followed by
   "The signer's browser reported opening the PDF", or "The signer did not open
   the PDF before agreeing". The event log lists "**Consented to electronic
-  signatures (v2)** by <signer>". The audit trail itself is written in the
+  signatures (v3)** by <signer>". The audit trail itself is written in the
   language of the last signer's `metadata.lang` when the sender set one,
   otherwise in the account's language.
 
@@ -286,7 +289,7 @@ delegation.
   the signer blocks have always handled a name.
 - **The disclosure itself, at the end of the audit trail.** After the event
   log the trail carries one block per consent: "Electronic Records and
-  Signatures Disclosure — Version v2 (fr), shown to <signer>", then the whole
+  Signatures Disclosure — Version v3 (fr), shown to <signer>", then the whole
   disclosure as plain paragraphs, in the language that signer read it in and
   with the sender's name and address filled in from the event. The evidence is
   self-contained: a reader years later does not need this product, or its
@@ -366,7 +369,8 @@ paragraph is editing the disclosure.
 | version | effective | state |
 | --- | --- | --- |
 | `v1` | 2 September 2026 | archived 5 September 2026 in `config/locales/esign_disclosures/v1.yml` (all 14 locales). No self-signing variant: v1 shipped before it existed, so no `v1` consent can carry `self_signing` and the archive records `v1_self_signing: never_published` |
-| `v2` | 5 September 2026 | live — names the sender, links to the document as a PDF, carries the self-signing variant, and covers the §7001(c) points v1 left out |
+| `v2` | 5 September 2026 | archived 23 September 2026 in `config/locales/esign_disclosures/v2.yml` (all 14 locales, body and `v2_self_signing`). Named the sender, linked to the document as a PDF, carried the self-signing variant, and covered the §7001(c) points v1 left out. Its checkbox would not tick until the PDF link had been used once |
+| `v3` | 23 September 2026 | live — the PDF link becomes optional. The "What you need" paragraph now says that by checking the box the signer confirms they can open this document as a PDF and save or print it, and that they can check with the link next to the checkbox |
 
 Nothing had shipped to production under `v1`, but consents had been recorded
 in the development stack, so the bump-and-archive rule below was followed
@@ -424,11 +428,12 @@ reproducible. When you bump:
    fact on the record rather than an omission.
 3. Update the text in every base locale — the body and, if they change, the
    self-signing paragraphs.
-4. Bump `EsignConsent::VERSION` (`v1` → `v2`) and `EsignConsent::EFFECTIVE_DATE`
+4. Bump `EsignConsent::VERSION` (e.g. `v2` → `v3`) and `EsignConsent::EFFECTIVE_DATE`
    in `lib/esign_consent.rb`.
 5. Re-pin `ConsentDisclosureDigests::LIVE` in
    `spec/golden/consent_version_spec.rb` — both digests per locale, the plain
-   text and the self-signing variant.
+   text and the self-signing variant — and move the old version's pinned
+   digests, unchanged, into `ConsentDisclosureDigests::ARCHIVED`.
 
 `EsignConsent.disclosure_text(version:, locale:, self_signing:)` then answers
 "what did a signer who consented to `v1` in French read?" from inside the
@@ -485,7 +490,11 @@ trust page.
    right, or is an affirmative withdraw control and record required?
 3. Is a click-through modal sufficient prior provision of the disclosure, and
    must we record that it was opened?
-4. Does the platform or the sender own the paper-copy and fee obligations, and
+4. Is the v3 attestation — ticking the box confirms the signer can open the
+   document as a PDF, with an optional link to check — enough to "reasonably
+   demonstrate" access under §7001(c)(1)(C)(ii), or must the signer be made to
+   open it first (as v2 did)?
+5. Does the platform or the sender own the paper-copy and fee obligations, and
    must the Terms make the sender responsible?
-5. Which marketing claims are earned — review the trust page's claim register
+6. Which marketing claims are earned — review the trust page's claim register
    sentence by sentence.

@@ -20,7 +20,6 @@ RSpec.describe 'ESIGN consent in the signing form' do
 
       expect(page).to have_css('submission-form[data-esign-consent]', visible: :all)
       expect(page).to have_unchecked_field('esign_consent')
-      expect(page).to have_css('#esign_consent[aria-disabled="true"]')
       expect(page).to have_css('#submit_form_button[disabled]')
 
       click_button 'Electronic Signature Disclosure'
@@ -39,33 +38,13 @@ RSpec.describe 'ESIGN consent in the signing form' do
 
       fill_first_name(template, 'Jane')
 
-      # §7001(c): the box will not tick until the document has been opened as a
-      # PDF, and the hint says so. It stays FOCUSABLE and is marked
-      # `aria-disabled` rather than `disabled`, because a control the keyboard
-      # skips is a control whose reason is never read out — the hint below is
-      # what its `aria-describedby` points at.
-      expect(page).to have_content('Open the document as a PDF before you agree.')
-      expect(page).to have_css('#esign_consent[aria-disabled="true"]')
-      expect(page).to have_css('#esign_consent[aria-describedby="esign_consent_open_pdf_first"]')
-      expect(page).to have_css('#esign_consent:not([disabled])')
-
-      # Reachable, and still refused: clicking it changes nothing.
-      expect(page).to have_no_css('#esign_consent_open_pdf_first[data-nudged]')
-
-      find_by_id('esign_consent').click
-
-      expect(page).to have_unchecked_field('esign_consent')
-      expect(page).to have_css('#submit_form_button[disabled]')
-      # D3: the refused click is not silent. The hint the box already points
-      # at is brought forward — emphasised on screen and announced in the
-      # live region — so a consumer who taps the box learns why it did not
-      # tick instead of meeting a dead control.
-      expect(page).to have_css('#esign_consent_open_pdf_first[data-nudged="true"]')
-
-      find_by_id('esign_consent_view_pdf').click
-
+      # v3: the PDF link is offered, not required. The disclosure asks the
+      # signer to confirm, by ticking the box, that they can open the document
+      # as a PDF — so the box ticks straight away, and the event says the link
+      # was offered and not followed.
+      expect(page).to have_css('#esign_consent_view_pdf')
       expect(page).to have_no_css('#esign_consent[aria-disabled]')
-      expect(page).to have_no_content('Open the document as a PDF before you agree.')
+      expect(page).to have_css('#esign_consent:not([aria-describedby])')
 
       check 'esign_consent'
 
@@ -79,7 +58,7 @@ RSpec.describe 'ESIGN consent in the signing form' do
       event = submitter.submission_events.find_by(event_type: 'esign_consent')
 
       expect(submitter.completed_at).to be_present
-      expect(event.data).to include('version' => EsignConsent::VERSION, 'pdf_opened' => true,
+      expect(event.data).to include('version' => EsignConsent::VERSION, 'pdf_opened' => false,
                                     'self_signing' => false,
                                     'sender_name' => account.name, 'sender_email' => author.email)
       expect(event.data['ip']).to be_present
@@ -98,17 +77,18 @@ RSpec.describe 'ESIGN consent in the signing form' do
       visit submit_form_path(slug: submitter.slug)
 
       expect(page).to have_unchecked_field('esign_consent')
-      expect(page).to have_css('#esign_consent[aria-disabled="true"]')
       expect(page).to have_css('#submit_form_button[disabled]')
 
       fill_first_name(template, 'Jane')
+      # Following the optional link is still recorded, as the page's own claim.
       find_by_id('esign_consent_view_pdf').click
       check 'esign_consent'
       click_button 'next'
 
       expect(page).to have_field('Birthday')
       expect(page).not_to have_css('#esign_consent')
-      expect(submitter.submission_events.where(event_type: 'esign_consent').count).to eq(1)
+      expect(submitter.submission_events.where(event_type: 'esign_consent').sole.data)
+        .to include('pdf_opened' => true)
 
       visit submit_form_path(slug: submitter.slug)
 
@@ -131,7 +111,6 @@ RSpec.describe 'ESIGN consent in the signing form' do
       find('#expand_form_button').click
 
       expect(page).to have_unchecked_field('esign_consent')
-      expect(page).to have_css('#esign_consent[aria-disabled="true"]')
       expect(page).to have_css('#submit_form_button[disabled]')
 
       # The preview's link answers off the template (its signer is never saved).

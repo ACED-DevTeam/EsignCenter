@@ -37,8 +37,8 @@
 # completed) have no human signer and are exempt by design: they create
 # `api_complete_form` events, never consent events. See docs/esign-consent.md.
 module EsignConsent
-  VERSION = 'v2'
-  EFFECTIVE_DATE = Date.new(2026, 9, 5)
+  VERSION = 'v3'
+  EFFECTIVE_DATE = Date.new(2026, 9, 23)
   EVENT_TYPE = 'esign_consent'
   DISCLOSURE_KEY = 'esign_consent_disclosure_body_html'
   # Superseded disclosures live in config/locales/esign_disclosures/<version>.yml
@@ -149,7 +149,8 @@ module EsignConsent
   # answers, not two:
   #
   #   * `true`  — the browser reported following the "View this document as a
-  #     PDF" link before the box was ticked;
+  #     PDF" link before the consent was sent (following it is optional since
+  #     v3: ticking the box is the signer confirming they can open the PDF);
   #   * `false` — a link was offered and the browser reported it unfollowed;
   #   * ABSENT  — the key is not on the event at all. That is what a page with
   #     no link to offer posts (a submission whose documents cannot be served

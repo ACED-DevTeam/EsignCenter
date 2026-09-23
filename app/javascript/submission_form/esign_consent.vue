@@ -11,12 +11,9 @@
         name="esign_consent"
         value="true"
         class="checkbox checkbox-sm mt-0.5 flex-none"
-        :class="{ 'opacity-60': isPdfGateClosed }"
         :checked="modelValue"
-        :aria-disabled="isPdfGateClosed ? 'true' : undefined"
         :aria-invalid="error ? 'true' : undefined"
-        :aria-describedby="describedBy"
-        @click="onGateClick"
+        :aria-describedby="error ? 'esign_consent_error' : undefined"
         @change="onChange"
       >
       <input
@@ -48,7 +45,7 @@
       <div class="text-sm sm:text-base leading-snug">
         <label
           for="esign_consent"
-          :class="isPdfGateClosed ? 'opacity-60' : 'cursor-pointer'"
+          class="cursor-pointer"
         >
           {{ config.label }}
         </label>
@@ -66,20 +63,10 @@
           target="_blank"
           rel="noopener"
           class="link link-hover font-medium block mt-1"
-          :class="{ 'motion-safe:animate-pulse': nudged }"
           @click="markPdfOpened"
         >
           {{ config.view_pdf_text }}
         </a>
-        <p
-          v-if="isPdfGateClosed"
-          id="esign_consent_open_pdf_first"
-          class="text-sm mt-1"
-          :class="nudged ? 'text-base-content font-semibold' : 'text-base-content/60'"
-          :data-nudged="nudged ? 'true' : undefined"
-        >
-          {{ config.open_pdf_first }}
-        </p>
       </div>
     </div>
     <div aria-live="polite">
@@ -89,15 +76,6 @@
         class="text-error text-sm mt-1 ps-7"
       >
         {{ message }}
-      </p>
-      <!-- The hint above is what `aria-describedby` points at, so a screen
-           reader hears it on focus; this copy is announced on the refused
-           click, which is the moment the signer asks why nothing happened. -->
-      <p
-        v-if="nudged"
-        class="sr-only"
-      >
-        {{ config.open_pdf_first }}
       </p>
     </div>
     <p
@@ -115,7 +93,7 @@ export default {
   props: {
     // { version, locale, locale_token, label, link_text, required_message,
     // stale_message, locale_invalid_message, modal_id, pdf_url,
-    // view_pdf_text, open_pdf_first, sender_digest } — strings come from the
+    // view_pdf_text, sender_digest } — strings come from the
     // Rails partial so config/locales/i18n.yml stays the single source.
     // `version`, `locale`,
     // `locale_token` and `sender_digest` are sent back with the consent: the
@@ -128,7 +106,10 @@ export default {
       required: true
     },
     // The signer followed the "View this document as a PDF" link at least
-    // once. It lives in the parent form so the invite request can send it too,
+    // once. Opening it is optional: the disclosure asks the signer to confirm
+    // they can open, save or print the PDF when they tick the box, and the
+    // link is there so they can check. The answer is still worth keeping as
+    // evidence. It lives in the parent form so the invite request can send it too,
     // and it travels with the consent as `esign_consent_pdf_opened` — but only
     // when there IS a link (`config.pdf_url`). With nothing to serve no link is
     // drawn, so there is no question to answer and nothing is posted: the
@@ -167,37 +148,7 @@ export default {
     }
   },
   emits: ['update:modelValue', 'pdfOpened'],
-  data () {
-    return {
-      // The signer tried to tick the box while the PDF gate was still closed.
-      // Nothing else changes on screen when that happens, so without this the
-      // click reads as a dead control; it brings the reason and the link that
-      // clears it forward for a few seconds. Never a substitute for the
-      // hint: the hint is always on screen while the gate is closed.
-      nudged: false,
-      nudgeTimeout: null
-    }
-  },
   computed: {
-    // §7001(c) asks the signer to confirm their device can display the record
-    // before they agree to receive it electronically, so the box refuses to
-    // tick until they have opened the PDF once. No link (the config carries
-    // no URL), no gate.
-    //
-    // `aria-disabled`, not `disabled`: a disabled checkbox is removed from
-    // the tab order, and a control nobody can reach is a control whose
-    // `aria-describedby` — the sentence explaining WHY it will not tick — is
-    // never announced. A screen-reader user met an unreachable box and no
-    // reason for it. Focusable, announced as disabled, and the change is
-    // refused in onChange instead.
-    isPdfGateClosed () {
-      return !!this.config.pdf_url && !this.pdfOpened
-    },
-    describedBy () {
-      if (this.error) return 'esign_consent_error'
-
-      return this.isPdfGateClosed ? 'esign_consent_open_pdf_first' : undefined
-    },
     // Read by assistive tech in two places: the live region announces it
     // when it appears; the always-present sr-only copy describes the disabled
     // action buttons (form.vue points their aria-describedby at it).
@@ -208,43 +159,11 @@ export default {
       return this.config.required_message
     }
   },
-  watch: {
-    // The nudge exists only to explain a refusal. Once the PDF has been
-    // opened there is nothing left to refuse, so it goes at once rather than
-    // sitting out its timer beside a hint that has already disappeared.
-    isPdfGateClosed (closed) {
-      if (closed) return
-
-      clearTimeout(this.nudgeTimeout)
-      this.nudged = false
-    }
-  },
-  beforeUnmount () {
-    clearTimeout(this.nudgeTimeout)
-  },
   methods: {
-    // Feedback for a click the gate refuses — mouse, tap, or Space on the
-    // focused checkbox, all of which fire `click`. Re-arming the timer on a
-    // second click keeps the emphasis up while the signer keeps trying.
-    onGateClick () {
-      if (!this.isPdfGateClosed) return
-
-      clearTimeout(this.nudgeTimeout)
-      this.nudged = true
-      this.nudgeTimeout = setTimeout(() => { this.nudged = false }, 6000)
-    },
     focus () {
       this.$refs.checkbox?.focus()
     },
-    // The gate, enforced here rather than by `disabled` (isPdfGateClosed).
-    // The box snaps back and the reason beside it stays on screen.
     onChange (event) {
-      if (this.isPdfGateClosed) {
-        event.target.checked = this.modelValue
-
-        return
-      }
-
       this.$emit('update:modelValue', event.target.checked)
     },
     // Client attestation, and stored as one: the browser says the link was
