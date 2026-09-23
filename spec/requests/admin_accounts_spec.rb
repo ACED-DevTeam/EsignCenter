@@ -9,13 +9,36 @@ describe 'Admin Accounts API' do
   around do |example|
     original = ENV.fetch('ADMIN_PROVISION_TOKEN', nil)
     ENV['ADMIN_PROVISION_TOKEN'] = admin_token
+    RateLimit.store.clear
 
     example.run
+
+    RateLimit.store.clear
 
     if original.nil?
       ENV.delete('ADMIN_PROVISION_TOKEN')
     else
       ENV['ADMIN_PROVISION_TOKEN'] = original
+    end
+  end
+
+  describe 'POST /api/admin/accounts rate limit' do
+    it 'refuses the call past the per-IP ceiling, whether or not the token is right' do
+      limit = Api::Admin::AccountsController::PROVISION_RATE_LIMIT
+
+      limit.times do
+        post '/api/admin/accounts', headers: headers.merge('x-admin-token': 'wrong-token'), params: {}.to_json
+        expect(response).to have_http_status(:unauthorized)
+      end
+
+      expect do
+        post '/api/admin/accounts', headers: headers, params: {
+          name: 'Over The Limit LLC', email: 'over-limit@example.com'
+        }.to_json
+      end.not_to change(Account, :count)
+
+      expect(response).to have_http_status(:too_many_requests)
+      expect(response.parsed_body).to eq('error' => 'Too many requests')
     end
   end
 

@@ -22,13 +22,14 @@ class SendTestWebhookRequestJob
     return unless Entitlements.allowed?(webhook_url.account, :webhooks)
 
     uri = SendWebhookRequest.validate_webhook_uri!(webhook_url)
+    address = SendWebhookRequest.deliverable_address!(uri, webhook_url.account)
     body = {
       event_type: 'form.completed',
       timestamp: Time.current.iso8601,
       data: Submitters::SerializeForWebhook.call(submitter)
     }.to_json
 
-    Faraday.post(uri) do |req|
+    SendWebhookRequest.post(uri, address) do |req|
       req.headers['Content-Type'] = 'application/json'
       req.headers['User-Agent'] = USER_AGENT
       req.headers.merge!(webhook_url.secret.to_h) if webhook_url.secret.present?

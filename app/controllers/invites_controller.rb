@@ -37,7 +37,11 @@ class InvitesController < ApplicationController
   def show
     return render :unavailable, status: :gone unless @invite
 
-    return render_dead_end if dead_end?
+    # Opening the link never changes anything (mail scanners and link
+    # previews open it too): a dead end is only described here. The seat an
+    # already-member invitation holds goes back on the accept POST, or on the
+    # hourly sweep (BillingLifecycle.expire_invites!).
+    return render_dead_end(release: false) if dead_end?
     return redirect_to_sign_in if @move_offer && current_user.nil?
 
     # Signed in, but as somebody else: the page still explains the offer, and
@@ -75,9 +79,10 @@ class InvitesController < ApplicationController
     frozen_team? || @verdict == :closed_login || @verdict == :member
   end
 
-  def render_dead_end
+  def render_dead_end(release: true)
     return unavailable(I18n.t('invite_account_frozen')) if frozen_team?
     return unavailable(I18n.t('invite_address_closed_login')) if @verdict == :closed_login
+    return unavailable(I18n.t('invite_already_member', team: @account.name)) unless release
 
     release_to_member
   end

@@ -86,6 +86,9 @@ class EmbedTemplatePreviewController < ApplicationController
 
     raise ActionController::RoutingError, I18n.t('not_found') if @template.nil? || @template.submitters.blank?
 
+    # Archiving a template revokes every preview already handed out for it.
+    raise ActionController::RoutingError, I18n.t('not_found') if @template.archived_at?
+
     raise ActionController::RoutingError, I18n.t('not_found') unless AccountStates.tokens_allowed?(@template.account)
 
     Entitlements.require!(@template.account, :embed)

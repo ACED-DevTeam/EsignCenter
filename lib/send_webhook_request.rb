@@ -12,6 +12,9 @@ module SendWebhookRequest
   InvalidUrlError = Class.new(StandardError)
   LocalhostError = Class.new(StandardError)
   MetadataHostError = Class.new(StandardError)
+  # A subclass, so every existing LocalhostError rescue (delivery, the model's
+  # save-time message) also covers private and resolved-private targets.
+  PrivateAddressError = Class.new(LocalhostError)
 
   NON_RETRYABLE_RESPONSE = Struct.new(:status, :final)
                                  .new(0, true)
@@ -22,15 +25,16 @@ module SendWebhookRequest
   # Cloud instance-metadata / link-local targets are never a legitimate
   # webhook receiver — posting there is an SSRF primitive (AWS/GCP/Azure
   # credentials live at 169.254.169.254). Blocked unconditionally, unlike the
-  # localhost rule (self-hosted dev legitimately posts to localhost).
+  # localhost rule (local development legitimately posts to localhost).
   METADATA_HOSTS = ['169.254.169.254', 'metadata.google.internal', 'metadata.goog'].freeze
   # String-prefix checks over the URL host: IPv4 link-local, IPv6 link-local
   # (fe80::/10 — URI hosts come bracketed), and IPv4-mapped IPv6 forms of the
-  # same. Deliberately NOT a resolver-based check: in this product webhook
-  # URLs are set only by the trusted provisioning path (admin token), so this
-  # guards against configuration mistakes and the obvious literal forms, not
-  # a hostile DNS-rebinding attacker.
+  # same.
   LINK_LOCAL_PREFIXES = ['169.254.', '[fe80:', 'fe80:', '[::ffff:169.254.', '::ffff:169.254.'].freeze
+
+  # Private/reserved address rules and pinning are shared with URL downloads
+  # (OutboundAddress).
+  BLOCKED_NETWORKS = OutboundAddress::BLOCKED_NETWORKS
 
   module_function
 
@@ -45,8 +49,9 @@ module SendWebhookRequest
     return if AUTOMATED_RETRY_RANGE.cover?(attempt.to_i) && webhook_event&.status == 'success'
 
     uri = validate_webhook_uri!(webhook_url)
+    address = deliverable_address!(uri, webhook_url.account)
 
-    response = Faraday.post(uri) do |req|
+    response = post(uri, address) do |req|
       req.headers['Content-Type'] = 'application/json'
       req.headers['User-Agent'] = USER_AGENT
       req.headers.merge!(webhook_url.secret.to_h) if webhook_url.secret.present?
@@ -93,19 +98,86 @@ module SendWebhookRequest
       raise MetadataHostError, "Can't send to a link-local/metadata address."
     end
 
-    # infra-keep: the HTTPS/localhost rules already apply to every customer account (Session 1).
-    return uri unless Docuseal.multitenant? || account.customer?
+    # Local development only: an internal/operator account outside production
+    # may post to http://localhost (a paired app running on the same machine).
+    # Production and every customer account get the full rules (D57).
+    return uri unless strict_rules?(account)
 
     invalid_https = uri.scheme != 'https' || [443, nil].exclude?(uri.port)
 
+    # allow_http is a legacy non-production opt-out; in production (and for
+    # customers anywhere) it never relaxes the HTTPS rule.
     if invalid_https &&
-       (account.customer? || !AccountConfig.exists?(account_id: account.id, key: :allow_http))
+       (account.customer? || Rails.env.production? ||
+        !AccountConfig.exists?(account_id: account.id, key: :allow_http))
       raise HttpsError, 'Only HTTPS is allowed.'
     end
 
     raise LocalhostError, "Can't send to localhost." if host.in?(LOCALHOSTS)
 
+    literal = literal_ip(host)
+
+    raise PrivateAddressError, "Can't send to a private address." if literal && blocked_ip?(literal)
+
     uri
+  end
+
+  def strict_rules?(account)
+    Docuseal.multitenant? || account.customer? || Rails.env.production?
+  end
+
+  # The address the request must connect to, or nil for "let the HTTP client
+  # resolve it". Under the strict rules the host is resolved HERE, every
+  # answer is checked, and the request is pinned to the checked address — so a
+  # name that resolves to an internal address is refused, and a DNS answer
+  # that changes between the check and the connect (rebinding) cannot redirect
+  # the request.
+  #
+  # The local-development allowance (see validate_url!) still refuses a name
+  # that aliases a metadata/link-local address, but never pins and never fails
+  # on a lookup it cannot make: Net::HTTP picks between localhost's IPv4 and
+  # IPv6 answers itself, and mDNS/compose names keep working.
+  def deliverable_address!(uri, account)
+    host = uri.host.to_s.downcase
+    addresses = literal_ip(host) ? [literal_ip(host)] : resolve_addresses(host)
+
+    raise MetadataHostError, "Can't send to a link-local/metadata address." if addresses.any? { |ip| metadata_ip?(ip) }
+
+    return unless strict_rules?(account)
+
+    raise Faraday::ConnectionFailed, 'Could not resolve host' if addresses.empty?
+    raise PrivateAddressError, "Can't send to a private address." if addresses.any? { |ip| blocked_ip?(ip) }
+
+    addresses.first.to_s
+  end
+
+  def resolve_addresses(host)
+    OutboundAddress.resolve(host)
+  end
+
+  def literal_ip(host)
+    OutboundAddress.literal_ip(host)
+  end
+
+  def blocked_ip?(ip)
+    OutboundAddress.blocked_ip?(ip)
+  end
+
+  def metadata_ip?(ip)
+    OutboundAddress.metadata_ip?(ip)
+  end
+
+  # Posts to `uri`, connecting to the checked `address` when there is one
+  # (TLS keeps the hostname; see OutboundAddress.pinned_connection). Redirects
+  # are never followed (no follow_redirects middleware): a 3xx is recorded as
+  # the receiver's answer, so a public URL cannot bounce the signed payload to
+  # an internal one.
+  def post(uri, address, &)
+    OutboundAddress.pinned_connection(address).post(uri) do |req|
+      OutboundAddress.unproxied!(req, address)
+
+      yield req
+    end
   end
 
   def add_signature_headers!(headers, webhook_url, body:)

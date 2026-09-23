@@ -581,13 +581,16 @@ module BillingLifecycle
 
   # Ask the same live-address verdict as acceptance. collision_user_id is
   # only a historical hint: an address can acquire a holder after the invite.
+  # An address that can no longer log in, or that is already in the team, has
+  # nothing left to accept (opening the link changes nothing, so this sweep is
+  # what hands those seats back).
   # Revocation drops occupancy; the normal release path settles Stripe and
   # writes released_at only after success, preserving retries on failure.
   def revoke_closed_login_invites!(now: Time.current)
     AccountInvite.pending.where(released_at: nil).find_each do |invite|
       Quotas.with_creation_lock(invite.account) do
         invite.with_lock do
-          next unless invite.pending? && AccountInvites.verdict_for(invite) == :closed_login
+          next unless invite.pending? && AccountInvites.verdict_for(invite).in?(%i[closed_login member])
 
           invite.update!(revoked_at: now)
         end

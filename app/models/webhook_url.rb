@@ -50,11 +50,16 @@ class WebhookUrl < ApplicationRecord
   before_validation :set_sha1
   before_validation :set_hmac_secret
 
-  # Only a NEW or CHANGED URL is validated: a legacy customer row with an
-  # http URL keeps saving its events, secret and headers (a downgrade never
+  # Validated wherever delivery enforces the strict rules (every customer
+  # account; every account in production — SendWebhookRequest.strict_rules?),
+  # so a URL delivery would refuse is refused when it is saved instead of
+  # failing silently later. Only a NEW or CHANGED URL is validated: a legacy
+  # row with an http URL keeps saving its events, secret and headers (a downgrade never
   # blocks cleanup, D43); delivery refuses the unsafe URL with a terminal
   # error instead (SendWebhookRequest).
-  validate :url_deliverable_for_customer, if: -> { account&.customer? && (new_record? || will_save_change_to_url?) }
+  validate :url_deliverable, if: lambda {
+    account && SendWebhookRequest.strict_rules?(account) && (new_record? || will_save_change_to_url?)
+  }
 
   encrypts :url, :secret, :hmac_secret
 
@@ -74,7 +79,7 @@ class WebhookUrl < ApplicationRecord
 
   private
 
-  def url_deliverable_for_customer
+  def url_deliverable
     SendWebhookRequest.validate_url!(url, account)
   rescue SendWebhookRequest::InvalidUrlError
     errors.add(:url, :invalid, message: I18n.t('webhook_url_must_be_a_full_url'))
