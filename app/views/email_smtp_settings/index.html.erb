@@ -1,9 +1,9 @@
 <div class="flex flex-wrap space-y-4 md:flex-nowrap md:space-y-0">
   <%= render 'shared/settings_nav' %>
-  <div class="flex-grow max-w-xl mx-auto">
+  <div class="flex-grow min-w-0 w-full max-w-xl mx-auto">
     <h1 class="text-4xl font-bold mb-4">Email SMTP</h1>
     <% if (failure = AccountSmtpFailures.recent(current_account)) %>
-      <div class="alert alert-warning mb-4 text-sm block" role="alert">
+      <div class="alert alert-warning mb-4 text-sm text-left block" role="alert">
         <p class="font-semibold"><%= t('smtp_delivery_failure_title') %></p>
         <p><%= t('smtp_delivery_failure_detail', time: l(Time.iso8601(failure.fetch('failed_at')).utc, format: :long), reason: failure.fetch('reason')) %></p>
         <p><%= t('smtp_delivery_failure_help') %></p>
@@ -72,7 +72,7 @@
           </div>
           <div class="form-control">
             <%= ff.label :security_label, 'SMTP Security', class: 'label' %>
-            <div class="flex items-center space-x-6">
+            <div class="flex flex-wrap items-center gap-x-6 gap-y-2">
               <% [%w[STARTTLS none], %w[TLS tls], %w[SSL ssl], %w[Noverify noverify]].each do |(label, val)| %>
                 <%= ff.label :security, value: val, for: "#{val}_radio", class: 'label' do %>
                   <%= ff.radio_button :security, val, checked: (value['security'].blank? && val == 'none') || value['security'] == val, id: "#{val}_radio", class: 'base-radio mr-2' %>
