@@ -65,6 +65,7 @@ namespace :email do
 
     if config
       config.destroy!
+      AccountSmtpFailures.clear(account)
       puts "Removed SMTP pin for account #{account.id}."
     else
       puts "Account #{account.id} has no SMTP pin; no changes made."

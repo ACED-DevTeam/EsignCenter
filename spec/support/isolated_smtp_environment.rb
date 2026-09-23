@@ -4,6 +4,8 @@ RSpec.shared_context 'with isolated SMTP environment' do
   let(:smtp_env_keys) do
     %w[
       EMAIL_DELIVERY_MODE
+      POSTMARK_STREAM_PAID
+      POSTMARK_STREAM_FREE
       POSTMARK_API_TOKEN
       SMTP_ADDRESS
       SMTP_AUTHENTICATION

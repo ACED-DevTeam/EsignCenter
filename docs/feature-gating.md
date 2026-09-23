@@ -160,7 +160,7 @@ never purges):
 | Automatic reminders | `NotificationsSettingsController#create` for the `submitter_reminders` setting; `Submitters::ScheduleReminders.call` schedules nothing for an unentitled account | Redirect + alert; no reminder jobs |
 | Branding removal | `PersonalizationSettingsController#create` for the `remove_branding` flag; honored by `Accounts.branding_removed?` in the email footer (`shared/_email_attribution`) and the signing-page footer (`shared/_powered_by`). Only the "Powered by" / "Sent using" wording goes away — the DocuSeal attribution link and Source link always render (AGPL §7(b)) | Redirect + alert; branding stays on |
 | Custom email templates | `PersonalizationSettingsController#create` for the four account-level email templates; `TemplatesPreferencesController#create` for per-template email subject/body (invitation, reminder, documents copy, completed notification, per-signer copy); `SubmissionsController#create` when the send dialog asks to save its message onto the template (`save_message=1`). Read-time: the mailers show default copy to an unentitled account. The reminder wording is read too: `SendSubmitterInvitationReminderEmailJob` asks `SubmitterMailer.invitation_email(submitter, reminder: true)`, which reads the wording in one order, most specific first, subject and body each falling through it on their own: (1) this template's `invitation_reminder_email_subject/body`, (2) the account-level `submitter_invitation_reminder_email` row, (3) the invitation copy of this send — the ad-hoc message typed into the send dialog, then the per-signer copy, then this template's `request_email_*`, (4) the account-level `submitter_invitation_email` row, (5) the stock default. The account-wide reminder wording therefore beats a template's own SIGNATURE-REQUEST wording, and loses only to that template's own REMINDER wording. An account that is no longer paid gets the stock default whatever its rows say. The reply-to stored on a signer (`submitter.preferences['reply_to']`, set by the API and the send dialog) is part of the same row: `Submitters::ReplyTo.header` and `.disclosure` honour it only with the entitlement, and only when it is actually an address, so a free account's stored value steers neither the outgoing Reply-To header nor the address the ESIGN disclosure names. The value itself is kept (D43) and works again the day the account pays. Both places a customer WRITES that wording are on screen: Settings → Personalization → "Signature request reminder email" for the account-level copy, and the reminder row of a template's Preferences dialog for the per-template copy — each offered exactly like the signature-request email beside it (the form when the plan carries the row, the same upgrade banner when it does not) | Redirect + alert |
-| Per-account SMTP | `EmailSmtpSettingsController#create` (as a before-action, so the refusal is not swallowed by the controller's own error handling). Read-time: `MailConfigs.resolve` skips an unentitled account's pin | Redirect + alert; no SMTP row |
+| Per-account SMTP | `EmailSmtpSettingsController#create` (as a before-action, so the refusal is not swallowed by the controller's own error handling). Read-time: `MailConfigs.resolve` skips an unentitled account's pin; platform notices always bypass it | Redirect + alert; no SMTP row |
 | BCC / documents-copy address | `NotificationsSettingsController#create` for `bcc_emails`; `TemplatesPreferencesController#create` for a template's `bcc_completed`; `Submitters.normalize_preferences` for a per-submission `bcc_completed` (HTML send dialog, `/api/submissions`, signing sessions). Read-time: the completion job collects no BCC addresses for an unentitled account | Redirect + alert / 403 JSON |
 | Delivery tracking | `SubmissionEventsController#index` filters bounce, complaint, open and click timeline rows unless `Entitlements.allowed?(current_account, :delivery_tracking)`. The shared `SubmissionEvents::TRACKING_TYPES` also filters audit PDFs, both API event serializers, and export event counts. Provider ingestion records events on every plan for abuse protection. | 200 modal; free accounts see an upgrade line and no tracking rows |
 
@@ -368,11 +368,27 @@ regex, so the literal grep does not list it.
   administrator. Any write that still gets refused answers with one plain
   sentence — "You don't have permission to do that in this account." — in the
   reader's own language, instead of CanCan's untranslated default.
+- **Per-account SMTP routing**: the pin carries customer mail: signature
+  requests, completed notifications to the sender, document copies and signer
+  verification codes. Platform notices (billing, quota, account lifecycle and
+  exports, login invitations, Devise password recovery and support/operator
+  mail) always use the platform server and From address. The explicit exception
+  is `SettingsMailer.smtp_successful_setup`, which tests the saved pin and
+  returns its error to the settings page.
+  Account SMTP delivery failures still raise for retries. Active admins receive
+  one platform notice per rolling 24 hours; a database-backed `smtp_failure`
+  account config records the latest failure time, a safe reason and the notice
+  claim. No migration is needed. The settings page shows failures from the last
+  24 hours and clears them after a successful setup test or removal; clearing
+  keeps the throttle. Removed, replaced or no-longer-entitled pins, setup tests
+  and platform-server failures do not trigger notices.
 - **Downgraded SMTP settings**: a per-account SMTP pin saved during a paid
   period is not used on the free plan (`MailConfigs.resolve` skips it) but it
   is not hidden either — Settings → Email SMTP shows the CTA plus a read-only
   summary (host, port, username, from address; never the password) with a
   "Remove SMTP settings" button, so the owner can always see and drop it.
+  Customer mail falls back to platform SMTP; platform notices use it on every
+  plan. Removing the pin also clears its visible failure.
 - **Branding removal** now has a screen: Settings → Personalization →
   Branding shows the toggle to an entitled account and the CTA otherwise.
 - **The reminder email now has a screen too.** All four account-level email

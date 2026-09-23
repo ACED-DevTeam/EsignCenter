@@ -193,7 +193,7 @@ context.
 
 | Variable | What to put there |
 | --- | --- |
-| `SMTP_ADDRESS` | **Required in production.** The platform's default mail server, e.g. `smtp.postmarkapp.com`. Any account without its own pinned server sends through this; production refuses to boot when it is missing. |
+| `SMTP_ADDRESS` | **Required in production.** The platform's default mail server, e.g. `smtp.postmarkapp.com`. All platform notices and customer mail without an entitled account pin send through this; production refuses to boot when it is missing. |
 | `SMTP_PORT` | `587` |
 | `SMTP_USERNAME` / `SMTP_PASSWORD` | The credentials for that server (for Postmark, the EsignCenter server token in both). Production refuses to boot without this pair or `POSTMARK_API_TOKEN`. |
 | `SMTP_FROM` | **Required in production.** The platform's From address, e.g. `EsignCenter <noreply@esigncenter.com>`. The app refuses to start without it so platform mail cannot go out under a tenant's From address. |
