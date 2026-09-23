@@ -278,7 +278,8 @@ RSpec.describe 'Billing page', type: :request do # rubocop:disable RSpec/Multipl
       expect(free_card.text).to include(I18n.t('billing_free_limit_completions', count: 5))
       expect(free_card.text).to include(I18n.t('billing_free_limit_sends', count: 15))
       expect(free_card.text).to include(I18n.t('billing_free_limit_seats', count: 1))
-      expect(free_card.text).to include(I18n.t('billing_free_limit_storage', size: '1 GB'))
+      expect(free_card.text).to include('Agreement storage')
+      expect(free_card.text).not_to match(/\b\d+\s*GB\b/)
 
       paid_card = doc.at('[data-billing-card="paid"]')
       expect(paid_card.text).to include(I18n.t('billing_paid_plan_price'))

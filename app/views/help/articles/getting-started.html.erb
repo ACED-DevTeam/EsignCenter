@@ -17,8 +17,7 @@
   <%= Quotas::Limits::FREE_COMPLETIONS_PER_MONTH %> completed documents a
   month, <%= Quotas::Limits::FREE_SENDS_PER_MONTH %> sends a month,
   <%= Quotas::Limits::FREE_IN_FLIGHT %> documents out for signature at once,
-  <%= Quotas::Limits::FREE_SEATS %> user and
-  <%= number_to_human_size(Quotas::Limits::FREE_STORAGE_BYTES) %> of storage.
+  <%= Quotas::Limits::FREE_SEATS %> user and storage for your signed agreements.
   <%= link_to 'Free plan limits', help_article_path('free-plan-limits') %>
   explains exactly how each of those is counted.
 </p>
