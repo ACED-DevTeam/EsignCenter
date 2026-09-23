@@ -52,7 +52,6 @@ RSpec.describe 'An embedded template preview' do
     within_frame('template_preview') do
       expect(page).to have_css('submission-form[data-dry-run="true"]')
       find('#expand_form_button').click
-      expect(page).to have_css('#esign_consent[aria-disabled="true"]')
       expect(page).to have_css('#submit_form_button[disabled]')
       expect(page).to have_css("#esign_consent_view_pdf[href='#{preview_path}/document']")
       find_by_id(template.fields.sole.fetch('uuid')).set('Preview Only')
@@ -85,7 +84,6 @@ RSpec.describe 'An embedded template preview' do
     expect(api.response.body).to start_with('%PDF')
 
     within_frame('template_preview') do
-      expect(page).to have_no_css('#esign_consent[aria-disabled]')
       page.execute_script(<<~JS)
         window.previewWriteRequests = []
         const originalFetch = window.fetch

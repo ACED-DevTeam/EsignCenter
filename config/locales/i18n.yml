@@ -327,7 +327,6 @@ en: &en
   esign_consent_version_stale: "The signing disclosure was updated. Please reload the page and agree again."
   esign_consent_view_pdf: "View this document as a PDF"
   esign_consent_view_first_pdf: "View the first document as a PDF"
-  esign_consent_open_pdf_first: "Open the document as a PDF before you agree."
   esign_consent_pdf_opened: "The signer's browser reported opening the PDF"
   esign_consent_pdf_not_opened: "The signer did not open the PDF before agreeing"
   esign_consent_pdf_not_recorded: "Whether the signer opened the PDF was not recorded with this consent"
@@ -373,7 +372,7 @@ en: &en
     <p>By checking the box, you agree to use electronic records and electronic signatures for this document only, instead of paper and ink. You agree that your electronic signature has the same legal effect as your handwritten signature. If %{sender_name} sends you another document later, you will be asked to agree again.</p>
     <p><strong>Who sent this.</strong> This document was sent by %{sender_name}. You can reach them at %{sender_email}.</p>
     <p><strong>Your copy.</strong> A copy of the completed document will be available to you electronically, and %{sender_name} can also provide one on request.</p>
-    <p><strong>What you need.</strong> A current web browser, an internet connection and software that can open PDF files. Before you agree, open the document as a PDF using the link next to the checkbox to confirm your device can display it.</p>
+    <p><strong>What you need.</strong> A current web browser, an internet connection and software that can open PDF files. By checking the box, you confirm that you can open this document as a PDF and save or print it. To check, you can open it now using the link next to the checkbox.</p>
     <p><strong>Keeping a copy.</strong> To keep this document, download the PDF when you finish and save or print it. You will need free PDF software such as Adobe Acrobat Reader and free space on your device or email account.</p>
     <p><strong>Withdrawing consent.</strong> You may withdraw your consent at any time before you complete the document by not signing it and telling %{sender_name} at %{sender_email}. There is no charge for withdrawing. If you withdraw, this document cannot be signed electronically, and %{sender_name} will need to arrange a paper copy, which may delay or end the transaction. Withdrawing consent does not affect documents you have already signed.</p>
     <p><strong>Paper copies.</strong> You may request a paper copy of this document at any time from %{sender_name} at %{sender_email}. %{product_name} does not charge for copies. Ask %{sender_name} whether they charge for printing and posting one.</p>
@@ -2239,7 +2238,6 @@ es: &es
   esign_consent_version_stale: "La divulgación sobre firma electrónica se ha actualizado. Recargue la página y acepte de nuevo."
   esign_consent_view_pdf: "Ver este documento en PDF"
   esign_consent_view_first_pdf: "Ver el primer documento en PDF"
-  esign_consent_open_pdf_first: "Abra el documento en PDF antes de aceptar."
   esign_consent_pdf_opened: "El navegador del firmante indicó que se abrió el PDF"
   esign_consent_pdf_not_opened: "El firmante no abrió el PDF antes de aceptar"
   esign_consent_pdf_not_recorded: "No se registró con este consentimiento si el firmante abrió el PDF"
@@ -2285,7 +2283,7 @@ es: &es
     <p>Al marcar la casilla, acepta usar registros y firmas electrónicos únicamente para este documento, en lugar de papel y tinta. Acepta que su firma electrónica tiene el mismo efecto legal que su firma manuscrita. Si %{sender_name} le envía otro documento más adelante, se le pedirá que acepte de nuevo.</p>
     <p><strong>Quién lo envió.</strong> Este documento lo envió %{sender_name}. Puede ponerse en contacto en %{sender_email}.</p>
     <p><strong>Su copia.</strong> Una copia del documento completado estará disponible para usted por medios electrónicos, y %{sender_name} también puede facilitarle una si la solicita.</p>
-    <p><strong>Lo que necesita.</strong> Un navegador web actual, conexión a internet y un programa que pueda abrir archivos PDF. Antes de aceptar, abra el documento en PDF con el enlace que hay junto a la casilla para comprobar que su dispositivo puede mostrarlo.</p>
+    <p><strong>Lo que necesita.</strong> Un navegador web actual, conexión a internet y un programa que pueda abrir archivos PDF. Al marcar la casilla, confirma que puede abrir este documento en PDF y guardarlo o imprimirlo. Para comprobarlo, puede abrirlo ahora con el enlace que hay junto a la casilla.</p>
     <p><strong>Conservar una copia.</strong> Para conservar este documento, descargue el PDF cuando termine y guárdelo o imprímalo. Necesitará un programa gratuito de PDF, como Adobe Acrobat Reader, y espacio libre en su dispositivo o en su cuenta de correo.</p>
     <p><strong>Retirar el consentimiento.</strong> Puede retirar su consentimiento en cualquier momento antes de completar el documento: basta con no firmarlo y comunicárselo a %{sender_name} en %{sender_email}. Retirarlo no tiene ningún coste. Si lo retira, este documento no podrá firmarse electrónicamente y %{sender_name} tendrá que organizar una copia en papel, lo que puede retrasar o cancelar la operación. Retirar el consentimiento no afecta a los documentos que ya haya firmado.</p>
     <p><strong>Copias en papel.</strong> Puede solicitar una copia en papel de este documento en cualquier momento a %{sender_name} en %{sender_email}. %{product_name} no cobra por las copias. Pregunte a %{sender_name} si cobra por imprimirla y enviarla por correo postal.</p>
@@ -3640,7 +3638,6 @@ it: &it
   esign_consent_version_stale: "L'informativa sulla firma elettronica è stata aggiornata. Ricarica la pagina e accetta di nuovo."
   esign_consent_view_pdf: "Visualizza questo documento in PDF"
   esign_consent_view_first_pdf: "Visualizza il primo documento in PDF"
-  esign_consent_open_pdf_first: "Apri il documento in PDF prima di accettare."
   esign_consent_pdf_opened: "Il browser del firmatario ha segnalato di aver aperto il PDF"
   esign_consent_pdf_not_opened: "Il firmatario non ha aperto il PDF prima di accettare"
   esign_consent_pdf_not_recorded: "Con questo consenso non è stato registrato se il firmatario ha aperto il PDF"
@@ -3686,7 +3683,7 @@ it: &it
     <p>Selezionando la casella, accetti di utilizzare documenti e firme elettronici soltanto per questo documento, al posto di carta e penna. Accetti che la tua firma elettronica abbia lo stesso valore legale della tua firma autografa. Se in futuro %{sender_name} ti invierà un altro documento, ti verrà chiesto di accettare di nuovo.</p>
     <p><strong>Chi lo ha inviato.</strong> Questo documento è stato inviato da %{sender_name}. Puoi contattarlo all'indirizzo %{sender_email}.</p>
     <p><strong>La tua copia.</strong> Una copia del documento completato sarà disponibile per te in formato elettronico e %{sender_name} può fornirtene una su richiesta.</p>
-    <p><strong>Cosa ti serve.</strong> Un browser web aggiornato, una connessione a internet e un programma in grado di aprire i file PDF. Prima di accettare, apri il documento in PDF usando il link accanto alla casella per verificare che il tuo dispositivo riesca a visualizzarlo.</p>
+    <p><strong>Cosa ti serve.</strong> Un browser web aggiornato, una connessione a internet e un programma in grado di aprire i file PDF. Selezionando la casella, confermi di poter aprire questo documento in PDF e di poterlo salvare o stampare. Per verificarlo, puoi aprirlo subito usando il link accanto alla casella.</p>
     <p><strong>Conservare una copia.</strong> Per conservare questo documento, al termine scarica il PDF e salvalo o stampalo. Ti serviranno un programma PDF gratuito come Adobe Acrobat Reader e spazio libero sul tuo dispositivo o nella tua casella di posta.</p>
     <p><strong>Revoca del consenso.</strong> Puoi revocare il consenso in qualsiasi momento prima di completare il documento, semplicemente non firmandolo e comunicandolo a %{sender_name} all'indirizzo %{sender_email}. La revoca non comporta alcun costo. Se revochi il consenso, questo documento non potrà essere firmato elettronicamente e %{sender_name} dovrà predisporre una copia cartacea, il che può ritardare o interrompere l'operazione. La revoca non riguarda i documenti che hai già firmato.</p>
     <p><strong>Copie cartacee.</strong> Puoi richiedere una copia cartacea di questo documento in qualsiasi momento a %{sender_name} all'indirizzo %{sender_email}. %{product_name} non addebita alcun costo per le copie. Chiedi a %{sender_name} se addebita costi per la stampa e la spedizione.</p>
@@ -5041,7 +5038,6 @@ fr: &fr
   esign_consent_version_stale: "L'information sur la signature électronique a été mise à jour. Veuillez recharger la page et accepter à nouveau."
   esign_consent_view_pdf: "Voir ce document en PDF"
   esign_consent_view_first_pdf: "Voir le premier document en PDF"
-  esign_consent_open_pdf_first: "Ouvrez le document en PDF avant d'accepter."
   esign_consent_pdf_opened: "Le navigateur du signataire a indiqué avoir ouvert le PDF"
   esign_consent_pdf_not_opened: "Le signataire n'a pas ouvert le PDF avant d'accepter"
   esign_consent_pdf_not_recorded: "Le fait que le signataire ait ouvert le PDF n'a pas été enregistré avec ce consentement"
@@ -5087,7 +5083,7 @@ fr: &fr
     <p>En cochant la case, vous acceptez d'utiliser des documents et des signatures électroniques pour ce document uniquement, au lieu du papier et de l'encre. Vous acceptez que votre signature électronique ait la même valeur juridique que votre signature manuscrite. Si %{sender_name} vous envoie un autre document plus tard, il vous sera demandé d'accepter à nouveau.</p>
     <p><strong>Qui l'a envoyé.</strong> Ce document a été envoyé par %{sender_name}. Vous pouvez le joindre à l'adresse %{sender_email}.</p>
     <p><strong>Votre exemplaire.</strong> Une copie du document complété sera mise à votre disposition par voie électronique, et %{sender_name} peut également vous en fournir une sur demande.</p>
-    <p><strong>Ce dont vous avez besoin.</strong> Un navigateur web récent, une connexion internet et un logiciel capable d'ouvrir les fichiers PDF. Avant d'accepter, ouvrez le document en PDF à l'aide du lien situé à côté de la case afin de vérifier que votre appareil peut l'afficher.</p>
+    <p><strong>Ce dont vous avez besoin.</strong> Un navigateur web récent, une connexion internet et un logiciel capable d'ouvrir les fichiers PDF. En cochant la case, vous confirmez que vous pouvez ouvrir ce document en PDF et l'enregistrer ou l'imprimer. Pour le vérifier, vous pouvez l'ouvrir dès maintenant à l'aide du lien situé à côté de la case.</p>
     <p><strong>Conserver une copie.</strong> Pour conserver ce document, téléchargez le PDF une fois terminé, puis enregistrez-le ou imprimez-le. Vous aurez besoin d'un logiciel PDF gratuit tel qu'Adobe Acrobat Reader et d'espace libre sur votre appareil ou dans votre messagerie.</p>
     <p><strong>Retrait du consentement.</strong> Vous pouvez retirer votre consentement à tout moment avant de terminer le document, en ne le signant pas et en prévenant %{sender_name} à l'adresse %{sender_email}. Le retrait est gratuit. Si vous le retirez, ce document ne pourra pas être signé électroniquement et %{sender_name} devra organiser l'envoi d'une copie papier, ce qui peut retarder ou interrompre l'opération. Le retrait du consentement n'affecte pas les documents que vous avez déjà signés.</p>
     <p><strong>Copies papier.</strong> Vous pouvez demander une copie papier de ce document à tout moment à %{sender_name} à l'adresse %{sender_email}. %{product_name} ne facture pas les copies. Demandez à %{sender_name} s'il facture l'impression et l'envoi postal.</p>
@@ -6442,7 +6438,6 @@ pt: &pt
   esign_consent_version_stale: "A divulgação sobre assinatura eletrónica foi atualizada. Recarregue a página e aceite novamente."
   esign_consent_view_pdf: "Ver este documento em PDF"
   esign_consent_view_first_pdf: "Ver o primeiro documento em PDF"
-  esign_consent_open_pdf_first: "Abra o documento em PDF antes de concordar."
   esign_consent_pdf_opened: "O navegador do signatário indicou que abriu o PDF"
   esign_consent_pdf_not_opened: "O signatário não abriu o PDF antes de concordar"
   esign_consent_pdf_not_recorded: "Não foi registado com este consentimento se o signatário abriu o PDF"
@@ -6488,7 +6483,7 @@ pt: &pt
     <p>Ao marcar a caixa, concorda em utilizar registos e assinaturas eletrónicos apenas para este documento, em vez de papel e caneta. Concorda que a sua assinatura eletrónica tem o mesmo efeito legal que a sua assinatura manuscrita. Se %{sender_name} lhe enviar outro documento mais tarde, ser-lhe-á pedido que concorde novamente.</p>
     <p><strong>Quem o enviou.</strong> Este documento foi enviado por %{sender_name}. Pode contactá-lo através de %{sender_email}.</p>
     <p><strong>A sua cópia.</strong> Uma cópia do documento concluído ficará disponível para si por via eletrónica, e %{sender_name} também lhe pode fornecer uma a pedido.</p>
-    <p><strong>O que precisa.</strong> Um navegador web atual, uma ligação à internet e software que consiga abrir ficheiros PDF. Antes de concordar, abra o documento em PDF através da ligação junto à caixa para confirmar que o seu dispositivo o consegue mostrar.</p>
+    <p><strong>O que precisa.</strong> Um navegador web atual, uma ligação à internet e software que consiga abrir ficheiros PDF. Ao marcar a caixa, confirma que consegue abrir este documento em PDF e guardá-lo ou imprimi-lo. Para verificar, pode abri-lo agora através da ligação junto à caixa.</p>
     <p><strong>Guardar uma cópia.</strong> Para guardar este documento, transfira o PDF quando terminar e guarde-o ou imprima-o. Vai precisar de software de PDF gratuito, como o Adobe Acrobat Reader, e de espaço livre no seu dispositivo ou na sua conta de e-mail.</p>
     <p><strong>Retirar o consentimento.</strong> Pode retirar o seu consentimento a qualquer momento antes de concluir o documento, bastando não o assinar e informar %{sender_name} através de %{sender_email}. Retirar o consentimento não tem qualquer custo. Se o retirar, este documento não poderá ser assinado eletronicamente e %{sender_name} terá de providenciar uma cópia em papel, o que pode atrasar ou encerrar o negócio. Retirar o consentimento não afeta os documentos que já assinou.</p>
     <p><strong>Cópias em papel.</strong> Pode pedir uma cópia em papel deste documento a qualquer momento a %{sender_name} através de %{sender_email}. A %{product_name} não cobra pelas cópias. Pergunte a %{sender_name} se cobra pela impressão e pelo envio postal.</p>
@@ -7843,7 +7838,6 @@ de: &de
   esign_consent_version_stale: "Der Hinweis zur elektronischen Signatur wurde aktualisiert. Bitte laden Sie die Seite neu und stimmen Sie erneut zu."
   esign_consent_view_pdf: "Dieses Dokument als PDF ansehen"
   esign_consent_view_first_pdf: "Das erste Dokument als PDF ansehen"
-  esign_consent_open_pdf_first: "Öffnen Sie das Dokument als PDF, bevor Sie zustimmen."
   esign_consent_pdf_opened: "Der Browser des Unterzeichners meldete, dass das PDF geöffnet wurde"
   esign_consent_pdf_not_opened: "Der Unterzeichner hat das PDF vor der Zustimmung nicht geöffnet"
   esign_consent_pdf_not_recorded: "Ob der Unterzeichner das PDF geöffnet hat, wurde mit dieser Zustimmung nicht aufgezeichnet"
@@ -7889,7 +7883,7 @@ de: &de
     <p>Mit dem Setzen des Häkchens stimmen Sie zu, nur für dieses Dokument elektronische Dokumente und elektronische Signaturen anstelle von Papier und Tinte zu verwenden. Sie stimmen zu, dass Ihre elektronische Signatur dieselbe Rechtswirkung hat wie Ihre handschriftliche Unterschrift. Wenn %{sender_name} Ihnen später ein weiteres Dokument sendet, werden Sie erneut um Ihre Zustimmung gebeten.</p>
     <p><strong>Wer es gesendet hat.</strong> Dieses Dokument wurde von %{sender_name} gesendet. Sie erreichen den Absender unter %{sender_email}.</p>
     <p><strong>Ihre Kopie.</strong> Eine Kopie des abgeschlossenen Dokuments steht Ihnen elektronisch zur Verfügung, und %{sender_name} kann Ihnen auf Anfrage ebenfalls eine bereitstellen.</p>
-    <p><strong>Was Sie benötigen.</strong> Einen aktuellen Webbrowser, eine Internetverbindung und eine Software, die PDF-Dateien öffnen kann. Öffnen Sie das Dokument vor Ihrer Zustimmung über den Link neben dem Kontrollkästchen als PDF, um sicherzugehen, dass Ihr Gerät es anzeigen kann.</p>
+    <p><strong>Was Sie benötigen.</strong> Einen aktuellen Webbrowser, eine Internetverbindung und eine Software, die PDF-Dateien öffnen kann. Mit dem Setzen des Häkchens bestätigen Sie, dass Sie dieses Dokument als PDF öffnen und speichern oder drucken können. Zur Überprüfung können Sie es jetzt über den Link neben dem Kontrollkästchen öffnen.</p>
     <p><strong>Eine Kopie behalten.</strong> Um dieses Dokument zu behalten, laden Sie das PDF am Ende herunter und speichern oder drucken Sie es. Dafür benötigen Sie eine kostenlose PDF-Software wie Adobe Acrobat Reader und freien Speicherplatz auf Ihrem Gerät oder in Ihrem E-Mail-Postfach.</p>
     <p><strong>Widerruf der Zustimmung.</strong> Sie können Ihre Zustimmung jederzeit widerrufen, solange Sie das Dokument noch nicht abgeschlossen haben: Unterschreiben Sie es einfach nicht und teilen Sie es %{sender_name} unter %{sender_email} mit. Der Widerruf ist kostenlos. Nach einem Widerruf kann dieses Dokument nicht elektronisch unterschrieben werden, und %{sender_name} muss eine Papierfassung bereitstellen, was den Vorgang verzögern oder beenden kann. Der Widerruf betrifft nicht die Dokumente, die Sie bereits unterschrieben haben.</p>
     <p><strong>Papierkopien.</strong> Sie können jederzeit bei %{sender_name} unter %{sender_email} eine Papierkopie dieses Dokuments anfordern. %{product_name} berechnet für Kopien nichts. Fragen Sie %{sender_name}, ob für Druck und Versand Kosten anfallen.</p>
@@ -9253,7 +9247,6 @@ pl:
   esign_consent_version_stale: "Informacja o podpisie elektronicznym została zaktualizowana. Odśwież stronę i wyraź zgodę ponownie."
   esign_consent_view_pdf: "Zobacz ten dokument w formacie PDF"
   esign_consent_view_first_pdf: "Zobacz pierwszy dokument w formacie PDF"
-  esign_consent_open_pdf_first: "Otwórz dokument w formacie PDF, zanim wyrazisz zgodę."
   esign_consent_pdf_opened: "Przeglądarka podpisującego zgłosiła otwarcie pliku PDF"
   esign_consent_pdf_not_opened: "Podpisujący nie otworzył pliku PDF przed wyrażeniem zgody"
   esign_consent_pdf_not_recorded: "Wraz z tą zgodą nie zapisano, czy podpisujący otworzył plik PDF"
@@ -9304,7 +9297,7 @@ pl:
     <p>Zaznaczając pole, wyrażasz zgodę na korzystanie z dokumentów i podpisów elektronicznych wyłącznie w przypadku tego dokumentu, zamiast papieru i długopisu. Zgadzasz się, że Twój podpis elektroniczny ma taki sam skutek prawny jak podpis odręczny. Jeśli %{sender_name} prześle Ci później kolejny dokument, poprosimy Cię o zgodę ponownie.</p>
     <p><strong>Kto go wysłał.</strong> Ten dokument wysłał(a) %{sender_name}. Możesz skontaktować się pod adresem %{sender_email}.</p>
     <p><strong>Twoja kopia.</strong> Kopia ukończonego dokumentu będzie dostępna dla Ciebie w postaci elektronicznej, a %{sender_name} może również przekazać ją na życzenie.</p>
-    <p><strong>Czego potrzebujesz.</strong> Aktualnej przeglądarki internetowej, połączenia z internetem i programu, który otwiera pliki PDF. Zanim wyrazisz zgodę, otwórz dokument w formacie PDF za pomocą linku obok pola wyboru, aby sprawdzić, czy Twoje urządzenie potrafi go wyświetlić.</p>
+    <p><strong>Czego potrzebujesz.</strong> Aktualnej przeglądarki internetowej, połączenia z internetem i programu, który otwiera pliki PDF. Zaznaczając pole wyboru, potwierdzasz, że możesz otworzyć ten dokument w formacie PDF oraz go zapisać lub wydrukować. Aby to sprawdzić, możesz go teraz otworzyć za pomocą linku obok pola wyboru.</p>
     <p><strong>Zachowanie kopii.</strong> Aby zachować ten dokument, po zakończeniu pobierz plik PDF i zapisz go lub wydrukuj. Potrzebne będą bezpłatny program do plików PDF, na przykład Adobe Acrobat Reader, oraz wolne miejsce na urządzeniu lub w skrzynce e-mail.</p>
     <p><strong>Wycofanie zgody.</strong> Możesz wycofać zgodę w dowolnym momencie, zanim ukończysz dokument — wystarczy go nie podpisywać i powiadomić %{sender_name} pod adresem %{sender_email}. Wycofanie zgody jest bezpłatne. Po wycofaniu zgody tego dokumentu nie można podpisać elektronicznie, a %{sender_name} będzie musiał(a) przygotować wersję papierową, co może opóźnić lub zakończyć transakcję. Wycofanie zgody nie ma wpływu na dokumenty, które już podpisano.</p>
     <p><strong>Kopie papierowe.</strong> W dowolnym momencie możesz poprosić o papierową kopię tego dokumentu — zwróć się do %{sender_name} pod adresem %{sender_email}. %{product_name} nie pobiera opłat za kopie. Zapytaj %{sender_name}, czy pobiera opłatę za wydruk i wysyłkę.</p>
@@ -9731,7 +9724,6 @@ uk:
   esign_consent_version_stale: "Повідомлення про електронний підпис було оновлено. Перезавантажте сторінку та погодьтеся ще раз."
   esign_consent_view_pdf: "Переглянути цей документ у форматі PDF"
   esign_consent_view_first_pdf: "Переглянути перший документ у форматі PDF"
-  esign_consent_open_pdf_first: "Відкрийте документ у форматі PDF, перш ніж погодитися."
   esign_consent_pdf_opened: "Браузер підписанта повідомив про відкриття PDF"
   esign_consent_pdf_not_opened: "Підписант не відкривав PDF перед наданням згоди"
   esign_consent_pdf_not_recorded: "Разом із цією згодою не було записано, чи відкривав підписант PDF"
@@ -9782,7 +9774,7 @@ uk:
     <p>Позначивши це поле, ви погоджуєтеся використовувати електронні документи та електронні підписи лише для цього документа замість паперу й ручки. Ви погоджуєтеся, що ваш електронний підпис має таку саму юридичну силу, як і власноручний. Якщо %{sender_name} надішле вам інший документ пізніше, вас попросять погодитися знову.</p>
     <p><strong>Хто його надіслав.</strong> Цей документ надіслав(ла) %{sender_name}. Зв’язатися можна за адресою %{sender_email}.</p>
     <p><strong>Ваша копія.</strong> Копія завершеного документа буде доступна вам в електронному вигляді, а %{sender_name} також може надати її на запит.</p>
-    <p><strong>Що вам потрібно.</strong> Сучасний веббраузер, підключення до інтернету та програма, яка відкриває файли PDF. Перш ніж погодитися, відкрийте документ у форматі PDF за посиланням поруч із полем, щоб переконатися, що ваш пристрій може його показати.</p>
+    <p><strong>Що вам потрібно.</strong> Сучасний веббраузер, підключення до інтернету та програма, яка відкриває файли PDF. Позначивши поле, ви підтверджуєте, що можете відкрити цей документ у форматі PDF і зберегти або надрукувати його. Щоб перевірити це, можете відкрити його зараз за посиланням поруч із полем.</p>
     <p><strong>Як зберегти копію.</strong> Щоб зберегти цей документ, після завершення завантажте PDF і збережіть або роздрукуйте його. Вам знадобиться безкоштовна програма для PDF, наприклад Adobe Acrobat Reader, і вільне місце на пристрої чи в поштовій скриньці.</p>
     <p><strong>Відкликання згоди.</strong> Ви можете відкликати згоду будь-коли, доки не завершили документ: просто не підписуйте його та повідомте %{sender_name} за адресою %{sender_email}. Відкликання безкоштовне. Після відкликання цей документ не можна підписати електронно, і %{sender_name} доведеться підготувати паперовий примірник, що може затримати або припинити операцію. Відкликання згоди не стосується документів, які ви вже підписали.</p>
     <p><strong>Паперові копії.</strong> Ви можете будь-коли попросити паперову копію цього документа в %{sender_name} за адресою %{sender_email}. %{product_name} не бере плати за копії. Запитайте %{sender_name}, чи стягується плата за друк і поштове пересилання.</p>
@@ -10209,7 +10201,6 @@ cs:
   esign_consent_version_stale: "Informace o elektronickém podpisu byly aktualizovány. Obnovte prosím stránku a znovu udělte souhlas."
   esign_consent_view_pdf: "Zobrazit tento dokument v PDF"
   esign_consent_view_first_pdf: "Zobrazit první dokument v PDF"
-  esign_consent_open_pdf_first: "Než udělíte souhlas, otevřete dokument v PDF."
   esign_consent_pdf_opened: "Prohlížeč podepisujícího oznámil otevření PDF"
   esign_consent_pdf_not_opened: "Podepisující PDF před udělením souhlasu neotevřel"
   esign_consent_pdf_not_recorded: "S tímto souhlasem nebylo zaznamenáno, zda podepisující PDF otevřel"
@@ -10260,7 +10251,7 @@ cs:
     <p>Zaškrtnutím políčka souhlasíte s tím, že pouze pro tento dokument použijete elektronické dokumenty a elektronické podpisy namísto papíru a pera. Souhlasíte s tím, že váš elektronický podpis má stejné právní účinky jako podpis vlastní rukou. Pokud vám %{sender_name} později pošle další dokument, budete o souhlas požádáni znovu.</p>
     <p><strong>Kdo dokument poslal.</strong> Tento dokument poslal(a) %{sender_name}. Zastihnete jej na adrese %{sender_email}.</p>
     <p><strong>Vaše kopie.</strong> Kopie dokončeného dokumentu vám bude k dispozici elektronicky a %{sender_name} vám ji na požádání může poskytnout také.</p>
-    <p><strong>Co potřebujete.</strong> Aktuální webový prohlížeč, připojení k internetu a program, který otevře soubory PDF. Než souhlas udělíte, otevřete dokument v PDF pomocí odkazu vedle políčka a ověřte si, že jej vaše zařízení zobrazí.</p>
+    <p><strong>Co potřebujete.</strong> Aktuální webový prohlížeč, připojení k internetu a program, který otevře soubory PDF. Zaškrtnutím políčka potvrzujete, že tento dokument dokážete otevřít v PDF a uložit nebo vytisknout. Pro ověření jej můžete hned otevřít pomocí odkazu vedle políčka.</p>
     <p><strong>Uchování kopie.</strong> Chcete-li si tento dokument ponechat, po dokončení si stáhněte PDF a uložte je nebo vytiskněte. Budete potřebovat bezplatný program pro PDF, například Adobe Acrobat Reader, a volné místo ve svém zařízení nebo e-mailové schránce.</p>
     <p><strong>Odvolání souhlasu.</strong> Souhlas můžete kdykoli odvolat, dokud dokument nedokončíte: prostě jej nepodepisujte a dejte vědět %{sender_name} na adrese %{sender_email}. Odvolání je zdarma. Po odvolání nelze tento dokument podepsat elektronicky a %{sender_name} bude muset zajistit papírovou verzi, což může celou věc zdržet nebo ukončit. Odvolání souhlasu se netýká dokumentů, které jste již podepsali.</p>
     <p><strong>Papírové kopie.</strong> O papírovou kopii tohoto dokumentu můžete kdykoli požádat %{sender_name} na adrese %{sender_email}. %{product_name} si za kopie nic neúčtuje. Zeptejte se %{sender_name}, zda si účtuje tisk a poštovné.</p>
@@ -10686,7 +10677,6 @@ he:
   esign_consent_version_stale: "הגילוי בנוגע לחתימה האלקטרונית עודכן. יש לטעון מחדש את הדף ולאשר שוב."
   esign_consent_view_pdf: "הצגת מסמך זה כקובץ PDF"
   esign_consent_view_first_pdf: "הצגת המסמך הראשון כקובץ PDF"
-  esign_consent_open_pdf_first: "יש לפתוח את המסמך כקובץ PDF לפני מתן ההסכמה."
   esign_consent_pdf_opened: "הדפדפן של החותם דיווח על פתיחת קובץ ה-PDF"
   esign_consent_pdf_not_opened: "החותם לא פתח את קובץ ה-PDF לפני מתן ההסכמה"
   esign_consent_pdf_not_recorded: "לא נרשם עם הסכמה זו אם החותם פתח את קובץ ה-PDF"
@@ -10736,7 +10726,7 @@ he:
     <p>בסימון התיבה, את/ה מסכים/ה להשתמש ברשומות אלקטרוניות ובחתימות אלקטרוניות עבור מסמך זה בלבד, במקום נייר ועט. את/ה מסכים/ה שלחתימה האלקטרונית שלך יש אותו תוקף משפטי כמו לחתימה בכתב ידך. אם %{sender_name} ישלח לך מסמך נוסף בהמשך, תתבקש/י לאשר שוב.</p>
     <p><strong>מי שלח את המסמך.</strong> מסמך זה נשלח על ידי %{sender_name}. ניתן ליצור קשר בכתובת %{sender_email}.</p>
     <p><strong>העותק שלך.</strong> עותק של המסמך שהושלם יהיה זמין לך באופן אלקטרוני, וגם %{sender_name} יכול לספק לך עותק לפי בקשה.</p>
-    <p><strong>מה נדרש.</strong> דפדפן עדכני, חיבור לאינטרנט ותוכנה שיכולה לפתוח קובצי PDF. לפני מתן ההסכמה, יש לפתוח את המסמך כקובץ PDF באמצעות הקישור שליד התיבה, כדי לוודא שהמכשיר שלך מציג אותו.</p>
+    <p><strong>מה נדרש.</strong> דפדפן עדכני, חיבור לאינטרנט ותוכנה שיכולה לפתוח קובצי PDF. סימון התיבה מהווה אישור שביכולתך לפתוח מסמך זה כקובץ PDF ולשמור או להדפיס אותו. לבדיקה, אפשר לפתוח אותו כעת באמצעות הקישור שליד התיבה.</p>
     <p><strong>שמירת עותק.</strong> כדי לשמור מסמך זה, יש להוריד את קובץ ה-PDF בסיום ולשמור או להדפיס אותו. נדרשת תוכנת PDF חינמית כגון Adobe Acrobat Reader ומקום פנוי במכשיר או בתיבת הדוא״ל שלך.</p>
     <p><strong>ביטול ההסכמה.</strong> ניתן לבטל את ההסכמה בכל עת לפני השלמת המסמך, על ידי אי-חתימה עליו ויידוע %{sender_name} בכתובת %{sender_email}. הביטול אינו כרוך בתשלום. לאחר הביטול לא ניתן לחתום על מסמך זה באופן אלקטרוני, ו-%{sender_name} יידרש להסדיר עותק מודפס, דבר שעלול לעכב את העסקה או להפסיק אותה. ביטול ההסכמה אינו משפיע על מסמכים שכבר נחתמו.</p>
     <p><strong>עותקים מודפסים.</strong> ניתן לבקש עותק מודפס של מסמך זה בכל עת מ-%{sender_name} בכתובת %{sender_email}. %{product_name} אינה גובה תשלום עבור עותקים. יש לברר עם %{sender_name} אם הוא גובה תשלום עבור הדפסה ומשלוח.</p>
@@ -11154,7 +11144,6 @@ nl: &nl
   esign_consent_version_stale: "De verklaring over elektronisch ondertekenen is bijgewerkt. Laad de pagina opnieuw en ga nogmaals akkoord."
   esign_consent_view_pdf: "Dit document als pdf bekijken"
   esign_consent_view_first_pdf: "Het eerste document als pdf bekijken"
-  esign_consent_open_pdf_first: "Open het document als pdf voordat u akkoord gaat."
   esign_consent_pdf_opened: "De browser van de ondertekenaar meldde dat de pdf is geopend"
   esign_consent_pdf_not_opened: "De ondertekenaar heeft de pdf niet geopend voordat hij akkoord ging"
   esign_consent_pdf_not_recorded: "Of de ondertekenaar de pdf heeft geopend, is niet met dit akkoord vastgelegd"
@@ -11200,7 +11189,7 @@ nl: &nl
     <p>Door het vakje aan te vinken gaat u ermee akkoord om uitsluitend voor dit document elektronische documenten en elektronische handtekeningen te gebruiken in plaats van papier en pen. U gaat ermee akkoord dat uw elektronische handtekening dezelfde rechtsgevolgen heeft als uw handgeschreven handtekening. Stuurt %{sender_name} u later een ander document, dan wordt u opnieuw om akkoord gevraagd.</p>
     <p><strong>Wie dit heeft verstuurd.</strong> Dit document is verstuurd door %{sender_name}. U kunt hen bereiken op %{sender_email}.</p>
     <p><strong>Uw exemplaar.</strong> Een kopie van het voltooide document is elektronisch voor u beschikbaar, en %{sender_name} kan er op verzoek ook een verstrekken.</p>
-    <p><strong>Wat u nodig hebt.</strong> Een actuele webbrowser, een internetverbinding en software die pdf-bestanden kan openen. Open het document vóór uw akkoord als pdf via de link naast het vakje om te controleren of uw apparaat het kan weergeven.</p>
+    <p><strong>Wat u nodig hebt.</strong> Een actuele webbrowser, een internetverbinding en software die pdf-bestanden kan openen. Door het vakje aan te vinken bevestigt u dat u dit document als pdf kunt openen en kunt opslaan of afdrukken. Ter controle kunt u het nu openen via de link naast het vakje.</p>
     <p><strong>Een kopie bewaren.</strong> Wilt u dit document bewaren, download dan de pdf als u klaar bent en sla die op of druk die af. U hebt gratis pdf-software zoals Adobe Acrobat Reader nodig en vrije ruimte op uw apparaat of in uw e-mailaccount.</p>
     <p><strong>Akkoord intrekken.</strong> U kunt uw akkoord op elk moment intrekken zolang u het document niet hebt voltooid: onderteken het niet en laat het %{sender_name} weten via %{sender_email}. Intrekken is gratis. Na intrekking kan dit document niet elektronisch worden ondertekend en moet %{sender_name} een papieren exemplaar regelen, wat de transactie kan vertragen of beëindigen. Het intrekken van uw akkoord heeft geen gevolgen voor documenten die u al hebt ondertekend.</p>
     <p><strong>Papieren kopieën.</strong> U kunt op elk moment een papieren kopie van dit document aanvragen bij %{sender_name} via %{sender_email}. %{product_name} brengt geen kosten in rekening voor kopieën. Vraag %{sender_name} of er kosten zijn voor afdrukken en verzenden.</p>
@@ -12568,7 +12557,6 @@ ar:
   esign_consent_version_stale: "تم تحديث الإفصاح الخاص بالتوقيع الإلكتروني. يرجى إعادة تحميل الصفحة والموافقة مرة أخرى."
   esign_consent_view_pdf: "عرض هذا المستند بصيغة PDF"
   esign_consent_view_first_pdf: "عرض المستند الأول بصيغة PDF"
-  esign_consent_open_pdf_first: "افتح المستند بصيغة PDF قبل الموافقة."
   esign_consent_pdf_opened: "أفاد متصفح الموقّع بأنه فتح ملف PDF"
   esign_consent_pdf_not_opened: "لم يفتح الموقّع ملف PDF قبل الموافقة"
   esign_consent_pdf_not_recorded: "لم يُسجَّل مع هذه الموافقة ما إذا كان الموقّع قد فتح ملف PDF"
@@ -12622,7 +12610,7 @@ ar:
     <p>بتحديد المربع، فإنك توافق على استخدام السجلات الإلكترونية والتوقيعات الإلكترونية لهذا المستند فقط بدلاً من الورق والحبر. وتوافق على أن لتوقيعك الإلكتروني الأثر القانوني نفسه لتوقيعك بخط اليد. وإذا أرسل إليك %{sender_name} مستندًا آخر لاحقًا، فسيُطلب منك الموافقة من جديد.</p>
     <p><strong>من أرسل هذا المستند.</strong> أرسل هذا المستند %{sender_name}. يمكنك التواصل معه على %{sender_email}.</p>
     <p><strong>نسختك.</strong> ستتوفر لك نسخة من المستند المكتمل إلكترونيًا، ويمكن لـ %{sender_name} أيضًا تزويدك بنسخة عند الطلب.</p>
-    <p><strong>ما تحتاج إليه.</strong> متصفح ويب حديث واتصال بالإنترنت وبرنامج قادر على فتح ملفات PDF. قبل الموافقة، افتح المستند بصيغة PDF عبر الرابط المجاور للمربع للتأكد من أن جهازك يستطيع عرضه.</p>
+    <p><strong>ما تحتاج إليه.</strong> متصفح ويب حديث واتصال بالإنترنت وبرنامج قادر على فتح ملفات PDF. بتحديد المربع، تؤكد أنك تستطيع فتح هذا المستند بصيغة PDF وحفظه أو طباعته. وللتحقق من ذلك، يمكنك فتحه الآن عبر الرابط المجاور للمربع.</p>
     <p><strong>الاحتفاظ بنسخة.</strong> للاحتفاظ بهذا المستند، نزّل ملف PDF عند الانتهاء ثم احفظه أو اطبعه. ستحتاج إلى برنامج PDF مجاني مثل Adobe Acrobat Reader وإلى مساحة خالية على جهازك أو في بريدك الإلكتروني.</p>
     <p><strong>سحب الموافقة.</strong> يمكنك سحب موافقتك في أي وقت قبل إكمال المستند، وذلك بعدم توقيعه وإبلاغ %{sender_name} على %{sender_email}. ولا توجد رسوم على السحب. وإذا سحبت موافقتك، فلن يمكن توقيع هذا المستند إلكترونيًا، وسيتعين على %{sender_name} ترتيب نسخة ورقية، وقد يؤدي ذلك إلى تأخير المعاملة أو إنهائها. ولا يؤثر سحب الموافقة على المستندات التي وقّعتها بالفعل.</p>
     <p><strong>النسخ الورقية.</strong> يمكنك طلب نسخة ورقية من هذا المستند في أي وقت من %{sender_name} على %{sender_email}. ولا تفرض %{product_name} رسومًا على النسخ. اسأل %{sender_name} عمّا إذا كان يفرض رسومًا على الطباعة والإرسال بالبريد.</p>
@@ -13047,7 +13035,6 @@ ko:
   esign_consent_version_stale: "전자 서명 고지 내용이 업데이트되었습니다. 페이지를 새로고침한 후 다시 동의해 주세요."
   esign_consent_view_pdf: "이 문서를 PDF로 보기"
   esign_consent_view_first_pdf: "첫 번째 문서를 PDF로 보기"
-  esign_consent_open_pdf_first: "동의하기 전에 문서를 PDF로 열어 보세요."
   esign_consent_pdf_opened: "서명자의 브라우저가 PDF를 열었다고 보고했습니다"
   esign_consent_pdf_not_opened: "서명자가 동의하기 전에 PDF를 열지 않았습니다"
   esign_consent_pdf_not_recorded: "이 동의에는 서명자가 PDF를 열었는지 여부가 기록되지 않았습니다"
@@ -13096,7 +13083,7 @@ ko:
     <p>확인란을 선택하면 이 문서에 한하여 종이와 펜 대신 전자 기록과 전자 서명을 사용하는 데 동의하게 됩니다. 귀하의 전자 서명은 자필 서명과 동일한 법적 효력을 가집니다. %{sender_name}이(가) 나중에 다른 문서를 보내면 그때 다시 동의를 요청합니다.</p>
     <p><strong>보낸 사람.</strong> 이 문서는 %{sender_name}이(가) 보냈습니다. %{sender_email}(으)로 연락할 수 있습니다.</p>
     <p><strong>사본 제공.</strong> 완료된 문서의 사본은 전자적으로 제공되며, 요청하시면 %{sender_name}이(가) 사본을 드릴 수도 있습니다.</p>
-    <p><strong>필요한 것.</strong> 최신 웹 브라우저, 인터넷 연결, PDF 파일을 열 수 있는 소프트웨어가 필요합니다. 동의하기 전에 확인란 옆의 링크로 문서를 PDF로 열어 기기에서 표시되는지 확인하세요.</p>
+    <p><strong>필요한 것.</strong> 최신 웹 브라우저, 인터넷 연결, PDF 파일을 열 수 있는 소프트웨어가 필요합니다. 확인란을 선택하면 이 문서를 PDF로 열고 저장하거나 인쇄할 수 있음을 확인하는 것입니다. 확인해 보려면 지금 확인란 옆의 링크로 문서를 열 수 있습니다.</p>
     <p><strong>사본 보관.</strong> 이 문서를 보관하려면 완료 후 PDF를 내려받아 저장하거나 인쇄하세요. Adobe Acrobat Reader와 같은 무료 PDF 소프트웨어와 기기 또는 이메일 계정의 여유 공간이 필요합니다.</p>
     <p><strong>동의 철회.</strong> 문서를 완료하기 전에는 언제든지 서명하지 않고 %{sender_email}(으)로 %{sender_name}에게 알려 동의를 철회할 수 있습니다. 철회에는 비용이 들지 않습니다. 철회하면 이 문서는 전자적으로 서명할 수 없으며, %{sender_name}이(가) 종이 문서를 준비해야 하므로 거래가 지연되거나 종료될 수 있습니다. 동의 철회는 이미 서명한 문서에는 영향을 주지 않습니다.</p>
     <p><strong>종이 사본.</strong> 언제든지 %{sender_email}(으)로 %{sender_name}에게 이 문서의 종이 사본을 요청할 수 있습니다. %{product_name}은(는) 사본에 대해 요금을 청구하지 않습니다. 인쇄와 우편 발송에 요금이 있는지는 %{sender_name}에게 문의하세요.</p>
@@ -13521,7 +13508,6 @@ ja:
   esign_consent_version_stale: "電子署名に関する開示内容が更新されました。ページを再読み込みして、もう一度同意してください。"
   esign_consent_view_pdf: "この文書を PDF で表示"
   esign_consent_view_first_pdf: "最初の文書を PDF で表示"
-  esign_consent_open_pdf_first: "同意する前に、文書を PDF で開いてください。"
   esign_consent_pdf_opened: "署名者のブラウザが PDF を開いたと報告しました"
   esign_consent_pdf_not_opened: "署名者は同意する前に PDF を開きませんでした"
   esign_consent_pdf_not_recorded: "この同意には、署名者が PDF を開いたかどうかは記録されていません"
@@ -13570,7 +13556,7 @@ ja:
     <p>チェックボックスをオンにすると、この文書に限り、紙とインクの代わりに電子記録および電子署名を使用することに同意したことになります。お客様の電子署名は、手書きの署名と同じ法的効力を持ちます。%{sender_name} が後日別の文書を送付する場合は、あらためて同意を求めます。</p>
     <p><strong>送信者。</strong> この文書は %{sender_name} が送信しました。連絡先は %{sender_email} です。</p>
     <p><strong>お客様の控え。</strong> 完成した文書の写しは電子的にご利用いただけるほか、ご要望に応じて %{sender_name} から提供を受けることもできます。</p>
-    <p><strong>必要なもの。</strong> 最新のウェブブラウザ、インターネット接続、PDF ファイルを開けるソフトウェアです。同意される前に、チェックボックスの横のリンクから文書を PDF で開き、お使いの端末で表示できることをご確認ください。</p>
+    <p><strong>必要なもの。</strong> 最新のウェブブラウザ、インターネット接続、PDF ファイルを開けるソフトウェアです。チェックボックスをオンにすることで、この文書を PDF で開き、保存または印刷できることを確認したものとみなされます。確認のため、チェックボックスの横のリンクから今すぐ開くこともできます。</p>
     <p><strong>控えの保存。</strong> この文書を保存するには、完了後に PDF をダウンロードし、保存または印刷してください。Adobe Acrobat Reader などの無料の PDF ソフトウェアと、端末またはメールアカウントの空き容量が必要です。</p>
     <p><strong>同意の撤回。</strong> 文書を完了する前であれば、署名せずに %{sender_email} 宛てに %{sender_name} へ連絡することで、いつでも同意を撤回できます。撤回に費用はかかりません。撤回された場合、この文書は電子的に署名できず、%{sender_name} が紙の文書を用意する必要があるため、お手続きが遅れたり中止になったりすることがあります。同意の撤回は、すでに署名した文書には影響しません。</p>
     <p><strong>紙のコピー。</strong> %{sender_email} 宛てに %{sender_name} へ連絡すれば、いつでもこの文書の紙のコピーを請求できます。%{product_name} はコピーの費用を請求しません。印刷や郵送に費用がかかるかどうかは %{sender_name} にお問い合わせください。</p>

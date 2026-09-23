@@ -1,0 +1,231 @@
+# The v2 ESIGN disclosure (effective 5 September 2026), superseded by v3 on
+# 23 September 2026. Kept so a consent event recorded under v2 can still be
+# read back word for word (docs/esign-consent.md §6). Never edit these strings:
+# EsignConsent.disclosure_sha256 fingerprints them, and every v2 consent event
+# on record carries that fingerprint. See v1.yml for the layout of a snapshot:
+# the body (`v2:`) and the three self-signing paragraphs (`v2_self_signing:`)
+# are archived together because both are fingerprinted.
+en:
+  esign_disclosure_archive:
+    v2: |-
+      <p>By checking the box, you agree to use electronic records and electronic signatures for this document only, instead of paper and ink. You agree that your electronic signature has the same legal effect as your handwritten signature. If %{sender_name} sends you another document later, you will be asked to agree again.</p>
+      <p><strong>Who sent this.</strong> This document was sent by %{sender_name}. You can reach them at %{sender_email}.</p>
+      <p><strong>Your copy.</strong> A copy of the completed document will be available to you electronically, and %{sender_name} can also provide one on request.</p>
+      <p><strong>What you need.</strong> A current web browser, an internet connection and software that can open PDF files. Before you agree, open the document as a PDF using the link next to the checkbox to confirm your device can display it.</p>
+      <p><strong>Keeping a copy.</strong> To keep this document, download the PDF when you finish and save or print it. You will need free PDF software such as Adobe Acrobat Reader and free space on your device or email account.</p>
+      <p><strong>Withdrawing consent.</strong> You may withdraw your consent at any time before you complete the document by not signing it and telling %{sender_name} at %{sender_email}. There is no charge for withdrawing. If you withdraw, this document cannot be signed electronically, and %{sender_name} will need to arrange a paper copy, which may delay or end the transaction. Withdrawing consent does not affect documents you have already signed.</p>
+      <p><strong>Paper copies.</strong> You may request a paper copy of this document at any time from %{sender_name} at %{sender_email}. %{product_name} does not charge for copies. Ask %{sender_name} whether they charge for printing and posting one.</p>
+      <p><strong>Your contact details.</strong> Documents are sent only to the email address %{sender_name} gave us. To change it, tell %{sender_name}; you do not have an account with us to update.</p>
+      <p><strong>What we record.</strong> Your agreement is recorded together with the date, time and internet (IP) address from which you gave it, the version of this disclosure and whether you opened the PDF, and it appears in the document's audit trail.</p>
+    v2_self_signing:
+      esign_consent_disclosure_self_signing_agreement: By checking the box, you agree to use electronic records and electronic signatures for this document only, instead of paper and ink. You agree that your electronic signature has the same legal effect as your handwritten signature. Each document you sign asks you to agree again.
+      esign_consent_disclosure_self_signing: "<strong>You sent this document to yourself.</strong> There is nobody else to ask for a copy or to tell if you change your mind: you already hold the document, you can download and keep the PDF when you finish, and you can stop at any time before you complete it. There is no charge either way, and stopping does not affect documents you have already signed."
+      esign_consent_disclosure_self_signing_contact: "<strong>Your contact details.</strong> Documents go to the email address on your own account, and you can change it yourself in your account settings."
+es:
+  esign_disclosure_archive:
+    v2: |-
+      <p>Al marcar la casilla, acepta usar registros y firmas electrónicos únicamente para este documento, en lugar de papel y tinta. Acepta que su firma electrónica tiene el mismo efecto legal que su firma manuscrita. Si %{sender_name} le envía otro documento más adelante, se le pedirá que acepte de nuevo.</p>
+      <p><strong>Quién lo envió.</strong> Este documento lo envió %{sender_name}. Puede ponerse en contacto en %{sender_email}.</p>
+      <p><strong>Su copia.</strong> Una copia del documento completado estará disponible para usted por medios electrónicos, y %{sender_name} también puede facilitarle una si la solicita.</p>
+      <p><strong>Lo que necesita.</strong> Un navegador web actual, conexión a internet y un programa que pueda abrir archivos PDF. Antes de aceptar, abra el documento en PDF con el enlace que hay junto a la casilla para comprobar que su dispositivo puede mostrarlo.</p>
+      <p><strong>Conservar una copia.</strong> Para conservar este documento, descargue el PDF cuando termine y guárdelo o imprímalo. Necesitará un programa gratuito de PDF, como Adobe Acrobat Reader, y espacio libre en su dispositivo o en su cuenta de correo.</p>
+      <p><strong>Retirar el consentimiento.</strong> Puede retirar su consentimiento en cualquier momento antes de completar el documento: basta con no firmarlo y comunicárselo a %{sender_name} en %{sender_email}. Retirarlo no tiene ningún coste. Si lo retira, este documento no podrá firmarse electrónicamente y %{sender_name} tendrá que organizar una copia en papel, lo que puede retrasar o cancelar la operación. Retirar el consentimiento no afecta a los documentos que ya haya firmado.</p>
+      <p><strong>Copias en papel.</strong> Puede solicitar una copia en papel de este documento en cualquier momento a %{sender_name} en %{sender_email}. %{product_name} no cobra por las copias. Pregunte a %{sender_name} si cobra por imprimirla y enviarla por correo postal.</p>
+      <p><strong>Sus datos de contacto.</strong> Los documentos se envían únicamente a la dirección de correo electrónico que %{sender_name} nos facilitó. Para cambiarla, comuníqueselo a %{sender_name}; usted no tiene una cuenta con nosotros que pueda actualizar.</p>
+      <p><strong>Lo que registramos.</strong> Su aceptación se registra junto con la fecha, la hora y la dirección de internet (IP) desde la que la otorgó, la versión de esta divulgación y si abrió el PDF, y aparece en el registro de auditoría del documento.</p>
+    v2_self_signing:
+      esign_consent_disclosure_self_signing_agreement: Al marcar la casilla, acepta usar registros y firmas electrónicos únicamente para este documento, en lugar de papel y tinta. Acepta que su firma electrónica tiene el mismo efecto legal que su firma manuscrita. Cada documento que firme le pedirá que acepte de nuevo.
+      esign_consent_disclosure_self_signing: "<strong>Usted se envió este documento a sí mismo.</strong> No hay nadie más a quien pedir una copia ni a quien avisar si cambia de opinión: ya tiene el documento, puede descargar y guardar el PDF al terminar, y puede detenerse en cualquier momento antes de completarlo. No hay ningún cargo en ninguno de los casos, y detenerse no afecta a los documentos que ya haya firmado."
+      esign_consent_disclosure_self_signing_contact: "<strong>Sus datos de contacto.</strong> Los documentos se envían a la dirección de correo electrónico de su propia cuenta, y puede cambiarla usted mismo en la configuración de su cuenta."
+fr:
+  esign_disclosure_archive:
+    v2: |-
+      <p>En cochant la case, vous acceptez d'utiliser des documents et des signatures électroniques pour ce document uniquement, au lieu du papier et de l'encre. Vous acceptez que votre signature électronique ait la même valeur juridique que votre signature manuscrite. Si %{sender_name} vous envoie un autre document plus tard, il vous sera demandé d'accepter à nouveau.</p>
+      <p><strong>Qui l'a envoyé.</strong> Ce document a été envoyé par %{sender_name}. Vous pouvez le joindre à l'adresse %{sender_email}.</p>
+      <p><strong>Votre exemplaire.</strong> Une copie du document complété sera mise à votre disposition par voie électronique, et %{sender_name} peut également vous en fournir une sur demande.</p>
+      <p><strong>Ce dont vous avez besoin.</strong> Un navigateur web récent, une connexion internet et un logiciel capable d'ouvrir les fichiers PDF. Avant d'accepter, ouvrez le document en PDF à l'aide du lien situé à côté de la case afin de vérifier que votre appareil peut l'afficher.</p>
+      <p><strong>Conserver une copie.</strong> Pour conserver ce document, téléchargez le PDF une fois terminé, puis enregistrez-le ou imprimez-le. Vous aurez besoin d'un logiciel PDF gratuit tel qu'Adobe Acrobat Reader et d'espace libre sur votre appareil ou dans votre messagerie.</p>
+      <p><strong>Retrait du consentement.</strong> Vous pouvez retirer votre consentement à tout moment avant de terminer le document, en ne le signant pas et en prévenant %{sender_name} à l'adresse %{sender_email}. Le retrait est gratuit. Si vous le retirez, ce document ne pourra pas être signé électroniquement et %{sender_name} devra organiser l'envoi d'une copie papier, ce qui peut retarder ou interrompre l'opération. Le retrait du consentement n'affecte pas les documents que vous avez déjà signés.</p>
+      <p><strong>Copies papier.</strong> Vous pouvez demander une copie papier de ce document à tout moment à %{sender_name} à l'adresse %{sender_email}. %{product_name} ne facture pas les copies. Demandez à %{sender_name} s'il facture l'impression et l'envoi postal.</p>
+      <p><strong>Vos coordonnées.</strong> Les documents sont envoyés uniquement à l'adresse e-mail que %{sender_name} nous a communiquée. Pour la modifier, prévenez %{sender_name} ; vous n'avez pas de compte chez nous à mettre à jour.</p>
+      <p><strong>Ce que nous enregistrons.</strong> Votre accord est enregistré avec la date, l'heure et l'adresse internet (IP) depuis laquelle vous l'avez donné, la version de cette information et le fait que vous ayez ouvert ou non le PDF, et il figure dans le journal d'audit du document.</p>
+    v2_self_signing:
+      esign_consent_disclosure_self_signing_agreement: En cochant la case, vous acceptez d'utiliser des documents et des signatures électroniques pour ce document uniquement, au lieu du papier et de l'encre. Vous acceptez que votre signature électronique ait la même valeur juridique que votre signature manuscrite. Chaque document que vous signez vous demandera d'accepter à nouveau.
+      esign_consent_disclosure_self_signing: "<strong>Vous vous êtes envoyé ce document à vous-même.</strong> Il n'y a personne d'autre à qui demander une copie ni à prévenir si vous changez d'avis : vous détenez déjà le document, vous pouvez télécharger et conserver le PDF à la fin, et vous pouvez vous arrêter à tout moment avant de le terminer. Aucuns frais ne s'appliquent dans un cas comme dans l'autre, et vous arrêter n'affecte pas les documents que vous avez déjà signés."
+      esign_consent_disclosure_self_signing_contact: "<strong>Vos coordonnées.</strong> Les documents sont envoyés à l'adresse e-mail de votre propre compte, et vous pouvez la modifier vous-même dans les paramètres de votre compte."
+pt:
+  esign_disclosure_archive:
+    v2: |-
+      <p>Ao marcar a caixa, concorda em utilizar registos e assinaturas eletrónicos apenas para este documento, em vez de papel e caneta. Concorda que a sua assinatura eletrónica tem o mesmo efeito legal que a sua assinatura manuscrita. Se %{sender_name} lhe enviar outro documento mais tarde, ser-lhe-á pedido que concorde novamente.</p>
+      <p><strong>Quem o enviou.</strong> Este documento foi enviado por %{sender_name}. Pode contactá-lo através de %{sender_email}.</p>
+      <p><strong>A sua cópia.</strong> Uma cópia do documento concluído ficará disponível para si por via eletrónica, e %{sender_name} também lhe pode fornecer uma a pedido.</p>
+      <p><strong>O que precisa.</strong> Um navegador web atual, uma ligação à internet e software que consiga abrir ficheiros PDF. Antes de concordar, abra o documento em PDF através da ligação junto à caixa para confirmar que o seu dispositivo o consegue mostrar.</p>
+      <p><strong>Guardar uma cópia.</strong> Para guardar este documento, transfira o PDF quando terminar e guarde-o ou imprima-o. Vai precisar de software de PDF gratuito, como o Adobe Acrobat Reader, e de espaço livre no seu dispositivo ou na sua conta de e-mail.</p>
+      <p><strong>Retirar o consentimento.</strong> Pode retirar o seu consentimento a qualquer momento antes de concluir o documento, bastando não o assinar e informar %{sender_name} através de %{sender_email}. Retirar o consentimento não tem qualquer custo. Se o retirar, este documento não poderá ser assinado eletronicamente e %{sender_name} terá de providenciar uma cópia em papel, o que pode atrasar ou encerrar o negócio. Retirar o consentimento não afeta os documentos que já assinou.</p>
+      <p><strong>Cópias em papel.</strong> Pode pedir uma cópia em papel deste documento a qualquer momento a %{sender_name} através de %{sender_email}. A %{product_name} não cobra pelas cópias. Pergunte a %{sender_name} se cobra pela impressão e pelo envio postal.</p>
+      <p><strong>Os seus dados de contacto.</strong> Os documentos são enviados apenas para o endereço de e-mail que %{sender_name} nos indicou. Para o alterar, informe %{sender_name}; não tem connosco uma conta que possa atualizar.</p>
+      <p><strong>O que registamos.</strong> O seu consentimento é registado juntamente com a data, a hora e o endereço de internet (IP) a partir do qual o deu, a versão desta divulgação e se abriu o PDF, e consta do registo de auditoria do documento.</p>
+    v2_self_signing:
+      esign_consent_disclosure_self_signing_agreement: Ao marcar a caixa, concorda em utilizar registos e assinaturas eletrónicos apenas para este documento, em vez de papel e caneta. Concorda que a sua assinatura eletrónica tem o mesmo efeito legal que a sua assinatura manuscrita. Cada documento que assinar pedir-lhe-á que concorde novamente.
+      esign_consent_disclosure_self_signing: "<strong>Enviou este documento a si próprio.</strong> Não há mais ninguém a quem pedir uma cópia ou a quem avisar se mudar de ideias: o documento já é seu, pode transferir e guardar o PDF no fim e pode parar a qualquer momento antes de o concluir. Não há qualquer custo em nenhum dos casos, e parar não afeta os documentos que já assinou."
+      esign_consent_disclosure_self_signing_contact: "<strong>Os seus dados de contacto.</strong> Os documentos são enviados para o endereço de e-mail da sua própria conta e pode alterá-lo nas definições da conta."
+de:
+  esign_disclosure_archive:
+    v2: |-
+      <p>Mit dem Setzen des Häkchens stimmen Sie zu, nur für dieses Dokument elektronische Dokumente und elektronische Signaturen anstelle von Papier und Tinte zu verwenden. Sie stimmen zu, dass Ihre elektronische Signatur dieselbe Rechtswirkung hat wie Ihre handschriftliche Unterschrift. Wenn %{sender_name} Ihnen später ein weiteres Dokument sendet, werden Sie erneut um Ihre Zustimmung gebeten.</p>
+      <p><strong>Wer es gesendet hat.</strong> Dieses Dokument wurde von %{sender_name} gesendet. Sie erreichen den Absender unter %{sender_email}.</p>
+      <p><strong>Ihre Kopie.</strong> Eine Kopie des abgeschlossenen Dokuments steht Ihnen elektronisch zur Verfügung, und %{sender_name} kann Ihnen auf Anfrage ebenfalls eine bereitstellen.</p>
+      <p><strong>Was Sie benötigen.</strong> Einen aktuellen Webbrowser, eine Internetverbindung und eine Software, die PDF-Dateien öffnen kann. Öffnen Sie das Dokument vor Ihrer Zustimmung über den Link neben dem Kontrollkästchen als PDF, um sicherzugehen, dass Ihr Gerät es anzeigen kann.</p>
+      <p><strong>Eine Kopie behalten.</strong> Um dieses Dokument zu behalten, laden Sie das PDF am Ende herunter und speichern oder drucken Sie es. Dafür benötigen Sie eine kostenlose PDF-Software wie Adobe Acrobat Reader und freien Speicherplatz auf Ihrem Gerät oder in Ihrem E-Mail-Postfach.</p>
+      <p><strong>Widerruf der Zustimmung.</strong> Sie können Ihre Zustimmung jederzeit widerrufen, solange Sie das Dokument noch nicht abgeschlossen haben: Unterschreiben Sie es einfach nicht und teilen Sie es %{sender_name} unter %{sender_email} mit. Der Widerruf ist kostenlos. Nach einem Widerruf kann dieses Dokument nicht elektronisch unterschrieben werden, und %{sender_name} muss eine Papierfassung bereitstellen, was den Vorgang verzögern oder beenden kann. Der Widerruf betrifft nicht die Dokumente, die Sie bereits unterschrieben haben.</p>
+      <p><strong>Papierkopien.</strong> Sie können jederzeit bei %{sender_name} unter %{sender_email} eine Papierkopie dieses Dokuments anfordern. %{product_name} berechnet für Kopien nichts. Fragen Sie %{sender_name}, ob für Druck und Versand Kosten anfallen.</p>
+      <p><strong>Ihre Kontaktdaten.</strong> Dokumente werden ausschließlich an die E-Mail-Adresse gesendet, die %{sender_name} uns genannt hat. Um sie zu ändern, wenden Sie sich an %{sender_name}; Sie haben bei uns kein Konto, das Sie aktualisieren könnten.</p>
+      <p><strong>Was wir aufzeichnen.</strong> Ihre Zustimmung wird zusammen mit Datum, Uhrzeit und der Internetadresse (IP), von der aus Sie sie erteilt haben, der Version dieses Hinweises und der Angabe, ob Sie das PDF geöffnet haben, aufgezeichnet und erscheint im Prüfprotokoll des Dokuments.</p>
+    v2_self_signing:
+      esign_consent_disclosure_self_signing_agreement: Mit dem Setzen des Häkchens stimmen Sie zu, nur für dieses Dokument elektronische Dokumente und elektronische Signaturen anstelle von Papier und Tinte zu verwenden. Sie stimmen zu, dass Ihre elektronische Signatur dieselbe Rechtswirkung hat wie Ihre handschriftliche Unterschrift. Bei jedem Dokument, das Sie unterzeichnen, werden Sie erneut um Ihre Zustimmung gebeten.
+      esign_consent_disclosure_self_signing: "<strong>Sie haben dieses Dokument an sich selbst gesendet.</strong> Es gibt niemanden sonst, den Sie um eine Kopie bitten oder benachrichtigen müssten, wenn Sie es sich anders überlegen: Das Dokument liegt bereits bei Ihnen, Sie können das PDF am Ende herunterladen und aufbewahren, und Sie können jederzeit abbrechen, bevor Sie es abschließen. In beiden Fällen entstehen keine Kosten, und ein Abbruch berührt bereits unterzeichnete Dokumente nicht."
+      esign_consent_disclosure_self_signing_contact: "<strong>Ihre Kontaktdaten.</strong> Dokumente werden an die E-Mail-Adresse Ihres eigenen Kontos gesendet, und Sie können sie in Ihren Kontoeinstellungen selbst ändern."
+it:
+  esign_disclosure_archive:
+    v2: |-
+      <p>Selezionando la casella, accetti di utilizzare documenti e firme elettronici soltanto per questo documento, al posto di carta e penna. Accetti che la tua firma elettronica abbia lo stesso valore legale della tua firma autografa. Se in futuro %{sender_name} ti invierà un altro documento, ti verrà chiesto di accettare di nuovo.</p>
+      <p><strong>Chi lo ha inviato.</strong> Questo documento è stato inviato da %{sender_name}. Puoi contattarlo all'indirizzo %{sender_email}.</p>
+      <p><strong>La tua copia.</strong> Una copia del documento completato sarà disponibile per te in formato elettronico e %{sender_name} può fornirtene una su richiesta.</p>
+      <p><strong>Cosa ti serve.</strong> Un browser web aggiornato, una connessione a internet e un programma in grado di aprire i file PDF. Prima di accettare, apri il documento in PDF usando il link accanto alla casella per verificare che il tuo dispositivo riesca a visualizzarlo.</p>
+      <p><strong>Conservare una copia.</strong> Per conservare questo documento, al termine scarica il PDF e salvalo o stampalo. Ti serviranno un programma PDF gratuito come Adobe Acrobat Reader e spazio libero sul tuo dispositivo o nella tua casella di posta.</p>
+      <p><strong>Revoca del consenso.</strong> Puoi revocare il consenso in qualsiasi momento prima di completare il documento, semplicemente non firmandolo e comunicandolo a %{sender_name} all'indirizzo %{sender_email}. La revoca non comporta alcun costo. Se revochi il consenso, questo documento non potrà essere firmato elettronicamente e %{sender_name} dovrà predisporre una copia cartacea, il che può ritardare o interrompere l'operazione. La revoca non riguarda i documenti che hai già firmato.</p>
+      <p><strong>Copie cartacee.</strong> Puoi richiedere una copia cartacea di questo documento in qualsiasi momento a %{sender_name} all'indirizzo %{sender_email}. %{product_name} non addebita alcun costo per le copie. Chiedi a %{sender_name} se addebita costi per la stampa e la spedizione.</p>
+      <p><strong>I tuoi recapiti.</strong> I documenti vengono inviati soltanto all'indirizzo e-mail che %{sender_name} ci ha comunicato. Per cambiarlo, comunicalo a %{sender_name}: non hai un account presso di noi da aggiornare.</p>
+      <p><strong>Cosa registriamo.</strong> Il tuo consenso viene registrato insieme alla data, all'ora e all'indirizzo internet (IP) da cui è stato dato, alla versione di questa informativa e all'eventuale apertura del PDF, e compare nel registro di controllo del documento.</p>
+    v2_self_signing:
+      esign_consent_disclosure_self_signing_agreement: Selezionando la casella, accetti di utilizzare documenti e firme elettronici soltanto per questo documento, al posto di carta e penna. Accetti che la tua firma elettronica abbia lo stesso valore legale della tua firma autografa. Per ogni documento che firmi ti verrà chiesto di accettare di nuovo.
+      esign_consent_disclosure_self_signing: "<strong>Hai inviato questo documento a te stesso.</strong> Non c'è nessun altro a cui chiedere una copia o da avvisare se cambi idea: il documento è già tuo, puoi scaricare e conservare il PDF al termine e puoi fermarti in qualsiasi momento prima di completarlo. In nessun caso è previsto un costo, e fermarti non riguarda i documenti che hai già firmato."
+      esign_consent_disclosure_self_signing_contact: "<strong>I tuoi recapiti.</strong> I documenti vengono inviati all'indirizzo e-mail del tuo account e puoi modificarlo tu stesso nelle impostazioni dell'account."
+nl:
+  esign_disclosure_archive:
+    v2: |-
+      <p>Door het vakje aan te vinken gaat u ermee akkoord om uitsluitend voor dit document elektronische documenten en elektronische handtekeningen te gebruiken in plaats van papier en pen. U gaat ermee akkoord dat uw elektronische handtekening dezelfde rechtsgevolgen heeft als uw handgeschreven handtekening. Stuurt %{sender_name} u later een ander document, dan wordt u opnieuw om akkoord gevraagd.</p>
+      <p><strong>Wie dit heeft verstuurd.</strong> Dit document is verstuurd door %{sender_name}. U kunt hen bereiken op %{sender_email}.</p>
+      <p><strong>Uw exemplaar.</strong> Een kopie van het voltooide document is elektronisch voor u beschikbaar, en %{sender_name} kan er op verzoek ook een verstrekken.</p>
+      <p><strong>Wat u nodig hebt.</strong> Een actuele webbrowser, een internetverbinding en software die pdf-bestanden kan openen. Open het document vóór uw akkoord als pdf via de link naast het vakje om te controleren of uw apparaat het kan weergeven.</p>
+      <p><strong>Een kopie bewaren.</strong> Wilt u dit document bewaren, download dan de pdf als u klaar bent en sla die op of druk die af. U hebt gratis pdf-software zoals Adobe Acrobat Reader nodig en vrije ruimte op uw apparaat of in uw e-mailaccount.</p>
+      <p><strong>Akkoord intrekken.</strong> U kunt uw akkoord op elk moment intrekken zolang u het document niet hebt voltooid: onderteken het niet en laat het %{sender_name} weten via %{sender_email}. Intrekken is gratis. Na intrekking kan dit document niet elektronisch worden ondertekend en moet %{sender_name} een papieren exemplaar regelen, wat de transactie kan vertragen of beëindigen. Het intrekken van uw akkoord heeft geen gevolgen voor documenten die u al hebt ondertekend.</p>
+      <p><strong>Papieren kopieën.</strong> U kunt op elk moment een papieren kopie van dit document aanvragen bij %{sender_name} via %{sender_email}. %{product_name} brengt geen kosten in rekening voor kopieën. Vraag %{sender_name} of er kosten zijn voor afdrukken en verzenden.</p>
+      <p><strong>Uw contactgegevens.</strong> Documenten worden alleen verstuurd naar het e-mailadres dat %{sender_name} ons heeft gegeven. Wilt u dat wijzigen, laat het dan %{sender_name} weten; u hebt bij ons geen account dat u kunt bijwerken.</p>
+      <p><strong>Wat wij vastleggen.</strong> Uw akkoord wordt vastgelegd samen met de datum, het tijdstip en het internetadres (IP) van waaruit u het hebt gegeven, de versie van deze toelichting en of u de pdf hebt geopend, en het verschijnt in het auditlogboek van het document.</p>
+    v2_self_signing:
+      esign_consent_disclosure_self_signing_agreement: Door het vakje aan te vinken gaat u ermee akkoord om uitsluitend voor dit document elektronische documenten en elektronische handtekeningen te gebruiken in plaats van papier en pen. U gaat ermee akkoord dat uw elektronische handtekening dezelfde rechtsgevolgen heeft als uw handgeschreven handtekening. Bij elk document dat u ondertekent, vragen wij opnieuw om uw akkoord.
+      esign_consent_disclosure_self_signing: "<strong>U hebt dit document naar uzelf gestuurd.</strong> Er is niemand anders aan wie u een kopie hoeft te vragen of die u moet laten weten dat u zich bedenkt: u hebt het document al, u kunt de PDF na afloop downloaden en bewaren, en u kunt op elk moment stoppen voordat u het afrondt. In beide gevallen zijn er geen kosten, en stoppen heeft geen gevolgen voor documenten die u al hebt ondertekend."
+      esign_consent_disclosure_self_signing_contact: "<strong>Uw contactgegevens.</strong> Documenten gaan naar het e-mailadres van uw eigen account, dat u zelf kunt wijzigen in uw accountinstellingen."
+pl:
+  esign_disclosure_archive:
+    v2: |-
+      <p>Zaznaczając pole, wyrażasz zgodę na korzystanie z dokumentów i podpisów elektronicznych wyłącznie w przypadku tego dokumentu, zamiast papieru i długopisu. Zgadzasz się, że Twój podpis elektroniczny ma taki sam skutek prawny jak podpis odręczny. Jeśli %{sender_name} prześle Ci później kolejny dokument, poprosimy Cię o zgodę ponownie.</p>
+      <p><strong>Kto go wysłał.</strong> Ten dokument wysłał(a) %{sender_name}. Możesz skontaktować się pod adresem %{sender_email}.</p>
+      <p><strong>Twoja kopia.</strong> Kopia ukończonego dokumentu będzie dostępna dla Ciebie w postaci elektronicznej, a %{sender_name} może również przekazać ją na życzenie.</p>
+      <p><strong>Czego potrzebujesz.</strong> Aktualnej przeglądarki internetowej, połączenia z internetem i programu, który otwiera pliki PDF. Zanim wyrazisz zgodę, otwórz dokument w formacie PDF za pomocą linku obok pola wyboru, aby sprawdzić, czy Twoje urządzenie potrafi go wyświetlić.</p>
+      <p><strong>Zachowanie kopii.</strong> Aby zachować ten dokument, po zakończeniu pobierz plik PDF i zapisz go lub wydrukuj. Potrzebne będą bezpłatny program do plików PDF, na przykład Adobe Acrobat Reader, oraz wolne miejsce na urządzeniu lub w skrzynce e-mail.</p>
+      <p><strong>Wycofanie zgody.</strong> Możesz wycofać zgodę w dowolnym momencie, zanim ukończysz dokument — wystarczy go nie podpisywać i powiadomić %{sender_name} pod adresem %{sender_email}. Wycofanie zgody jest bezpłatne. Po wycofaniu zgody tego dokumentu nie można podpisać elektronicznie, a %{sender_name} będzie musiał(a) przygotować wersję papierową, co może opóźnić lub zakończyć transakcję. Wycofanie zgody nie ma wpływu na dokumenty, które już podpisano.</p>
+      <p><strong>Kopie papierowe.</strong> W dowolnym momencie możesz poprosić o papierową kopię tego dokumentu — zwróć się do %{sender_name} pod adresem %{sender_email}. %{product_name} nie pobiera opłat za kopie. Zapytaj %{sender_name}, czy pobiera opłatę za wydruk i wysyłkę.</p>
+      <p><strong>Twoje dane kontaktowe.</strong> Dokumenty wysyłamy wyłącznie na adres e-mail, który podał(a) nam %{sender_name}. Aby go zmienić, powiadom %{sender_name}; nie masz u nas konta, które można zaktualizować.</p>
+      <p><strong>Co zapisujemy.</strong> Twoja zgoda jest zapisywana razem z datą, godziną i adresem internetowym (IP), z którego jej udzielono, wersją tej informacji oraz tym, czy plik PDF został otwarty, i pojawia się w rejestrze audytu dokumentu.</p>
+    v2_self_signing:
+      esign_consent_disclosure_self_signing_agreement: Zaznaczając pole, wyrażasz zgodę na korzystanie z dokumentów i podpisów elektronicznych wyłącznie w przypadku tego dokumentu, zamiast papieru i długopisu. Zgadzasz się, że Twój podpis elektroniczny ma taki sam skutek prawny jak podpis odręczny. Przy każdym podpisywanym dokumencie poprosimy Cię o zgodę ponownie.
+      esign_consent_disclosure_self_signing: "<strong>Ten dokument wysłano do siebie samego.</strong> Nie ma nikogo innego, kogo trzeba poprosić o kopię ani powiadomić o zmianie zdania: dokument już jest u Ciebie, po zakończeniu możesz pobrać i zachować plik PDF, a przed ukończeniem możesz w każdej chwili przerwać. W żadnym przypadku nie wiąże się to z opłatą, a przerwanie nie ma wpływu na dokumenty już podpisane."
+      esign_consent_disclosure_self_signing_contact: "<strong>Twoje dane kontaktowe.</strong> Dokumenty wysyłamy na adres e-mail Twojego własnego konta, który możesz sam zmienić w ustawieniach konta."
+uk:
+  esign_disclosure_archive:
+    v2: |-
+      <p>Позначивши це поле, ви погоджуєтеся використовувати електронні документи та електронні підписи лише для цього документа замість паперу й ручки. Ви погоджуєтеся, що ваш електронний підпис має таку саму юридичну силу, як і власноручний. Якщо %{sender_name} надішле вам інший документ пізніше, вас попросять погодитися знову.</p>
+      <p><strong>Хто його надіслав.</strong> Цей документ надіслав(ла) %{sender_name}. Зв’язатися можна за адресою %{sender_email}.</p>
+      <p><strong>Ваша копія.</strong> Копія завершеного документа буде доступна вам в електронному вигляді, а %{sender_name} також може надати її на запит.</p>
+      <p><strong>Що вам потрібно.</strong> Сучасний веббраузер, підключення до інтернету та програма, яка відкриває файли PDF. Перш ніж погодитися, відкрийте документ у форматі PDF за посиланням поруч із полем, щоб переконатися, що ваш пристрій може його показати.</p>
+      <p><strong>Як зберегти копію.</strong> Щоб зберегти цей документ, після завершення завантажте PDF і збережіть або роздрукуйте його. Вам знадобиться безкоштовна програма для PDF, наприклад Adobe Acrobat Reader, і вільне місце на пристрої чи в поштовій скриньці.</p>
+      <p><strong>Відкликання згоди.</strong> Ви можете відкликати згоду будь-коли, доки не завершили документ: просто не підписуйте його та повідомте %{sender_name} за адресою %{sender_email}. Відкликання безкоштовне. Після відкликання цей документ не можна підписати електронно, і %{sender_name} доведеться підготувати паперовий примірник, що може затримати або припинити операцію. Відкликання згоди не стосується документів, які ви вже підписали.</p>
+      <p><strong>Паперові копії.</strong> Ви можете будь-коли попросити паперову копію цього документа в %{sender_name} за адресою %{sender_email}. %{product_name} не бере плати за копії. Запитайте %{sender_name}, чи стягується плата за друк і поштове пересилання.</p>
+      <p><strong>Ваші контактні дані.</strong> Документи надсилаються лише на ту електронну адресу, яку нам надав(ла) %{sender_name}. Щоб змінити її, повідомте %{sender_name}; у вас немає облікового запису в нас, який можна було б оновити.</p>
+      <p><strong>Що ми записуємо.</strong> Вашу згоду записано разом із датою, часом та інтернет-адресою (IP), з якої її надано, версією цього повідомлення та відміткою про те, чи відкривали ви PDF; вона відображається в журналі аудиту документа.</p>
+    v2_self_signing:
+      esign_consent_disclosure_self_signing_agreement: Позначивши це поле, ви погоджуєтеся використовувати електронні документи та електронні підписи лише для цього документа замість паперу й ручки. Ви погоджуєтеся, що ваш електронний підпис має таку саму юридичну силу, як і власноручний. Для кожного документа, який ви підписуєте, ми попросимо погодитися знову.
+      esign_consent_disclosure_self_signing: "<strong>Ви надіслали цей документ самі собі.</strong> Немає нікого іншого, у кого просити копію чи кого повідомляти, якщо ви передумаєте: документ уже у вас, після завершення ви можете завантажити та зберегти PDF, а до завершення можете зупинитися будь-коли. У жодному разі це нічого не коштує, і зупинка не впливає на вже підписані документи."
+      esign_consent_disclosure_self_signing_contact: "<strong>Ваші контактні дані.</strong> Документи надсилаються на електронну адресу вашого власного облікового запису, і ви можете змінити її самі в налаштуваннях облікового запису."
+cs:
+  esign_disclosure_archive:
+    v2: |-
+      <p>Zaškrtnutím políčka souhlasíte s tím, že pouze pro tento dokument použijete elektronické dokumenty a elektronické podpisy namísto papíru a pera. Souhlasíte s tím, že váš elektronický podpis má stejné právní účinky jako podpis vlastní rukou. Pokud vám %{sender_name} později pošle další dokument, budete o souhlas požádáni znovu.</p>
+      <p><strong>Kdo dokument poslal.</strong> Tento dokument poslal(a) %{sender_name}. Zastihnete jej na adrese %{sender_email}.</p>
+      <p><strong>Vaše kopie.</strong> Kopie dokončeného dokumentu vám bude k dispozici elektronicky a %{sender_name} vám ji na požádání může poskytnout také.</p>
+      <p><strong>Co potřebujete.</strong> Aktuální webový prohlížeč, připojení k internetu a program, který otevře soubory PDF. Než souhlas udělíte, otevřete dokument v PDF pomocí odkazu vedle políčka a ověřte si, že jej vaše zařízení zobrazí.</p>
+      <p><strong>Uchování kopie.</strong> Chcete-li si tento dokument ponechat, po dokončení si stáhněte PDF a uložte je nebo vytiskněte. Budete potřebovat bezplatný program pro PDF, například Adobe Acrobat Reader, a volné místo ve svém zařízení nebo e-mailové schránce.</p>
+      <p><strong>Odvolání souhlasu.</strong> Souhlas můžete kdykoli odvolat, dokud dokument nedokončíte: prostě jej nepodepisujte a dejte vědět %{sender_name} na adrese %{sender_email}. Odvolání je zdarma. Po odvolání nelze tento dokument podepsat elektronicky a %{sender_name} bude muset zajistit papírovou verzi, což může celou věc zdržet nebo ukončit. Odvolání souhlasu se netýká dokumentů, které jste již podepsali.</p>
+      <p><strong>Papírové kopie.</strong> O papírovou kopii tohoto dokumentu můžete kdykoli požádat %{sender_name} na adrese %{sender_email}. %{product_name} si za kopie nic neúčtuje. Zeptejte se %{sender_name}, zda si účtuje tisk a poštovné.</p>
+      <p><strong>Vaše kontaktní údaje.</strong> Dokumenty posíláme pouze na e-mailovou adresu, kterou nám %{sender_name} sdělil(a). Chcete-li ji změnit, dejte vědět %{sender_name}; u nás nemáte účet, který byste mohli upravit.</p>
+      <p><strong>Co zaznamenáváme.</strong> Váš souhlas zaznamenáváme spolu s datem, časem a internetovou (IP) adresou, ze které byl udělen, verzí tohoto poučení a údajem, zda jste otevřeli PDF; objeví se v záznamu auditu dokumentu.</p>
+    v2_self_signing:
+      esign_consent_disclosure_self_signing_agreement: Zaškrtnutím políčka souhlasíte s tím, že pouze pro tento dokument použijete elektronické dokumenty a elektronické podpisy namísto papíru a pera. Souhlasíte s tím, že váš elektronický podpis má stejné právní účinky jako podpis vlastní rukou. U každého dokumentu, který podepisujete, vás o souhlas požádáme znovu.
+      esign_consent_disclosure_self_signing: "<strong>Tento dokument jste poslali sami sobě.</strong> Není nikdo další, koho byste žádali o kopii nebo komu byste dávali vědět, že jste si to rozmysleli: dokument už máte, po dokončení si můžete PDF stáhnout a uložit a kdykoli před dokončením můžete přestat. Ani jedno nic nestojí a přerušení se nedotkne dokumentů, které jste už podepsali."
+      esign_consent_disclosure_self_signing_contact: "<strong>Vaše kontaktní údaje.</strong> Dokumenty posíláme na e-mailovou adresu vašeho vlastního účtu a můžete si ji sami změnit v nastavení účtu."
+he:
+  esign_disclosure_archive:
+    v2: |-
+      <p>בסימון התיבה, את/ה מסכים/ה להשתמש ברשומות אלקטרוניות ובחתימות אלקטרוניות עבור מסמך זה בלבד, במקום נייר ועט. את/ה מסכים/ה שלחתימה האלקטרונית שלך יש אותו תוקף משפטי כמו לחתימה בכתב ידך. אם %{sender_name} ישלח לך מסמך נוסף בהמשך, תתבקש/י לאשר שוב.</p>
+      <p><strong>מי שלח את המסמך.</strong> מסמך זה נשלח על ידי %{sender_name}. ניתן ליצור קשר בכתובת %{sender_email}.</p>
+      <p><strong>העותק שלך.</strong> עותק של המסמך שהושלם יהיה זמין לך באופן אלקטרוני, וגם %{sender_name} יכול לספק לך עותק לפי בקשה.</p>
+      <p><strong>מה נדרש.</strong> דפדפן עדכני, חיבור לאינטרנט ותוכנה שיכולה לפתוח קובצי PDF. לפני מתן ההסכמה, יש לפתוח את המסמך כקובץ PDF באמצעות הקישור שליד התיבה, כדי לוודא שהמכשיר שלך מציג אותו.</p>
+      <p><strong>שמירת עותק.</strong> כדי לשמור מסמך זה, יש להוריד את קובץ ה-PDF בסיום ולשמור או להדפיס אותו. נדרשת תוכנת PDF חינמית כגון Adobe Acrobat Reader ומקום פנוי במכשיר או בתיבת הדוא״ל שלך.</p>
+      <p><strong>ביטול ההסכמה.</strong> ניתן לבטל את ההסכמה בכל עת לפני השלמת המסמך, על ידי אי-חתימה עליו ויידוע %{sender_name} בכתובת %{sender_email}. הביטול אינו כרוך בתשלום. לאחר הביטול לא ניתן לחתום על מסמך זה באופן אלקטרוני, ו-%{sender_name} יידרש להסדיר עותק מודפס, דבר שעלול לעכב את העסקה או להפסיק אותה. ביטול ההסכמה אינו משפיע על מסמכים שכבר נחתמו.</p>
+      <p><strong>עותקים מודפסים.</strong> ניתן לבקש עותק מודפס של מסמך זה בכל עת מ-%{sender_name} בכתובת %{sender_email}. %{product_name} אינה גובה תשלום עבור עותקים. יש לברר עם %{sender_name} אם הוא גובה תשלום עבור הדפסה ומשלוח.</p>
+      <p><strong>פרטי הקשר שלך.</strong> מסמכים נשלחים רק לכתובת הדוא״ל ש-%{sender_name} מסר לנו. כדי לשנות אותה, יש להודיע ל-%{sender_name}; אין לך אצלנו חשבון שניתן לעדכן.</p>
+      <p><strong>מה אנחנו מתעדים.</strong> ההסכמה שלך נרשמת יחד עם התאריך, השעה וכתובת האינטרנט (IP) שממנה ניתנה, גרסת גילוי זה והאם נפתח קובץ ה-PDF, ומופיעה ביומן הביקורת של המסמך.</p>
+    v2_self_signing:
+      esign_consent_disclosure_self_signing_agreement: בסימון התיבה, את/ה מסכים/ה להשתמש ברשומות אלקטרוניות ובחתימות אלקטרוניות עבור מסמך זה בלבד, במקום נייר ועט. את/ה מסכים/ה שלחתימה האלקטרונית שלך יש אותו תוקף משפטי כמו לחתימה בכתב ידך. בכל מסמך שתחתמו עליו נבקש את הסכמתכם מחדש.
+      esign_consent_disclosure_self_signing: "<strong>שלחתם מסמך זה לעצמכם.</strong> אין אף אחד אחר לבקש ממנו עותק או לעדכן אותו אם תשנו את דעתכם: המסמך כבר ברשותכם, בסיום תוכלו להוריד ולשמור את קובץ ה‑PDF, ותוכלו להפסיק בכל רגע לפני השלמת החתימה. אין תשלום בשום מקרה, והפסקה אינה משפיעה על מסמכים שכבר חתמתם עליהם."
+      esign_consent_disclosure_self_signing_contact: "<strong>פרטי הקשר שלך.</strong> מסמכים נשלחים לכתובת הדוא״ל של החשבון שלך, ואפשר לשנות אותה בהגדרות החשבון."
+ar:
+  esign_disclosure_archive:
+    v2: |-
+      <p>بتحديد المربع، فإنك توافق على استخدام السجلات الإلكترونية والتوقيعات الإلكترونية لهذا المستند فقط بدلاً من الورق والحبر. وتوافق على أن لتوقيعك الإلكتروني الأثر القانوني نفسه لتوقيعك بخط اليد. وإذا أرسل إليك %{sender_name} مستندًا آخر لاحقًا، فسيُطلب منك الموافقة من جديد.</p>
+      <p><strong>من أرسل هذا المستند.</strong> أرسل هذا المستند %{sender_name}. يمكنك التواصل معه على %{sender_email}.</p>
+      <p><strong>نسختك.</strong> ستتوفر لك نسخة من المستند المكتمل إلكترونيًا، ويمكن لـ %{sender_name} أيضًا تزويدك بنسخة عند الطلب.</p>
+      <p><strong>ما تحتاج إليه.</strong> متصفح ويب حديث واتصال بالإنترنت وبرنامج قادر على فتح ملفات PDF. قبل الموافقة، افتح المستند بصيغة PDF عبر الرابط المجاور للمربع للتأكد من أن جهازك يستطيع عرضه.</p>
+      <p><strong>الاحتفاظ بنسخة.</strong> للاحتفاظ بهذا المستند، نزّل ملف PDF عند الانتهاء ثم احفظه أو اطبعه. ستحتاج إلى برنامج PDF مجاني مثل Adobe Acrobat Reader وإلى مساحة خالية على جهازك أو في بريدك الإلكتروني.</p>
+      <p><strong>سحب الموافقة.</strong> يمكنك سحب موافقتك في أي وقت قبل إكمال المستند، وذلك بعدم توقيعه وإبلاغ %{sender_name} على %{sender_email}. ولا توجد رسوم على السحب. وإذا سحبت موافقتك، فلن يمكن توقيع هذا المستند إلكترونيًا، وسيتعين على %{sender_name} ترتيب نسخة ورقية، وقد يؤدي ذلك إلى تأخير المعاملة أو إنهائها. ولا يؤثر سحب الموافقة على المستندات التي وقّعتها بالفعل.</p>
+      <p><strong>النسخ الورقية.</strong> يمكنك طلب نسخة ورقية من هذا المستند في أي وقت من %{sender_name} على %{sender_email}. ولا تفرض %{product_name} رسومًا على النسخ. اسأل %{sender_name} عمّا إذا كان يفرض رسومًا على الطباعة والإرسال بالبريد.</p>
+      <p><strong>بيانات الاتصال الخاصة بك.</strong> تُرسل المستندات فقط إلى عنوان البريد الإلكتروني الذي زوّدنا به %{sender_name}. ولتغييره، أبلغ %{sender_name}؛ فليس لديك حساب لدينا يمكنك تحديثه.</p>
+      <p><strong>ما نسجله.</strong> تُسجَّل موافقتك مع التاريخ والوقت وعنوان الإنترنت (IP) الذي منحتها منه، وإصدار هذا الإفصاح، وما إذا كنت قد فتحت ملف PDF، وتظهر في سجل تدقيق المستند.</p>
+    v2_self_signing:
+      esign_consent_disclosure_self_signing_agreement: بتحديد المربع، فإنك توافق على استخدام السجلات الإلكترونية والتوقيعات الإلكترونية لهذا المستند فقط بدلاً من الورق والحبر. وتوافق على أن لتوقيعك الإلكتروني الأثر القانوني نفسه لتوقيعك بخط اليد. وسيُطلب منك الموافقة من جديد مع كل مستند توقّعه.
+      esign_consent_disclosure_self_signing: "<strong>لقد أرسلت هذا المستند إلى نفسك.</strong> لا يوجد شخص آخر تطلب منه نسخة أو تُخبره إذا غيّرت رأيك: المستند لديك بالفعل، ويمكنك تنزيل ملف PDF وحفظه عند الانتهاء، ويمكنك التوقف في أي وقت قبل إتمامه. لا توجد رسوم في الحالتين، والتوقف لا يؤثر على المستندات التي وقّعتها من قبل."
+      esign_consent_disclosure_self_signing_contact: "<strong>بيانات الاتصال الخاصة بك.</strong> تُرسل المستندات إلى عنوان البريد الإلكتروني الخاص بحسابك، ويمكنك تغييره بنفسك من إعدادات الحساب."
+ko:
+  esign_disclosure_archive:
+    v2: |-
+      <p>확인란을 선택하면 이 문서에 한하여 종이와 펜 대신 전자 기록과 전자 서명을 사용하는 데 동의하게 됩니다. 귀하의 전자 서명은 자필 서명과 동일한 법적 효력을 가집니다. %{sender_name}이(가) 나중에 다른 문서를 보내면 그때 다시 동의를 요청합니다.</p>
+      <p><strong>보낸 사람.</strong> 이 문서는 %{sender_name}이(가) 보냈습니다. %{sender_email}(으)로 연락할 수 있습니다.</p>
+      <p><strong>사본 제공.</strong> 완료된 문서의 사본은 전자적으로 제공되며, 요청하시면 %{sender_name}이(가) 사본을 드릴 수도 있습니다.</p>
+      <p><strong>필요한 것.</strong> 최신 웹 브라우저, 인터넷 연결, PDF 파일을 열 수 있는 소프트웨어가 필요합니다. 동의하기 전에 확인란 옆의 링크로 문서를 PDF로 열어 기기에서 표시되는지 확인하세요.</p>
+      <p><strong>사본 보관.</strong> 이 문서를 보관하려면 완료 후 PDF를 내려받아 저장하거나 인쇄하세요. Adobe Acrobat Reader와 같은 무료 PDF 소프트웨어와 기기 또는 이메일 계정의 여유 공간이 필요합니다.</p>
+      <p><strong>동의 철회.</strong> 문서를 완료하기 전에는 언제든지 서명하지 않고 %{sender_email}(으)로 %{sender_name}에게 알려 동의를 철회할 수 있습니다. 철회에는 비용이 들지 않습니다. 철회하면 이 문서는 전자적으로 서명할 수 없으며, %{sender_name}이(가) 종이 문서를 준비해야 하므로 거래가 지연되거나 종료될 수 있습니다. 동의 철회는 이미 서명한 문서에는 영향을 주지 않습니다.</p>
+      <p><strong>종이 사본.</strong> 언제든지 %{sender_email}(으)로 %{sender_name}에게 이 문서의 종이 사본을 요청할 수 있습니다. %{product_name}은(는) 사본에 대해 요금을 청구하지 않습니다. 인쇄와 우편 발송에 요금이 있는지는 %{sender_name}에게 문의하세요.</p>
+      <p><strong>연락처 정보.</strong> 문서는 %{sender_name}이(가) 알려준 이메일 주소로만 발송됩니다. 주소를 바꾸려면 %{sender_name}에게 알려주세요. 저희 서비스에는 귀하가 직접 수정할 수 있는 계정이 없습니다.</p>
+      <p><strong>기록되는 내용.</strong> 귀하의 동의는 동의한 날짜와 시각, 동의한 인터넷(IP) 주소, 이 고지의 버전, PDF 열람 여부와 함께 기록되어 문서의 감사 추적에 표시됩니다.</p>
+    v2_self_signing:
+      esign_consent_disclosure_self_signing_agreement: 확인란을 선택하면 이 문서에 한하여 종이와 펜 대신 전자 기록과 전자 서명을 사용하는 데 동의하게 됩니다. 귀하의 전자 서명은 자필 서명과 동일한 법적 효력을 가집니다. 서명하는 문서마다 다시 동의를 요청합니다.
+      esign_consent_disclosure_self_signing: "<strong>이 문서는 본인이 본인에게 보낸 것입니다.</strong> 사본을 요청하거나 마음이 바뀌었다고 알릴 상대가 따로 없습니다. 문서는 이미 본인이 가지고 있으며, 완료 후 PDF를 내려받아 보관할 수 있고, 완료 전에는 언제든지 중단할 수 있습니다. 어느 쪽도 비용이 들지 않으며, 중단하더라도 이미 서명한 문서에는 영향이 없습니다."
+      esign_consent_disclosure_self_signing_contact: "<strong>연락처 정보.</strong> 문서는 귀하 계정의 이메일 주소로 발송되며, 계정 설정에서 직접 변경할 수 있습니다."
+ja:
+  esign_disclosure_archive:
+    v2: |-
+      <p>チェックボックスをオンにすると、この文書に限り、紙とインクの代わりに電子記録および電子署名を使用することに同意したことになります。お客様の電子署名は、手書きの署名と同じ法的効力を持ちます。%{sender_name} が後日別の文書を送付する場合は、あらためて同意を求めます。</p>
+      <p><strong>送信者。</strong> この文書は %{sender_name} が送信しました。連絡先は %{sender_email} です。</p>
+      <p><strong>お客様の控え。</strong> 完成した文書の写しは電子的にご利用いただけるほか、ご要望に応じて %{sender_name} から提供を受けることもできます。</p>
+      <p><strong>必要なもの。</strong> 最新のウェブブラウザ、インターネット接続、PDF ファイルを開けるソフトウェアです。同意される前に、チェックボックスの横のリンクから文書を PDF で開き、お使いの端末で表示できることをご確認ください。</p>
+      <p><strong>控えの保存。</strong> この文書を保存するには、完了後に PDF をダウンロードし、保存または印刷してください。Adobe Acrobat Reader などの無料の PDF ソフトウェアと、端末またはメールアカウントの空き容量が必要です。</p>
+      <p><strong>同意の撤回。</strong> 文書を完了する前であれば、署名せずに %{sender_email} 宛てに %{sender_name} へ連絡することで、いつでも同意を撤回できます。撤回に費用はかかりません。撤回された場合、この文書は電子的に署名できず、%{sender_name} が紙の文書を用意する必要があるため、お手続きが遅れたり中止になったりすることがあります。同意の撤回は、すでに署名した文書には影響しません。</p>
+      <p><strong>紙のコピー。</strong> %{sender_email} 宛てに %{sender_name} へ連絡すれば、いつでもこの文書の紙のコピーを請求できます。%{product_name} はコピーの費用を請求しません。印刷や郵送に費用がかかるかどうかは %{sender_name} にお問い合わせください。</p>
+      <p><strong>お客様の連絡先。</strong> 文書は、%{sender_name} が当社に伝えたメールアドレスにのみ送信されます。変更するには %{sender_name} にお知らせください。お客様が更新できるアカウントは当社にはありません。</p>
+      <p><strong>記録される内容。</strong> お客様の同意は、同意した日時、同意したインターネット（IP）アドレス、この開示のバージョン、PDF を開いたかどうかとともに記録され、文書の監査証跡に表示されます。</p>
+    v2_self_signing:
+      esign_consent_disclosure_self_signing_agreement: チェックボックスをオンにすると、この文書に限り、紙とインクの代わりに電子記録および電子署名を使用することに同意したことになります。お客様の電子署名は、手書きの署名と同じ法的効力を持ちます。署名する文書ごとに、あらためて同意を求めます。
+      esign_consent_disclosure_self_signing: "<strong>この文書はご自身がご自身宛てに送ったものです。</strong>写しを求めたり、考えが変わったことを伝えたりする相手は他にいません。文書はすでにお手元にあり、完了後に PDF をダウンロードして保管できます。完了する前であればいつでも中止でき、いずれの場合も費用はかかりません。中止してもすでに署名済みの文書には影響しません。"
+      esign_consent_disclosure_self_signing_contact: "<strong>お客様の連絡先。</strong> 文書はお客様ご自身のアカウントのメールアドレスに送信されます。アカウント設定でご自身で変更できます。"
