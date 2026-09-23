@@ -9,17 +9,6 @@
 RSpec.describe 'Postmark stream by plan', type: :lib do
   include_context 'with isolated SMTP environment'
 
-  let(:stream_keys) { %w[POSTMARK_STREAM_PAID POSTMARK_STREAM_FREE] }
-
-  around do |example|
-    original = stream_keys.index_with { |key| ENV.fetch(key, nil) }
-    stream_keys.each { |key| ENV.delete(key) }
-
-    example.run
-  ensure
-    original.each { |key, value| value.nil? ? ENV.delete(key) : ENV[key] = value }
-  end
-
   before do
     allow(Docuseal).to receive(:demo?).and_return(false)
     allow(MailConfigs).to receive(:delivery_mode).and_return('smtp')
@@ -112,6 +101,18 @@ RSpec.describe 'Postmark stream by plan', type: :lib do
     EncryptedConfig.where(account:).delete_all
 
     expect(stream_of(build_message(account_id: account.id))).to eq('outbound-free')
+  end
+
+  it 'uses the platform stream for notices even while the account has a pin' do
+    streams!
+    account = create(:account, :paid)
+    create(:user, account:)
+    pin_smtp(account)
+    message = BillingMailer.suspended(account).message
+
+    expect(stream_of(message)).to eq('outbound-paid')
+    expect(message.delivery_method.settings[:address]).to eq('platform.smtp.example')
+    expect(message.from).to eq(['platform@example.com'])
   end
 
   it 'sets no header when either stream variable is missing' do

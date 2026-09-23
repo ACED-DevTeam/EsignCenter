@@ -626,7 +626,7 @@ has to outlast our own 14-day grace period. It has its own section: **3.4**.
 | `TURNSTILE_SECRET_KEY` | **Required when `REGISTRATION_ENABLED=true`** (Session 5) | `lib/turnstile.rb`, `lib/registration_config_guard.rb` | The server-side key used to ask Cloudflare whether a sign-up token is genuine. **Boot refuses to start** in production when sign-up is on and this is unset; at runtime a blank key fails every email sign-up closed (*Please complete the verification*). Never bypassed by any environment setting. |
 | `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` | Optional (Session 5) | `config/initializers/devise.rb`, `lib/registrations.rb`, `lib/registration_config_guard.rb` | The Google OAuth app behind **Continue with Google**. With either unset the button is hidden on the sign-in and sign-up pages and a warning is reported at boot; email sign-up works regardless. Until the Google app is published it runs in Testing mode and only its listed test users can use the button (launch gate 4b). |
 | `APPLE_OAUTH_CLIENT_ID`, `APPLE_OAUTH_TEAM_ID`, `APPLE_OAUTH_KEY_ID`, `APPLE_OAUTH_PRIVATE_KEY` | Optional (Session 5) | `config/initializers/devise.rb`, `lib/registrations.rb`, `lib/registration_config_guard.rb` | The Apple Service ID, Apple Developer team id, key id and the `.p8` private key behind **Continue with Apple**. All four or nothing: the button is hidden and every `/auth/apple/...` address answers 404 unless all four hold real values, and a value still starting with `PASTE_` (how the env file ships an unfilled slot) counts as unset, as does a team id or key id that is not Apple's ten characters or a private key that is not a `-----BEGIN ... PRIVATE KEY-----` block. The key may be stored on one line with `\n` for the line breaks. A warning is reported at boot when they are missing; email sign-up and the Google button work regardless. Setting them up is launch gate 4b (`docs/render-deploy-checklist.md`). |
-| `POSTMARK_STREAM_PAID`, `POSTMARK_STREAM_FREE` | Optional (Session 5) | `lib/action_mailer_configs_interceptor.rb` (Phase D) | Postmark message-stream ids. When both are set, platform mail for free accounts goes out on the free stream and everything else (paid, internal, operator alerts) on the paid stream, so a spammy free tier cannot hurt paying customers' deliverability. Unset = no stream header, one shared stream. Accounts with their own pinned SMTP server never get the header. |
+| `POSTMARK_STREAM_PAID`, `POSTMARK_STREAM_FREE` | Optional (Session 5) | `lib/action_mailer_configs_interceptor.rb` (Phase D) | Postmark message-stream ids. When both are set, platform mail for free accounts goes out on the free stream and everything else (paid, internal, operator alerts) on the paid stream, so a spammy free tier cannot hurt paying customers' deliverability. Unset = no stream header, one shared stream. Mail sent through a pinned SMTP server never gets the header; platform notices bypass the pin and keep the plan-selected stream. |
 | `POSTMARK_WEBHOOK_USERNAME`, `POSTMARK_WEBHOOK_PASSWORD` | Required for delivery webhooks | `lib/postmark_webhooks.rb` | Choose credentials for the webhook URL. These are separate from the SMTP server token. If either is blank, the endpoint returns 503 and records nothing. Wrong or missing credentials return 401. |
 | `POSTMARK_WEBHOOK_IPS` | Optional | `lib/postmark_webhooks.rb` | Comma-separated IP addresses or CIDR ranges allowed to call the webhook. Blank uses `3.134.147.250,50.31.156.6,50.31.156.77,18.217.206.57`. An address outside the list returns 403 even with correct credentials. |
 | `CERTS` | **Gone (Session 4)** | — | The app no longer reads this variable anywhere; a leftover value on the service is inert. Signing identities come from the platform certificate on the operator account (section 8). A code gate fails the build if anything reads `CERTS` again. |
@@ -652,9 +652,31 @@ account behind it — on `POSTMARK_STREAM_PAID`. Postmark tracks reputation
 per stream, so a burst of abuse from free sign-ups cannot drag down
 delivery for paying customers. The header is only set when *both* variables
 are present; with either missing every message uses the server's default
-stream. Accounts pinned to their own SMTP server (`rake email:pin`) never
-get the header — a pinned server is a different Postmark server with its own
-streams. Proof: `spec/golden/postmark_stream_spec.rb`.
+stream. Customer mail sent through a pinned SMTP server (`rake email:pin` or
+Settings → Email SMTP) never gets the header — that server has its own streams.
+Platform notices always bypass the pin, use `SMTP_FROM` and keep the stream
+chosen by plan. This includes billing, quota, account/export notices, login
+invitations, Devise password recovery, and support/operator mail. The SMTP
+setup confirmation is an explicit exception: it must test the customer's server.
+Signature requests, completed notifications to the sender, document copies and
+signer verification codes keep using the entitled account's pin.
+
+A failed account SMTP delivery still raises so the existing job retries and
+error reporting work. Active admins receive a platform notice at most once per
+rolling 24 hours with the message kind, recipient, time, safe reason and a link
+to Email SMTP settings. The `smtp_failure` AccountConfig row stores the latest
+failure and the notice claim under an account-row lock, shared across workers
+and durable across restarts. A failed notice attempt consumes the window and is
+reported through ErrorReport without masking the original delivery error.
+No credentials or raw server replies are stored in the notice or marker.
+Testing children using an inherited pin report to the pin-owning parent's admins.
+
+The settings page shows failures from the last 24 hours. A successful setup
+test or removal clears the alert while preserving the throttle. Failures from
+removed, replaced or no-longer-entitled pins are ignored; setup-test errors stay
+on the interactive form. Platform SMTP failures remain platform incidents and
+do not produce customer SMTP notices. No database migration is required.
+Proof: `spec/golden/postmark_stream_spec.rb`.
 
 ### 3.2 Operator alerts, reported documents and the abuse queue
 
@@ -1111,8 +1133,9 @@ to its own Postmark account — is triggered by traction or the first abuse
 incident, whichever comes first. About one hour of work; nothing in the code
 changes.
 
-Internal apps are **not** affected: they are pinned to their own servers on
-the old account via `rake email:pin`, and those pins are rows in the
+Internal apps’ **customer mail** is not affected: it is pinned to their own
+servers on the old account via `rake email:pin`. Their platform notices use
+the rotated platform server like every other account. Those pins are rows in the
 database that this migration does not touch.
 
 1. **Create the new Postmark account** (a new login, or a second account

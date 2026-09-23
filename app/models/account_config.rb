@@ -74,6 +74,9 @@ class AccountConfig < ApplicationRecord
   # `dismissed_at` is what takes it away for good.
   FIRST_COMPLETION_UPGRADE_PROMPT_KEY = 'first_completion_upgrade_prompt'
 
+  # Last safe SMTP failure and the durable, rolling 24-hour notice claim.
+  SMTP_FAILURE_KEY = 'smtp_failure'
+
   EMAIL_VARIABLES = {
     SUBMITTER_INVITATION_EMAIL_KEY => %w[template.name submitter.link account.name].freeze,
     SUBMITTER_COMPLETED_EMAIL_KEY => %w[template.name submission.submitters submission.link].freeze,
