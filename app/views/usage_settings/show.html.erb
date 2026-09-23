@@ -8,8 +8,8 @@
       <p class="text-base-content/70 mb-5" dir="auto"><%= t('usage_page_intro') %></p>
       <div class="flex flex-wrap items-center gap-2 mb-5" data-usage-plan="<%= @plan %>">
         <% case @plan %>
-        <% when Plans::PAID %>
-          <span class="badge badge-neutral badge-lg"><%= t('usage_plan_paid') %></span>
+        <% when Plans::PAID, Plans::BUSINESS %>
+          <span class="badge badge-neutral badge-lg"><%= t("usage_plan_#{Plans.key_for(current_account)}") %></span>
           <span class="badge badge-outline badge-lg"><%= t('seats_label', count: @limits.seats) %></span>
         <% when Plans::INTERNAL %>
           <span class="badge badge-neutral badge-lg"><%= t('usage_plan_internal') %></span>

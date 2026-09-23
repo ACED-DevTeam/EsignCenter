@@ -29,6 +29,7 @@
     </div>
     <% if !@template.archived_at? && !@template.account.archived_at? %>
       <%= form_for @submitter, url: start_form_path(@template.slug), data: { turbo_frame: :_top }, method: :put, html: { class: 'space-y-4' } do |f| %>
+        <%= hidden_field_tag :embed, '1' if shared_form_source == 'embed' %>
         <% if @error_message %>
           <div class="alert items-start bg-base-100 border border-red-400 text-red-400">
             <%= svg_icon('info_circle', class: 'stroke-current shrink-0 h-6 w-6 mt-1') %>

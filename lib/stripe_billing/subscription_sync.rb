@@ -34,7 +34,8 @@ module StripeBilling
     # The columns reconciliation compares to decide a row has drifted from
     # Stripe. Everything apply! would write except `synced_at`, which moves on
     # every run and would report drift on every single row.
-    DRIFT_ATTRIBUTES = %i[access_state status stripe_status quantity stripe_item_id stripe_price_id
+    DRIFT_ATTRIBUTES = %i[access_state status stripe_status quantity plan api_pack_quantity
+                          retained_api_pack_quantity retained_api_pack_until stripe_item_id stripe_price_id
                           stripe_product_id stripe_subscription_id stripe_customer_id current_period_start
                           current_period_end ended_at trial_end trial_used_at past_due_since
                           cancel_at_period_end cancel_at].freeze
@@ -113,7 +114,8 @@ module StripeBilling
     end
 
     def apply!(account_subscription, stripe_subscription)
-      if price_item(stripe_subscription).nil? && !vanished?(stripe_subscription)
+      if price_item(stripe_subscription).nil? && !known_business_item(account_subscription, stripe_subscription) &&
+         !vanished?(stripe_subscription)
         report_missing_price(account_subscription, stripe_subscription)
       end
 
@@ -286,7 +288,8 @@ module StripeBilling
     # Everything apply! would write, without writing it — reconciliation asks
     # for this and compares before it repairs.
     def attributes_for(account_subscription, stripe_subscription)
-      item = price_item(stripe_subscription)
+      known_business = known_business_item(account_subscription, stripe_subscription)
+      item = known_business || price_item(stripe_subscription)
       period_start, period_end = period_for(stripe_subscription, item)
       trial_end = timestamp(field(stripe_subscription, :trial_end))
       status = field(stripe_subscription, :status).to_s
@@ -313,8 +316,9 @@ module StripeBilling
       {
         access_state:,
         status:,
+        **tier_attributes(account_subscription, stripe_subscription, period_end),
         stripe_status: status,
-        quantity: quantity_for(stripe_subscription, fallback: account_subscription.quantity),
+        quantity: row_quantity_for(account_subscription, stripe_subscription),
         # Which subscription an account holds is the Linker's decision alone,
         # and it only ever changes one after confirming the old one is over:
         # applying a Stripe object must never repoint a live row.
@@ -406,11 +410,62 @@ module StripeBilling
     # many seats this account bought, so the caller's own count is kept
     # instead of a stranger's. Never below one seat.
     def quantity_for(stripe_subscription, fallback: 1)
-      ours = items(stripe_subscription).select { |item| price_id_of(item) == StripeBilling.price_id.to_s }
+      seats = items(stripe_subscription).select do |item|
+        StripeBilling.price_id.present? && price_id_of(item) == StripeBilling.price_id
+      end
+      business = item_for_price(stripe_subscription, StripeBilling.business_price_id)
 
-      return [fallback.to_i, 1].max if ours.empty?
+      return [fallback.to_i, 1].max if seats.empty? && !business
 
-      [ours.sum { |item| field(item, :quantity).to_i }, 1].max
+      [seats.sum { |item| field(item, :quantity).to_i } + (business ? 1 : 0), 1].max
+    end
+
+    # The Business base includes exactly one seat. Packs never buy seats and
+    # extra Business seats use the existing Paid seat price.
+    def plan_for(stripe_subscription)
+      item_for_price(stripe_subscription, StripeBilling.business_price_id) ? Plans::BUSINESS : Plans::PAID
+    end
+
+    # A reduction stops billing the removed packs on the next invoice, with
+    # no credit now. The capacity already paid for lasts to this period's
+    # end; a stale webhook cannot shorten that date or extend it at renewal.
+    # Keeping this separate from Stripe's recurring quantity also means the
+    # ordinary seat machinery remains free to update subscription items.
+    def tier_attributes(row, stripe_subscription, period_end)
+      return {} unless price_item(stripe_subscription) || known_business_item(row, stripe_subscription)
+
+      packs = item_for_price(stripe_subscription, StripeBilling.api_pack_price_id)
+      quantity = StripeBilling.api_pack_price_id.present? ? field(packs, :quantity).to_i : row.api_pack_quantity
+      retained = row.retained_api_pack_until&.future? ? row.retained_api_pack_quantity : 0
+      until_at = retained.positive? ? row.retained_api_pack_until : nil
+
+      if quantity < row.api_pack_quantity && row.current_period_end&.future? &&
+         row.current_period_end == period_end
+        retained = [retained, row.api_pack_quantity].max
+        until_at = row.current_period_end
+      end
+
+      { plan: known_business_item(row, stripe_subscription) ? Plans::BUSINESS : plan_for(stripe_subscription),
+        api_pack_quantity: quantity,
+        retained_api_pack_quantity: retained, retained_api_pack_until: until_at }
+    end
+
+    def row_quantity_for(row, stripe_subscription)
+      unless known_business_item(row, stripe_subscription)
+        return quantity_for(stripe_subscription, fallback: row.quantity)
+      end
+
+      1 + field(item_for_price(stripe_subscription, StripeBilling.price_id), :quantity).to_i
+    end
+
+    # An accidentally removed optional env var must not turn an existing
+    # Business account into Paid because its extra-seat item still matches.
+    # The already-mirrored base price is evidence; a new subscription with
+    # no such item remains an ordinary Paid subscription.
+    def known_business_item(row, stripe_subscription)
+      return unless row.plan == Plans::BUSINESS && StripeBilling.business_price_id.blank?
+
+      item_for_price(stripe_subscription, row.stripe_price_id)
     end
 
     # In this API version the billing period lives on the subscription ITEM;
@@ -428,11 +483,14 @@ module StripeBilling
     # The item on our price, or nil. Never a foreign item: substituting one
     # would write somebody else's price and product onto the row.
     def price_item(stripe_subscription)
-      our_price = StripeBilling.price_id.to_s
+      item_for_price(stripe_subscription, StripeBilling.business_price_id) ||
+        item_for_price(stripe_subscription, StripeBilling.price_id)
+    end
 
-      return nil if our_price.blank?
+    def item_for_price(stripe_subscription, price_id)
+      return nil if price_id.blank?
 
-      items(stripe_subscription).find { |item| price_id_of(item) == our_price }
+      items(stripe_subscription).find { |item| price_id_of(item) == price_id }
     end
 
     # `price` is the expanded object when we asked for it and a bare id string

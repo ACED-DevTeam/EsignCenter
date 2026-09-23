@@ -131,17 +131,20 @@ RSpec.describe 'Marketing pages', type: :request do
       Entitlements::PAID_ONLY.each do |feature|
         row = PricingMatrix.rows.find { |r| r[:features].include?(feature) }
         expect(row).not_to be_nil, "no pricing row covers #{feature}"
-        expect(cell.call(row[:key])).to eq(['Not included', 'Included']), "#{feature} row is not dash / check"
+        expect(cell.call(row[:key])).to eq(['Not included', 'Included', 'Included', 'Custom']),
+                                        "#{feature} row is not dash / check"
       end
-      expect(cell.call('completions')).to eq([Quotas::Limits::FREE_COMPLETIONS_PER_MONTH.to_s, 'Unlimited*'])
-      expect(cell.call('sends')).to eq([Quotas::Limits::FREE_SENDS_PER_MONTH.to_s, 'Unlimited*'])
-      expect(cell.call('in_flight')).to eq([Quotas::Limits::FREE_IN_FLIGHT.to_s, 'Unlimited*'])
-      expect(cell.call('storage')).to eq(%w[Included Included])
+      expect(cell.call('completions')).to eq([Quotas::Limits::FREE_COMPLETIONS_PER_MONTH.to_s, 'Unlimited*',
+                                              'Unlimited*', 'Custom'])
+      expect(cell.call('sends')).to eq([Quotas::Limits::FREE_SENDS_PER_MONTH.to_s, 'Unlimited*', 'Unlimited*',
+                                        'Custom'])
+      expect(cell.call('in_flight')).to eq([Quotas::Limits::FREE_IN_FLIGHT.to_s, 'Unlimited*', 'Unlimited*', 'Custom'])
+      expect(cell.call('storage')).to eq(%w[Included Included Included Custom])
       expect(doc.at_css("tr[data-pricing-row='storage'] th").text.squish).to eq('Agreement storage')
       expect(doc.at_css('main').text).not_to match(/\b\d+\s*GB\b/)
       expect(cell.call('seats').first).to eq(Quotas::Limits::FREE_SEATS.to_s)
-      expect(cell.call('api')).to eq(['Not included', 'Included'])
-      expect(cell.call('send_and_sign')).to eq(%w[Included Included])
+      expect(cell.call('api')).to eq(['Not included', 'Included', 'Included', 'Custom'])
+      expect(cell.call('send_and_sign')).to eq(%w[Included Included Included Custom])
 
       forbidden_trust_phrases.each { |phrase| expect(body_text_outside_disclaimer).not_to include(phrase) }
       expect(response.body).to include("$#{StripeBilling::PRICE_PER_SEAT_USD}")
@@ -151,6 +154,15 @@ RSpec.describe 'Marketing pages', type: :request do
 
       Entitlements::HIDDEN.each { |feature| expect(rows.map { |r| r['data-pricing-row'] }).not_to include(feature.to_s) }
       %w[SMS bulk SAML SSO formula].each { |word| expect(doc.at_css('table').text).not_to include(word) }
+    end
+
+    it 'shows API allowances, packs and an Enterprise sales contact' do
+      get '/pricing'
+
+      expect(cell.call('api_completions')).to eq(['Not included', '50', '500', 'Custom'])
+      expect(cell.call('api_packs')[1..2]).to eq(['$10 / 50 extra per month'] * 2)
+      expect(doc.at_css('[data-enterprise-contact]')['href']).to eq(support_path)
+      expect(doc.css('[data-pricing-plan] h2').map(&:text)).to include('Business', 'Enterprise')
     end
 
     it 'never links to sign-up while registration is off, and does while it is on' do

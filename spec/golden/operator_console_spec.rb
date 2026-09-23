@@ -784,6 +784,21 @@ RSpec.describe 'Operator console', type: :request do
       expect(last_event.details['after']['completions_per_month']).to eq(50)
     end
 
+    it 'audits an unlimited API override, displays it, and clears it back to the paid allowance' do
+      create(:account_subscription, account:, access_state: 'active')
+      patch limits_operator_account_path(account),
+            params: reason_params(limits: { api_completions_per_month: '-1' })
+
+      expect(Quotas.limits_for(account.reload).api_completions_per_month).to be_nil
+      expect(last_event.details['after']['api_completions_per_month']).to eq(-1)
+      get operator_account_path(account)
+      expect(response.body).to include('data-limit-overridden="api_completions_per_month"')
+
+      patch limits_operator_account_path(account),
+            params: reason_params(limits: { api_completions_per_month: '' })
+      expect(Quotas.limits_for(account.reload).api_completions_per_month).to eq(50)
+    end
+
     it 'clears an override back to the plan default when the field is blanked' do
       AccountLimitOverride.create!(account:, completions_per_month: 99)
 
@@ -1389,6 +1404,23 @@ RSpec.describe 'Operator console', type: :request do
       expect(response.body).to include('6 seats')
       expect(response.body).to include('Comped Co')
       expect(response.body).not_to include('translation missing')
+    end
+
+    it 'includes Business bases and recurring packs, excluding retained removed capacity from MRR' do
+      paid = paying_row(2, 'active')
+      paid.update!(api_pack_quantity: 1)
+      business = paying_row(3, 'active')
+      business.update!(plan: 'business', api_pack_quantity: 2,
+                       retained_api_pack_quantity: 5, retained_api_pack_until: 10.days.from_now)
+      trial = paying_row(1, 'trialing')
+      trial.update!(plan: 'business', api_pack_quantity: 10)
+
+      get operator_billing_path
+
+      # Paid: $20 + $10. Business: $49 + $20 + $20. Removed packs
+      # still grant this month's capacity, but will not recur on an invoice.
+      expect(response).to have_http_status(:ok)
+      expect(Nokogiri::HTML(response.body).at('[data-revenue-mrr]').text).to eq('$119.00')
     end
 
     it 'counts trials, conversions, comps, refunds owed and cancellations of this month' do

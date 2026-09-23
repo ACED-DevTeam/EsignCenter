@@ -41,10 +41,13 @@ module LegalDocuments
   # still hashes to the digest recorded on the day it was published.
   DOCUMENTS = {
     terms: {
-      version: '2026-09-23',
-      effective_on: Date.new(2026, 9, 23),
-      sha256: 'ecc0015b0000da5ed3d1c5a282b7014aa25c732fe49cfd21b60aa769b8611577',
-      archived: { '2026-09-05' => '0373405efc70654fa0f0fed41caf7281ea925402406d091bf68a93153b78d3de' }.freeze
+      version: '2026-09-24',
+      effective_on: Date.new(2026, 9, 24),
+      sha256: '77a68c64156f26742a4bede94ac5fadf73eb0eb8179daabb9526cacd82524842',
+      archived: {
+        '2026-09-05' => '0373405efc70654fa0f0fed41caf7281ea925402406d091bf68a93153b78d3de',
+        '2026-09-23' => 'ecc0015b0000da5ed3d1c5a282b7014aa25c732fe49cfd21b60aa769b8611577'
+      }.freeze
     }.freeze,
     privacy: {
       version: '2026-09-23',

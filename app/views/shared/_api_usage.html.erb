@@ -1,0 +1,11 @@
+<%# Live billing-account usage: both settings pages read the same quota
+    engine as creation, so a pack purchase and UTC rollover show at once. %>
+<% api_limit = Quotas.limits_for(current_account).api_completions_per_month %>
+<div class="rounded-xl border border-base-300 p-4 my-5 space-y-2" data-api-usage>
+  <p class="font-semibold" dir="auto"><%= t('api_usage_meter', used: Quotas.api_completions_this_month(current_account), limit: api_limit || t('api_usage_unlimited')) %></p>
+  <p class="text-sm text-base-content/70" dir="auto"><%= t('api_usage_reset', date: l(Quotas.resets_at(current_account).to_date, format: :long)) %></p>
+  <p class="text-sm text-base-content/70" dir="auto"><%= t('api_usage_explanation') %></p>
+  <% if can?(:billing, current_account) && controller_name != 'billing_settings' %>
+    <%= link_to t('api_usage_manage'), settings_billing_path, class: 'link text-sm' %>
+  <% end %>
+</div>

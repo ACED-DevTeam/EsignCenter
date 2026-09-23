@@ -385,6 +385,18 @@ module BillingLifecycle
   # `proration_behavior: 'none'` — no mid-cycle credit, the NEXT invoice
   # simply bills fewer seats (D43: no prorated refunds).
 
+  # Business's primary item is its $49 base, not a seat price. Touch only
+  # the optional extra-seat item, creating it for seat two and deleting it
+  # when the last extra seat is released. Paid's existing item stays intact.
+  def seat_item_change(row, quantity)
+    return { id: row.stripe_item_id, quantity: } unless row.plan == Plans::BUSINESS
+
+    subscription = StripeBilling.subscription_for(row.stripe_subscription_id)
+    item = StripeBilling::SubscriptionSync.item_for_price(subscription, StripeBilling.price_id)
+
+    StripeBilling::TierChanges.item_change(item, StripeBilling.price_id, quantity - 1)
+  end
+
   # What Stripe would charge, today, for one more seat: the prorated remainder
   # of the current billing period. Read as a PREVIEW invoice, so nothing is
   # created and nothing is charged — the customer sees the number before they
@@ -400,7 +412,7 @@ module BillingLifecycle
       { customer: row.stripe_customer_id,
         subscription: row.stripe_subscription_id,
         subscription_details: {
-          items: [{ id: row.stripe_item_id, quantity: quantity_after }],
+          items: [seat_item_change(row, quantity_after)],
           proration_behavior: 'always_invoice',
           proration_date:
         } }
@@ -433,7 +445,7 @@ module BillingLifecycle
   def add_seat!(row, quantity_after:, idempotency_key:, proration_date:)
     StripeBilling.client.v1.subscriptions.update(
       row.stripe_subscription_id,
-      { items: [{ id: row.stripe_item_id, quantity: quantity_after }],
+      { items: [seat_item_change(row, quantity_after)],
         proration_behavior: 'always_invoice',
         # The same instant the customer was quoted from, so the invoice that
         # comes out of this is the one they agreed to.
@@ -495,7 +507,7 @@ module BillingLifecycle
 
         StripeBilling.client.v1.subscriptions.update(
           row.stripe_subscription_id,
-          { items: [{ id: row.stripe_item_id, quantity: target }], proration_behavior: 'none' }
+          { items: [seat_item_change(row, target)], proration_behavior: 'none' }
         )
 
         StripeBilling::Linker.apply_current!(row, row.stripe_subscription_id, event_at: Time.current)

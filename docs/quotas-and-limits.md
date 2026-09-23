@@ -15,7 +15,8 @@ sending pause is `lib/sending_pause.rb`; storage is `lib/quotas/storage.rb`.
 | Documents waiting for signatures | 10 | Free | The 11th open document is refused until one completes, is declined, expires or is deleted. |
 | Seats | 1 | Free | Inviting (or reactivating) a second user is refused. |
 | Storage | 1 GB | Free | Uploads by account users are refused; sending and signing keep working (section 5). |
-| Storage | 10 GB per seat | Paid | Same — uploads only, never sending. |
+| API completions | 50 Paid / 500 Business, +50 per API pack | Paid and Business, per billing account | New API/embed/MCP submissions refused; existing documents finish. Emails at 80% and 100%. |
+| Storage | 10 GB per seat | Paid and Business | Same — uploads only, never sending. |
 | Fair-use review | 500 completions per seat per month | Paid | Nothing is blocked. An email at 80%, a review flag for the operator at 100%. |
 | Send velocity | 200 sends per seat per day | Paid | Nothing is blocked; a warn-flag for the operator. |
 | Open documents | 50 per seat | Paid | Nothing is blocked; a warn-flag for the operator. |
@@ -36,9 +37,46 @@ other template.
 test-mode submissions never meter either — test-mode belongs to internal
 accounts only, so nothing a customer does is "test".
 
-**Paid accounts are never auto-blocked by a quota** (D42). The only thing that
-stops a paid account from sending is the complaint/bounce policy, which is
-about abuse, not usage.
+**Paid in-app sending is never auto-blocked by a usage quota** (D42).
+D79 adds one channel-specific exception: new API, embedded-form and MCP
+documents pause when the billing account reaches its API allowance.
+The complaint/bounce sending pause remains a separate abuse policy.
+
+### API completions (D79)
+
+Paid includes **50 API completions/month** per billing account; Business
+includes **500**. Each recurring $10 API pack adds **50**. Seats do not multiply
+this allowance. Trialing accounts receive their plan's allowance; internal
+and operator accounts remain unlimited. Free has no API entitlement.
+
+The durable first-signer completion row counts when its source is `api`,
+`embed`, or `mcp`, in the UTC calendar month. It preserves the same D73 lineage
+rule and billing-account rollup as ordinary completions. Deleting a document
+does not refund capacity. Invite, ordinary shared-link and bulk sources do
+not consume API capacity. Shared forms opened with the hosted embed SDK or
+in an iframe are marked `embed`; ordinary top-level links remain `link`.
+Public shared-form pages and their resulting signing pages allow framing from
+any site; private signing sessions retain their configured origin allowlist.
+
+At the allowance, new automation submissions receive a 402 JSON error (MCP
+uses its JSON tool-error response) explaining the allowance, reset date and
+Billing settings path. Embedded shared forms show the usual not-accepting
+page and notify the owner once per month. The check is live: month rollover
+and buying packs reopen forms immediately. Documents already sent, including
+pending embedded shared forms, still finish. Every new API correction is
+subject to the creation pause, even if its lineage would not count again;
+the D74 completion-cap exemption remains specific to Free.
+
+Warnings go to active billing-account admins at 80% and 100%, once per UTC
+month each. Pack purchases do not re-arm either warning. Pack removals retain
+paid capacity through the current Stripe renewal; additions raise it once
+Stripe confirms payment. Usage resets at the UTC month boundary independently
+of Stripe's renewal date.
+
+Operators can override `api_completions_per_month`: blank inherits the plan,
+`0` refuses new automation documents, and `-1` means unlimited. A numeric
+override replaces the whole allowance, including packs; it never grants
+Free an API entitlement. The console and `rake operator:limits` support it.
 
 ### What "a document completed" means (D41)
 

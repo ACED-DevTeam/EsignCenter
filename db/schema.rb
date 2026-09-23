@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_06_120000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_23_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gin"
   enable_extension "pg_catalog.plpgsql"
@@ -112,6 +112,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_06_120000) do
 
   create_table "account_limit_overrides", force: :cascade do |t|
     t.bigint "account_id", null: false
+    t.integer "api_completions_per_month"
     t.integer "completions_per_month"
     t.datetime "created_at", null: false
     t.integer "fair_use_per_seat"
@@ -150,6 +151,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_06_120000) do
   create_table "account_subscriptions", force: :cascade do |t|
     t.string "access_state", null: false
     t.bigint "account_id", null: false
+    t.integer "api_pack_quantity", default: 0, null: false
     t.datetime "cancel_at"
     t.boolean "cancel_at_period_end", default: false, null: false
     t.datetime "comp_expires_at"
@@ -159,8 +161,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_06_120000) do
     t.datetime "ended_at"
     t.datetime "last_stripe_event_at"
     t.datetime "past_due_since"
+    t.string "plan", default: "paid", null: false
     t.integer "quantity", default: 1, null: false
     t.string "refund_owed_subscription_id"
+    t.integer "retained_api_pack_quantity", default: 0, null: false
+    t.datetime "retained_api_pack_until"
     t.string "status"
     t.string "stripe_customer_id"
     t.string "stripe_item_id"

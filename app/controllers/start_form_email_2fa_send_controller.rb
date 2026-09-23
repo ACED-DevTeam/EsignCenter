@@ -2,6 +2,7 @@
 
 class StartFormEmail2faSendController < ApplicationController
   include SenderViewing
+  include SharedFormSource
 
   around_action :with_browser_locale
 
@@ -10,6 +11,8 @@ class StartFormEmail2faSendController < ApplicationController
 
   def create
     @template = Template.find_by!(slug: params[:slug])
+
+    set_share_embed_frame_headers
 
     # Revoking a link has to actually revoke it. An owner who switches sharing
     # off, or archives the template, believes the URL is dead — but this
@@ -31,6 +34,8 @@ class StartFormEmail2faSendController < ApplicationController
     #     paused message it would never get there.
     return redirect_to start_form_path(@template.slug) if link_revoked?
 
+    return if refuse_unentitled_embed!
+
     Templates.assert_documents_ready!(@template)
 
     # A code only for a link that actually asks for one. The start form sends
@@ -41,7 +46,9 @@ class StartFormEmail2faSendController < ApplicationController
     return redirect_to start_form_path(@template.slug) unless @template.preferences['shared_link_2fa'] == true
 
     # No verification code for a form that cannot be started right now.
-    if (reason = Quotas.share_link_paused?(@template.account))
+    if (reason = Quotas.share_link_paused?(@template.account, source: shared_form_source))
+      notify_api_share_pause(reason)
+
       return render json: { error: pause_error_message(reason) }, status: :unprocessable_content
     end
 
@@ -52,16 +59,27 @@ class StartFormEmail2faSendController < ApplicationController
 
     redir_params = { notice: I18n.t(:code_has_been_resent) } if params[:resend]
 
-    redirect_to start_form_path(@template.slug, params: submitter_params.merge(email_verification: true)),
+    redirect_to verification_path,
                 **redir_params
   rescue Submitters::UnableToSendCode => e
-    redirect_to start_form_path(@template.slug, params: submitter_params.merge(email_verification: true)),
+    redirect_to verification_path,
                 alert: e.message
   rescue Templates::DocumentsNotReady => e
     redirect_to start_form_path(@template.slug), alert: e.message
   end
 
   private
+
+  def verification_path
+    start_form_path(@template.slug, params: submitter_params.merge(email_verification: true,
+                                                                   embed: shared_form_source == 'embed' ? '1' : nil))
+  end
+
+  def refuse_unentitled_embed!
+    return false unless shared_form_source == 'embed' && !Entitlements.allowed?(@template.account, :embed)
+
+    render json: { error: I18n.t('form_not_accepting_responses') }, status: :forbidden
+  end
 
   # Revoked exactly as the start form counts it: sharing switched off, or the
   # template archived (StartFormController#completed's own
