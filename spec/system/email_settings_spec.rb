@@ -64,7 +64,7 @@ RSpec.describe 'Email Settings' do
       return unless ENV['SMTP_SCREENSHOTS'] == 'true'
 
       # rubocop:disable Lint/Debugger
-      page.save_screenshot(Rails.root.join("tmp/smtp-failure-#{viewport}.png"))
+      page.save_screenshot(Rails.root.join("tmp/smtp-failure-#{viewport}.png"), full: true)
       # rubocop:enable Lint/Debugger
     end
 
@@ -76,6 +76,7 @@ RSpec.describe 'Email Settings' do
     end
 
     it 'shows the recent failure on desktop and phone widths' do
+      page.driver.resize(1200, 800)
       record_failure
       visit settings_email_index_path
 
@@ -86,6 +87,7 @@ RSpec.describe 'Email Settings' do
       capture_smtp_evidence('desktop')
       page.driver.resize(390, 844)
       expect(page).to have_content('Your email server could not send a message')
+      expect(page.evaluate_script('document.documentElement.scrollWidth <= window.innerWidth')).to be(true)
       capture_smtp_evidence('phone')
     end
 
