@@ -25,7 +25,6 @@
     </div>
     <%= form_for '', url: start_form_path(@template.slug), method: :put, html: { class: 'space-y-4', id: 'code_form' } do |f| %>
       <div dir="auto" class="form-control !mt-0">
-        <%= hidden_field_tag :embed, '1' if shared_form_source == 'embed' %>
         <%= f.hidden_field 'resubmit', value: params[:resubmit] %>
         <%= f.hidden_field 'submitter[name]', value: params[:name] || @submitter&.name %>
         <%= f.hidden_field 'submitter[email]', value: params[:email] || @submitter&.email %>
@@ -50,7 +49,7 @@
         <%= f.button button_title(title: t('submit')), class: 'base-button' %>
       </toggle-submit>
     <% end %>
-    <%= button_to t(:re_send_email), start_form_email_2fa_send_index_path, params: { slug: @template.slug, embed: shared_form_source == 'embed' ? '1' : nil, resend: true, submitter: { name: params[:name] || @submitter&.name, email: params[:email] || @submitter&.email, phone: params[:phone] || @submitter&.phone } }.compact, method: :post, id: 'resend_code', class: 'hidden' %>
+    <%= button_to t(:re_send_email), start_form_email_2fa_send_index_path, params: { slug: @template.slug, resend: true, submitter: { name: params[:name] || @submitter&.name, email: params[:email] || @submitter&.email, phone: params[:phone] || @submitter&.phone } }.compact, method: :post, id: 'resend_code', class: 'hidden' %>
   </div>
 </main>
 <%= render 'shared/attribution', account: @template.account %>

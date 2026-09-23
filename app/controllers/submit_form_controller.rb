@@ -209,17 +209,6 @@ class SubmitFormController < ApplicationController
     return unless @submitter&.submission&.source_embed?
 
     prefs = @submitter.submission.preferences || {}
-
-    # Only the anonymous shared-template start writes this marker. API and
-    # signing-session payloads cannot request it, and corrected copies retain
-    # their origin's framing policy rather than gaining public framing.
-    if prefs['share_embed'] == true
-      response.headers.delete('X-Frame-Options')
-      request.content_security_policy&.frame_ancestors('*')
-
-      return
-    end
-
     origins = (Array(prefs['embed_origins']).presence || Array(prefs['embed_origin'])).compact_blank
 
     return if origins.blank?

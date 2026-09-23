@@ -120,7 +120,9 @@ module Quotas
   end
 
   def default_limits_for(billing)
-    case Plans.key_for(billing)
+    plan = Plans.key_for(billing)
+
+    case plan
     when Plans::FREE
       LimitSet.new(completions_per_month: Limits::FREE_COMPLETIONS_PER_MONTH,
                    sends_per_month: Limits::FREE_SENDS_PER_MONTH,
@@ -130,7 +132,7 @@ module Quotas
     when Plans::PAID, Plans::BUSINESS
       subscription = billing.account_subscription
       seats = subscription.quantity
-      api_base = if subscription.plan == Plans::BUSINESS
+      api_base = if plan == Plans::BUSINESS
                    Limits::BUSINESS_API_COMPLETIONS_PER_MONTH
                  else
                    Limits::PAID_API_COMPLETIONS_PER_MONTH
@@ -219,8 +221,53 @@ module Quotas
   # deletion. Reusing is_first preserves D41/D73 across signers and copies;
   # joining live submissions here would refund usage when one is deleted.
   def api_completions_this_month(account)
+    api_completions_scope(account).count
+  end
+
+  def api_completions_scope(account)
     CompletedSubmitter.where(account_id: account_ids(account), is_first: true, source: API_SOURCES,
-                             completed_at: month_range).count
+                             completed_at: month_range, submission_created_at: ApiMeteringActivation.starts_at..)
+  end
+
+  # Every eligible automation document holds one slot until its lineage has
+  # a durable first completion. That includes the short interval between a
+  # signer finishing and the async completion job recording it: releasing
+  # early would let a second creation spend the same slot. Later signers of
+  # an already-counted document never hold another reservation.
+  def api_reservations_scope(account)
+    submissions = Submission.arel_table
+    submitters = Submitter.arel_table
+    same_submission = submitters[:submission_id].eq(submissions[:id])
+    declined = Submitter.where(same_submission).where.not(declined_at: nil)
+    family_root = 'COALESCE(submissions.lineage_root_id, submissions.id)'
+    family_completion = CompletedSubmitter.where(is_first: true).where(
+      "submission_id = #{family_root} OR submission_id IN " \
+      "(SELECT family.id FROM submissions family WHERE family.lineage_root_id = #{family_root})"
+    )
+
+    Submission.where(account_id: account_ids(account), source: API_SOURCES, archived_at: nil,
+                     created_at: ApiMeteringActivation.starts_at..)
+              .where(submissions[:expire_at].eq(nil).or(submissions[:expire_at].gt(Time.current)))
+              .where(Submitter.where(same_submission).select(1).arel.exists)
+              .where.not(declined.select(1).arel.exists)
+              .where.not(family_completion.select(1).arel.exists)
+              .left_joins(:template).where(templates: { archived_at: nil })
+  end
+
+  def api_reservations(account)
+    api_reservations_scope(account).count
+  end
+
+  # One SQL snapshot is essential. Two separate counts could read zero
+  # completions before a job commits and zero reservations just afterwards,
+  # admitting another creation into a slot that has already been consumed.
+  def api_capacity_used(account)
+    completions = api_completions_scope(account).select('1 AS slot').to_sql
+    reservations = api_reservations_scope(account).select('1 AS slot').to_sql
+
+    ApplicationRecord.connection.select_value(
+      "SELECT COUNT(*) FROM (#{completions} UNION ALL #{reservations}) AS api_capacity"
+    ).to_i
   end
 
   # Documents sent this month: every submission created on any path, selfsign
@@ -324,7 +371,9 @@ module Quotas
     # which never calls this guard. In-app sends retain their warn-only policy.
     # Free API access is refused by the existing entitlement guards (D31),
     # with their established feature errors. D79 changes paid automation only.
-    assert_api_capacity!(billing, source:, limit: limits.api_completions_per_month) unless plan == Plans::FREE
+    unless plan == Plans::FREE || counted_family?(correction_of)
+      assert_api_capacity!(billing, source:, count:, limit: limits.api_completions_per_month)
+    end
 
     return true unless plan == Plans::FREE
 
@@ -344,9 +393,10 @@ module Quotas
     true
   end
 
-  def assert_api_capacity!(billing, source:, limit:)
+  def assert_api_capacity!(billing, source:, count:, limit:)
     return unless API_SOURCES.include?(source.to_s) && limit
-    return if api_completions_this_month(billing) < limit
+    return if Time.current < ApiMeteringActivation.starts_at
+    return if api_capacity_used(billing) + count <= limit
 
     raise LimitReached.new(:api_completions, limit:, resets_at: resets_at)
   end

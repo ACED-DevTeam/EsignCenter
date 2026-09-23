@@ -35,7 +35,8 @@ module StripeBilling
     # Stripe. Everything apply! would write except `synced_at`, which moves on
     # every run and would report drift on every single row.
     DRIFT_ATTRIBUTES = %i[access_state status stripe_status quantity plan api_pack_quantity
-                          retained_api_pack_quantity retained_api_pack_until stripe_item_id stripe_price_id
+                          retained_api_pack_quantity retained_api_pack_until retained_business_until
+                          stripe_item_id stripe_price_id
                           stripe_product_id stripe_subscription_id stripe_customer_id current_period_start
                           current_period_end ended_at trial_end trial_used_at past_due_since
                           cancel_at_period_end cancel_at].freeze
@@ -445,9 +446,20 @@ module StripeBilling
         until_at = row.current_period_end
       end
 
-      { plan: known_business_item(row, stripe_subscription) ? Plans::BUSINESS : plan_for(stripe_subscription),
-        api_pack_quantity: quantity,
+      plan = known_business_item(row, stripe_subscription) ? Plans::BUSINESS : plan_for(stripe_subscription)
+
+      { plan:, retained_business_until: business_retention(row, plan, period_end), api_pack_quantity: quantity,
         retained_api_pack_quantity: retained, retained_api_pack_until: until_at }
+    end
+
+    def business_retention(row, plan, period_end)
+      return if plan == Plans::BUSINESS
+      return row.retained_business_until if row.retained_business_until&.future?
+      unless row.plan == Plans::BUSINESS && row.current_period_end&.future? && row.current_period_end == period_end
+        return
+      end
+
+      period_end
     end
 
     def row_quantity_for(row, stripe_subscription)

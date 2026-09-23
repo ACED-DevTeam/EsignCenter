@@ -1,8 +1,6 @@
 <p><%= mail_greeting %></p>
 <p>Someone tried to open one of your shared form links, but your account cannot accept new documents right now, so they saw a "not accepting responses" page instead of the form.</p>
 <% case @reason %>
-<% when 'api_completions' %>
-  <p>Why: the account has used all <%= @limits.api_completions_per_month %> API completions this month. Add API packs or change plans in Billing settings to resume immediately, or wait until <%= @resets_at.strftime('%-d %B %Y') %> at 00:00 UTC. Documents already sent can still finish.</p>
 <% when 'completions' %>
   <p>Why: the account has used all <%= @limits.completions_per_month %> document completions included in the free plan this month. The limit resets on <%= @resets_at.strftime('%-d %B %Y') %> at 00:00 UTC, and the link will work again by itself.</p>
 <% when 'sends' %>
@@ -12,7 +10,7 @@
 <% when 'sending_paused' %>
   <p>Why: sending is paused on this account while we review a delivery problem. See the separate email about that pause, or contact <%= mail_to @support_email %>.</p>
 <% end %>
-<% unless %w[sending_paused api_completions].include?(@reason) %>
+<% unless @reason == 'sending_paused' %>
   <p>The paid plan removes the free limits: $10 per user per month, with a 14-day free trial.</p>
 <% end %>
 <p><%= link_to 'See your usage', @usage_url %></p>

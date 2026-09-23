@@ -44,7 +44,7 @@ module Plans
 
     return INTERNAL unless billing.customer?
 
-    paid_subscription?(billing) ? billing.account_subscription.plan : FREE
+    paid_subscription?(billing) ? billing.account_subscription.effective_plan : FREE
   end
 
   def paid_or_better?(account)

@@ -135,7 +135,9 @@ class BillingSettingsController < ApplicationController
     result = StripeBilling::TierChanges.change_packs!(@subscription, params[:quantity].to_s)
 
     redirect_to settings_billing_path,
-                notice: I18n.t(result == :pending ? 'billing_change_pending' : 'billing_api_packs_updated')
+                notice: I18n.t({ pending: 'billing_change_pending', expired: 'billing_pack_purchase_expired',
+                                 review: 'billing_pack_purchase_review' }
+                                .fetch(result, 'billing_api_packs_updated'))
   end
 
   def portal

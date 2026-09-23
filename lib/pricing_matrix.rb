@@ -84,7 +84,7 @@ module PricingMatrix
 
       row(:completions, :limits, free_completions.to_s, UNLIMITED, fair_use: true),
       row(:api_completions, :limits, false, paid_api_completions.to_s, business: business_api_completions.to_s),
-      row(:api_packs, :limits, false, "$#{api_pack_price} / #{api_pack_completions} extra per month"),
+      row(:api_packs, :limits, false, "+#{api_pack_completions} for $#{api_pack_price}/mo"),
       row(:sends, :limits, free_sends.to_s, UNLIMITED, fair_use: true),
       row(:in_flight, :limits, free_in_flight.to_s, UNLIMITED, fair_use: true),
       row(:storage, :limits, true, true),
@@ -126,7 +126,7 @@ module PricingMatrix
   def row(key, group, free, paid, business: paid, features: [], fair_use: false)
     label_key = %i[completions sends].include?(key) ? "pricing_row_in_app_#{key}" : "pricing_row_#{key}"
 
-    { key:, group:, label_key:, free:, paid:, business:, enterprise: 'Custom', features:,
+    { key:, group:, label_key:, free:, paid:, business:, enterprise: group == :limits ? 'Custom' : true, features:,
       fair_use: }
   end
 

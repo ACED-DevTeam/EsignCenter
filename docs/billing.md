@@ -1076,37 +1076,86 @@ intervals. These tasks contact Stripe; the automated tests never do. No
 Enterprise price exists: sales terms are handled by account limit overrides.
 Run the database migrations before deploying the new app.
 
-The subscription mirror records `plan`, the actual recurring
-`api_pack_quantity`, and the already-paid capacity kept after a reduction
-(`retained_api_pack_quantity` / `retained_api_pack_until`). Sync derives these
-from subscription items: Business base buys one seat; the existing seat price
-buys extra Business seats or all Paid seats; packs never buy seats. Business
-receives every Paid feature. The app remains the only writer of quantities;
-Customer Portal quantity editing stays off.
+The subscription mirror records the **next recurring invoice**: `plan` and
+`api_pack_quantity`. Already-purchased access survives a reduction through
+`retained_business_until` and `retained_api_pack_quantity` /
+`retained_api_pack_until`. `Plans` reads `effective_plan`, so a Business
+account scheduled to become Paid still receives 500 included completions
+until renewal. Business's base buys one seat; the existing seat price buys
+extra Business seats or all Paid seats. Packs never buy seats. Customer
+Portal quantity editing stays off.
 
-New Checkout starts on Paid; a trialing account can switch to Business in
-Billing settings immediately, receiving the Business trial allowance.
+New Checkout starts on Paid. During trial, customers may switch plans and add
+packs with **no immediate invoice and no proration**; Stripe bills the selected
+recurring prices at trial end. Business trial access includes 500 completions.
 
-Billing settings accepts plan changes and target pack quantities from 0 to
-9999. Plan changes require an active or trialing self-billed subscription, and no
-pending payment or external subscription schedule. API packs require an
-active subscription: trial items have no billable remainder to prorate, so
-packs become available after the trial ends. Trial accounts can switch to
-Business and receive its 500 included completions immediately. Plan changes are prorated
-and invoiced now. Pack additions invoice only the newly purchased capacity;
-a required card-authentication step grants nothing until Stripe confirms it.
-Use Manage billing to complete payment before making another change.
+Billing settings accepts target pack quantities from 0 to 9999. Changes require
+an active or trialing self-billed subscription, without a pending payment or
+external subscription schedule. An operator API override of **any value**
+(including zero or unlimited) disables both self-serve controls; the agreement
+owns capacity and the customer is directed to support.
 
-Pack reductions change the recurring Stripe quantity with **no proration**:
-the next invoice is lower, and capacity already purchased remains until the
-original billing-period end. Restoring that capacity before renewal does not
-charge for it twice. This deliberately uses no Stripe subscription schedule,
-so seat changes cannot overwrite a future schedule phase. Allowance is read
-live, so the retained capacity expires at renewal even before a webhook or
-nightly reconciliation runs. Reducing or switching plans never stops a signer
-on an already-created document.
+**Paid → Business:** an active subscription pays the prorated upgrade now;
+Business access starts after Stripe confirms payment. The existing seat item
+changes price, so the request never combines an item deletion with Stripe's
+`pending_if_incomplete`, a combination Stripe does not support.
 
-API usage itself resets on the first day of each **UTC calendar month**,
-independently of the subscription's renewal date. The allowance is per billing
-account, not per seat, and covers first signatures on api/embed/mcp sources
-once per correction lineage. Internal/operator accounts remain unlimited.
+**Business → Paid:** no credit, and Business capacity lasts until renewal.
+The app changes the next recurring invoice without proration and retains the
+already-paid Business access locally. Keeping Business before renewal restores
+that recurring price without charging again; downgrade/restore cannot generate
+credits or a fresh allowance. This uses no SubscriptionSchedule, so later seat
+changes cannot overwrite a scheduled phase.
+
+**Active pack additions:** each genuinely new pack costs the **full $10 now**,
+regardless of how much of the billing period remains. A durable `ApiPackPurchase`
+operation is committed before money moves. It creates a standalone invoice,
+excludes unrelated pending invoice items, adds one non-discountable full-price
+line, finalizes, and attempts payment. The invoice is not attached to the
+subscription, so it cannot move its period, seat count, status or trial. Only a
+matching paid invoice permits the recurring pack quantity to increase, with
+`proration_behavior: none` and no pending-update payment mode.
+
+These standalone invoices deliberately use the existing launch policy of no
+automatic sales tax (D22/D22a). Their pack line is non-discountable to enforce
+$10 per pack. Tax collection or pack discounts require a future billing change;
+this implementation does not claim to support either.
+
+**Pack removal:** the next recurring invoice is reduced without proration or
+refund. Purchased capacity remains until the original renewal date. Restoring
+that capacity before renewal does not charge twice. If a customer both restores
+removed packs and buys new ones, the already-paid recurring packs are restored
+first, then only the additional units are invoiced. The restored quantity stays
+restored if the additional payment needs a card step. Thus, an unpaid invoice
+crossing renewal cannot revive expired capacity for free.
+
+Each operation has stable idempotency keys and Stripe metadata. Payment webhooks
+re-fetch and verify its customer, metadata and full total; an event payload alone
+never grants packs. Nightly reconciliation resumes paid-but-unapplied operations
+without charging again. Unpaid invoices expire after 24 hours and are voided on
+the next reconciliation/retry. Drafts are finalized with automatic collection disabled
+and then voided, never deleted, so lost responses remain recoverable. A canceled
+subscription's unpaid invoice is voided; a paid invoice that can no longer be fulfilled is recorded and alerts the operator
+for review/refund. Find these debts with
+`ApiPackPurchase.where.not(paid_at: nil).where(applied_at: nil)`.
+
+Invoice search is eventually consistent. If the local invoice id was lost and
+search returns nothing, retries may create only within 23 hours of the durable
+operation (safely inside Stripe's 24-hour idempotency retention). After that,
+automation stops for operator recovery rather than risking another charge. A
+canceled subscription with an unknown invoice stays open and alerts the operator
+until search can recover it; an empty search never closes an ambiguous money operation.
+
+API usage resets on the first day of each **UTC calendar month**, independently
+of subscription renewal. Allowance is per billing account, not per seat.
+In-flight signers always finish. Internal/operator accounts remain unlimited.
+
+The API meter has a fixed deployment boundary: the migration seeds
+`api_metering_activations` (`key=api_usage_tiers`, `starts_at=CURRENT_TIMESTAMP`).
+It survives process restarts. `API_METERING_STARTS_AT`, when supplied, must be
+a timezone-qualified ISO8601 timestamp and overrides that persisted value.
+Fresh schema-loaded databases create the singleton on first quota lookup.
+Only submissions created at or after the boundary participate in API counters,
+reservations and warnings. A durable `completed_submitters.submission_created_at`
+snapshot prevents document deletion from refunding usage; old documents completed
+after deployment remain outside the new API meter.
