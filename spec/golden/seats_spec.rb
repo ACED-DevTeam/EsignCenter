@@ -2148,23 +2148,50 @@ RSpec.describe 'Seats and invitations', type: :request do
 
     # The address is already in the team — they accepted another copy of the
     # link, or an admin created them by hand. There is nothing to accept, and
-    # the seat the invitation is still holding goes back.
+    # the seat the invitation is still holding goes back — but only on the
+    # POST, never on merely opening the link (mail scanners and link previews
+    # issue GETs, and a GET must not move Stripe).
     it 'hands the seat back when the invited address is already a member' do
       row = account.account_subscription
       create(:user, account:, email: invited_email)
       invite_row = create(:account_invite, account:, email: invited_email)
       stub_subscription_update(subscription_a, quantity: 2)
       stub_subscription_reread(subscription_a, quantity: 2)
+      already_member = ERB::Util.html_escape(I18n.t('invite_already_member', team: account.name))
 
       anonymous!
       get "/invites/#{invite_row.raw_token}"
 
       expect(response).to have_http_status(:gone)
-      expect(response.body).to include(ERB::Util.html_escape(I18n.t('invite_already_member', team: account.name)))
+      expect(response.body).to include(already_member)
+      expect(invite_row.reload.revoked_at).to be_nil
+      expect(invite_row.released_at).to be_nil
+      expect(WebMock).not_to have_requested(:post, "https://api.stripe.com/v1/subscriptions/#{subscription_a}")
+
+      post "/invites/#{invite_row.raw_token}"
+
+      expect(response).to have_http_status(:gone)
+      expect(response.body).to include(already_member)
       expect(invite_row.reload.revoked_at).to be_present
       expect(invite_row.released_at).to be_present
       expect(row.reload.quantity).to eq(2)
       no_validation_error!
+    end
+
+    # Nobody presses the button on a link that only says "already a member":
+    # the hourly sweep is what hands that seat back.
+    it 'hands the seat back on the sweep when the invited address is already a member' do
+      row = account.account_subscription
+      create(:user, account:, email: invited_email)
+      invite_row = create(:account_invite, account:, email: invited_email)
+      stub_subscription_update(subscription_a, quantity: 2)
+      stub_subscription_reread(subscription_a, quantity: 2)
+
+      BillingLifecycle.expire_invites!
+
+      expect(invite_row.reload.revoked_at).to be_present
+      expect(invite_row.released_at).to be_present
+      expect(row.reload.quantity).to eq(2)
     end
 
     # D3: D50 says the move is "stated in the flow". It is stated in two

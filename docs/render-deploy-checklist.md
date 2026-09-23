@@ -56,7 +56,7 @@ no rate-limit keys appear at all, Redis is down; that is not a passing test.
 | `DATABASE_URL` | The Internal Database URL from step 1 |
 | `SECRET_KEY_BASE` | A long random string — generate once, never change it |
 | `HOST` | The service's domain, e.g. `esign.example.com` |
-| `FORCE_SSL` | `true` |
+| `FORCE_SSL` | Exactly `true`. Production refuses to boot if it is missing or has another value. |
 | `ADMIN_PROVISION_TOKEN` | A long random string — the integrating app uses this to create accounts. Generate a fresh one (`openssl rand -hex 32`). **Never reuse the `dev_prov_...` placeholder from `docker-compose.dev.yml`** — it is public, and the app refuses `dev_prov_` tokens in production anyway. Must match the integrating app's provisioning token. |
 
 (If you chose S3/R2 storage, also add the S3/AWS variables from step 1 —
@@ -67,6 +67,16 @@ remember `S3_ATTACHMENTS_BUCKET` is the on/off switch.)
 Add your subdomain (e.g. `esign.example.com`) to the web service, create
 the CNAME record Render shows you, and wait for the certificate. **Everything
 else assumes this domain works over HTTPS.**
+
+Before changing any live service, load the proposed environment into a local
+shell and run `bundle exec rake release:preflight`. It prints only variable
+names and pass/fail states, never values. The command fails if the production
+database/host/secret, timestamp authority, platform SMTP, or HTTPS setting is
+missing, and it also fails if `REGISTRATION_ENABLED` or `BILLING_ENABLED` is
+already on. A passing result establishes only that required values are present
+and have safe shapes for a dark deploy. It does not verify credentials or
+prove production readiness, and it does not replace the external backup,
+email, Stripe, OAuth, or canary gates.
 
 ## 4. First boot check
 
@@ -183,13 +193,14 @@ context.
 
 | Variable | What to put there |
 | --- | --- |
-| `SMTP_ADDRESS` | The platform's default mail server, e.g. `smtp.postmarkapp.com`. Any account without its own pinned server sends through this. |
+| `SMTP_ADDRESS` | **Required in production.** The platform's default mail server, e.g. `smtp.postmarkapp.com`. Any account without its own pinned server sends through this; production refuses to boot when it is missing. |
 | `SMTP_PORT` | `587` |
-| `SMTP_USERNAME` / `SMTP_PASSWORD` | The credentials for that server (for Postmark, the EsignCenter server token in both). |
-| `SMTP_FROM` | The platform's From address, e.g. `EsignCenter <noreply@esigncenter.com>`. **Boot rule:** if `SMTP_ADDRESS` is set and `SMTP_FROM` is not, the app refuses to start in production — otherwise platform mail would go out under a tenant's From address. Set both or neither. |
+| `SMTP_USERNAME` / `SMTP_PASSWORD` | The credentials for that server (for Postmark, the EsignCenter server token in both). Production refuses to boot without this pair or `POSTMARK_API_TOKEN`. |
+| `SMTP_FROM` | **Required in production.** The platform's From address, e.g. `EsignCenter <noreply@esigncenter.com>`. The app refuses to start without it so platform mail cannot go out under a tenant's From address. |
+| `SMTP_ENABLE_STARTTLS`, `SMTP_ENABLE_SSL`, `SMTP_ENABLE_TLS`, `SMTP_SSL_VERIFY` | Leave unset for Postmark: STARTTLS and certificate verification default on. Production refuses to boot if verification is explicitly disabled, or if STARTTLS is disabled without direct SSL/TLS enabled. This guard applies to the platform server; verify legacy per-account pins separately in the parity check. |
 | `TIMESERVER_URL` | **Required.** The trusted timestamp service stamped into signed PDFs (the DigiCert URL chosen in Session 0). Production refuses to boot without it, and a signing job whose timestamp request fails now errors and retries instead of embedding a fake time. Customer accounts always use this value. |
-| `EMAIL_DELIVERY_MODE` | Leave unset. It defaults to `smtp` in production (real mail) and `test` everywhere else (mail is captured, never sent). Set it explicitly only to force one of those two values; anything else refuses to boot. |
-| `APP_URL` | Optional. The full public URL, e.g. `https://esign.example.com`. When unset the app builds links from `HOST` + `FORCE_SSL`, which is what production does today. |
+| `EMAIL_DELIVERY_MODE` | Leave unset. It defaults to `smtp` in production (real mail) and `test` everywhere else. Production refuses to boot if this is `test`; local development and the test suite may still use test mode. |
+| `APP_URL` | Optional. The public HTTPS origin, e.g. `https://esign.example.com`. It may not contain credentials, a path, query, or fragment; production refuses to boot if it does. When unset the app builds links from `HOST` + `FORCE_SSL`, which is what production does today. |
 | `REGISTRATION_ENABLED` | Leave unset (off). Public sign-up is dark until a later session flips it to `true`. |
 | `BILLING_ENABLED` | Leave unset (off). Same idea for billing. |
 | `CERTS` | **No longer read (Session 4).** Nothing in the app looks at this variable any more, so a leftover value is inert — no need to check it. Customers sign with the one platform certificate held by the operator account; see section 8 of `docs/operations.md`. |

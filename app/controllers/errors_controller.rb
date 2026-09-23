@@ -51,7 +51,6 @@ class ErrorsController < ActionController::Base
     headers['Access-Control-Allow-Methods'] = 'POST, GET, PUT, PATCH, DELETE, OPTIONS'
     headers['Access-Control-Allow-Headers'] = '*'
     headers['Access-Control-Max-Age'] = '1728000'
-    headers['Access-Control-Allow-Credentials'] = 'true'
   end
 
   def error_status_code

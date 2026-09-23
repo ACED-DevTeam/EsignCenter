@@ -207,15 +207,13 @@ account they agreed in, and brings none with them. See
 Both documents are **agent-drafted and have not been reviewed by counsel**.
 Before launch, a lawyer needs to settle at least these:
 
-1. **The operator's legal name and postal address.** They appear as the
-   brackets `[OPERATOR LEGAL NAME]` and `[OPERATOR POSTAL ADDRESS]` in both
-   documents (`LegalDocuments::LAWYER_PLACEHOLDERS`). They are the only
-   brackets either text is allowed to contain — `spec/golden/legal_spec.rb`
-   fails on a third — so neither can be shipped by accident. The postal
-   address is not decoration: US commercial email law wants a physical mailing
-   address on the notices we send. Filling them in is a wording change like
-   any other: archive the old text and record its digest, edit, bump the
-   version and the effective date, record the new digest.
+1. **The operator's legal name and postal address.** Evan confirmed
+   **EsignCenter LLC**, **1911 S National Ave STE 104, Springfield, MO 65802**
+   on September 23, 2026. Both documents now identify that operator;
+   `spec/golden/legal_spec.rb` refuses unresolved bracketed placeholders.
+   The previous drafts remain archived at their original digests. Counsel
+   still needs to review the documents. Future identity changes follow the
+   same archive, version, effective-date and digest procedure above.
 2. **Governing law and venue.** Currently the State of Missouri, USA
    (`LegalDocuments::GOVERNING_LAW_STATE`, Terms §20). Confirm the state, and
    decide whether an arbitration clause and a class-action waiver belong here.

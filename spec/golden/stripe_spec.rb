@@ -5481,6 +5481,15 @@ RSpec.describe 'Stripe billing', type: :request do # rubocop:disable RSpec/Multi
   end
 
   describe 'the API version the app is written against' do
+    it 'keeps historical webhook metadata distinct from the outbound request version' do
+      fixture_versions = Rails.root.glob('spec/fixtures/stripe/event-*.json').map do |path|
+        JSON.parse(path.read).fetch('api_version')
+      end.uniq
+
+      expect(fixture_versions).to eq(['2026-07-29.dahlia'])
+      expect(StripeBilling::API_VERSION).to eq('2026-08-26.dahlia')
+    end
+
     it 'is pinned on the client rather than inherited from the gem' do
       stub_subscription(subscription_a, 'subscription-trialing')
 

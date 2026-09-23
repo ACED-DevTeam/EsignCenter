@@ -785,6 +785,21 @@ RSpec.describe 'Support impersonation', type: :request do
       expect(member.reload.read_only_at).to be_nil
       expect(User.where(account:).count).to eq(2)
     end
+
+    # The clone door is allowed in edit mode, but the account picker behind it
+    # is judged by the OPERATOR's own ability (true_ability): honouring it would
+    # copy the customer's template and its PDFs into the operator account.
+    it 'clones only inside the customer account, whatever account_id is posted' do
+      sign_in(operator)
+      start!(mode: SupportImpersonation::EDIT_MODE)
+
+      expect do
+        post template_clone_index_path(template),
+             params: { account_id: operator_account.id, template: { name: 'Exfiltrated copy' } }
+      end.not_to(change { Template.where(account: operator_account).count })
+
+      expect(Template.where(account:, name: 'Exfiltrated copy').count).to eq(1)
+    end
   end
 
   # --- 4b. edit mode never destroys and never signs (review 8, blocker 1) -------------

@@ -151,12 +151,13 @@ RSpec.describe 'Legal documents', type: :request do
       )
     end
 
-    # Two brackets, and only two: the operator's legal name and its postal
-    # address. A third would be something a lawyer had not been told about.
-    it 'leaves only the marked brackets for the lawyer to fill in' do
+    it 'identifies the operator with no unresolved placeholders' do
       LegalDocuments.documents.each do |document|
-        expect(LegalDocuments.html(document).scan(/\[[^\]]+\]/).uniq)
-          .to match_array(LegalDocuments::LAWYER_PLACEHOLDERS)
+        html = LegalDocuments.html(document)
+
+        expect(html).to include('EsignCenter LLC')
+        expect(html).to include('1911 S National Ave STE 104, Springfield, MO 65802')
+        expect(html.scan(/\[[^\]]+\]/)).to be_empty
       end
     end
 
