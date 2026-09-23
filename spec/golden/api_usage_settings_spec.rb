@@ -59,6 +59,41 @@ RSpec.describe 'API usage settings', type: :request do
       .to include('Removing packs lowers your bill and capacity at renewal.')
   end
 
+  it 'offers trial packs with billing at trial end' do
+    ENV['STRIPE_API_PACK_PRICE_ID'] = 'price_packs'
+    subscription.update!(plan: 'paid', status: 'trialing', access_state: 'trialing', stripe_status: 'trialing',
+                         trial_end: 10.days.from_now)
+
+    doc = page('/settings/billing')
+
+    expect(doc.at_css("form[action='/settings/billing/api_packs']")).to be_present
+    expect(doc.at_css('[data-billing-api-capacity]').text).to include('billed for them when the trial ends')
+  end
+
+  it 'keeps Business visible until a scheduled downgrade and offers cancellation' do
+    ENV['STRIPE_BUSINESS_PRICE_ID'] = 'price_business'
+    subscription.update!(plan: 'paid', retained_business_until: 10.days.from_now)
+
+    doc = page('/settings/billing')
+
+    expect(doc.at_css('[data-api-usage]').text).to include('0 of 600')
+    expect(doc.at_css('[data-billing-pending-plan]').text).to include('Your plan changes to Paid')
+    expect(doc.at_css("form[action='/settings/billing/plan']").text).to include('Keep Business')
+  end
+
+  [0, 200, -1].each do |limit|
+    it "hides plan and pack controls for an agreement override of #{limit}" do
+      ENV['STRIPE_BUSINESS_PRICE_ID'] = 'price_business'
+      ENV['STRIPE_API_PACK_PRICE_ID'] = 'price_packs'
+      AccountLimitOverride.create!(account:, api_completions_per_month: limit)
+
+      doc = page('/settings/billing')
+
+      expect(doc.at_css('[data-billing-capacity-agreement]').text).to include('capacity is set by your agreement')
+      expect(doc.css("form[action='/settings/billing/plan'], form[action='/settings/billing/api_packs']")).to be_empty
+    end
+  end
+
   it 'shows the parent allowance and no purchase controls to a linked child' do
     child = create(:account)
     AccountLinkedAccount.create!(account:, linked_account: child)

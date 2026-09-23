@@ -36,15 +36,18 @@
 <p>
   Paid includes <%= Quotas::Limits::PAID_API_COMPLETIONS_PER_MONTH %> API completions a month;
   Business includes <%= Quotas::Limits::BUSINESS_API_COMPLETIONS_PER_MONTH %>, per billing account.
-  API, embedded forms and MCP count once at the first signature per document lineage.
+  API, embedded signing and MCP count once at the first signature per document lineage.
   Allowances reset on the first day of each UTC calendar month. Documents already sent always finish.
-  At the allowance, new API documents pause; in-app sending is unchanged.
+  Open API documents reserve capacity until signed, declined, expired or archived. At the allowance, new API documents pause; corrections of signed documents and in-app Resubmit remain available.
 </p>
 <p>
-  In Billing settings, switch between Paid and Business with proration, or add recurring API packs:
+  In Billing settings, upgrading to Business charges the prorated difference now. Moving to Paid
+  takes effect at renewal with no credit, and Business capacity stays until then. Recurring API packs cost
   $<%= StripeBilling::API_PACK_USD %> per month for <%= Quotas::Limits::API_PACK_COMPLETIONS_PER_MONTH %>
-  extra completions, available after the trial ends. Additions are charged and available immediately after payment;
-  removing packs takes effect at renewal. Purchase controls appear when the plan or packs are available.
+  extra completions. Each added pack costs the full monthly price now, with no proration, and is
+  available after payment. During a trial, packs are available immediately and billed at trial end.
+  Removing packs takes effect at renewal. If your API capacity is set by an agreement, contact us
+  to change it. Purchase controls appear when the plan or packs are available.
 </p>
 
 <h2>Cancelling and refunds</h2>

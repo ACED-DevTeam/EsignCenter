@@ -6,7 +6,7 @@
 # every claim, and none of the three ever links to a sign-up page that does
 # not exist.
 RSpec.describe 'Marketing pages', type: :request do
-  stash_env 'REGISTRATION_ENABLED', clear: true
+  stash_env 'REGISTRATION_ENABLED', 'STRIPE_BUSINESS_PRICE_ID', clear: true
 
   # The instance is set up (the operator exists), so the signed-out root
   # renders the landing page instead of the first-run setup redirect.
@@ -131,7 +131,7 @@ RSpec.describe 'Marketing pages', type: :request do
       Entitlements::PAID_ONLY.each do |feature|
         row = PricingMatrix.rows.find { |r| r[:features].include?(feature) }
         expect(row).not_to be_nil, "no pricing row covers #{feature}"
-        expect(cell.call(row[:key])).to eq(['Not included', 'Included', 'Included', 'Custom']),
+        expect(cell.call(row[:key])).to eq(['Not included', 'Included', 'Included', 'Included']),
                                         "#{feature} row is not dash / check"
       end
       expect(cell.call('completions')).to eq([Quotas::Limits::FREE_COMPLETIONS_PER_MONTH.to_s, 'Unlimited*',
@@ -143,8 +143,8 @@ RSpec.describe 'Marketing pages', type: :request do
       expect(doc.at_css("tr[data-pricing-row='storage'] th").text.squish).to eq('Agreement storage')
       expect(doc.at_css('main').text).not_to match(/\b\d+\s*GB\b/)
       expect(cell.call('seats').first).to eq(Quotas::Limits::FREE_SEATS.to_s)
-      expect(cell.call('api')).to eq(['Not included', 'Included', 'Included', 'Custom'])
-      expect(cell.call('send_and_sign')).to eq(%w[Included Included Included Custom])
+      expect(cell.call('api')).to eq(['Not included', 'Included', 'Included', 'Included'])
+      expect(cell.call('send_and_sign')).to eq(%w[Included Included Included Included])
 
       forbidden_trust_phrases.each { |phrase| expect(body_text_outside_disclaimer).not_to include(phrase) }
       expect(response.body).to include("$#{StripeBilling::PRICE_PER_SEAT_USD}")
@@ -160,9 +160,27 @@ RSpec.describe 'Marketing pages', type: :request do
       get '/pricing'
 
       expect(cell.call('api_completions')).to eq(['Not included', '50', '500', 'Custom'])
-      expect(cell.call('api_packs')[1..2]).to eq(['$10 / 50 extra per month'] * 2)
+      expect(cell.call('api_packs')[1..2]).to eq(['+50 for $10/mo'] * 2)
       expect(doc.at_css('[data-enterprise-contact]')['href']).to eq(support_path)
       expect(doc.css('[data-pricing-plan] h2').map(&:text)).to include('Business', 'Enterprise')
+    end
+
+    it 'offers an available Business trial and explains the mobile comparison' do
+      ENV['REGISTRATION_ENABLED'] = 'true'
+      ENV['STRIPE_BUSINESS_PRICE_ID'] = 'price_business'
+
+      get '/pricing'
+
+      business = doc.at_css('[data-pricing-plan="business"]')
+      expect(business.at_css('a.btn').text).to eq('Start free trial')
+      expect(business.at_css('a.btn')['href']).to eq(new_registration_path)
+      expect(business.text).to include('Choose Business in Billing after signup')
+      expect(doc.at_css('#pricing-swipe-hint').text).to eq('Swipe to compare →')
+      expect(doc.at_css('[data-pricing-scroll] th[scope="row"]')['class']).to include('sticky left-0')
+      %w[business enterprise].each do |plan|
+        expect(doc.css("[data-pricing-plan='#{plan}'] li svg").size)
+          .to eq(doc.css("[data-pricing-plan='#{plan}'] li").size)
+      end
     end
 
     it 'never links to sign-up while registration is off, and does while it is on' do

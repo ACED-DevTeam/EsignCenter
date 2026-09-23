@@ -179,50 +179,24 @@ RSpec.describe 'API usage tiers', type: :request do
       expect(response.parsed_body.dig('result', 'content').sole['text']).to include('/settings/billing')
     end
 
-    it 'pauses embedded GET, POST and email-2FA starts live and emails the owner once' do
-      2.times do
-        get "/d/#{template.slug}", params: { embed: '1' }
-        expect(response.body).to include(I18n.t('form_not_accepting_responses'))
-        expect(response.headers['X-Frame-Options']).to be_nil
-      end
-      expect(ActionMailer::Base.deliveries.count do |mail|
-        mail.subject == 'A signer could not open your form'
-      end).to eq(1)
-      expect do
-        put "/d/#{template.slug}", params: { embed: '1', submitter: { email: 'embed@example.com' } }
-      end.not_to change(Submission, :count)
-      expect(response).to have_http_status(:unprocessable_content)
-
-      template.update!(preferences: template.preferences.merge('shared_link_2fa' => true))
-      post '/start_form_email_2fa_send',
-           params: { slug: template.slug, embed: '1', submitter: { email: 'embed@example.com' } }
-      expect(response).to have_http_status(:unprocessable_content)
-      expect(response.parsed_body['error']).to eq(I18n.t('form_not_accepting_responses'))
-    end
-
-    it 'resumes embedded forms immediately after a pack purchase and at UTC rollover' do
-      create_limit = account.limit_override
-      create_limit.update!(api_completions_per_month: nil)
-      # The actual completion above already proves the counter; lower the
-      # plan constant to make one real completion fill the default allowance.
+    it 'resumes signing-session creation immediately after a pack purchase and at UTC rollover' do
+      account.limit_override.update!(api_completions_per_month: nil)
       stub_const('Quotas::Limits::PAID_API_COMPLETIONS_PER_MONTH', 1)
       expect(Quotas.share_link_paused?(account.reload, source: :embed)).to eq(:api_completions)
       account.account_subscription.update!(api_pack_quantity: 1)
-      get "/d/#{template.slug}", params: { embed: '1' }
-      expect(Nokogiri::HTML(response.body).at_css('input[name="embed"]')['value']).to eq('1')
-      expect(response.body).not_to include(I18n.t('form_not_accepting_responses'))
+      expect(Quotas.share_link_paused?(account.reload, source: :embed)).to be_nil
       account.account_subscription.update!(api_pack_quantity: 0)
       travel_to Quotas.resets_at do
-        get "/d/#{template.slug}", params: { embed: '1' }
-        expect(response.body).not_to include(I18n.t('form_not_accepting_responses'))
+        expect(Quotas.share_link_paused?(account.reload, source: :embed)).to be_nil
       end
     end
 
-    it 'keeps in-app creation open and refuses new API corrections even when the lineage already counted' do
+    it 'keeps in-app sending, public links and signed-lineage corrections open at the API cap' do
       expect { send_document(source: :invite) }.to change(Submission, :count).by(1)
       expect { send_document(source: :bulk) }.to change(Submission, :count).by(1)
       get "/d/#{template.slug}"
       expect(response.body).not_to include(I18n.t('form_not_accepting_responses'))
+      expect(response.headers['X-Frame-Options']).to eq('SAMEORIGIN')
 
       expect do
         put "/d/#{template.slug}", params: { submitter: { email: 'in-app-link@example.com' } }
@@ -230,77 +204,124 @@ RSpec.describe 'API usage tiers', type: :request do
       expect(Submission.order(:id).last.source).to eq('link')
 
       original = account.submissions.find_by!(source: :api).submitters.first
-      expect { put '/resubmit_form', params: { resubmit: original.slug } }.not_to change(Submission, :count)
-      expect(response).to have_http_status(:unprocessable_content)
+      expect(Quotas.assert_can_create_submissions!(account, source: :api,
+                                                            correction_of: original.submission)).to be(true)
+      expect { put '/resubmit_form', params: { resubmit: original.slug } }.to change(Submission, :count).by(1)
+      expect(Submission.order(:id).last.source).to eq('link')
+      expect(response).to have_http_status(:redirect)
     end
   end
 
   it 'lets documents sent before the allowance was reached finish', sidekiq: :inline do
     in_flight = send_document
-    reach_allowance!
+    finishing = send_document
+    AccountLimitOverride.create!(account:, api_completions_per_month: 1)
+    complete!(finishing.submitters.first)
     complete!(in_flight.submitters.first)
     expect(Quotas.api_completions_this_month(account)).to eq(2)
   end
 
-  it 'writes embedded share starts as embed and never adopts a signing-session recipient', sidekiq: :inline do
-    session = send_document(source: :embed)
-    email = session.submitters.first.email
-    put "/d/#{template.slug}", params: { embed: '1', submitter: { email: } }
-    created = Submission.order(:id).last
-    expect(created.id).not_to eq(session.id)
-    expect(created.source).to eq('embed')
-    expect(created.preferences['share_embed']).to be(true)
-    get "/s/#{created.submitters.first.slug}"
-    expect(response.headers['X-Frame-Options']).to be_nil
-    expect(response.headers['Content-Security-Policy']).to include('frame-ancestors *')
-    complete!(created.submitters.first)
-    expect(Quotas.api_completions_this_month(account)).to eq(1)
+  describe 'creation reservations' do
+    it 'refuses a whole batch that crosses 50, admits the final open document and refuses the next' do
+      49.times { send_document }
+      expect(Quotas.api_completions_this_month(account)).to eq(0)
+      expect(Quotas.api_reservations(account)).to eq(49)
+      attrs = { template_id: template.id, emails: 'one@example.com,two@example.com', send_email: false }
+      expect { post '/api/submissions', headers:, params: attrs.to_json }.not_to change(Submission, :count)
+      expect(response).to have_http_status(:payment_required)
+      expect { send_document }.to change(Submission, :count).by(1)
+      expect { send_document }.to raise_error(Quotas::LimitReached)
+      expect(Quotas.api_capacity_used(account)).to eq(50)
+    end
+
+    it 'releases reservations when documents decline, expire, archive or are deleted' do
+      AccountLimitOverride.create!(account:, api_completions_per_month: 1)
+      %i[decline expire archive delete].each do |action|
+        document = send_document
+        expect(Quotas.api_reservations(account)).to eq(1)
+        case action
+        when :decline then document.submitters.first.update!(declined_at: Time.current)
+        when :expire then document.update!(expire_at: 1.second.ago)
+        when :archive then document.update!(archived_at: Time.current)
+        when :delete then document.destroy!
+        end
+        expect(Quotas.api_reservations(account)).to eq(0)
+      end
+      expect { send_document }.to change(Submission, :count).by(1)
+    end
+
+    it 'counts the first completion once while a second signer is pending, and never reserves a counted correction',
+       sidekiq: :inline do
+      AccountLimitOverride.create!(account:, api_completions_per_month: 2)
+      document = send_document(record: template_for(account, admin, submitter_count: 2))
+      complete!(document.submitters.order(:id).first)
+      expect(document.submitters.where(completed_at: nil).count).to eq(1)
+      expect(Quotas.api_reservations(account)).to eq(0)
+      expect(Quotas.api_capacity_used(account)).to eq(1)
+      copy = send_document
+      copy.update!(**Submissions::Lineage.attributes_for_copy(document))
+      expect(Quotas.api_capacity_used(account)).to eq(1)
+      expect { send_document }.to change(Submission, :count).by(1)
+    end
+
+    it 'holds the reservation while the async completion job is still pending' do
+      document = send_document
+      document.submitters.first.update!(completed_at: Time.current)
+      expect(Quotas.api_completions_this_month(account)).to eq(0)
+      expect(Quotas.api_reservations(account)).to eq(1)
+    end
+
+    it 'never API-blocks an in-app resubmit of an unsigned document' do
+      document = send_document
+      document.submitters.first.update!(email: admin.email)
+      AccountLimitOverride.create!(account:, api_completions_per_month: 0)
+      sign_in(admin)
+      expect { put "/submitters_resubmit/#{document.submitters.first.id}" }.to change(Submission, :count).by(1)
+      expect(response).to have_http_status(:redirect)
+      expect(Submission.order(:id).last.source).to eq('link')
+    end
   end
 
-  it 'keeps private template owner previews unframeable even with an embed marker' do
-    template.update!(shared_link: false)
-    sign_in(admin)
-    get "/d/#{template.slug}", params: { embed: '1' }
-    expect(response.headers['X-Frame-Options']).to eq('SAMEORIGIN')
-  end
+  describe 'rollout activation', sidekiq: :inline do
+    it 'keeps a deployment timestamp across repeated reads instead of resetting it at process start' do
+      allow(ENV).to receive(:[]).and_call_original
+      allow(ENV).to receive(:[]).with('API_METERING_STARTS_AT').and_return(nil)
+      activated_at = ApiMeteringActivation.starts_at
+      travel 1.hour do
+        expect(ApiMeteringActivation.starts_at).to eq(activated_at)
+      end
+    end
 
-  it 'does not let API clients mint the public share-embed framing marker' do
-    injection = { share_embed: true, preferences: { share_embed: true } }
-    post '/api/signing_sessions', headers:,
-                                  params: request_attrs.merge(injection).merge(embed_origin: 'https://app.example.com').to_json
-    session = Submission.order(:id).last
-    expect(session.preferences['share_embed']).to be_nil
-    get "/s/#{session.submitters.first.slug}"
-    expect(response.headers['Content-Security-Policy']).to include("frame-ancestors 'self' https://app.example.com")
+    it 'excludes old open documents and late completions, and preserves new usage after deletion' do
+      activation = Time.current.change(usec: 0)
+      allow(ENV).to receive(:[]).and_call_original
+      allow(ENV).to receive(:[]).with('API_METERING_STARTS_AT').and_return(activation.iso8601)
+      old = travel_to(activation - 1.day) { send_document }
+      pending_old = travel_to(activation - 1.day) { send_document }
+      AccountLimitOverride.create!(account:, api_completions_per_month: 1)
+      complete!(old.submitters.first)
+      expect(Quotas.api_completions_this_month(account)).to eq(0)
+      expect(Quotas.api_reservations(account)).to eq(0)
+      expect(pending_old.submitters.first.completed_at).to be_nil
+      fresh = send_document
+      expect(Quotas.api_reservations(account)).to eq(1)
+      complete!(fresh.submitters.first)
+      fresh.destroy!
+      expect(Quotas.api_completions_this_month(account)).to eq(1)
+      account.reload
+      template.reload
+      expect { send_document }.to raise_error(Quotas::LimitReached)
+    end
 
-    put '/resubmit_form', params: { resubmit: session.submitters.first.slug }
-    copy = Submission.order(:id).last
-    expect(copy.preferences['share_embed']).to be_nil
-    get "/s/#{copy.submitters.first.slug}"
-    expect(response.headers['Content-Security-Policy']).to include("frame-ancestors 'self' https://app.example.com")
-
-    post '/api/submissions', headers:, params: request_attrs.merge(injection).to_json
-    expect(Submission.order(:id).last.preferences['share_embed']).to be_nil
-  end
-
-  it 'detects a directly framed share link even without the SDK marker' do
-    put "/d/#{template.slug}", headers: { 'Sec-Fetch-Dest' => 'iframe' },
-                               params: { submitter: { email: 'framed@example.com' } }
-    expect(Submission.order(:id).last.source).to eq('embed')
-    get "/d/#{template.slug}", headers: { 'Sec-Fetch-Dest' => 'iframe' }
-    expect(Nokogiri::HTML(response.body).at_css('input[name="embed"]')['value']).to eq('1')
-  end
-
-  it 'resumes an existing share-embed document while new embedded starts are paused', sidekiq: :inline do
-    put "/d/#{template.slug}", params: { embed: '1', submitter: { email: 'resuming@example.com' } }
-    pending = Submitter.order(:id).last
-    reach_allowance!
-    expect do
-      put "/d/#{template.slug}", params: { embed: '1', submitter: { email: pending.email } }
-    end.not_to change(Submission, :count)
-    expect(response).to redirect_to("/s/#{pending.slug}")
-    complete!(pending)
-    expect(Quotas.api_completions_this_month(account)).to eq(2)
+    it 'does not warn for pre-activation documents that finish afterwards' do
+      activation = Time.current.change(usec: 0)
+      allow(ENV).to receive(:[]).and_call_original
+      allow(ENV).to receive(:[]).with('API_METERING_STARTS_AT').and_return(activation.iso8601)
+      old = travel_to(activation - 1.day) { send_document }
+      AccountLimitOverride.create!(account:, api_completions_per_month: 1)
+      complete!(old.submitters.first)
+      expect(ActionMailer::Base.deliveries.map(&:subject).grep(/^API completions:/)).to be_empty
+    end
   end
 
   it 'does not send API usage warnings when an operator disables automation with a zero cap', sidekiq: :inline do

@@ -42,7 +42,7 @@ D79 adds one channel-specific exception: new API, embedded-form and MCP
 documents pause when the billing account reaches its API allowance.
 The complaint/bounce sending pause remains a separate abuse policy.
 
-### API completions (D79)
+### API completions (D79, rollout correction)
 
 Paid includes **50 API completions/month** per billing account; Business
 includes **500**. Each recurring $10 API pack adds **50**. Seats do not multiply
@@ -51,27 +51,54 @@ and operator accounts remain unlimited. Free has no API entitlement.
 
 The durable first-signer completion row counts when its source is `api`,
 `embed`, or `mcp`, in the UTC calendar month. It preserves the same D73 lineage
-rule and billing-account rollup as ordinary completions. Deleting a document
-does not refund capacity. Invite, ordinary shared-link and bulk sources do
-not consume API capacity. Shared forms opened with the hosted embed SDK or
-in an iframe are marked `embed`; ordinary top-level links remain `link`.
-Public shared-form pages and their resulting signing pages allow framing from
-any site; private signing sessions retain their configured origin allowlist.
+rule and billing-account rollup as ordinary completions. Deleting a completed
+document does not refund capacity. Invite, public shared-link and bulk sources
+do not consume API capacity. Public share links keep their existing `link`
+source and SAMEORIGIN framing; API metering adds no new embedding capability.
+Existing signing sessions use `embed` and retain their origin allowlists.
 
-At the allowance, new automation submissions receive a 402 JSON error (MCP
-uses its JSON tool-error response) explaining the allowance, reset date and
-Billing settings path. Embedded shared forms show the usual not-accepting
-page and notify the owner once per month. The check is live: month rollover
-and buying packs reopen forms immediately. Documents already sent, including
-pending embedded shared forms, still finish. Every new API correction is
-subject to the creation pause, even if its lineage would not count again;
-the D74 completion-cap exemption remains specific to Free.
+At creation, **current-month completions + open API documents + requested
+batch size must fit the allowance**. Each open API/embed/MCP document reserves
+one unit, including open documents from earlier months. A batch that does not
+fit is refused whole. Declining, expiring, archiving or deleting an unsigned
+document releases its reservation. A first-signer completion replaces the
+reservation with one completion; later signers never reserve another unit.
+A document awaiting its asynchronous metering job retains the reservation
+briefly so that another creator cannot spend that same capacity in the gap.
+The guard reads completions and reservations in one database snapshot under
+the existing billing-account creation lock.
 
-Warnings go to active billing-account admins at 80% and 100%, once per UTC
-month each. Pack purchases do not re-arm either warning. Pack removals retain
-paid capacity through the current Stripe renewal; additions raise it once
-Stripe confirms payment. Usage resets at the UTC month boundary independently
-of Stripe's renewal date.
+New automation submissions that exceed capacity receive a 402 JSON error
+(MCP uses its JSON tool-error response) explaining the allowance, reset date
+and Billing settings path. Documents already sent always finish. Corrections
+of an already-counted lineage bypass the API capacity check, because they add
+no completion. In-app Resubmit is an in-app action and never meets the API
+capacity check, even when the original document came from the API. Free's
+separate sends, in-flight and completion rules remain unchanged.
+
+Warnings go to active billing-account admins at 80% and 100% of completed
+API usage, once per UTC month each. Reservations do not trigger usage-warning
+emails. Buying packs immediately raises capacity after payment; removals retain
+paid capacity through renewal. Pack changes do not re-arm monthly warnings.
+Usage resets at the UTC month boundary independently of Stripe's renewal date;
+open reservations continue holding capacity until resolved.
+
+**Rollout activation:** set `API_METERING_STARTS_AT` to a fixed ISO8601 timestamp
+with a timezone, for example `2026-10-01T00:00:00Z`, for a coordinated rollout.
+Without that setting, the deployment migration records its execution timestamp
+once in `api_metering_activations`. That database value survives every restart;
+it is never replaced with the process start time. Fresh databases loaded from
+schema initialize the singleton on their first quota lookup instead. Treat the
+configured timestamp as immutable after launch; changing it changes the cohort.
+
+Only submissions **created at or after activation** enter the API completion
+meter, reservations or warning thresholds. Pre-activation documents remain
+excluded even if their first signer finishes after activation. Before a future
+activation timestamp, API capacity enforcement remains off. The completion job
+snapshots `submission_created_at` onto the durable completion row so deleting a
+new document never removes its counted usage. Existing completion rows are
+backfilled from surviving submissions; deleted historical rows without a known
+creation timestamp remain excluded.
 
 Operators can override `api_completions_per_month`: blank inherits the plan,
 `0` refuses new automation documents, and `-1` means unlimited. A numeric

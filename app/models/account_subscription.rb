@@ -44,12 +44,23 @@
 # Session 6 fills the Stripe columns and drives access_state from webhooks.
 class AccountSubscription < ApplicationRecord
   belongs_to :account
+  has_many :api_pack_purchases, dependent: :restrict_with_exception
 
   validates :access_state, inclusion: { in: Plans::ACCESS_STATES }
   validates :plan, inclusion: { in: [Plans::PAID, Plans::BUSINESS] }
   validates :api_pack_quantity, :retained_api_pack_quantity,
             numericality: { only_integer: true, greater_than_or_equal_to: 0 }
   validates :quantity, numericality: { only_integer: true, greater_than_or_equal_to: 1 }
+
+  # A downgrade changes the NEXT invoice without crediting this period.
+  # Plans reads the purchased Business access until the renewal boundary.
+  def effective_plan
+    retained_business_until&.future? ? Plans::BUSINESS : plan
+  end
+
+  def pending_plan
+    plan if effective_plan != plan
+  end
 
   # Stripe's lower recurring quantity applies to the next invoice. Capacity
   # already paid for survives until that renewal, without refunding used packs.

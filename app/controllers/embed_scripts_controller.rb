@@ -148,7 +148,6 @@ class EmbedScriptsController < ActionController::Metal
         buildSrc(src) {
           const url = new URL(src, window.location.href);
           const params = {
-            embed: '1',
             email: this.dataset.email,
             name: this.dataset.name,
             role: this.dataset.role,

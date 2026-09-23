@@ -5,31 +5,36 @@
     <div class="card-body p-5 gap-3">
       <h2 class="text-lg font-semibold"><%= t('billing_api_capacity') %></h2>
       <p><%= t('billing_current_tier', plan: t("usage_plan_#{Plans.key_for(@billing)}")) %></p>
-      <p class="text-sm text-base-content/70"><%= t('billing_business_price', base: StripeBilling::BUSINESS_BASE_USD, seat: StripeBilling::PRICE_PER_SEAT_USD) %></p>
-      <% target_plan = @subscription.plan == Plans::BUSINESS ? Plans::PAID : Plans::BUSINESS %>
-      <% if StripeBilling.business_available? %>
-        <%= button_to t('billing_switch_to', plan: t("usage_plan_#{target_plan}")), settings_billing_plan_path,
-                      params: { plan: target_plan }, class: 'btn btn-outline', form: { data: { turbo: false } } %>
-        <p class="text-sm text-base-content/70"><%= t('billing_plan_proration') %></p>
+      <% if @billing.limit_override&.api_completions_per_month.present? %>
+        <p class="text-sm" data-billing-capacity-agreement><%= link_to t('billing_capacity_by_agreement'), support_path, class: 'link' %></p>
       <% else %>
-        <p class="text-sm text-base-content/70"><%= t('billing_business_unavailable') %></p>
-      <% end %>
-      <hr class="my-2">
-      <p class="text-sm"><%= t('billing_pack_price', completions: Quotas::Limits::API_PACK_COMPLETIONS_PER_MONTH, price: StripeBilling::API_PACK_USD) %></p>
-      <% if @view_state == 'trialing' %>
-        <p class="text-sm text-base-content/70"><%= t('billing_api_packs_trial') %></p>
-      <% elsif StripeBilling.api_packs_available? && (@subscription.plan != Plans::BUSINESS || StripeBilling.business_available?) %>
-        <%= form_with url: settings_billing_api_packs_path, method: :post, data: { turbo: false }, class: 'space-y-3' do |form| %>
-          <%= form.label :quantity, t('billing_packs_quantity'), class: 'block text-sm font-semibold' %>
-          <%= form.number_field :quantity, value: @subscription.api_pack_quantity, min: 0, max: 9999, step: 1, required: true, class: 'input input-bordered w-full' %>
-          <%= form.submit t('billing_packs_save'), class: 'btn btn-outline' %>
+        <p class="text-sm text-base-content/70"><%= t('billing_business_price', base: StripeBilling::BUSINESS_BASE_USD, seat: StripeBilling::PRICE_PER_SEAT_USD) %></p>
+        <% if @subscription.pending_plan %>
+          <p class="text-sm" data-billing-pending-plan><%= t('billing_business_retained', date: billing_date(@subscription.retained_business_until)) %></p>
         <% end %>
-        <p class="text-sm text-base-content/70"><%= t('billing_packs_timing') %></p>
-        <% if @subscription.effective_api_pack_quantity > @subscription.api_pack_quantity %>
-          <p class="text-sm" data-billing-retained-packs><%= t('billing_packs_retained', count: @subscription.effective_api_pack_quantity, date: billing_date(@subscription.retained_api_pack_until)) %></p>
+        <% target_plan = @subscription.plan == Plans::BUSINESS ? Plans::PAID : Plans::BUSINESS %>
+        <% if StripeBilling.business_available? %>
+          <%= button_to (@subscription.pending_plan ? t('billing_keep_business') : t('billing_switch_to', plan: t("usage_plan_#{target_plan}"))), settings_billing_plan_path,
+                        params: { plan: target_plan }, class: 'btn btn-outline', form: { data: { turbo: false } } %>
+          <p class="text-sm text-base-content/70"><%= t(@view_state == 'trialing' ? 'billing_plan_trial' : 'billing_plan_proration') %></p>
+        <% else %>
+          <p class="text-sm text-base-content/70"><%= t('billing_business_unavailable') %></p>
         <% end %>
-      <% else %>
-        <p class="text-sm text-base-content/70"><%= t('billing_packs_unavailable') %></p>
+        <hr class="my-2">
+        <p class="text-sm"><%= t('billing_pack_price', completions: Quotas::Limits::API_PACK_COMPLETIONS_PER_MONTH, price: StripeBilling::API_PACK_USD) %></p>
+        <% if StripeBilling.api_packs_available? && (@subscription.plan != Plans::BUSINESS || StripeBilling.business_available?) %>
+          <%= form_with url: settings_billing_api_packs_path, method: :post, data: { turbo: false }, class: 'space-y-3' do |form| %>
+            <%= form.label :quantity, t('billing_packs_quantity'), class: 'block text-sm font-semibold' %>
+            <%= form.number_field :quantity, value: @subscription.api_pack_quantity, min: 0, max: 9999, step: 1, required: true, class: 'input input-bordered w-full' %>
+            <%= form.submit t('billing_packs_save'), class: 'btn btn-outline' %>
+          <% end %>
+          <p class="text-sm text-base-content/70"><%= t(@view_state == 'trialing' ? 'billing_api_packs_trial' : 'billing_packs_timing') %></p>
+          <% if @subscription.effective_api_pack_quantity > @subscription.api_pack_quantity %>
+            <p class="text-sm" data-billing-retained-packs><%= t('billing_packs_retained', count: @subscription.effective_api_pack_quantity, date: billing_date(@subscription.retained_api_pack_until)) %></p>
+          <% end %>
+        <% else %>
+          <p class="text-sm text-base-content/70"><%= t('billing_packs_unavailable') %></p>
+        <% end %>
       <% end %>
     </div>
   </div>
