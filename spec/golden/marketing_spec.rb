@@ -42,13 +42,20 @@ RSpec.describe 'Marketing pages', type: :request do
     end
   end
 
+  # The one certification line the site may carry. The reports are the hosting
+  # and storage providers', never EsignCenter's own, and the #not-claimed
+  # paragraph on /trust says so. Any other wording ("SOC 2 compliant", "SOC 2
+  # servers") still fails.
+  let(:infrastructure_claim) { 'Built on SOC 2 Type II audited infrastructure.' }
+
   # The forbidden phrases are checked against the WHOLE page; only the
   # "what we do not claim" paragraph on /trust may name a certification, and
-  # only to disclaim it.
+  # only to disclaim it. The exact infrastructure line above is the one
+  # exception elsewhere.
   def body_text_outside_disclaimer
     page = doc.dup
     page.css('#not-claimed').remove
-    page.at_css('body').text
+    page.at_css('body').text.squish.gsub(infrastructure_claim, '')
   end
 
   # A tick or dash cell reads by its screen-reader text; a value cell by its value.
@@ -75,6 +82,7 @@ RSpec.describe 'Marketing pages', type: :request do
       expect(main.css('h3').map { |h| h.text.squish })
         .to include('Upload or pick a template', 'Add who signs', 'Send', 'Signed and sealed')
       expect(main.css('h2').map { |h| h.text.squish }).to include('Proof, built into every document')
+      expect(main.text.squish).to include(infrastructure_claim)
       upstream_phrases.each { |phrase| expect(response.body).not_to include(phrase) }
       forbidden_trust_phrases.each { |phrase| expect(body_text_outside_disclaimer).not_to include(phrase) }
       expect(visible_attribution_links).not_to be_empty
@@ -176,18 +184,44 @@ RSpec.describe 'Marketing pages', type: :request do
   end
 
   describe 'GET /trust' do
-    it 'names every sub-processor, backs every claim and makes none of the forbidden ones' do
+    it 'links to the sub-processors, backs every claim and makes none of the forbidden ones' do
       get '/trust'
 
       expect(response).to have_http_status(:ok)
       expect(doc.css('meta[name="robots"]')).to be_empty
-      sub_processors.each { |name| expect(response.body).to include(name) }
+      expect(doc.css("main a[href='#{subprocessors_path}']")).not_to be_empty
+      expect(doc.at_css('[data-soc2]').text.squish).to eq(infrastructure_claim)
+      expect(doc.at_css('#not-claimed').text).to include('not to us')
       claims.each { |claim| expect(doc.css("tr[data-claim='#{claim}']")).not_to be_empty, "missing claim #{claim}" }
       expect(doc.css('#not-claimed')).not_to be_empty
       forbidden_trust_phrases.each { |phrase| expect(body_text_outside_disclaimer).not_to include(phrase) }
-      expect(response.body).to include('(an ActiveCampaign company)')
       expect(response.body).to include(Docuseal::SUPPORT_EMAIL)
       expect(doc.css("a[href='#{verify_path}']")).not_to be_empty
+      expect(visible_attribution_links).not_to be_empty
+    end
+
+    it 'keeps Trust out of the main nav and in the footer, beside Sub-processors' do
+      get '/trust'
+
+      expect(doc.css("nav[aria-label='Main'] a[href='#{trust_path}']")).to be_empty
+      legal = doc.at_css("nav[aria-label='Legal']")
+      expect(legal.css("a[href='#{trust_path}']")).not_to be_empty
+      expect(legal.css("a[href='#{subprocessors_path}']")).not_to be_empty
+    end
+  end
+
+  describe 'GET /trust/subprocessors' do
+    it 'names every sub-processor and makes none of the forbidden claims' do
+      get '/trust/subprocessors'
+
+      expect(response).to have_http_status(:ok)
+      expect(doc.css('meta[name="robots"]')).to be_empty
+      expect(doc.at_css('h1').text.squish).to eq('Sub-processors')
+      sub_processors.each { |name| expect(doc.at_css('table').text).to include(name) }
+      expect(response.body).to include('(an ActiveCampaign company)')
+      forbidden_trust_phrases.each { |phrase| expect(body_text_outside_disclaimer).not_to include(phrase) }
+      expect(doc.css("a[href='#{trust_path}']")).not_to be_empty
+      expect(doc.css("a[href='#{privacy_path}']")).not_to be_empty
       expect(visible_attribution_links).not_to be_empty
     end
   end
@@ -197,6 +231,7 @@ RSpec.describe 'Marketing pages', type: :request do
       robots = Rails.public_path.join('robots.txt').read
 
       %w[/pricing /trust /terms /privacy /verify].each { |path| expect(robots).to include("Allow: #{path}") }
+      expect(Rails.public_path.join('sitemap.xml').read).to include('/trust/subprocessors')
       %w[/api/ /settings/ /s/ /d/ /operator/].each { |path| expect(robots).to include("Disallow: #{path}") }
     end
   end

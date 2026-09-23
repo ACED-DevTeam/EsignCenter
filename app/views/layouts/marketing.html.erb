@@ -33,7 +33,6 @@
           </button>
           <nav id="marketing-nav" data-panel aria-label="Main" class="mk-menu-panel absolute md:static inset-x-0 top-full md:top-auto flex-col md:flex-row md:items-center gap-1 md:gap-2 p-3 md:p-0 bg-base-100 md:bg-transparent border-b md:border-0 border-base-content/10 shadow-xl md:shadow-none text-base font-medium">
             <%= link_to 'Pricing', pricing_path, class: 'px-3 py-2.5 rounded-lg hover:bg-base-200 md:hover:bg-transparent md:hover:text-indigo-700' %>
-            <%= link_to 'Trust', trust_path, class: 'px-3 py-2.5 rounded-lg hover:bg-base-200 md:hover:bg-transparent md:hover:text-indigo-700' %>
             <%= link_to 'Help', help_path, class: 'px-3 py-2.5 rounded-lg hover:bg-base-200 md:hover:bg-transparent md:hover:text-indigo-700' %>
             <% if signed_in? %>
               <%= link_to 'Dashboard', root_path, class: 'btn btn-neutral btn-sm text-white md:ml-2 mt-1 md:mt-0' %>
@@ -95,6 +94,7 @@
             <li><%= link_to 'Terms', terms_path, class: 'link link-hover' %></li>
             <li><%= link_to 'Privacy', privacy_path, class: 'link link-hover' %></li>
             <li><%= link_to 'Trust', trust_path, class: 'link link-hover' %></li>
+            <li><%= link_to 'Sub-processors', subprocessors_path, class: 'link link-hover' %></li>
           </ul>
         </nav>
         <nav aria-label="Source" class="md:col-span-3 space-y-2">

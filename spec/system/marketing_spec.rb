@@ -155,7 +155,8 @@ RSpec.describe 'Marketing pages in the browser' do
     expect(toggle['aria-expanded']).to eq('true')
     within('#marketing-nav') do
       expect(page).to have_link('Pricing', visible: :visible)
-      expect(page).to have_link('Trust', visible: :visible)
+      expect(page).to have_link('Help', visible: :visible)
+      expect(page).to have_no_link('Trust')
       expect(page).to have_link('Sign In', visible: :visible)
     end
     expect(no_horizontal_overflow?).to be(true)
