@@ -70,6 +70,7 @@ TurboInstantClick.start()
 
 document.addEventListener('turbo:before-cache', () => {
   window.flash?.remove()
+  document.getElementById('autosave_toast')?.remove()
 })
 
 document.addEventListener('keyup', (e) => {
