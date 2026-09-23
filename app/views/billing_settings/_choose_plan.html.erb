@@ -43,7 +43,7 @@
         </li>
         <li class="flex items-start gap-2">
           <%= svg_icon('check', class: 'w-4 h-4 mt-0.5 shrink-0 text-base-content/60') %>
-          <span><%= t('billing_free_limit_storage', size: number_to_human_size(@free_limits.storage_bytes)) %></span>
+          <span><%= t('billing_free_limit_storage') %></span>
         </li>
       </ul>
       <% if @limits_overridden %>

@@ -45,20 +45,8 @@ module PricingMatrix
     Quotas::Limits::FREE_SEATS
   end
 
-  def free_storage
-    human_size(Quotas::Limits::FREE_STORAGE_BYTES)
-  end
-
-  def paid_storage_per_seat
-    human_size(Quotas::Limits::PAID_STORAGE_BYTES_PER_SEAT)
-  end
-
   def fair_use_completions_per_seat
     Quotas::Limits::PAID_COMPLETIONS_REVIEW_PER_SEAT
-  end
-
-  def human_size(bytes)
-    ActiveSupport::NumberHelper.number_to_human_size(bytes)
   end
 
   # `free` / `paid` are true (included), false (not on this plan) or a string
@@ -77,7 +65,7 @@ module PricingMatrix
       row(:completions, :limits, free_completions.to_s, UNLIMITED, fair_use: true),
       row(:sends, :limits, free_sends.to_s, UNLIMITED, fair_use: true),
       row(:in_flight, :limits, free_in_flight.to_s, UNLIMITED, fair_use: true),
-      row(:storage, :limits, free_storage, "#{paid_storage_per_seat} per seat"),
+      row(:storage, :limits, true, true),
       row(:seats, :limits, free_seats.to_s, "$#{price_per_seat} per user per month"),
 
       row(:api, :automation, false, true, features: %i[api mcp webhooks signing_sessions]),

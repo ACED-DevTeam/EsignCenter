@@ -167,6 +167,9 @@ same constants the app enforces: `Quotas::Limits` (every number),
 `StripeBilling::PRICE_PER_SEAT_USD` / `TRIAL_PERIOD_DAYS`. No number is typed
 into the page.
 
+Both plans advertise agreement storage as included, without a GB amount.
+The storage caps still apply and remain visible in usage, help and the Terms.
+
 When `lib/pricing_matrix.rb` loads it checks that **every** paid-only feature in
 the entitlement matrix is named by some row; if one is missing it raises, so the
 test suite fails the moment a feature is gated in the app without appearing on
