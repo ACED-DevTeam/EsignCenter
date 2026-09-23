@@ -1,200 +1,258 @@
-# D79 implementation and verification
+# D79 implementation and round-1 verification
 
-Status: done. Implementation commit `9f60554c` on `feature/api-usage-tiers`; no push, PR, deployment,
-or Stripe network operation was performed.
+Status: done. Round-1 implementation commit: `6e5545ae`.
 
-## Implementation
+Branch: `feature/api-usage-tiers`. Initial implementation checkpoints were
+`9f60554c` and `d7ae8f8a`. This report supersedes their implementation defaults
+where the lead amended D79 on September 23, 2026. No push, PR, deployment or
+Stripe account/network operation was performed.
 
-- `lib/plans.rb`, `lib/quotas.rb`, `lib/quotas/limits.rb`, subscription/override
-  models and `20260923120000_add_api_usage_tiers.rb`: Business, billing-account
-  API allowances, durable first-signer/source metering, lineage, overrides,
-  retained pack capacity, and monthly warning idempotency.
-- Submission creation services, signing sessions, API error handling, start
-  forms, hosted embed scripts and resubmission controllers: API/embed/MCP
-  refusal at allowance; ordinary in-app sending and existing signers continue.
-  Public share embeds retain their source and show live pause/resume states.
-- `lib/stripe_billing*`, `lib/billing_lifecycle.rb`, billing controllers/routes,
-  operator revenue and `lib/tasks/stripe.rake`: subscription-item mapping,
-  prorated plan changes, recurring packs, correct Business seat changes,
-  invoice totals, configuration checks and optional price provisioning.
-- Billing/API settings views, `lib/pricing_matrix.rb`, marketing/help views,
-  quota mailers and `config/locales/api_tiers.yml`: usage meters, purchase
-  controls, four pricing columns, Enterprise contact and customer explanations.
-- `config/legal/terms.html.erb`, `lib/legal_documents.rb` and the preserved
-  September 23 Terms archive: versioned disclosure of the API-channel exception.
-- Golden/request/library specs cover metering, creation doors, pause/resume,
-  warning retries/rollover, authorization, Stripe items, billing actions,
-  operator overrides/revenue, entitlements and pricing/settings/legal copy.
+## What changed in round 1
 
-## Implementation defaults beyond D79
+- `lib/quotas.rb`, `ApiMeteringActivation`, completion snapshots and quota/request
+  specs: new documents reserve API capacity. One SQL snapshot combines this
+  month's first-signer completions with eligible open documents under the
+  existing billing-account creation lock. Completion replaces its reservation;
+  decline, expiry or archive releases it. Still-open reservations survive a UTC
+  month reset. Documents already sent always finish.
+- Public share controllers, SDK and views return to the base source `link` and
+  SAMEORIGIN framing. The new share-embed classification and `?embed=1` parameter
+  are removed. Existing API/signing-session/MCP doors retain quota enforcement.
+  Counted-lineage corrections bypass the API cap; dashboard Resubmit remains an
+  in-app action. No framing capability is added by this feature.
+- `lib/stripe_billing/tier_changes.rb`, `subscription_sync.rb`, and the
+  subscription model reuse item prices where possible. Pending updates never
+  contain deleted items. Paid → Business upgrades charge the prorated difference
+  now; Business → Paid changes the next renewal with no credit while locally
+  retaining Business access until then. Reversing that pending downgrade does
+  not charge for Business again.
+- `lib/stripe_billing/pack_purchases.rb`, `ApiPackPurchase` and billing jobs
+  purchase only new units at the full monthly price through a durable standalone
+  invoice operation. Purge protections preserve the recovery ledger. Capacity is applied after confirmed
+  payment, then recurring quantity is changed with proration disabled. Packs
+  during trial are available immediately and billed at trial end. Reductions
+  apply at renewal; restoring still-paid capacity does not charge twice.
+- Any explicit API override disables and refuses plan/pack purchases, including
+  zero and unlimited. Billing links agreement customers to Support. Both usage
+  meters separately show open reservations and explain that they survive reset.
+- `app/views/marketing/pricing.html.erb` and `lib/pricing_matrix.rb` add a sticky
+  feature column, mobile swipe hint, matching card lists,
+  an available Business signup button, concise pack prices and Enterprise feature
+  checkmarks. Terms, help and billing copy describe the amended billing rules.
+  Terms `2026-09-24` is archived unchanged; the current version is `2026-09-25`.
+- D79's external plan record has the requested dated lead-amendment sub-list.
 
-1. Initial Checkout remains Paid. A trial can switch to Business immediately;
-   it receives Business's included allowance. API packs are sold only after the
-   trial ends, because Stripe trial items have no immediately billable prorated
-   remainder. The settings page explains this restriction.
-2. Pack controls accept a target recurring quantity of 0–9999. Plan changes
-   require an active/trialing subscription; pack changes require active.
-   Manual grants, children, pending deletion, cancellation/dunning, pending
-   payments and externally scheduled subscriptions cannot use these controls.
-3. Pack reduction changes Stripe's recurring quantity without proration while
-   preserving purchased capacity locally until the current renewal date.
-   Re-adding still-covered packs does not charge twice. Adding beyond retained
-   capacity invoices only the new increment, with access granted after payment.
-   UTC usage reset remains independent of Stripe's renewal date.
-4. An operator API override is absolute, including packs: blank inherits,
-   `0` blocks new automation, and `-1` means unlimited. It never grants Free API
-   entitlement. An explicit zero allowance produces no percentage emails.
-5. New API corrections retain the original source and face the creation cap,
-   even if their lineage already counted. D74's Free completion exemption is
-   unchanged. Repeated correction clicks resume the same pending lineage copy.
-6. Hosted shared-form embeds and iframe starts are classified as `embed`;
-   ordinary top-level shared links remain `link`. Public shared embeds allow
-   framing from any site. Private template pages retain SAMEORIGIN and private
-   signing sessions/corrections retain their origin allowlist. Clients cannot
-   inject the server-owned public-embed marker through API/session payloads.
-7. Enterprise links to the existing `/support` contact form. It has no plan key
-   or Stripe product. New application locale strings use the existing English
-   fallback; marketing and legal pages remain English.
-8. Terms advance to `2026-09-24` under `docs/legal.md`'s explicit next-date rule
-   for a second revision on the same day; the old text/digest remain archived.
+## Defaults and implementation choices beyond D79
 
-## Deployment setup
+1. Checkout still starts on Paid; Business is selected in Billing after signup.
+   Registration-disabled pricing links sign-in instead of an unavailable signup.
+2. Pack forms accept a target recurring quantity from 0 to 9999. Both plans and
+   packs require an active/trialing, self-billed subscription. Manual grants,
+   children, deletion/cancellation/dunning, pending payments and externally
+   scheduled subscriptions cannot use the purchase controls.
+3. Renewal reductions use changed recurring Stripe items plus retained local
+   entitlement, without Stripe schedules. This preserves existing seat changes.
+   UTC completion resets and subscription renewal remain independent.
+4. Standalone pack invoices use a persisted purchase UUID and stable Stripe
+   idempotency keys. Payment webhooks and nightly reconciliation recover paid
+   operations. Only matching invoice/customer/amount data grants capacity.
+   Unknown-invoice creation stops after 23 hours to stay inside Stripe's
+   idempotency window; unpaid purchases expire after 24 hours and are voided
+   on retry/reconciliation. Drafts are finalized without automatic collection
+   before voiding, so lost responses remain recoverable. Ambiguous unknown
+   invoices remain open for operator recovery. Paid purchases that cannot be
+   fulfilled after cancellation become operator-review/refund debts. The ledger
+   survives purge and prevents cascading subscription deletion. Standalone
+   invoice lines are non-discountable; automatic tax remains off under D22/D22a.
+5. API overrides are absolute: blank inherits, zero refuses new automation and
+   -1 is unlimited. They grant no API entitlement to Free. Zero emits no
+   percentage warning. Warning emails count completions, not reservations.
+6. Activation defaults to a durable deployment-migration timestamp, rather than
+   process start. A schema-loaded fresh database initializes it before first API
+   creation. Completion rows snapshot submission creation time, preserving grace
+   after deletion. Old deleted rows lacking that time remain excluded.
+7. Enterprise uses the existing `/support` path; no Enterprise plan/Stripe price.
+   New application strings use the existing English fallback; marketing/legal
+   remain English. The Terms date follows the next-date rule in `docs/legal.md`.
 
-Run `bundle exec rails db:migrate` before starting the new app. The migration
-adds subscription `plan` (existing rows default to Paid), `api_pack_quantity`,
-`retained_api_pack_quantity`, `retained_api_pack_until`, and override
-`api_completions_per_month`.
+## Deployment and Stripe setup
 
-Keep `STRIPE_PRICE_ID` as the existing $10/month seat price. Optionally create
-and configure distinct monthly USD prices:
+Run `bundle exec rails db:migrate` before starting the updated app. Initial
+migration `20260923120000_add_api_usage_tiers.rb` adds subscription plan/pack
+quantities, retained packs and API limit override. Round-1 migration
+`20260923130000_finalize_api_tier_billing_and_activation.rb` adds retained
+Business expiry, durable pack purchase operations, the API activation singleton,
+and a backfilled submission-creation timestamp on completion records.
 
-- `STRIPE_BUSINESS_PRICE_ID`: $49/month Business base, including one seat.
-- `STRIPE_API_PACK_PRICE_ID`: $10/month API pack, including 50 completions.
+Keep `STRIPE_PRICE_ID` as the existing $10/month seat price. Optional distinct
+monthly USD prices:
 
-`bundle exec rake stripe:api_prices` creates/finds these by stable lookup keys;
-`bundle exec rake stripe:check` verifies them. These contact Stripe and were
-**not run**. Customer Portal quantity editing must remain off. Missing optional
-IDs do not break existing Paid configuration; corresponding purchases are
-unavailable with explanatory copy. Invalid/reused price IDs fail validation.
-Keep optional IDs configured after selling their products.
+- `STRIPE_BUSINESS_PRICE_ID`: $49/month base, including one seat.
+- `STRIPE_API_PACK_PRICE_ID`: $10/month recurring pack, including 50 completions.
+
+Missing optional IDs leave existing Paid subscriptions working with their
+50 allowance and make corresponding purchases unavailable with honest copy.
+Retain each ID once sold. `bundle exec rake stripe:api_prices` creates/finds the
+prices and `bundle exec rake stripe:check` verifies them; both contact Stripe
+and were **not run**. Keep Customer Portal quantity editing disabled.
+
+`API_METERING_STARTS_AT` optionally pins a fixed ISO8601 activation timestamp,
+for example `2026-10-01T00:00:00Z`. If absent, the new migration records its own
+execution time once. Restarting or redeploying never advances that default.
+Only documents created at/after this time contribute to API completions,
+reservations or warnings. Before a future activation, creation is unrestricted
+by the API allowance. Existing old documents remain signable and excluded.
+Set the same fixed value for web/worker processes and do not move it on normal
+redeployments. Backdating it deliberately removes some rollout grace.
+
+Follow `docs/legal.md` for the owner's pre-effective-date administrator notice
+and counsel review. No messages were sent by this implementation worker.
 
 ## Verification environment
 
-Used the existing development image `esigncenter-app:latest`, mounted only this
-worktree into task-owned `esign-api-tiers-app`, and created a fresh task-owned
-PostgreSQL 18 instance. Four locked gems missing from the image were installed
-inside this disposable container. No live/local-production database was used.
+Used development image `esigncenter-app:latest` in task-owned
+`esign-api-tiers-r1-app`, mounting only this worktree. Task-owned PostgreSQL 18
+`esign-api-tiers-r1-db` uses disposable databases `docuseal_test`,
+`docuseal_ui_test`, and `docuseal_billing_test`; credentials shown in commands
+below belong only to this disposable instance. Four already-locked gems missing
+from the image were installed inside the container; the lockfile is unchanged.
+The cached JavaScript dependencies were also refreshed with
+`docker exec esign-api-tiers-r1-app yarn install --frozen-lockfile`, then assets
+rebuilt using `docker exec esign-api-tiers-r1-app bundle exec ruby bin/shakapacker`.
+The final build passed with zero errors and two existing Scalar dependency
+warnings. The first build exposed missing cached packages; no dependency file
+was edited. Explicit recompilation was necessary because ERB-only changes had
+left the old CSS digest in place, omitting the new table minimum-width utility.
+PostgreSQL uses a 1 GB tmpfs to avoid the shared Docker disk limit. Browser
+TMPDIR lives under host-mounted `/app/tmp`.
 
-Docker's shared disk had no space for PostgreSQL initialization, so its task
-instance used a 1 GB tmpfs. Browser temporary files used the host-mounted
-`/app/tmp` after the first Chromium process died on the full container disk.
-Two isolated databases allowed independent runs: `docuseal_test` and
-`docuseal_api_ui_test`. The latter URL below uses disposable local credentials.
+## Commands and results
 
-## Test commands and results
+Raw logs and new screenshots live under `tmp/api-tiers-round1/` (quota logs
+under `tmp/api-tiers-r1/`).
 
-Broad quota/request run:
-
-```sh
-docker exec esign-api-tiers-app bundle exec rspec \
-  spec/golden/api_usage_tiers_spec.rb spec/golden/quota_spec.rb \
-  spec/golden/gating_spec.rb spec/golden/operator_console_spec.rb \
-  spec/lib/plans_spec.rb spec/lib/entitlements_spec.rb spec/requests
-```
-
-**516 examples, 4 failures initially.** Fixed Free feature-error precedence,
-source-preserving correction idempotency, and the intentionally changed plan-key
-expectation. The expensive existing quota cases, operator cases and remaining
-requests passed. All affected cases were rerun with the following final command:
-
-```sh
-docker exec esign-api-tiers-app bundle exec rspec \
-  spec/golden/api_usage_tiers_spec.rb spec/golden/gating_spec.rb \
-  spec/lib/plans_spec.rb spec/lib/entitlements_spec.rb \
-  spec/requests/start_form_authorization_spec.rb \
-  spec/requests/start_form_email_2fa_send_spec.rb \
-  spec/requests/start_form_email_verification_required_spec.rb \
-  spec/requests/signing_sessions_spec.rb spec/requests/embed_scripts_spec.rb
-```
-
-**167 examples, 0 failures.** Existing D42 quota expectations and feature refusal
-assertions were preserved; Business plan keys and pricing columns intentionally
-extend their prior enumerations.
-
-Billing/Stripe/seat/operator-revenue run:
+UI/settings/legal/help/usage and related system specs:
 
 ```sh
 docker exec -e TMPDIR=/app/tmp \
-  -e DATABASE_URL=postgresql://postgres:postgres@esign-api-tiers-db/docuseal_api_ui_test \
-  esign-api-tiers-app bundle exec rspec \
-  spec/golden/api_billing_spec.rb spec/golden/billing_page_spec.rb \
-  spec/golden/stripe_spec.rb spec/golden/seats_spec.rb \
-  spec/golden/operator_console_spec.rb:1350
-```
-
-**420 examples, 0 failures.** Earlier development runs were 394/14 failures and
-394/1; all were corrected. Existing Stripe check coverage now accepts `SKIP`
-only for absent optional prices, while continuing to require the Paid checks.
-
-Pricing/settings/legal/help/usage and related system tests:
-
-```sh
-~/.local/bin/box-lock run --label esign-api-tiers-ui-checks -- \
-  docker exec -e TMPDIR=/app/tmp esign-api-tiers-app bundle exec rspec \
+  -e DATABASE_URL=postgresql://postgres:postgres@esign-api-tiers-r1-db/docuseal_ui_test \
+  esign-api-tiers-r1-app bundle exec rspec \
   spec/golden/api_usage_settings_spec.rb spec/golden/marketing_spec.rb \
   spec/golden/legal_spec.rb spec/golden/help_spec.rb \
   spec/golden/usage_page_spec.rb spec/system/billing_settings_spec.rb \
   spec/system/api_settings_spec.rb
 ```
 
-**102 examples, 0 failures.**
+Initial round-1 run: **108 examples, 1 failure** in a trial fixture that set
+Stripe status without the mirrored access state. Corrected the fixture and
+reran `spec/golden/api_usage_settings_spec.rb` with the same container/env:
+**9 examples, 0 failures**. After the reservation meter and renewal-price label
+were added, reran the whole command above on released `docuseal_test` (omit
+`DATABASE_URL`): **108 examples, 0 failures**, 27.1s. No assertion was weakened.
+
+Broad quota/request verification:
+
+```sh
+docker exec esign-api-tiers-r1-app bundle exec rspec \
+  spec/golden/api_usage_tiers_spec.rb spec/golden/quota_spec.rb \
+  spec/golden/gating_spec.rb spec/golden/operator_console_spec.rb \
+  spec/lib/plans_spec.rb spec/lib/entitlements_spec.rb spec/requests
+```
+
+**522 examples, 0 failures**, 7m44s. Earlier focused run: 109 examples,
+1 failure caused by a cached absent override in a fixture; reload corrected it,
+and the 23 API-usage examples passed before the final broad run. D42 behavior
+for in-app sources remains unchanged. Public-share files were also compared
+byte-for-byte with the base before D79 (`9f60554c^`).
+
+Billing/Stripe/seats/operator revenue and full lifecycle/purge verification:
+
+```sh
+docker exec -e TMPDIR=/app/tmp \
+  -e DATABASE_URL=postgresql://postgres:postgres@esign-api-tiers-r1-db/docuseal_billing_test \
+  esign-api-tiers-r1-app bundle exec rspec \
+  spec/golden/api_billing_spec.rb spec/golden/billing_page_spec.rb \
+  spec/golden/stripe_spec.rb spec/golden/seats_spec.rb \
+  spec/golden/operator_console_spec.rb:1350 \
+  spec/golden/lifecycle_downgrade_spec.rb
+```
+
+**526 examples, 0 failures**, 1m53.96s. Focused API-billing plus lifecycle/purge
+run: **131 examples, 0 failures**. Earlier combined run: 435 examples,
+1 failure in the deliberate rollback/retry fixture; corrected its stale
+in-memory signed-in user. Exact full Stripe mutation bodies are matched by
+WebMock, with an additional regression rejecting any pending/deleted pairing.
+Recovery cases cover paid-before-local-failure, cancellation, unknown invoices,
+lost expiry responses, trial packs, overrides, and tier/pack round trips.
+Late pack webhooks after a real account purge retain normal PII scrubbing.
 
 Final gates:
 
 ```sh
-~/.local/bin/box-lock run --label esign-api-tiers -- \
-  docker exec -e TMPDIR=/app/tmp esign-api-tiers-app bundle exec rake gates:all
+~/.local/bin/box-lock run --label esign-api-tiers-r1-gates -- \
+  docker exec -e TMPDIR=/app/tmp esign-api-tiers-r1-app bundle exec rake gates:all
 ```
 
-Isolation, account-kind, branding, RuboCop, ERB lint, ESLint and Brakeman pass.
-RuboCop: **781 files, 0 offenses**. ERB: **474 files, 0 errors**.
-Brakeman: **0 errors, 0 security warnings** (7 existing ignored warnings).
-Development gate failures were fixed without changing lint rules or exclusions.
-`git diff --check` passes.
+**PASS**: isolation, account-kind, branding, RuboCop, ERB lint, ESLint and
+Brakeman. RuboCop: **784 files, 0 offenses**. ERB: **474 files, 0 errors**.
+Brakeman: **0 errors, 0 security warnings**, 7 existing ignored warnings.
+`git diff --check` passes. No lint rules, exclusions or tests were weakened.
 
-## Browser evidence and limits
-
-The evidence command used:
+## Browser evidence
 
 ```sh
-~/.local/bin/box-lock run --label esign-api-tiers-browser -- \
-  docker exec -e TMPDIR=/app/tmp/api-tiers/browser-tmp \
-  -e DATABASE_URL=postgresql://postgres:postgres@esign-api-tiers-db/docuseal_api_ui_test \
-  esign-api-tiers-app bundle exec rspec tmp/api-tiers/browser_spec.rb --format progress
+~/.local/bin/box-lock run --label esign-api-tiers-r1-browser -- \
+  docker exec -e TMPDIR=/app/tmp/api-tiers-round1/browser-tmp \
+  -e DATABASE_URL=postgresql://postgres:postgres@esign-api-tiers-r1-db/docuseal_ui_test \
+  esign-api-tiers-r1-app bundle exec rspec \
+  tmp/api-tiers-round1/browser_spec.rb --format progress
 ```
 
-Sol collected desktop 1440×1000 and phone 390×844 screenshots with Cuprite under
-the box lock, using the isolated UI database and ignored temporary script
-`tmp/api-tiers/browser_spec.rb`. The run's **4 examples pass**. Screenshots are
-at `tmp/api-tiers/screenshots/`:
+**7 examples, 0 failures**, 11.2s. Sol collected actual Cuprite evidence at desktop
+1440×1000 and phone 390×844. Initial browser runs were 7 examples/1 failure:
+pricing overflow at phone width. Rebuilding stale CSS restored the new table
+minimum width; a real remaining overflow came from absolutely positioned
+screen-reader labels whose containing block was outside the scroll region.
+Making that region positioned fixed the overflow without hiding content or
+weakening assertions. Blank viewport captures were replaced with crops from
+actual full-page screenshots and opened to confirm real rendered pixels.
 
-- `pricing-{1440,390}.png`, `enterprise-contact-390.png`.
-- `billing-business-{configured,unconfigured}-{1440,390}.png`.
-- `api-business-390.png`, `billing-invalid-packs-390.png`.
-- `billing-free-{1440,390}.png`.
+Final screenshots under `tmp/api-tiers-round1/screenshots/`:
 
-Observed interactions: Enterprise opens Support; API meter navigates to Billing;
-invalid pack quantity produces the server error; unavailable products hide their
-purchase forms; Free displays zero API capacity. Page overflow checks pass.
-Screenshots exposed an active Business badge saying Paid; both badge and card
-were corrected and recaptured. No separate loading state is introduced by these
-server-rendered pages. The empty-usage, unavailable-product and error states are
-included. Screenshots were opened for inspection; no Opus/Fable visual reviewer
-was available in this runtime.
+- `pricing-{1440,390}.png`.
+- `pricing-comparison-{initial,business,enterprise}-390.png`: phone crops at
+  three horizontal scroll positions, each with the visible swipe hint and
+  sticky feature column. Matching `*-390-full.png` captures preserve context.
+- `billing-business-{configured,unconfigured,trial-packs,agreement,downgrade-pending}-{1440,390}.png`.
+- `api-business-390.png`, `billing-invalid-packs-390.png`,
+  `billing-free-{1440,390}.png`.
+- `business-signup-390.png`, `enterprise-contact-390.png`.
 
-The entire repository suite was not run. Actual Stripe account provisioning,
-real card/proration/3DS flows, live delivery of email and production deployment
-were not tested. Stripe behavior is verified with captured-shape fixtures and
-WebMock. Cross-site iframe cookie/CSRF behavior was not browser-tested; existing
-protections remain unchanged, while framing and private-origin boundaries have
-request coverage. No services are intentionally left running after cleanup.
+Observed interactions: the Business CTA opens signup; Enterprise opens Support;
+API usage links to Billing; invalid pack quantity produces the server error;
+trial packs have an editable form and trial-end billing copy; agreement
+customers have no plan/pack purchase controls; pending downgrade shows retained
+Business capacity, its renewal date, future price and Keep Business action.
+Phone table scrolling exposes Business and Enterprise while feature labels
+stay visible. All page-overflow assertions pass. Empty usage, unavailable
+products and validation errors are included; these pages introduce no separate
+loading state.
+
+Astra opened the desktop pricing, phone comparison crops and updated billing
+screenshots for inspection. No Opus/Fable reviewer is available in this runtime;
+the lead retains visual sign-off. A failed pre-fix phone screenshot is preserved
+as `pricing-390-before-relative.png`; it is diagnostic, not final evidence.
+
+## Limits of verification
+
+The full repository RSpec suite is not run. Real Stripe test-mode tier and pack
+flows remain a **pre-merge lead check**: supported parameter combinations,
+invoice payment/authentication, retries, renewal boundaries and trial billing.
+No Stripe credentials/accounts were contacted. Live email delivery, production
+deployment and external iframe behavior are not browser-verified. Public link
+framing is restored to base behavior and covered by request specs.
+
+Task-owned app/database containers, anonymous node dependency volume and Docker
+network were removed after verification. No task-owned services or browsers
+remain running. Logs, temporary browser script and screenshots remain in the
+worktree's ignored `tmp/` directories for lead review.
