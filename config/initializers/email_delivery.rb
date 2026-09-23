@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative '../../lib/mail_configs'
+require_relative '../../lib/production_readiness'
 
 module EmailDeliveryConfig
   module_function
@@ -8,37 +9,73 @@ module EmailDeliveryConfig
   def check!
     explicit_mode = ENV.fetch('EMAIL_DELIVERY_MODE', nil)
 
-    if explicit_mode.present? && !explicit_mode.in?(%w[smtp test])
-      message = "EMAIL_DELIVERY_MODE=#{explicit_mode} is invalid (use 'smtp' or 'test')"
-
-      raise message if Rails.env.production?
-
-      Rails.logger.warn(message)
-    end
+    check_explicit_mode!(explicit_mode)
+    check_production_mode!
 
     return unless MailConfigs.delivery_mode == 'smtp'
 
-    if ENV['SMTP_ADDRESS'].blank?
-      message = 'SMTP delivery mode but SMTP_ADDRESS is not set; only accounts with pinned SMTP can send email'
+    check_smtp_address!
+    check_smtp_from!
+    check_smtp_credentials!
+    check_smtp_transport_security!
+  end
 
-      # Raise only when smtp mode was asked for explicitly; a bare production
-      # boot (mode defaulted) keeps working for pinned-account-only setups.
-      raise message if Rails.env.production? && explicit_mode == 'smtp'
+  def check_explicit_mode!(explicit_mode)
+    return if explicit_mode.blank? || explicit_mode.in?(%w[smtp test])
 
-      Rails.logger.warn(message)
-    end
+    message = "EMAIL_DELIVERY_MODE=#{explicit_mode} is invalid (use 'smtp' or 'test')"
 
-    if ENV['SMTP_FROM'].blank? && ENV['SMTP_ADDRESS'].present?
-      message = 'SMTP_ADDRESS is set but SMTP_FROM is not; platform mail would go out under tenant From addresses'
+    raise message if Rails.env.production?
 
-      raise message if Rails.env.production?
+    Rails.logger.warn(message)
+  end
 
-      Rails.logger.warn(message)
-    end
+  def check_production_mode!
+    return unless Rails.env.production? && MailConfigs.delivery_mode != 'smtp'
 
-    return unless ENV.values_at('SMTP_USERNAME', 'SMTP_PASSWORD', 'POSTMARK_API_TOKEN').all?(&:blank?)
+    raise 'Production EMAIL_DELIVERY_MODE must be smtp'
+  end
 
-    Rails.logger.warn('SMTP credentials are not set; the platform SMTP connection will be unauthenticated')
+  def check_smtp_address!
+    return if ENV['SMTP_ADDRESS'].present?
+
+    message = 'SMTP delivery mode but SMTP_ADDRESS is not set; only accounts with pinned SMTP can send email'
+
+    raise message if Rails.env.production?
+
+    Rails.logger.warn(message)
+  end
+
+  def check_smtp_from!
+    return unless ENV['SMTP_FROM'].blank? && ENV['SMTP_ADDRESS'].present?
+
+    message = 'SMTP_ADDRESS is set but SMTP_FROM is not; platform mail would go out under tenant From addresses'
+
+    raise message if Rails.env.production?
+
+    Rails.logger.warn(message)
+  end
+
+  def check_smtp_credentials!
+    credentials_present = ENV.values_at('SMTP_USERNAME', 'SMTP_PASSWORD').all?(&:present?) ||
+                          ENV['POSTMARK_API_TOKEN'].present?
+
+    return if credentials_present
+
+    message = 'SMTP credentials are not set; set SMTP_USERNAME and SMTP_PASSWORD, or POSTMARK_API_TOKEN'
+
+    raise message if Rails.env.production?
+
+    Rails.logger.warn(message)
+  end
+
+  def check_smtp_transport_security!
+    return unless Rails.env.production?
+
+    checks = [ProductionReadiness.smtp_encryption_check, ProductionReadiness.smtp_certificate_check]
+    failures = checks.reject(&:ok)
+
+    raise failures.map(&:message).join('; ') if failures.any?
   end
 end
 
