@@ -298,8 +298,8 @@ RSpec.describe 'Start form authorization', type: :request do
       expect(response).to redirect_to("/s/#{copy.submitters.first.slug}")
     end
 
-    # The copy is a link document, so a second click of Resubmit finds the one
-    # already waiting instead of creating another.
+    # The copy preserves its source and lineage, so a second click of
+    # Resubmit finds the same family copy already waiting.
     it 'does not create a second copy when the signer resubmits twice' do
       submitter = create(:submitter, submission: create(:submission, template:, created_by_user: user,
                                                                      source: 'invite'),

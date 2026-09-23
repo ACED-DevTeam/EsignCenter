@@ -3,6 +3,7 @@
 class StartFormController < ApplicationController
   include SenderViewing
   include CompletedFormMarker
+  include SharedFormSource
 
   layout 'form'
 
@@ -12,6 +13,8 @@ class StartFormController < ApplicationController
   around_action :with_browser_locale, only: %i[show update completed]
   before_action :load_resubmit_submitter, only: :update
   before_action :load_template
+  before_action :set_share_embed_frame_headers
+  before_action :require_share_embed_entitlement!
   before_action :refuse_email_2fa_shared_link!, except: :show
   before_action :refuse_unready_documents!, only: %i[show update]
   before_action :authorize_start!, only: :update
@@ -30,7 +33,7 @@ class StartFormController < ApplicationController
       # A capped or paused account's link is closed for now: computed on
       # every request, so it reopens by itself at month rollover. The owner
       # is told once per month that a signer was turned away.
-      if !@template.archived_at? && (reason = Quotas.share_link_paused?(@template.account))
+      if !@template.archived_at? && (reason = Quotas.share_link_paused?(@template.account, source: shared_form_source))
         Quotas.notify_share_link_pause!(@template.account, reason) unless sender_viewing?
 
         return render_paused(reason)
@@ -84,6 +87,8 @@ class StartFormController < ApplicationController
       end
     end
   rescue Quotas::LimitReached => e
+    notify_api_share_pause(e.reason)
+
     return render json: { error: e.localized_message }, status: :unprocessable_content unless request.format.html?
 
     render_paused(e.reason, status: :unprocessable_content)
@@ -165,7 +170,8 @@ class StartFormController < ApplicationController
   # creation. D74: a Resubmit carries the document it corrects, so a family
   # that has already counted is not refused by the completions cap.
   def prepare_new_submission!
-    Quotas.assert_can_create_submissions!(@template.account, correction_of: @resubmit_submitter&.submission)
+    Quotas.assert_can_create_submissions!(@template.account, correction_of: @resubmit_submitter&.submission,
+                                                             source: shared_form_source)
 
     assign_submission_attributes(@submitter, @template)
 
@@ -180,7 +186,8 @@ class StartFormController < ApplicationController
     return submitter.save unless is_new_record
 
     Quotas.with_creation_lock(@template.account) do
-      Quotas.assert_can_create_submissions!(@template.account, correction_of: @resubmit_submitter&.submission)
+      Quotas.assert_can_create_submissions!(@template.account, correction_of: @resubmit_submitter&.submission,
+                                                               source: shared_form_source)
 
       saved = submitter.save
 
@@ -314,7 +321,8 @@ class StartFormController < ApplicationController
   end
 
   # Which of the template's documents this door may hand back instead of
-  # starting a new one. Only the ones this door itself created (source :link):
+  # starting a new one. Only the ones this door itself created (source :link
+  # or the server-owned share_embed marker):
   # typing an email is not proof of owning it, so a submitter the sender
   # invited by email — or created through the API, an embed or a bulk send —
   # must never be adopted by a visitor who guessed the address. Doing so would
@@ -322,10 +330,21 @@ class StartFormController < ApplicationController
   # their place. Those flows start a fresh document instead; a signer resuming
   # the share link they started themselves still finds it.
   def resumable_submissions(template)
-    template.submissions
+    scope = template.submissions
             .where(expire_at: Time.current..)
             .or(template.submissions.where(expire_at: nil))
-            .where(archived_at: nil, source: :link)
+            .where(archived_at: nil, source: shared_form_source)
+
+    # A resubmit slug proves this family's identity. Repeated clicks resume
+    # its pending copy, including private embed copies that deliberately have
+    # no public share_embed marker; unrelated invitations stay out of scope.
+    if @resubmit_submitter
+      return scope.where(lineage_root_id: Submissions::Lineage.root_id(@resubmit_submitter.submission))
+    end
+
+    return scope unless shared_form_source == 'embed'
+
+    scope.where("COALESCE(NULLIF(submissions.preferences, ''), '{}')::jsonb ->> 'share_embed' = 'true'")
   end
 
   def assign_submission_attributes(submitter, template)
@@ -354,7 +373,8 @@ class StartFormController < ApplicationController
                                             template_submitters: template.submitters,
                                             expire_at: Templates.build_default_expire_at(template),
                                             submitters: [submitter],
-                                            source: :link,
+                                            source: shared_form_source,
+                                            preferences: shared_submission_preferences,
                                             **resubmit_lineage)
 
     Submissions::CreateFromSubmitters.maybe_set_dynamic_documents(submitter.submission)
@@ -362,6 +382,24 @@ class StartFormController < ApplicationController
     submitter.account_id = submitter.submission.account_id
 
     submitter
+  end
+
+  def shared_submission_preferences
+    if @resubmit_submitter
+      @resubmit_submitter.submission.preferences.slice('share_embed', 'embed_origin', 'embed_origins')
+    elsif shared_form_source == 'embed'
+      { 'share_embed' => true }
+    else
+      {}
+    end
+  end
+
+  def require_share_embed_entitlement!
+    return unless shared_form_source == 'embed'
+    return unless @template.shared_link? || @resubmit_submitter || sender_viewing?
+    return if Entitlements.allowed?(@template.account, :embed)
+
+    render_paused(:api_completions, status: :forbidden)
   end
 
   def resubmit_lineage

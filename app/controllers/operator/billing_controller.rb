@@ -47,11 +47,6 @@ module Operator
     # account looks exactly like a paying one in every other column.
     COMP_STATUS = 'manual'
 
-    # What one seat costs a month. Read from the customer-facing billing page
-    # rather than restated here: there is one price in this product and one
-    # place that spells it.
-    PRICE_PER_SEAT_USD = BillingSettingsController::PRICE_PER_SEAT_USD
-
     # One sentence per reason the locked adoption can refuse. The Linker
     # raises the REASON, never the words: which sentence a person reads is
     # this surface's business, not the money code's.
@@ -181,8 +176,10 @@ module Operator
 
       @paying_rows = paying.count
       @paying_seats = paying.sum(:quantity)
-      @mrr = @paying_seats * PRICE_PER_SEAT_USD
-      @price_per_seat = PRICE_PER_SEAT_USD
+      # Business includes its first seat and packs are recurring revenue too.
+      # Batch rows so the same invoice calculation serves both billing pages
+      # without loading every account's subscription into memory at once.
+      @mrr = paying.find_each.sum(&:monthly_amount_usd)
       # The census is left keyed on the access state, because `canceling` is
       # the honest answer to "what is this account's access?" — it is only the
       # MONEY that a cancelled trial must not be counted in. So the trial

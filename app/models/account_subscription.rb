@@ -46,7 +46,30 @@ class AccountSubscription < ApplicationRecord
   belongs_to :account
 
   validates :access_state, inclusion: { in: Plans::ACCESS_STATES }
+  validates :plan, inclusion: { in: [Plans::PAID, Plans::BUSINESS] }
+  validates :api_pack_quantity, :retained_api_pack_quantity,
+            numericality: { only_integer: true, greater_than_or_equal_to: 0 }
   validates :quantity, numericality: { only_integer: true, greater_than_or_equal_to: 1 }
+
+  # Stripe's lower recurring quantity applies to the next invoice. Capacity
+  # already paid for survives until that renewal, without refunding used packs.
+  def effective_api_pack_quantity
+    retained = retained_api_pack_until&.future? ? retained_api_pack_quantity : 0
+
+    [api_pack_quantity, retained].max
+  end
+
+  # The recurring invoice amount. Retained packs are capacity already paid
+  # for, so only Stripe's current recurring quantity belongs in this total.
+  def monthly_amount_usd
+    seats_amount = if plan == Plans::BUSINESS
+                     StripeBilling::BUSINESS_BASE_USD + ((quantity - 1) * StripeBilling::PRICE_PER_SEAT_USD)
+                   else
+                     quantity * StripeBilling::PRICE_PER_SEAT_USD
+                   end
+
+    seats_amount + (api_pack_quantity * StripeBilling::API_PACK_USD)
+  end
 
   # Is this row one that the account it belongs to actually pays through?
   # Two things have to be true, and asking only the second one is a bug we

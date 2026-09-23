@@ -27,7 +27,7 @@ class UsageSettingsController < ApplicationController
     @pause_reason = @paused ? reason : nil
     @support_email = Docuseal::SUPPORT_EMAIL
 
-    return unless @plan == Plans::PAID
+    return unless @plan.in?([Plans::PAID, Plans::BUSINESS])
 
     # Both from the quota engine, so an operator's per-account override of the
     # fair-use level is the number the customer is shown too (review 1, M2).

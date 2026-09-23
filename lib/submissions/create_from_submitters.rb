@@ -17,7 +17,8 @@ module Submissions
       submissions = Quotas.with_creation_lock(template.account) do
         Templates.assert_documents_ready!(template)
 
-        Quotas.assert_can_create_submissions!(template.account, count: creating_count(template, submissions_attrs))
+        Quotas.assert_can_create_submissions!(template.account, count: creating_count(template, submissions_attrs),
+                                                                source:)
 
         saved = build_and_save(template:, user:, submissions_attrs:, source:, submitters_order:, params:,
                                with_template:, new_fields:)

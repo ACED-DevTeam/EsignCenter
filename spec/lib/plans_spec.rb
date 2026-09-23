@@ -1,9 +1,9 @@
 # frozen_string_literal: true
 
 RSpec.describe Plans, type: :lib do
-  it 'names exactly the three plan keys and the access states' do
-    expect(described_class::KEYS).to eq(%w[free paid internal])
-    expect(described_class::PAID_OR_BETTER).to eq(%w[paid internal])
+  it 'names exactly the four plan keys and the access states' do
+    expect(described_class::KEYS).to eq(%w[free paid business internal])
+    expect(described_class::PAID_OR_BETTER).to eq(%w[paid business internal])
     expect(described_class::ACCESS_STATES).to eq(%w[trialing active canceling past_due suspended cancelled])
     expect(described_class::PAID_ACCESS_STATES).to eq(%w[trialing active canceling past_due])
   end
@@ -32,6 +32,20 @@ RSpec.describe Plans, type: :lib do
         expected = described_class::PAID_ACCESS_STATES.include?(state) ? described_class::PAID : described_class::FREE
 
         expect(described_class.key_for(account)).to eq(expected), "#{state} should read as #{expected}"
+      end
+    end
+
+    it 'keeps Business through every paid access state and falls back to Free when access ends' do
+      account = create(:account)
+      subscription = create(:account_subscription, account:, plan: described_class::BUSINESS)
+      described_class::ACCESS_STATES.each do |state|
+        subscription.update!(access_state: state)
+        expected = if described_class::PAID_ACCESS_STATES.include?(state)
+                     described_class::BUSINESS
+                   else
+                     described_class::FREE
+                   end
+        expect(described_class.key_for(account.reload)).to eq(expected)
       end
     end
 

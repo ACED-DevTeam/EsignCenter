@@ -22,7 +22,7 @@ module SigningSessions
       # the stored objects back. Refusing here first keeps a paused or capped
       # account from filling storage with documents it cannot send; the check
       # under the creation lock stays the authority.
-      Quotas.assert_can_create_submissions!(user.account)
+      Quotas.assert_can_create_submissions!(user.account, source: :embed)
 
       ActiveRecord::Base.transaction do
         template = find_or_create_template

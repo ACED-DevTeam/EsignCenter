@@ -44,7 +44,7 @@ class SubmittersResubmitController < ApplicationController
     origin = @submitter.submission
 
     @submitter.account.submissions.new(created_by_user: current_user,
-                                       submitters_order: :preserved,
+                                       submitters_order: :preserved, source: origin.source,
                                        **Submissions::Lineage.attributes_for_copy(origin),
                                        **origin.slice(:template_fields, :account_id, :name, :template_id,
                                                       :template_schema, :template_submitters, :preferences))
@@ -60,7 +60,8 @@ class SubmittersResubmitController < ApplicationController
       # the monthly completions cap is not what should stop it. Every other
       # rule — the sending pause, a suspension, the sends and in-flight caps
       # — still applies.
-      Quotas.assert_can_create_submissions!(@submitter.account, correction_of: @submitter.submission)
+      Quotas.assert_can_create_submissions!(@submitter.account, correction_of: @submitter.submission,
+                                                                source: submission.source)
 
       submission.save!
 

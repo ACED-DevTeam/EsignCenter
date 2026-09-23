@@ -3,6 +3,9 @@
 RSpec.describe Entitlements, type: :lib do
   let(:free_account) { create(:account) }
   let(:paid_account) { create(:account, :paid) }
+  let(:business_account) do
+    create(:account, :paid).tap { |account| account.account_subscription.update!(plan: Plans::BUSINESS) }
+  end
   let(:internal_account) { create(:account, :internal) }
 
   it 'mirrors the entitlement matrix: paid-only rows and hidden-for-everyone rows' do
@@ -17,10 +20,11 @@ RSpec.describe Entitlements, type: :lib do
   end
 
   describe '.allowed?' do
-    it 'refuses every paid-only feature to a free account and grants it to paid and internal accounts' do
+    it 'refuses every paid-only feature to a free account and grants it to Paid, Business and internal accounts' do
       described_class::PAID_ONLY.each do |feature|
         expect(described_class.allowed?(free_account, feature)).to be(false), feature.to_s
         expect(described_class.allowed?(paid_account, feature)).to be(true), feature.to_s
+        expect(described_class.allowed?(business_account, feature)).to be(true), feature.to_s
         expect(described_class.allowed?(internal_account, feature)).to be(true), feature.to_s
       end
     end
@@ -29,7 +33,7 @@ RSpec.describe Entitlements, type: :lib do
       operator_account = create(:account, :operator)
 
       described_class::HIDDEN.each do |feature|
-        [free_account, paid_account, internal_account, operator_account].each do |account|
+        [free_account, paid_account, business_account, internal_account, operator_account].each do |account|
           expect(described_class.allowed?(account, feature)).to be(false), "#{feature} for #{account.account_kind}"
         end
       end

@@ -1,0 +1,10 @@
+<p><%= mail_greeting %></p>
+<p>Your account has used <%= @used %> of <%= @limit %> API completions this month.</p>
+<% if @percent == 100 %>
+  <p>New API, embedded-form and MCP documents are paused. Documents already sent can still be signed, and sending in the app continues as usual.</p>
+<% else %>
+  <p>New API, embedded-form and MCP documents will pause when your account reaches its allowance. Documents already sent can always finish.</p>
+<% end %>
+<p>The allowance resets on <%= @resets_at.strftime('%-d %B %Y') %> at 00:00 UTC.</p>
+<p><%= link_to 'Change your plan or add API packs in Billing settings', @billing_url %></p>
+<p>Thanks,<br>EsignCenter</p>

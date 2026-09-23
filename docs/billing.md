@@ -1,7 +1,9 @@
 # Billing with Stripe (plain English)
 
-EsignCenter sells one thing: **$10 per person per month, with a 14-day free
-trial, cancel any time.** This page explains who decides what, what happens
+EsignCenter offers **Paid at $10 per seat per month** (50 API completions)
+and **Business at $49 per month including one seat** (500 API completions),
+with extra Business seats at $10. Both offer recurring **API packs: $10 per
+month for 50 more API completions**. There is one 14-day trial per account. This page explains who decides what, what happens
 when a payment succeeds or fails, and exactly what has to be configured in
 Stripe before real money moves.
 
@@ -148,7 +150,7 @@ Inside that lock the rule is short:
 **What counts as ours.** A Stripe customer can carry subscriptions this app
 never sold — another product on a shared Stripe account, something made by
 hand in the dashboard. A subscription is ours only if it carries an item on
-**our price** (`STRIPE_PRICE_ID`) or our own Checkout tagged it with the
+**one of our plan prices** (`STRIPE_PRICE_ID` or `STRIPE_BUSINESS_PRICE_ID`) or our own Checkout tagged it with the
 account's id under **our own name for that tag**
 (`metadata.esigncenter_account_id`, which is also what the Stripe customer we
 create is tagged with). The name matters: the tag used to be the bare
@@ -506,7 +508,7 @@ already exists it prints that one instead of making another.
 | `STRIPE_SECRET_KEY` | `sk_live_…` in production, `sk_test_…` elsewhere | The API key every call is made with. A test key in production **refuses to boot**. |
 | `STRIPE_PUBLISHABLE_KEY` | `pk_…` | The public key. |
 | `STRIPE_WEBHOOK_SECRET` | `whsec_…` | Verifies incoming webhooks. Blank ⇒ the endpoint answers 503. |
-| `STRIPE_PRICE_ID` | `price_…` | The single price sold: $10 / seat / month. |
+| `STRIPE_PRICE_ID` | `price_…` | The Paid seat / extra Business seat price: $10 / month. |
 | `STRIPE_PORTAL_CONFIGURATION_ID` | `bpc_…` | From `rake stripe:portal_configuration`. |
 | `BILLING_ENABLED` | `true` to open | The launch switch for the billing **pages**. The webhook stays open regardless. |
 
@@ -1053,3 +1055,58 @@ above only ever acts on `duplicate` (refund automatically) and
 `duplicate-manual` (a person decides), so a subscription carrying the deletion
 marker reads as *"we ended it, and no money is owed on it"* — which is exactly
 right, and means a deletion can never be mistaken for a duplicate and refunded.
+
+
+## API plans and packs (D79)
+
+`STRIPE_PRICE_ID` remains the existing $10/month seat price. Business adds
+`STRIPE_BUSINESS_PRICE_ID` ($49/month, USD) and packs add
+`STRIPE_API_PACK_PRICE_ID` ($10/month, USD); all three must be distinct.
+The two new variables are optional: `StripeBilling.configured?` still checks
+the original five settings, and production boot accepts missing optional
+prices. The billing page explains that each missing product is unavailable;
+existing Paid subscriptions continue working with 50 API completions.
+Malformed optional values fail the boot guard. Do not remove a price variable
+while subscriptions still carry that price.
+
+An operator can run `bundle exec rake stripe:api_prices` to create or find the
+two prices by stable lookup keys, save the printed IDs into the environment,
+and run `bundle exec rake stripe:check` to verify amounts, currency and monthly
+intervals. These tasks contact Stripe; the automated tests never do. No
+Enterprise price exists: sales terms are handled by account limit overrides.
+Run the database migrations before deploying the new app.
+
+The subscription mirror records `plan`, the actual recurring
+`api_pack_quantity`, and the already-paid capacity kept after a reduction
+(`retained_api_pack_quantity` / `retained_api_pack_until`). Sync derives these
+from subscription items: Business base buys one seat; the existing seat price
+buys extra Business seats or all Paid seats; packs never buy seats. Business
+receives every Paid feature. The app remains the only writer of quantities;
+Customer Portal quantity editing stays off.
+
+New Checkout starts on Paid; a trialing account can switch to Business in
+Billing settings immediately, receiving the Business trial allowance.
+
+Billing settings accepts plan changes and target pack quantities from 0 to
+9999. Plan changes require an active or trialing self-billed subscription, and no
+pending payment or external subscription schedule. API packs require an
+active subscription: trial items have no billable remainder to prorate, so
+packs become available after the trial ends. Trial accounts can switch to
+Business and receive its 500 included completions immediately. Plan changes are prorated
+and invoiced now. Pack additions invoice only the newly purchased capacity;
+a required card-authentication step grants nothing until Stripe confirms it.
+Use Manage billing to complete payment before making another change.
+
+Pack reductions change the recurring Stripe quantity with **no proration**:
+the next invoice is lower, and capacity already purchased remains until the
+original billing-period end. Restoring that capacity before renewal does not
+charge for it twice. This deliberately uses no Stripe subscription schedule,
+so seat changes cannot overwrite a future schedule phase. Allowance is read
+live, so the retained capacity expires at renewal even before a webhook or
+nightly reconciliation runs. Reducing or switching plans never stops a signer
+on an already-created document.
+
+API usage itself resets on the first day of each **UTC calendar month**,
+independently of the subscription's renewal date. The allowance is per billing
+account, not per seat, and covers first signatures on api/embed/mcp sources
+once per correction lineage. Internal/operator accounts remain unlimited.

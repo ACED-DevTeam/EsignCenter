@@ -9,7 +9,7 @@
       <div class="rounded-lg border border-base-300 p-3">
         <div class="text-xs uppercase text-base-content/70"><%= t('operator_revenue_mrr') %></div>
         <div class="text-2xl font-bold tabular-nums" data-revenue-mrr><%= number_to_currency(@mrr) %></div>
-        <div class="text-xs text-base-content/70 mt-1"><%= t('operator_revenue_mrr_basis', seats: @paying_seats, price: number_to_currency(@price_per_seat)) %></div>
+        <div class="text-xs text-base-content/70 mt-1"><%= t('operator_revenue_tiers_basis', seats: @paying_seats) %></div>
       </div>
       <div class="rounded-lg border border-base-300 p-3">
         <div class="text-xs uppercase text-base-content/70"><%= t('operator_revenue_paying_accounts') %></div>

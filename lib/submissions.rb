@@ -96,7 +96,7 @@ module Submissions
 
       emails = parse_emails(emails, user).uniq
 
-      Quotas.assert_can_create_submissions!(template.account, count: emails.size)
+      Quotas.assert_can_create_submissions!(template.account, count: emails.size, source:)
 
       preferences = Submitters.normalize_preferences(user.account, user, params)
 

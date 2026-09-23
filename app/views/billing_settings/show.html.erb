@@ -1,5 +1,5 @@
 <%# The account's billing page. Every state tells the truth about what Stripe
-    is doing and offers exactly the one action that state allows: a child
+    is doing and offers the actions that state allows: a child
     account and an operator-granted plan get no buttons at all. %>
 <div class="flex-wrap space-y-4 md:flex md:flex-nowrap md:space-y-0 md:space-x-10">
   <%= render 'shared/settings_nav' %>
@@ -11,7 +11,7 @@
       <p class="text-base-content/70 mb-5" dir="auto"><%= t('billing_page_intro') %></p>
 
       <div class="flex flex-wrap items-center gap-2 mb-5">
-        <span class="badge badge-neutral badge-lg" data-billing-state-badge><%= t("billing_state_#{@view_state}") %></span>
+        <span class="badge badge-neutral badge-lg" data-billing-state-badge><%= t(@view_state == 'active' ? "usage_plan_#{Plans.key_for(@billing)}" : "billing_state_#{@view_state}") %></span>
         <% if @view_state.in?(%w[trialing active canceling past_due suspended incomplete]) %>
           <span class="badge badge-outline badge-lg"><%= t('seats_label', count: @billed_seats || @seats_in_use) %></span>
         <% end %>
@@ -60,6 +60,9 @@
       <% else %>
         <%= render 'billing_settings/current_plan' %>
       <% end %>
+
+      <%= render 'shared/api_usage' %>
+      <%= render 'billing_settings/api_capacity' %>
 
       <p class="mt-6 text-sm">
         <%= link_to t('billing_view_usage'), settings_usage_path, class: 'link', data: { billing_usage_link: true } %>

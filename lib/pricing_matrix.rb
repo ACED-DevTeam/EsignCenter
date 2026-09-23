@@ -11,7 +11,7 @@
 # less than we gate.
 module PricingMatrix
   # The word the paid column shows where the free column shows a number. Paid
-  # accounts are never auto-blocked by a quota (D42); the fair-use review
+  # in-app sending is never auto-blocked by a quota (D42); the fair-use review
   # threshold behind it lives in the Terms, which the page links beside it.
   UNLIMITED = 'Unlimited'
 
@@ -27,6 +27,26 @@ module PricingMatrix
 
   def trial_days
     StripeBilling::TRIAL_PERIOD_DAYS
+  end
+
+  def business_price
+    StripeBilling::BUSINESS_BASE_USD
+  end
+
+  def api_pack_price
+    StripeBilling::API_PACK_USD
+  end
+
+  def paid_api_completions
+    Quotas::Limits::PAID_API_COMPLETIONS_PER_MONTH
+  end
+
+  def business_api_completions
+    Quotas::Limits::BUSINESS_API_COMPLETIONS_PER_MONTH
+  end
+
+  def api_pack_completions
+    Quotas::Limits::API_PACK_COMPLETIONS_PER_MONTH
   end
 
   def free_completions
@@ -49,7 +69,7 @@ module PricingMatrix
     Quotas::Limits::PAID_COMPLETIONS_REVIEW_PER_SEAT
   end
 
-  # `free` / `paid` are true (included), false (not on this plan) or a string
+  # `free` / `paid` / `business` are true (included), false (not on this plan) or a string
   # (a value). `features` names the Entitlements symbols a row stands for;
   # `fair_use` marks a paid "Unlimited" that the Terms' fair-use rule bounds.
   def rows
@@ -63,10 +83,13 @@ module PricingMatrix
       row(:exports, :signing, true, true),
 
       row(:completions, :limits, free_completions.to_s, UNLIMITED, fair_use: true),
+      row(:api_completions, :limits, false, paid_api_completions.to_s, business: business_api_completions.to_s),
+      row(:api_packs, :limits, false, "$#{api_pack_price} / #{api_pack_completions} extra per month"),
       row(:sends, :limits, free_sends.to_s, UNLIMITED, fair_use: true),
       row(:in_flight, :limits, free_in_flight.to_s, UNLIMITED, fair_use: true),
       row(:storage, :limits, true, true),
-      row(:seats, :limits, free_seats.to_s, "$#{price_per_seat} per user per month"),
+      row(:seats, :limits, free_seats.to_s, "$#{price_per_seat} per user per month",
+          business: "1 included; $#{price_per_seat} per extra user per month"),
 
       row(:api, :automation, false, true, features: %i[api mcp webhooks signing_sessions]),
       row(:conditional_logic, :automation, false, true, features: %i[conditional_logic]),
@@ -100,8 +123,11 @@ module PricingMatrix
     Entitlements::PAID_ONLY - covered_features
   end
 
-  def row(key, group, free, paid, features: [], fair_use: false)
-    { key:, group:, label_key: "pricing_row_#{key}", free:, paid:, features:, fair_use: }
+  def row(key, group, free, paid, business: paid, features: [], fair_use: false)
+    label_key = %i[completions sends].include?(key) ? "pricing_row_in_app_#{key}" : "pricing_row_#{key}"
+
+    { key:, group:, label_key:, free:, paid:, business:, enterprise: 'Custom', features:,
+      fair_use: }
   end
 
   unless unmapped_paid_only_features.empty?

@@ -33,7 +33,19 @@ module StripeBilling
         end
       end
 
-      problems + key_mode_problems
+      # Optional additions may be absent on an existing Paid deployment.
+      # A supplied malformed or reused price is a configuration error: a seat
+      # price mistaken for a pack price would grant capacity on seat count.
+      optional = StripeBilling::OPTIONAL_CONFIG_KEYS.filter_map do |name|
+        value = ENV.fetch(name, nil)
+        next if value.blank? || value.start_with?('price_')
+
+        "#{name} does not look like a Stripe price (expected price_)"
+      end
+      prices = [StripeBilling.price_id, StripeBilling.business_price_id, StripeBilling.api_pack_price_id].compact_blank
+      optional << 'Stripe seat, Business and API pack prices must be distinct' if prices.uniq.size != prices.size
+
+      problems + optional + key_mode_problems
     end
 
     # The mode has to be POSITIVELY right, not merely "not obviously wrong":
