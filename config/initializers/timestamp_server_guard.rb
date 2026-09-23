@@ -5,13 +5,17 @@
 # TIMESERVER_URL a production deployment would sign without that attestation,
 # so production refuses to boot; other environments only warn (the test suite
 # signs without a TSA on purpose).
+require_relative '../../lib/production_readiness'
+
 module TimestampServerGuard
   module_function
 
   def check!
-    return if ENV['TIMESERVER_URL'].present?
+    check = ProductionReadiness.timestamp_server_check
 
-    message = 'TIMESERVER_URL is not set; signatures would carry no trusted timestamp'
+    return if check.ok
+
+    message = "#{check.message}; signatures would carry no trusted timestamp"
 
     raise message if Rails.env.production?
 
