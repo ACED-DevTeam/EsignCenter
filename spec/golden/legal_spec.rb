@@ -26,7 +26,8 @@ RSpec.describe 'Legal documents', type: :request do
   # Every phrase we have decided this product must never say about itself.
   # "Say what we do, not what a court would decide."
   let(:forbidden_claims) do
-    ['ESIGN compliant', 'ESIGN-compliant', 'court-admissible', 'SOC 2', 'HIPAA', 'GDPR compliant']
+    ['ESIGN compliant', 'ESIGN-compliant', 'court-admissible', 'SOC 2', 'GDPR compliant',
+     'HIPAA compliant', 'HIPAA-compliant', 'HIPAA ready', 'HIPAA-ready', 'HIPAA certified', 'HIPAA-certified']
   end
   let(:limits) { Quotas::Limits }
 
@@ -355,6 +356,23 @@ RSpec.describe 'Legal documents', type: :request do
         expect(terms_html).not_to include(claim)
         expect(privacy_html).not_to include(claim)
       end
+    end
+
+    # HIPAA is named exactly once, and only to keep it OUT: the Terms'
+    # sensitive-information exclusion. Any other mention is a claim in the
+    # making, and the Privacy Policy has no reason to name it at all.
+    it 'names HIPAA only in the exclusion, next to the refusal to sign a BAA' do
+      expect(terms_html.scan('HIPAA').size).to eq(1)
+      expect(privacy_html).not_to include('HIPAA')
+
+      exclusion = Nokogiri::HTML.fragment(terms_html).css('li').find { |li| li.text.include?('HIPAA') }
+
+      expect(exclusion.text.squish).to include('Health information covered by HIPAA')
+      expect(exclusion.text.squish).to include('We do not sign business associate agreements.')
+      terms_text = Nokogiri::HTML.fragment(terms_html).text.squish
+
+      expect(terms_text).to include('Two kinds of information must not go through EsignCenter')
+      expect(terms_text).to include('Full payment card numbers or card security codes')
     end
   end
 
