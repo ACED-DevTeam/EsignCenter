@@ -24,6 +24,7 @@ module ProductionReadiness
       smtp_encryption_check(env),
       smtp_certificate_check(env),
       email_delivery_mode_check(env),
+      storage_backend_check(env),
       launch_switch_check(env, 'REGISTRATION_ENABLED'),
       launch_switch_check(env, 'BILLING_ENABLED')
     ]
@@ -37,7 +38,8 @@ module ProductionReadiness
     return unless Rails.env.production?
 
     failures = [exact_check(env, 'FORCE_SSL', 'true'), app_origin_check(env),
-                admin_provision_token_check(env), timestamp_server_check(env)].reject(&:ok)
+                admin_provision_token_check(env), timestamp_server_check(env),
+                storage_backend_check(env)].reject(&:ok)
 
     raise failures.map(&:message).join('; ') if failures.any?
   end
@@ -151,6 +153,29 @@ module ProductionReadiness
               end
 
     Check.new(name: 'SMTP_CERTIFICATE_VERIFICATION', ok:, message:)
+  end
+
+  # Render wipes the container disk on every deploy, so production stores
+  # files in a bucket. Local disk is allowed only when somebody says so out
+  # loud (a local production preview, a host with a mounted persistent disk).
+  # The database half of the storage check (existing files and a legacy
+  # settings row) runs after boot in StorageConfigGuard.
+  STORAGE_ENV_KEYS = %w[S3_ATTACHMENTS_BUCKET GCS_BUCKET AZURE_CONTAINER].freeze
+  LOCAL_DISK_OPT_IN = 'ALLOW_LOCAL_DISK_STORAGE'
+
+  def storage_backend_check(env = ENV)
+    bucket = STORAGE_ENV_KEYS.find { |name| !env[name].to_s.strip.empty? }
+    ok = !bucket.nil? || env[LOCAL_DISK_OPT_IN] == 'true'
+    message = if bucket
+                "File storage uses #{bucket}"
+              elsif ok
+                "File storage uses the local disk (#{LOCAL_DISK_OPT_IN}=true)"
+              else
+                "File storage needs one of #{STORAGE_ENV_KEYS.join(', ')} " \
+                  "(or #{LOCAL_DISK_OPT_IN}=true for a persistent local disk)"
+              end
+
+    Check.new(name: 'FILE_STORAGE', ok:, message:)
   end
 
   def launch_switch_check(env, name)

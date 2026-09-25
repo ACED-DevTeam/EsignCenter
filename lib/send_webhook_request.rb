@@ -83,7 +83,9 @@ module SendWebhookRequest
     validate_url!(webhook_url.url, webhook_url.account)
   end
 
-  def validate_url!(url, account)
+  # `strict:` defaults to this environment's rule; the release audit passes
+  # `true` to ask what production would say (lib/release_internal_audit.rb).
+  def validate_url!(url, account, strict: strict_rules?(account))
     uri = parse_uri(url)
     host = uri.host.to_s.downcase
 
@@ -101,7 +103,7 @@ module SendWebhookRequest
     # Local development only: an internal/operator account outside production
     # may post to http://localhost (a paired app running on the same machine).
     # Production and every customer account get the full rules (D57).
-    return uri unless strict_rules?(account)
+    return uri unless strict
 
     invalid_https = uri.scheme != 'https' || [443, nil].exclude?(uri.port)
 
@@ -137,13 +139,13 @@ module SendWebhookRequest
   # that aliases a metadata/link-local address, but never pins and never fails
   # on a lookup it cannot make: Net::HTTP picks between localhost's IPv4 and
   # IPv6 answers itself, and mDNS/compose names keep working.
-  def deliverable_address!(uri, account)
+  def deliverable_address!(uri, account, strict: strict_rules?(account))
     host = uri.host.to_s.downcase
     addresses = literal_ip(host) ? [literal_ip(host)] : resolve_addresses(host)
 
     raise MetadataHostError, "Can't send to a link-local/metadata address." if addresses.any? { |ip| metadata_ip?(ip) }
 
-    return unless strict_rules?(account)
+    return unless strict
 
     raise Faraday::ConnectionFailed, 'Could not resolve host' if addresses.empty?
     raise PrivateAddressError, "Can't send to a private address." if addresses.any? { |ip| blocked_ip?(ip) }

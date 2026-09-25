@@ -94,6 +94,12 @@ class UsersController < ApplicationController
 
     move_to_requested_account!
 
+    # A changed address waits in `unconfirmed_email` until the member opens
+    # the link mailed to the NEW address (config.reconfirmable): an admin can
+    # ask for the change, never complete it. The link is mailed once, by the
+    # job below, rather than a second time by Devise's own callback.
+    @user.skip_confirmation_notification!
+
     if update_user(attrs, leaving_account_id)
       if @user.try(:pending_reconfirmation?) && @user.previous_changes.key?(:unconfirmed_email)
         SendConfirmationInstructionsJob.perform_async('user_id' => @user.id)
@@ -157,11 +163,13 @@ class UsersController < ApplicationController
   # Everything this request is allowed to change, after the account's own
   # rules: a person can never change their own role, their own 2FA
   # requirement or their own archived flag, and nobody sets a password here.
+  # Nor their own email address: that is Profile's job, which asks for the
+  # current password first (ProfileController#update_contact).
   def update_attributes
     attrs = user_params.compact_blank
     attrs = attrs.merge(user_params.slice(:archived_at)) if current_ability.can?(:create, @user)
 
-    self_excluded = %i[password otp_required_for_login role archived_at]
+    self_excluded = %i[password otp_required_for_login role archived_at email]
 
     attrs.except(*(current_user == @user ? self_excluded : %i[password]))
   end

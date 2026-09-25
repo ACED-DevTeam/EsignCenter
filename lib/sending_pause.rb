@@ -2,10 +2,15 @@
 
 # The one automatic sending stop that applies to every customer account, paid
 # included: a spam complaint, or hard bounces among the last few sends, pause
-# the creation of new documents until the operator resumes the account.
-# Abuse policy, not quota — nothing here depends on the plan. Enforced inside
-# Quotas.assert_can_create_submissions! on every creation path; documents
-# already sent keep completing, downloads keep working.
+# the creation of new documents AND every signing-request email until the
+# operator resumes the account. Abuse policy, not quota — nothing here depends
+# on the plan. Enforced inside Quotas.assert_can_create_submissions! on every
+# creation path, by Submitters::ResendGuard on every resend door, and by
+# Accounts.can_send_invitation_emails? in the invitation and reminder jobs
+# (a queued first request and every reminder are held back; the next signer
+# on a document somebody already signed is still mailed, see
+# SendSubmitterInvitationEmailJob). Signers who already have a link can keep
+# signing, and downloads keep working.
 #
 # The Postmark webhook calls `evaluate!` after it records an EmailEvent.
 module SendingPause

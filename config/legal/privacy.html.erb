@@ -45,8 +45,8 @@
     <strong>Your password, stored as a one-way hash.</strong> A hash cannot be
     turned back into the password, so we cannot read yours and we cannot
     recover it for you — only help you set a new one. An account created with
-    “Continue with Google” is given a random password nobody
-    holds; you can set one of your own later from
+    “Continue with Google” or “Continue with Apple” is given a
+    random password nobody holds; you can set one of your own later from
     “Forgot your password?”.
   </li>
   <li>
@@ -54,9 +54,12 @@
     correctly for you. Your browser tells us these when you sign up.
   </li>
   <li>
-    <strong>Your Google profile</strong> — your email address and your
-    name — if you choose to sign in with Google. We ask Google for nothing
-    else and we do not read your Google account.
+    <strong>Your Google or Apple profile</strong> — your email address and
+    your name — if you choose to sign in with Google or Apple. Apple may give
+    us a private relay address that forwards to your real one instead of the
+    address itself; if it does, the relay address is the one we keep and email.
+    We ask Google and Apple for nothing else, and we do not read your Google
+    account or your Apple ID.
   </li>
   <li>
     <strong>Billing details, held by Stripe.</strong> Payments are handled
@@ -96,7 +99,8 @@
     exactly how that access works.
   </li>
   <li>
-    <strong>What you write to us</strong> when you email support.
+    <strong>What you write to us</strong> when you email support or use our
+    support form.
   </li>
 </ul>
 
@@ -176,7 +180,8 @@
   </li>
   <li>
     <strong>To prevent abuse</strong> — the rate limits, the bot check on
-    sign-up, and the complaint and bounce handling that stop <%= product %>
+    the sign-up and support forms, and the complaint and bounce handling that
+    stop <%= product %>
     being used to send mail nobody asked for.
   </li>
   <li>
@@ -241,12 +246,17 @@
     </tr>
     <tr>
       <td>Cloudflare</td>
-      <td>Bot check on the sign-up form (Turnstile)</td>
+      <td>Bot check on the sign-up and support forms (Turnstile)</td>
       <td>Your IP address and the browser signals the check needs</td>
     </tr>
     <tr>
       <td>Google</td>
       <td>“Continue with Google” sign-in</td>
+      <td>Only what is needed to sign you in, and only if you use that button</td>
+    </tr>
+    <tr>
+      <td>Apple</td>
+      <td>“Continue with Apple” sign-in</td>
       <td>Only what is needed to sign you in, and only if you use that button</td>
     </tr>
     <tr>
@@ -259,8 +269,9 @@
 </div>
 
 <p>
-  The current list is also published on our <a href="/trust">Trust page</a>. We
-  will update both when it changes.
+  The current list is also published on our
+  <a href="/trust/subprocessors">Sub-processors page</a>. We will update both
+  when it changes.
 </p>
 
 <p>

@@ -46,16 +46,20 @@
     you open it you cannot sign in, and nothing can be sent from the account.
   </li>
   <li>
-    <strong>Signing in with Google.</strong> You can create an account, and sign
-    in, with a Google account instead of a password. Google tells us your email
-    address and your name. If you have turned on two-factor authentication in
-    <%= product %>, you still enter your one-time code — Google does not
-    replace it. One case is worth stating plainly: if somebody had already
-    typed your address into the sign-up form but never opened the confirmation
-    email, signing in with Google takes that unconfirmed account over and
+    <strong>Signing in with Google or Apple.</strong> You can create an
+    account, and sign in, with a Google account or an Apple ID instead of a
+    password. Google or Apple tells us your email address and your name. Apple
+    lets you hide your real address behind a private relay address that
+    forwards to it; if you choose that, the relay address is the one on your
+    account, and everything we email you reaches you through it. If you have
+    turned on two-factor authentication in <%= product %>, you still enter your
+    one-time code — neither Google nor Apple replaces it. One case is worth
+    stating plainly: if somebody had already typed your address into the
+    sign-up form but never opened the confirmation email, signing in with
+    Google or Apple takes that unconfirmed account over and
     <strong>replaces its password with a random one nobody holds</strong>.
-    Google has just proved the mailbox is yours; whatever password the other
-    person set stops working, and you set your own from
+    Google or Apple has just proved the mailbox is yours; whatever password the
+    other person set stops working, and you set your own from
     “Forgot your password?”.
   </li>
   <li>
@@ -92,8 +96,8 @@
       <td><%= limits::FREE_SEATS %></td>
     </tr>
     <tr>
-      <td>Storage</td>
-      <td><%= gigabytes.call(limits::FREE_STORAGE_BYTES) %></td>
+      <td>Document storage</td>
+      <td>Included, subject to fair use</td>
     </tr>
   </tbody>
 </table>
@@ -120,11 +124,15 @@
     send back.
   </li>
   <li>
-    <strong>What counts as storage.</strong> Storage is everything the account
-    holds, including the signed documents we produce for you and anything in
-    your archive, until you delete it permanently. Reaching the
-    storage cap blocks new uploads by people in your account. It never stops a
-    document being sent, and it never stops a signer from signing.
+    <strong>Storage, and fair use.</strong> We store the documents you keep
+    with us: your uploads and templates, the signed documents and audit trails
+    we produce for you, the files and signatures your signers add, and your
+    logo — including anything in your archive, until you delete it
+    permanently. Storage is included in every plan, subject to fair use. If
+    your account gets close to the fair-use limit, we email your
+    administrators first; if it reaches the limit, new uploads by people in
+    your account pause until space is freed. Storage never stops a document
+    being sent, and it never stops a signer from signing.
   </li>
   <li>
     <strong>Documents already sent always complete.</strong> Reaching a limit
@@ -175,16 +183,20 @@
   <li>
     <strong>Price.</strong> Paid costs $<%= price %> per user per month. Business costs
     $<%= StripeBilling::BUSINESS_BASE_USD %> per month including one seat, plus $<%= price %>
-    per extra seat per month. Prices are in US dollars.
-    Sales tax is added where the law requires it.
+    per extra seat per month. Prices are in US dollars and do not include
+    sales tax. We do not currently collect sales tax. If we become required to
+    collect it where you are, we will tell you before we add it to your
+    invoices.
   </li>
   <li>
     <strong>Every user is a seat.</strong> Everybody in the account occupies a
     seat, including people who can only view.
   </li>
   <li>
-    <strong>Storage.</strong> <%= gigabytes.call(limits::PAID_STORAGE_BYTES_PER_SEAT) %> per seat.
-    As on the free plan, reaching it blocks new uploads only.
+    <strong>Storage.</strong> Included, subject to the same fair use, and the
+    fair-use limit grows with every seat. As on the free plan, your
+    administrators are emailed first, and reaching the limit pauses new uploads
+    only.
   </li>
   <li>
     <strong>Free trial.</strong> <%= trial_days %> days, free. We ask for a card
@@ -620,8 +632,8 @@
   processed there. We use a small number of other companies to run the service
   — hosting, file storage, email delivery, payments, error reporting and
   bot protection. The current list is on our
-  <a href="/trust">Trust page</a>, and what each of them receives is set out in
-  our <a href="/privacy">Privacy Policy</a>.
+  <a href="/trust/subprocessors">Sub-processors page</a>, and what each of them
+  receives is set out in our <a href="/privacy">Privacy Policy</a>.
 </p>
 
 <p>
@@ -715,13 +727,16 @@
 <h2>19. Third-party services</h2>
 
 <p>
-  Two other companies are part of using <%= product %>, and your dealings with
+  Three other companies are part of using <%= product %>, and your dealings with
   them are governed by their own terms as well as ours:
 </p>
 
 <ul>
   <li>
     <strong>Google</strong>, if you choose to sign in with a Google account.
+  </li>
+  <li>
+    <strong>Apple</strong>, if you choose to sign in with an Apple ID.
   </li>
   <li>
     <strong>Stripe</strong>, which handles every payment. Your card details go
@@ -732,7 +747,7 @@
 <p>
   We are not responsible for those services, and we do not control what they
   do. The other companies we use to run the service are listed on our
-  <a href="/trust">Trust page</a> and in our
+  <a href="/trust/subprocessors">Sub-processors page</a> and in our
   <a href="/privacy">Privacy Policy</a>.
 </p>
 

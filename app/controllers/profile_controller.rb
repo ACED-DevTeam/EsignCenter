@@ -7,8 +7,22 @@ class ProfileController < ApplicationController
 
   def index; end
 
+  # A new email address never takes effect here: it waits in
+  # `unconfirmed_email` until somebody opens the link mailed TO it
+  # (config.reconfirmable). Changing it also needs the current password, so
+  # a borrowed or hijacked session cannot move the sign-in to a mailbox the
+  # session holder owns. An impersonating operator does not have it either.
   def update_contact
-    if current_user.update(contact_params)
+    attrs = contact_params
+
+    return refuse_email_change(attrs) if email_change?(attrs) && !current_password_valid?
+
+    # The confirmation is mailed by SendConfirmationInstructionsJob below,
+    # once; Devise's own after-commit send would mail a second link and void
+    # the first.
+    current_user.skip_confirmation_notification!
+
+    if current_user.update(attrs)
       if current_user.try(:pending_reconfirmation?) && current_user.previous_changes.key?(:unconfirmed_email)
         SendConfirmationInstructionsJob.perform_async('user_id' => current_user.id)
 
@@ -32,6 +46,23 @@ class ProfileController < ApplicationController
   end
 
   private
+
+  def email_change?(attrs)
+    attrs.key?(:email) && attrs[:email].to_s.strip.downcase != current_user.email.to_s.downcase
+  end
+
+  def current_password_valid?
+    password = params[:current_password].to_s
+
+    password.present? && current_user.valid_password?(password)
+  end
+
+  def refuse_email_change(attrs)
+    current_user.assign_attributes(attrs)
+    @email_change_password_error = I18n.t('wrong_password')
+
+    render :index, status: :unprocessable_content
+  end
 
   def contact_params
     params.require(:user).permit(:first_name, :last_name, :email)

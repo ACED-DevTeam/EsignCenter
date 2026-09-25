@@ -44,7 +44,7 @@
       <% elsif @view_state == 'suspended' %>
         <div class="alert items-start bg-base-100 border border-red-400 text-red-400 mb-5" data-billing-banner="suspended">
           <%= svg_icon('alert_circle', class: 'stroke-current shrink-0 h-6 w-6 mt-0.5') %>
-          <p dir="auto" class="text-sm"><%= t('billing_suspended_banner') %></p>
+          <p dir="auto" class="text-sm"><%= t('billing_suspended_banner', days: BillingLifecycle::PAST_DUE_GRACE_DAYS) %></p>
         </div>
       <% end %>
 

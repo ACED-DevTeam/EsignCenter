@@ -82,6 +82,7 @@ module StripeBilling
       price = StripeBilling.client.v1.prices.retrieve(StripeBilling.price_id)
 
       [
+        livemode_check('price livemode', price),
         check('price active', price.active == true, "active=#{price.active}"),
         check('price currency', price.currency == StripeBilling::PRICE_CURRENCY, price.currency),
         check('price amount', price.unit_amount == StripeBilling::PRICE_UNIT_AMOUNT,
@@ -114,7 +115,8 @@ module StripeBilling
     def optional_price_checks(id, name, dollars)
       price = StripeBilling.client.v1.prices.retrieve(id)
 
-      [check("#{name} price active", price.active == true, "active=#{price.active}"),
+      [livemode_check("#{name} price livemode", price),
+       check("#{name} price active", price.active == true, "active=#{price.active}"),
        check("#{name} price currency", price.currency == StripeBilling::PRICE_CURRENCY, price.currency),
        check("#{name} price amount", price.unit_amount == dollars * 100,
              "#{price.unit_amount} (expected #{dollars * 100})"),
@@ -134,6 +136,9 @@ module StripeBilling
       features = configuration.features
 
       [
+        livemode_check('portal livemode', configuration),
+        check('portal configuration active', SubscriptionSync.field(configuration, :active) == true,
+              "active=#{SubscriptionSync.field(configuration, :active).inspect}"),
         # Seats are the app's to change (Session 7), never a number a customer
         # types into Stripe: quantity editing must stay off.
         check('portal subscription_update off',
@@ -248,6 +253,15 @@ module StripeBilling
       port = options[:port].presence && [80, 443].exclude?(options[:port]) ? ":#{options[:port]}" : ''
 
       "#{options[:protocol] || 'https'}://#{options[:host]}#{port}/settings/billing"
+    end
+
+    # A test-mode object under a live key (or the reverse) is "No such price"
+    # at the first Checkout. Stripe says which mode every object lives in.
+    def livemode_check(name, object)
+      livemode = SubscriptionSync.field(object, :livemode)
+
+      check(name, livemode == PriceGuard.expected_livemode,
+            "livemode=#{livemode.inspect} (secret key is #{PriceGuard.key_mode_label})")
     end
 
     def check(name, condition, detail)

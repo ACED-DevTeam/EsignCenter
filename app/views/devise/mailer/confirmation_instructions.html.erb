@@ -1,7 +1,13 @@
 <p><%= @resource.first_name.present? ? t('hello_name', name: @resource.first_name) : t('hi_there') %>,</p>
-<p><%= t('welcome_confirm_your_email_to_activate_your_account', product: Docuseal.product_name) %>:</p>
-<p><%= link_to t('confirm_my_email'), confirmation_url(@resource, confirmation_token: @token) %></p>
-<p><%= t('if_you_didnt_create_an_account_you_can_ignore_this_email') %></p>
+<% if @resource.pending_reconfirmation? %>
+  <p><%= t('confirm_this_address_to_finish_changing_your_product_email', product: Docuseal.product_name) %>:</p>
+  <p><%= link_to t('confirm_my_email'), confirmation_url(@resource, confirmation_token: @token) %></p>
+  <p><%= t('if_you_did_not_ask_for_this_change_ignore_this_email_and_nothing_will_change') %></p>
+<% else %>
+  <p><%= t('welcome_confirm_your_email_to_activate_your_account', product: Docuseal.product_name) %>:</p>
+  <p><%= link_to t('confirm_my_email'), confirmation_url(@resource, confirmation_token: @token) %></p>
+  <p><%= t('if_you_didnt_create_an_account_you_can_ignore_this_email') %></p>
+<% end %>
 <p>
   <%= t('thanks') %>,<br>
   <%= Docuseal.product_name %>

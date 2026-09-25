@@ -11,7 +11,7 @@
   <p>Why: sending is paused on this account while we review a delivery problem. See the separate email about that pause, or contact <%= mail_to @support_email %>.</p>
 <% end %>
 <% unless @reason == 'sending_paused' %>
-  <p>The paid plan removes the free limits: $10 per user per month, with a 14-day free trial.</p>
+  <p>The paid plan removes the free limits: $<%= @price %> per user per month, with a <%= @trial_days %>-day free trial.</p>
 <% end %>
 <p><%= link_to 'See your usage', @usage_url %></p>
 <p>Thanks,<br>EsignCenter</p>

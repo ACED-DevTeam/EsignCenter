@@ -186,13 +186,15 @@ RSpec.describe 'API plan billing', type: :request do
     it 'checks each configured optional price against its own monthly amount' do
       [[business_price, 4900], [pack_price, 1000]].each do |id, amount|
         stub_request(:get, "https://api.stripe.com/v1/prices/#{id}")
-          .to_return(**stripe_json(id:, object: 'price', active: true, currency: 'usd', unit_amount: amount,
+          .to_return(**stripe_json(id:, object: 'price', livemode: false, active: true, currency: 'usd',
+                                   unit_amount: amount,
                                    recurring: { interval: 'month', interval_count: 1 }))
       end
 
       expect(StripeBilling::Checks.optional_price_rows.pluck(:result).uniq).to eq(['PASS'])
       stub_request(:get, "https://api.stripe.com/v1/prices/#{pack_price}")
-        .to_return(**stripe_json(id: pack_price, object: 'price', active: true, currency: 'usd', unit_amount: 50,
+        .to_return(**stripe_json(id: pack_price, object: 'price', livemode: false, active: true, currency: 'usd',
+                                 unit_amount: 50,
                                  recurring: { interval: 'month', interval_count: 1 }))
       expect(StripeBilling::Checks.failed?(StripeBilling::Checks.optional_price_rows)).to be(true)
     end
@@ -446,6 +448,31 @@ RSpec.describe 'API plan billing', type: :request do
           expect(response).to redirect_to('/settings/billing')
           expect(flash[:alert]).to be_present
         end
+    end
+
+    # The price a change moves onto is checked before Stripe is asked to
+    # charge for it: a live-mode mismatch or an archived price is refused
+    # with a sentence, and the subscription is left exactly as it was.
+    it 'refuses Business and packs on a misconfigured price without changing the subscription' do
+      read_subscriptions(subscription)
+      allow(ErrorReport).to receive(:error)
+      allow(OperatorAlert).to receive(:deliver)
+      stub_request(:get, "https://api.stripe.com/v1/prices/#{business_price}")
+        .to_return(**stripe_json(stripe_price_body(business_price, unit_amount: 4900, livemode: true)))
+      stub_request(:get, "https://api.stripe.com/v1/prices/#{pack_price}")
+        .to_return(**stripe_json(stripe_price_body(pack_price, unit_amount: 1000, active: false)))
+
+      post '/settings/billing/plan', params: { plan: 'business' }
+
+      expect(flash[:alert]).to eq(I18n.t('billing_price_unavailable'))
+
+      post '/settings/billing/api_packs', params: { quantity: 2 }
+
+      expect(flash[:alert]).to eq(I18n.t('billing_price_unavailable'))
+      expect(WebMock).not_to have_requested(:post, %r{\Ahttps://api\.stripe\.com/v1/(subscriptions|invoices)})
+      expect(row.reload).to have_attributes(plan: 'paid', api_pack_quantity: 0)
+      expect(ErrorReport).to have_received(:error).with(/STRIPE_BUSINESS_PRICE_ID .*livemode=true/, anything)
+      expect(ErrorReport).to have_received(:error).with(/STRIPE_API_PACK_PRICE_ID .*is not active/, anything)
     end
 
     it 'refuses unavailable products and invalid quantities before contacting Stripe' do

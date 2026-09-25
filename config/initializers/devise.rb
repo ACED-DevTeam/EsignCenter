@@ -198,10 +198,15 @@ Devise.setup do |config|
   # initial account confirmation) to be applied. Requires additional unconfirmed_email
   # db field (see migrations). Until confirmed, new email is stored in
   # unconfirmed_email column, and copied to email column on successful confirmation.
-  # Email changes apply immediately (pre-confirmable behavior preserved).
-  # :confirmable exists for the public-signup flow only; every internal path
-  # calls skip_confirmation!. Revisit for customer accounts with registration.
-  config.reconfirmable = false
+  # ON (launch security review): a changed address is held in
+  # unconfirmed_email and only becomes the sign-in address once the link
+  # mailed to the NEW address is opened. With it off, anybody could rename
+  # their own login to an address they do not own (ceo@victim.example) and
+  # then collect that address's "Continue with Google" sign-ins and password
+  # resets. Sign-in, password reset and OAuth all look up `email` only, never
+  # `unconfirmed_email`. Every server-side path that sets an address creates a
+  # new row (before_update never runs), so none needs skip_reconfirmation!.
+  config.reconfirmable = true
 
   # Defines which key will be used when confirming an account
   # config.confirmation_keys = [:email]
