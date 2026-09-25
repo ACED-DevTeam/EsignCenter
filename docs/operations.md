@@ -4,11 +4,14 @@ This is the runbook for running EsignCenter in production. It is written for
 the product owner, not a developer: every step has the exact command, and
 technical terms are defined the first time they appear.
 
-Production today: one **Render** Docker web service (Render builds the
-`Dockerfile` and restarts the service on every push to `master`), a Render
-managed **PostgreSQL 16** database, signed PDFs and uploads in an **AWS S3**
-bucket, and **Redis** (a small in-memory data store the job system uses)
-running *inside* the web container. The two launch switches
+Production, as recorded in the plan on 2026-08-21: one **Render** Docker web
+service (Render builds the `Dockerfile` and restarts the service on every push
+to `master`), a Render managed **PostgreSQL** database (recorded as version
+16), signed PDFs and uploads in an **AWS S3** bucket, and **Redis** (a small
+in-memory data store the job system uses) running *inside* the web container.
+**Confirm these before every deploy rather than trusting this paragraph:** the
+Postgres version on the database's Render page, and the storage with the
+read-only pre-check in section 2.1 step 3. The two launch switches
 `REGISTRATION_ENABLED` and `BILLING_ENABLED` are off unless set to `true`, so
 a deploy is never a launch.
 
@@ -239,7 +242,40 @@ from the pre-deploy snapshot**, never `db:rollback`.
    bundle exec rails runner 'puts EncryptedConfig.where(key: "app_url").pluck(:account_id, :value).inspect'
    ```
 
-3. Run the code gates locally on the exact commit you are about to deploy.
+3. **Storage pre-check (read-only, on the LIVE app, before you push).**
+   The code being replaced could read its storage settings from the
+   database (the old storage settings screen); this code reads them from the
+   environment only, and without a bucket it would fall back to the
+   container disk that Render wipes on every deploy. The new code refuses to
+   boot in that state (it never serves from an empty disk), but check first
+   so the deploy does not fail. From the Render Shell of the running service
+   — the command only uses models the live code already has and prints
+   service and setting **names**, never values:
+
+   ```sh
+   bundle exec rails runner 's = ActiveStorage::Blob.service; puts "active storage service: #{s.name} (#{s.class.name.demodulize})"; puts "storage env vars set: #{%w[S3_ATTACHMENTS_BUCKET GCS_BUCKET AZURE_CONTAINER].select { |k| ENV[k].present? }.join(", ").presence || "none"}"; puts "stored files by service: #{ActiveStorage::Blob.group(:service_name).count.inspect}"; rows = EncryptedConfig.where(key: "active_storage"); puts "database storage rows: #{rows.count}"; rows.find_each { |c| v = c.value.to_h; puts "  account #{c.account_id}: service=#{v["service"].inspect} setting names=#{v["configs"].to_h.keys.sort.join(",")}" }'
+   ```
+
+   Safe to deploy when **all** of these hold:
+
+   - `storage env vars set` names `S3_ATTACHMENTS_BUCKET` (or GCS/Azure);
+   - `stored files by service` lists only that service (`aws_s3` for S3).
+     Any `disk` entries are files that were written to the container disk —
+     they are already unreadable today unless a persistent disk is mounted,
+     and the new code only warns about them; note the count;
+   - `database storage rows` is `0`, or the env var above is set — the live
+     code ignores the row when it is, and so does the new code. If a row
+     names a *different* service than the env var selects, note it: files
+     written before the env var existed may sit in that other place.
+
+   Stop if the env var is missing while files or a database row name
+   `aws_s3`/`google`/`azure`: the live app is storing files where that row
+   points, and the new code would refuse to boot. Copy the same bucket into
+   the service's environment first (`S3_ATTACHMENTS_BUCKET`, `AWS_REGION`,
+   `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, plus `S3_ENDPOINT` for R2 —
+   read the values from the old storage settings screen yourself; nothing
+   here prints them), let the live app restart, and re-run the check.
+4. Run the code gates locally on the exact commit you are about to deploy.
    They grep the code for tenant-isolation leaks, accounts created without a
    kind, and banned test patterns; they do not touch production:
 
@@ -260,7 +296,7 @@ from the pre-deploy snapshot**, never `db:rollback`.
    the container (`rm -rf /root/.cache/rubocop_cache`) and run it again with
    no `DATABASE_URL`, exactly as the command above does.
 
-4. Run the test suite on the same commit. The gates read the code; the suite
+5. Run the test suite on the same commit. The gates read the code; the suite
    actually runs it, and between them they are the whole of "this build is
    fit to deploy". It is the same shape of command, one word different:
 
@@ -270,7 +306,7 @@ from the pre-deploy snapshot**, never `db:rollback`.
 
    Four things to know before you press return:
 
-   - **It takes about 45 minutes** and prints a dot per test. The last line is
+   - **It takes about 10–20 minutes** on recent runs and prints a dot per test. The last line is
      the one that matters: it must end `0 failures`. Anything else — even one
      failure — means do not deploy.
    - **Run it on its own.** Never at the same time as `rake gates:all`, and
@@ -338,6 +374,19 @@ database.
    printf 'RAILS_ENV=production\nRUN_MIGRATIONS=false\nDATABASE_URL=<rehearsal external url>\nSECRET_KEY_BASE=' > /tmp/rehearsal.env && pbpaste >> /tmp/rehearsal.env && echo >> /tmp/rehearsal.env && pbcopy < /dev/null && echo "written $(wc -l < /tmp/rehearsal.env) lines"
    ```
 
+   A production boot also refuses to start without its other required
+   settings. The rehearsal sends no mail and touches no files, so append
+   harmless stand-ins — plus the production bucket's **name** (no AWS keys:
+   nothing can be read or written) so the storage check sees what production
+   will see:
+
+   ```sh
+   printf 'FORCE_SSL=true\nHOST=<production host>\nADMIN_PROVISION_TOKEN=rehearsal-only-%s\nTIMESERVER_URL=http://timestamp.digicert.com\nSMTP_ADDRESS=smtp.invalid\nSMTP_FROM=EsignCenter <noreply@esigncenter.com>\nSMTP_USERNAME=rehearsal\nSMTP_PASSWORD=rehearsal\nS3_ATTACHMENTS_BUCKET=<production bucket name>\n' "$(openssl rand -hex 8)" >> /tmp/rehearsal.env
+   ```
+
+   A log line about "instance profile credentials" is expected: the
+   rehearsal has no AWS keys.
+
 4. Run the migrations and keep the log:
 
    ```sh
@@ -384,6 +433,23 @@ database.
    '
    ```
 
+5b. **Internal-account audit** (read-only). This release refuses formula
+   fields for every account and gives internal apps' webhooks the production
+   outbound rules (HTTPS on port 443, no localhost or private-network
+   address). List what that touches on the migrated copy:
+
+   ```sh
+   docker run --rm --env-file /tmp/rehearsal.env esigncenter-release bundle exec rake release:internal_audit
+   ```
+
+   It prints account and template ids, template names and webhook **hosts**
+   only, and exits non-zero when anything is listed. For each webhook line,
+   move that app's endpoint to a public HTTPS URL before the deploy (or
+   accept that its deliveries stop). A host that "does not resolve from
+   here" may be a Render private name — check it from the production shell.
+   For each formula template, confirm the owning app never clones it or
+   creates templates with formulas through the API; those calls fail from
+   this release on.
 6. Delete `/tmp/rehearsal.env` (`rm /tmp/rehearsal.env`) and the
    `esigncenter-rehearsal` database.
 
@@ -560,12 +626,13 @@ code stays deployed. Do this when any of the following is true:
 Escalation, in order:
 
 1. Switches off (above). No data is lost.
-2. Redeploy the previous commit from Render's deploy history ("rollback to
-   this deploy"). Safe for code; the Session 1/2 migrations are one-way, but
-   the old code tolerates the added columns and tables.
-3. Database restore from the 2.2 snapshot (section 1.3) — **only** if data
-   was corrupted, because anything signed after the snapshot is lost. Files
-   in S3 are unaffected either way.
+2. **Taking the new code off = restore the 2.2 snapshot.** The migrations are
+   not reversible (never `db:rollback`), and the previous code has not been
+   rehearsed against the migrated database, so a code-only rollback is not a
+   supported path. Restore the pre-deploy snapshot (section 1.3), then
+   redeploy the previous commit from Render's deploy history. Anything
+   signed or created after the snapshot is lost from the database, so decide
+   quickly and note what happened in between. Files in S3 are unaffected.
 
 ---
 
@@ -575,10 +642,10 @@ One table, every variable the app reads that matters for production. "Where
 read" names the file so an engineer can confirm behaviour. Variables from
 `docs/render-deploy-checklist.md` "Session 1 additions" are folded in here.
 
-Variables you will see in the local `.env` file but that **no code reads
-yet** (Stripe, Apple OAuth) arrive in Sessions 6 and later and are listed
-here when they land. Turnstile and Google OAuth landed with Session 5
-(`docs/signup.md`).
+Stripe (Session 6, D79) and Apple OAuth variables are read by the code now:
+Stripe is listed below and in `docs/billing.md` section 5.2 (including the
+optional `STRIPE_BUSINESS_PRICE_ID` and `STRIPE_API_PACK_PRICE_ID`); Apple,
+Turnstile and Google OAuth are in `docs/signup.md`.
 
 Not everything the app depends on can be an environment variable. One Stripe
 setting lives only in the Stripe dashboard, cannot be read by any code and is
@@ -596,7 +663,8 @@ has to outlast our own 14-day grace period. It has its own section: **3.4**.
 | `APP_URL` | Optional | `lib/docuseal.rb` `default_url_options`, `lib/production_readiness.rb` | When set, the full URL (`https://esign.example.com`) wins over `HOST`/`FORCE_SSL` for every generated link. Production accepts only an absolute HTTPS origin with no credentials, path, query, or fragment; malformed or HTTP values refuse to boot. When unset, `HOST` + `FORCE_SSL` are used. This is now the **only** source; the old per-account app-URL setting in the database is gone (see section 7). |
 | `WORKDIR` | Set by the image (`/data/docuseal`) | `config/dotenv.rb`, Redis snapshot dir | Leave as the image sets it. |
 | `ADMIN_PROVISION_TOKEN` | Required | `app/controllers/api/admin/accounts_controller.rb`, `lib/production_readiness.rb` | Production refuses to boot when it is missing or starts with the public `dev_prov_` placeholder. This deployment must keep provisioning available for the existing internal applications even while public registration is dark. |
-| `S3_ATTACHMENTS_BUCKET` | Required | `config/environments/production.rb`, `config/storage.yml`, `lib/storage_config_guard.rb` | Files silently go to the container's disk, which is wiped on every deploy. **This is the on/off switch for S3.** Since Session 2, a production boot with no storage variable set but an old storage-settings row in the database reports a warning to Sentry (it still boots). |
+| `S3_ATTACHMENTS_BUCKET` | Required | `config/environments/production.rb`, `config/storage.yml`, `lib/production_readiness.rb`, `lib/storage_config_guard.rb` | **Production refuses to boot** (and `rake release:preflight` fails): without it files would go to the container's disk, which is wiped on every deploy. **This is the on/off switch for S3.** Boot also refuses when stored files name a cloud service whose variable is missing, or when an old storage-settings row exists with no storage variable set (section 2.1 step 3). |
+| `ALLOW_LOCAL_DISK_STORAGE` | Leave unset | `lib/production_readiness.rb` | `true` lets production store files on the local disk under `WORKDIR` — only for the local production preview or a host with a mounted persistent disk. Never on Render without a disk. |
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION` | Required with S3 | `config/storage.yml` | Uploads fail with credential errors. `AWS_REGION` defaults to `us-east-1`. |
 | `S3_ENDPOINT` | Optional | `config/storage.yml` | Only for S3-compatible providers (Cloudflare R2). Unset for AWS. |
 | `SMTP_ADDRESS` | Required in production | `lib/mail_configs.rb`, `config/initializers/email_delivery.rb` | **Production refuses to boot** without the platform server. This keeps new customer and platform mail from silently dropping even while public registration and billing are dark. |
@@ -620,7 +688,7 @@ has to outlast our own 14-day grace period. It has its own section: **3.4**.
 | `STRIPE_SECRET_KEY` | **Required when `BILLING_ENABLED=true`** (Session 6) | `lib/stripe_billing.rb`, `lib/stripe_billing/config_guard.rb` | The secret API key every Stripe call is made with. **Boot refuses to start** in production when billing is on and it is unset, malformed, or a **test** key (`sk_test_…`) — a test key in production would take real customers through a sandbox and never charge anyone. Read fresh on every call; never cached at boot. |
 | `STRIPE_PUBLISHABLE_KEY` | **Required when `BILLING_ENABLED=true`** (Session 6) | `lib/stripe_billing.rb` | The public key (`pk_…`). Checked at boot for presence and shape. |
 | `STRIPE_WEBHOOK_SECRET` | **Required when `BILLING_ENABLED=true`** (Session 6) | `lib/stripe_billing.rb`, `app/controllers/stripe_webhooks_controller.rb` | The signing secret (`whsec_…`) every incoming Stripe webhook is verified against. **While it is blank the webhook endpoint answers 503** rather than trusting an unverified body. From the Stripe dashboard's endpoint for production, or from `stripe listen` for the dev stack. |
-| `STRIPE_PRICE_ID` | **Required when `BILLING_ENABLED=true`** (Session 6) | `lib/stripe_billing.rb`, billing checkout | The one price the product sells: $10 per seat per month (`price_…`). The server always uses this value — no request may name a price. `rake stripe:check` asserts the live price is still monthly, $10, USD and active. |
+| `STRIPE_PRICE_ID` | **Required when `BILLING_ENABLED=true`** (Session 6) | `lib/stripe_billing.rb`, billing checkout, `lib/stripe_billing/price_guard.rb` | The seat price: $10 per seat per month (`price_…`). The server always uses this value — no request may name a price. `rake stripe:check` asserts the price is in the same Stripe mode as the key, monthly, $10, USD and active; at every sale the same is re-checked, and a mismatch refuses the sale with a plain message and alerts the operator. |
 | `STRIPE_PORTAL_CONFIGURATION_ID` | **Required when `BILLING_ENABLED=true`** (Session 6) | `lib/stripe_billing.rb`, billing portal | The Customer Portal configuration (`bpc_…`) created by `rake stripe:portal_configuration`. It decides what a customer may change in Stripe: card, cancellation, invoices — **never** seats. |
 | `TURNSTILE_SITE_KEY` | **Required when `REGISTRATION_ENABLED=true`** (Session 5) | `app/views/devise/registrations/new.html.erb`, `lib/registration_config_guard.rb` | The public key the sign-up page hands to Cloudflare's widget. **Boot refuses to start** in production when sign-up is on and this is unset. The dev stack uses Cloudflare's always-passing test key. |
 | `TURNSTILE_SECRET_KEY` | **Required when `REGISTRATION_ENABLED=true`** (Session 5) | `lib/turnstile.rb`, `lib/registration_config_guard.rb` | The server-side key used to ask Cloudflare whether a sign-up token is genuine. **Boot refuses to start** in production when sign-up is on and this is unset; at runtime a blank key fails every email sign-up closed (*Please complete the verification*). Never bypassed by any environment setting. |
@@ -1246,10 +1314,11 @@ Render env vars.
   message instead of keeping it in memory forever.
 - **`/up` is the health check** (section 4) — JSON with database, Redis and
   scheduler status; point Render at it.
-- **Boot warns if storage silently fell back to disk.** If the database still
-  holds an old storage-settings row but no `S3_ATTACHMENTS_BUCKET` (or GCS /
-  Azure) variable is set, boot reports a warning to Sentry and the log. It
-  never refuses to start.
+- **Boot refuses to fall back to disk.** (Launch review, superseding the
+  Session 2 warning.) Production refuses to start without a storage bucket
+  variable, when the database still holds an old storage-settings row and no
+  bucket variable is set, or when stored files name a service that is not
+  configured. See section 2.1 step 3 for the read-only pre-check.
 - **A scheduler exists** (`sidekiq-cron`, `config/schedule.yml`). It carried
   one heartbeat job in Session 2; the billing, dunning and retention jobs were
   added to the same file in Sessions 6 and 7 (section 4.1).
@@ -1293,16 +1362,31 @@ The platform certificate is the only thing that proves an EsignCenter
 signature is ours. Losing the database without a copy means every document
 signed so far can no longer be traced to a certificate you still hold. Export
 it once, right after the seed, and keep it somewhere safe and offline (a
-password manager's secure file store, or an encrypted USB stick):
+password manager's secure file store, or an encrypted USB stick).
 
-```sh
-bundle exec rake "operator:platform_cert:export[/tmp/esigncenter-platform-cert.pem]"
-```
+The Render Shell has no file download, and the file holds private keys, so
+never print it (no `cat`, no base64) in that shell. Export it on your Mac
+from a restored copy instead — the certificate is a database row, so it
+comes back with any backup taken after the seed:
 
-It writes one file readable only by its owner (mode `0600`) holding the
-certificate, its two authority certificates and the private keys, and prints
-**only** the fingerprint and the file size — never any key material. Download
-it from the Render Shell, store it, then delete the copy in `/tmp`.
+1. On Render, take a manual backup of `esigncenter-db` (after the seed) and
+   restore it into a temporary database, as in section 1.2 step 1.
+2. Write `/tmp/rehearsal.env` for it exactly as in section 2.3 step 3 (same
+   production `SECRET_KEY_BASE` — that is what decrypts the row).
+3. Export into a folder on an encrypted volume, with a fresh dated name:
+
+   ```sh
+   mkdir -p ~/esigncenter-cert && docker run --rm --env-file /tmp/rehearsal.env -v ~/esigncenter-cert:/out esigncenter-release bundle exec rake "operator:platform_cert:export[/out/esigncenter-platform-cert-YYYYMMDD.pem]"
+   ```
+
+   It writes one file readable only by its owner (mode `0600`) holding the
+   certificate, its two authority certificates and the private keys, and
+   prints **only** the fingerprint and the file size — never any key
+   material. It refuses a path that already exists.
+4. Move the file into the offline store, then delete the local folder,
+   `/tmp/rehearsal.env` and the temporary database.
+5. In the Render Shell, run the fingerprint task below and confirm it
+   matches the fingerprint the export printed.
 
 To check at any time which certificate the running app is using:
 

@@ -4,6 +4,35 @@ EsignCenter runs as **its own service** on Render, completely separate from any
 app that integrates with it. An integrating app only needs four settings
 pointed at it (step 5).
 
+**Production is an existing install being upgraded**, not a new one: the
+service, database and bucket already exist and hold customer data. Sections 1–4
+describe the setup for reference; for the upgrade itself start with
+**"Before you deploy the upgrade"** below and then `docs/operations.md`
+section 2.
+
+## Before you deploy the upgrade
+
+1. **Storage pre-check** on the live app (read-only, prints names only):
+   `docs/operations.md` section 2.1 step 3. The new code reads storage from
+   the environment only and refuses to boot rather than serve from the wiped
+   container disk, so `S3_ATTACHMENTS_BUCKET` (and its AWS variables) must be
+   on the service before the push.
+2. **Rehearse the migrations on a restored copy** (`docs/operations.md`
+   section 2.3), and on that copy run the **internal-account audit**,
+   `bundle exec rake release:internal_audit` (step 5b there). It lists the
+   internal apps' templates with formula fields — refused from this release
+   on — and their webhook URLs the new rules refuse.
+3. **Internal apps' webhooks now need HTTPS.** Every webhook, internal
+   accounts included, must be `https://` on port 443 to a public address:
+   `http://`, localhost and private-network (e.g. Render internal) addresses
+   are refused. Move any endpoint the audit lists before deploying.
+4. **Take the pre-deploy snapshot** (`docs/operations.md` section 2.2).
+   **Rollback = restore that snapshot** and redeploy the previous commit: the
+   migrations are not reversible, and a code-only rollback is not supported
+   (section 2.8).
+5. `bundle exec rake release:preflight` with the service's environment
+   (section 3 below) must pass.
+
 ## 1. Create the services on Render
 
 - **Web service** — build from this repo's `Dockerfile`. Plan: at least
@@ -15,15 +44,11 @@ pointed at it (step 5).
   a rebuild.
 - **PostgreSQL database** — Render managed Postgres (Basic is fine to start).
   Copy its **Internal Database URL**.
-- **File storage** — Render's disk is wiped on every deploy, so signed PDFs
-  must live in real storage. Two options:
-  - *Simplest:* attach a **Render Persistent Disk** to the web service,
-    mounted at `/data/docuseal` (10 GB to start).
-  - *Most robust:* an S3-compatible bucket (AWS S3 or Cloudflare R2). The
-    variable that actually switches storage to S3 is `S3_ATTACHMENTS_BUCKET`
-    — without it, files silently stay on the wipeable disk. Set all of:
-    `S3_ATTACHMENTS_BUCKET`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`,
-    `AWS_REGION` (and `S3_ENDPOINT` if using Cloudflare R2).
+- **File storage** — an S3-compatible bucket (AWS S3, which production is
+  recorded as using, or Cloudflare R2). Render's disk is wiped on every
+  deploy, and production **refuses to boot** without a bucket. Set all of:
+  `S3_ATTACHMENTS_BUCKET`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`,
+  `AWS_REGION` (and `S3_ENDPOINT` if using Cloudflare R2).
 
 Redis is **built in** (it starts inside the web service automatically) — you
 do not need a separate Redis unless you later run more than one instance. If
@@ -59,8 +84,8 @@ no rate-limit keys appear at all, Redis is down; that is not a passing test.
 | `FORCE_SSL` | Exactly `true`. Production refuses to boot if it is missing or has another value. |
 | `ADMIN_PROVISION_TOKEN` | A long random string — the integrating app uses this to create accounts. Generate a fresh one (`openssl rand -hex 32`). **Never reuse the `dev_prov_...` placeholder from `docker-compose.dev.yml`** — it is public, and the app refuses `dev_prov_` tokens in production anyway. Must match the integrating app's provisioning token. |
 
-(If you chose S3/R2 storage, also add the S3/AWS variables from step 1 —
-remember `S3_ATTACHMENTS_BUCKET` is the on/off switch.)
+Also the S3/AWS variables from step 1 — `S3_ATTACHMENTS_BUCKET` is the
+on/off switch, and production refuses to boot without it.
 
 ## 3. Custom domain + HTTPS
 
@@ -72,17 +97,19 @@ Before changing any live service, load the proposed environment into a local
 shell and run `bundle exec rake release:preflight`. It prints only variable
 names and pass/fail states, never values. The command fails if the production
 database/host/secret, timestamp authority, platform SMTP, or HTTPS setting is
-missing, and it also fails if `REGISTRATION_ENABLED` or `BILLING_ENABLED` is
-already on. A passing result establishes only that required values are present
+missing, if no storage bucket is set, and it also fails if
+`REGISTRATION_ENABLED` or `BILLING_ENABLED` is already on. A passing result establishes only that required values are present
 and have safe shapes for a dark deploy. It does not verify credentials or
 prove production readiness, and it does not replace the external backup,
 email, Stripe, OAuth, or canary gates.
 
 ## 4. First boot check
 
-Open `https://esign.<your-domain>/` — you should see the EsignCenter setup
-page. Create the admin account and keep the password in your password
-manager. This admin login is for YOU only; provisioned accounts never see it.
+This is an upgrade: the existing accounts and logins carry over. Open
+`https://esign.<your-domain>/` and sign in with the existing admin login.
+**If you see the setup page ("create the admin account"), stop** — the
+service is pointed at an empty database; check `DATABASE_URL` before anything
+else and do not create an account there.
 
 Then open `https://esign.<your-domain>/up` — the health check. It returns
 JSON like
@@ -242,13 +269,13 @@ each account's own name.
    `"ok"`.** That field is the check — the platform signing certificate lives
    on this account, and a signing completed while it says `"missing"` produces
    no certificate-backed artefacts.
-2b. **Export the platform signing certificate to a fresh path:**
-   `bundle exec rake "operator:platform_cert:export[/tmp/esigncenter-platform-cert-YYYYMMDD.pem]"`.
-   Store the exported file offline in Evan's custody, then run
-   `bundle exec rake operator:platform_cert:fingerprint` and record its output
-   in the operations notes. Replace `YYYYMMDD` and use a path that does not
-   already exist; the `0600` owner-only permission is guaranteed when the task
-   creates the fresh file.
+2b. **Export the platform signing certificate** into Evan's offline custody.
+   The Render Shell cannot download files and the export holds private keys,
+   so never print it there: export on the Mac from a restored copy of a
+   backup taken after the seed, exactly as in `docs/operations.md` section
+   8.2. Then run `bundle exec rake operator:platform_cert:fingerprint` in the
+   Render Shell, confirm it matches the export, and record it in the
+   operations notes.
 3. **Review every pinned mail server:** `bundle exec rake email:pins` prints one
    line per account that has its own SMTP server — account id, kind, name,
    host, From address, and whether the pin is usable. It never prints
@@ -289,12 +316,22 @@ each account's own name.
    section 4.
 7. **Billing, only when you are opening the doors.** The steps that turn real
    money on are a checklist of their own and live in **`docs/billing.md`
-   section 7**: create the live $10 monthly price, run
-   `bundle exec rake stripe:portal_configuration` against the live account and
-   put the `bpc_…` it prints into `STRIPE_PORTAL_CONFIGURATION_ID`, add the
-   webhook endpoint and copy its signing secret, then run
-   `bundle exec rake stripe:check` (everything must say PASS) and only then set
-   `BILLING_ENABLED=true`.
+   section 7**: with the **live** keys, create the live $10 monthly seat
+   price, run `bundle exec rake stripe:api_prices` for the live Business
+   ($49) and API pack ($10) prices and save the ids it prints, run
+   `bundle exec rake stripe:portal_configuration` and put the `bpc_…` into
+   `STRIPE_PORTAL_CONFIGURATION_ID`, add the webhook endpoint and copy its
+   signing secret, then run `bundle exec rake stripe:check` — every price
+   and the portal must say PASS, including **livemode** (a test-mode id
+   left in place fails here and would refuse every sale) — and only then
+   set `BILLING_ENABLED=true`.
+
+   In the Stripe dashboard, also by hand: the **statement descriptor** is
+   `ESIGNCENTER` (Settings → Public details), and **Stripe Tax threshold
+   monitoring is ON with tax collection OFF** (decision D22: no sales tax is
+   collected at launch; revisit when a state's economic-nexus threshold,
+   typically about $100k a year, approaches; the accountant confirms the
+   home-state Missouri rule).
 
    **One Stripe setting `rake stripe:check` cannot assert — set it by hand.**
    In the Stripe dashboard: **Settings → Billing → Subscriptions and emails →

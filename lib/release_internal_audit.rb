@@ -38,7 +38,7 @@ module ReleaseInternalAudit
   end
 
   def formula_templates
-    Template.where(account_id: audited_accounts.select(:id)).order(:account_id, :id).find_each.filter_map do |template|
+    Template.where(account_id: audited_accounts.select(:id)).find_each.filter_map do |template|
       count = Array(template.fields).count { |field| formula?(field) }
 
       next if count.zero?
@@ -53,7 +53,7 @@ module ReleaseInternalAudit
   end
 
   def refused_webhooks
-    WebhookUrl.where(account_id: audited_accounts.select(:id)).includes(:account).order(:account_id, :id)
+    WebhookUrl.where(account_id: audited_accounts.select(:id)).includes(:account)
               .find_each.filter_map do |webhook_url|
       reason = refusal(webhook_url)
 
