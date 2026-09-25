@@ -159,7 +159,7 @@ written. What changed:
 * **Sub-processor list** — both documents now link `/trust/subprocessors`.
 
 Step 4 above (emailing every account's administrators before the effective
-date) is still owed for this bump. Counsel has not reviewed these texts (§4).
+date) was not owed for this bump: no customer accounts existed yet. Counsel has not reviewed these texts (§4).
 
 ### Trial API packs are paid when added (September 25, 2026)
 
@@ -172,7 +172,7 @@ which let a trial take any number of packs and cancel before paying. A trial
 now pays for an added pack in full when it is added, exactly as an active
 subscription does; the trial continues and the pack renews monthly once it
 ends. The archived `2026-09-26` text was rendered from the prior code and
-checked against its recorded digest. Step 4 is owed for this bump too.
+checked against its recorded digest. No customer accounts existed yet, so step 4 had no one to email.
 
 ### Sensitive information and Do Not Track (September 25, 2026)
 
@@ -199,7 +199,7 @@ From Evan's pre-launch terms review:
   vendor stack behind the product could not honor one.
 
 Both archived texts were rendered from the code before the edit and checked
-against their recorded digests. Step 4 is owed for this bump.
+against their recorded digests. No customer accounts existed yet, so step 4 had no one to email.
 
 ## 3. What is recorded when somebody agrees
 
