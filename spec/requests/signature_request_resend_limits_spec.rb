@@ -250,7 +250,7 @@ RSpec.describe 'Signing-request resend limits', type: :request do
       expect(SubmissionEvent.where(submitter: held, event_type: 'send_email')).not_to exist
     end
 
-    it "still mails the next signer on a document somebody already signed while paused" do
+    it 'still mails the next signer on a document somebody already signed while paused' do
       allow(Accounts).to receive(:can_send_emails?).and_return(true)
       first = send_one(free_account)
       next_signer = create(:submitter, submission: first.submission, account: free_account,
