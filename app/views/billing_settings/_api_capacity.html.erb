@@ -8,7 +8,7 @@
       <% if @billing.limit_override&.api_completions_per_month.present? %>
         <p class="text-sm" data-billing-capacity-agreement><%= link_to t('billing_capacity_by_agreement'), support_path, class: 'link' %></p>
       <% else %>
-        <p class="text-sm text-base-content/70"><%= t('billing_business_price', base: StripeBilling::BUSINESS_BASE_USD, seat: StripeBilling::PRICE_PER_SEAT_USD) %></p>
+        <p class="text-sm text-base-content/70"><%= t('billing_business_price', base: StripeBilling::BUSINESS_BASE_USD, completions: Quotas::Limits::BUSINESS_API_COMPLETIONS_PER_MONTH, seat: StripeBilling::PRICE_PER_SEAT_USD) %></p>
         <% if @subscription.pending_plan %>
           <p class="text-sm" data-billing-pending-plan><%= t('billing_business_retained', date: billing_date(@subscription.retained_business_until)) %></p>
         <% end %>
