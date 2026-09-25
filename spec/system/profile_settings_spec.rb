@@ -22,22 +22,43 @@ RSpec.describe 'Profile Settings' do
   end
 
   context 'when changes contact information' do
-    it 'updates first name, last name and email' do
+    # A new address is only REQUESTED here: it takes effect once the link
+    # mailed to it is opened, and asking for it needs the current password
+    # (launch security review; spec/requests/email_change_reconfirmation_spec.rb).
+    it 'updates first name and last name, and requests the new email pending confirmation' do
       fill_in 'First name', with: 'Devid'
       fill_in 'Last name', with: 'Beckham'
       fill_in 'Email', with: 'david.beckham@example.com'
+      fill_in I18n.t('current_password_needed_to_change_your_email'), with: 'password'
 
       all(:button, 'Update')[0].click
+
+      expect(page).to have_content(I18n.t('a_confirmation_email_has_been_sent_to_the_new_email_address'))
 
       user.reload
 
       expect(user.first_name).to eq('Devid')
       expect(user.last_name).to eq('Beckham')
-      expect(user.email).to eq('david.beckham@example.com')
+      expect(user.email).not_to eq('david.beckham@example.com')
+      expect(user.unconfirmed_email).to eq('david.beckham@example.com')
+      expect(page).to have_content(
+        I18n.t('email_address_is_awaiting_confirmation_follow_the_link_in_the_email_to_confirm',
+               email: 'david.beckham@example.com')
+      )
+    end
+
+    it 'does not change the email without the current password' do
+      fill_in 'Email', with: 'david.beckham@example.com'
+
+      all(:button, 'Update')[0].click
+
+      expect(page).to have_content(I18n.t('wrong_password'))
+      expect(user.reload.unconfirmed_email).to be_nil
     end
 
     it 'does not update if email is invalid' do
       fill_in 'Email', with: 'devid+test@example'
+      fill_in I18n.t('current_password_needed_to_change_your_email'), with: 'password'
 
       all(:button, 'Update')[0].click
 

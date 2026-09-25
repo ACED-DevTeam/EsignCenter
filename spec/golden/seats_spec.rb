@@ -2024,7 +2024,10 @@ RSpec.describe 'Seats and invitations', type: :request do
                                            collision_user: mover)
       token = invite_row.raw_token
 
+      # Changing an address is a request plus the confirmation link opened
+      # from the new mailbox (config.reconfirmable); `confirm` is that click.
       mover.update!(email: unique_email)
+      mover.confirm
       holder_account = create(:account)
       holder = create(:user, account: holder_account, email: invited_email)
 
