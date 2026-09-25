@@ -58,7 +58,7 @@ module Quotas
                         :fair_use_per_seat, :sends_per_day_per_seat, :in_flight_per_seat, :api_completions_per_month)
 
   class LimitReached < StandardError
-    REASONS = %i[completions api_completions sends in_flight sending_paused suspended].freeze
+    REASONS = %i[completions api_completions sends in_flight sending_paused suspended resends signer_resends].freeze
 
     attr_reader :reason, :limit, :resets_at
 
