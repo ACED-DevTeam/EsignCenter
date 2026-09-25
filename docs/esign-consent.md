@@ -223,7 +223,7 @@ delegation, one more for the person the form was handed to — stamped with:
   | state | what it means | what the trail prints |
   | --- | --- | --- |
   | `true` | the browser reported following the link | "The signer's browser reported opening the PDF" |
-  | `false` | a link was offered and the browser reported it unfollowed | "The signer did not open the PDF before agreeing" |
+  | `false` | a link was offered and the browser did not report following it (a middle-click or "open in new tab" is not seen) | "The signer's browser did not report opening the PDF" |
   | absent (no key on the event) | the page offered no link, so the question was never put — or the consent predates this product asking it | "Whether the signer opened the PDF was not recorded with this consent" |
 
   The absent state is why the key is left off the event entirely rather than

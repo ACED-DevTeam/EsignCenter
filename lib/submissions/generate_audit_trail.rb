@@ -566,11 +566,12 @@ module Submissions
       composer.document
     end
 
-    # Three answers, not two. "The signer did not open the PDF" is an
-    # assertion about what a person did, and a consent recorded before this
-    # product asked the question carries no `pdf_opened` key at all — printing
-    # the negative there would invent a fact in a signed PDF. An absent answer
-    # gets its own line and says so.
+    # Three answers, not two. Every line says only what the browser reported:
+    # a middle-click or "open in new tab" never reaches the page, so the
+    # negative cannot claim the person did not open it. A consent recorded
+    # before this product asked the question carries no `pdf_opened` key at
+    # all — printing the negative there would invent a fact in a signed PDF.
+    # An absent answer gets its own line and says so.
     def consent_pdf_line_key(consent_event)
       return 'esign_consent_pdf_not_recorded' unless consent_event.data.key?('pdf_opened')
 
