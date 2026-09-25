@@ -7,8 +7,10 @@
 # on the plan. Enforced inside Quotas.assert_can_create_submissions! on every
 # creation path, by Submitters::ResendGuard on every resend door, and by
 # Accounts.can_send_invitation_emails? in the invitation and reminder jobs
-# (so a next signer's request is held back too). Signers who already have a
-# link can keep signing, and downloads keep working.
+# (a queued first request and every reminder are held back; the next signer
+# on a document somebody already signed is still mailed, see
+# SendSubmitterInvitationEmailJob). Signers who already have a link can keep
+# signing, and downloads keep working.
 #
 # The Postmark webhook calls `evaluate!` after it records an EmailEvent.
 module SendingPause
