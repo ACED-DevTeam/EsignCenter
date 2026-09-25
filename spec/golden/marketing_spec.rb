@@ -21,6 +21,12 @@ RSpec.describe 'Marketing pages', type: :request do
   end
   let(:claims) { %w[consent sealed verify audit us export delete open-source support pricing] }
 
+  # The one certification line the site may carry. The reports are the hosting
+  # and storage providers', never EsignCenter's own, and the #not-claimed
+  # paragraph on /trust says so. Any other wording ("SOC 2 compliant", "SOC 2
+  # servers") still fails.
+  let(:infrastructure_claim) { 'Built on SOC 2 Type II audited infrastructure.' }
+
   def doc
     Nokogiri::HTML(response.body)
   end
@@ -41,12 +47,6 @@ RSpec.describe 'Marketing pages', type: :request do
       a.text.strip == 'DocuSeal' && a.ancestors.none? { |node| hidden_node?(node) }
     end
   end
-
-  # The one certification line the site may carry. The reports are the hosting
-  # and storage providers', never EsignCenter's own, and the #not-claimed
-  # paragraph on /trust says so. Any other wording ("SOC 2 compliant", "SOC 2
-  # servers") still fails.
-  let(:infrastructure_claim) { 'Built on SOC 2 Type II audited infrastructure.' }
 
   # The forbidden phrases are checked against the WHOLE page; only the
   # "what we do not claim" paragraph on /trust may name a certification, and
