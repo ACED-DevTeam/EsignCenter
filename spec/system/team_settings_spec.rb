@@ -111,8 +111,14 @@ RSpec.describe 'Team Settings' do
       end
     end
 
-    it 'updates a user' do
-      first(:link, 'Edit').click
+    # An administrator can REQUEST a member's new address, never complete
+    # it: it takes effect once the member opens the link mailed to it (launch
+    # security review; spec/requests/email_change_reconfirmation_spec.rb).
+    it 'updates a user, holding the new email until the member confirms it' do
+      edited = users.last
+      original_email = edited.email
+
+      first(:link, 'Edit', href: edit_user_path(edited)).click
 
       fill_in 'First name', with: 'Adam'
       fill_in 'Last name', with: 'Meier'
@@ -122,11 +128,14 @@ RSpec.describe 'Team Settings' do
         click_button 'Submit'
       end.not_to change(User, :count)
 
-      user = User.find_by(email: 'adam.meier@example.com')
+      expect(page).to have_content(I18n.t('a_confirmation_email_has_been_sent_to_the_new_email_address'))
 
-      expect(user.first_name).to eq('Adam')
-      expect(user.last_name).to eq('Meier')
-      expect(user.email).to eq('adam.meier@example.com')
+      edited.reload
+
+      expect(edited.first_name).to eq('Adam')
+      expect(edited.last_name).to eq('Meier')
+      expect(edited.email).to eq(original_email)
+      expect(edited.unconfirmed_email).to eq('adam.meier@example.com')
     end
 
     it 'removes a user' do

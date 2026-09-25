@@ -293,6 +293,7 @@ module Gates
     app/views/submit_form/completed.html.erb
     app/views/submit_form/declined.html.erb
     app/views/submit_form/delegated.html.erb
+    app/views/submit_form/delegation_unavailable.html.erb
     app/views/submit_form/email_2fa.html.erb
     app/views/submit_form/expired.html.erb
     app/views/submit_form/show.html.erb

@@ -16,11 +16,17 @@ class SubmittersSendEmailController < ApplicationController
                            alert: I18n.t('email_has_been_sent_already'))
     end
 
+    # Paused sending, the per-signer day and the free daily cap
+    # (Submitters::ResendGuard).
+    Submitters::ResendGuard.claim!(@submitter)
+
     SendSubmitterInvitationEmailJob.perform_async('submitter_id' => @submitter.id)
 
     @submitter.sent_at ||= Time.current
     @submitter.save!
 
     redirect_back(fallback_location: submission_path(@submitter.submission), notice: I18n.t('email_has_been_sent'))
+  rescue Quotas::LimitReached => e
+    redirect_back(fallback_location: submission_path(@submitter.submission), alert: e.localized_message)
   end
 end

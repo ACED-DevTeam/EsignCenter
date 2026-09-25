@@ -19,20 +19,43 @@ class SubmissionsResendEmailController < ApplicationController
 
     submitters = submitters.reject { |s| recent_submitter_ids.include?(s.id) }
 
+    sent, refusal = resend_each(submitters)
+
+    notice =
+      if sent.empty?
+        I18n.t('email_has_been_sent_already') unless refusal
+      else
+        I18n.t('emails_have_been_sent_to_n_recipients', count: sent.size)
+      end
+
+    redirect_back(fallback_location: submission_path(@submission), notice:, alert: refusal&.localized_message)
+  end
+
+  private
+
+  # Each signer through Submitters::ResendGuard. A signer who has had their
+  # share for the day is skipped; a refusal that would refuse everybody (a
+  # paused account, the free daily cap) stops the rest. Returns
+  # [the signers emailed, the last refusal or nil].
+  def resend_each(submitters)
+    sent = []
+    refusal = nil
+
     submitters.each do |submitter|
+      Submitters::ResendGuard.claim!(submitter)
+
       SendSubmitterInvitationEmailJob.perform_async('submitter_id' => submitter.id)
 
       submitter.sent_at ||= Time.current
       submitter.save!
+
+      sent << submitter
+    rescue Quotas::LimitReached => e
+      refusal = e
+
+      break unless e.reason == :signer_resends
     end
 
-    notice =
-      if submitters.empty?
-        I18n.t('email_has_been_sent_already')
-      else
-        I18n.t('emails_have_been_sent_to_n_recipients', count: submitters.size)
-      end
-
-    redirect_back(fallback_location: submission_path(@submission), notice:)
+    [sent, refusal]
   end
 end
