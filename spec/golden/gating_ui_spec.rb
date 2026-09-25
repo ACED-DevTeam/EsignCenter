@@ -296,13 +296,15 @@ RSpec.describe 'Feature gating UI', type: :request do
     # The pin is inert after a downgrade (MailConfigs.resolve skips it) but the
     # owner must still be able to see and remove it — never the password.
     it 'shows a downgraded account a read-only summary with a remove button, removes on request, and shows an ' \
-       'entitled account the real form' do
+       'entitled account the real form with its own remove button' do
       config = create(:encrypted_config, account: paid_account, key: EncryptedConfig::EMAIL_SMTP_KEY, value: smtp_value)
 
       body = visit_as(paid_account, '/settings/email')
 
       expect(body).to include('name="encrypted_config[value][host]"')
-      expect(body).not_to include(I18n.t('remove_smtp_settings'))
+      # An entitled account can remove its own settings too, not only a
+      # downgraded one.
+      expect(body).to include(I18n.t('remove_smtp_settings'))
 
       downgrade_to_free!(paid_account)
 
