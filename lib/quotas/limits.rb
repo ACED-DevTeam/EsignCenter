@@ -58,6 +58,18 @@ module Quotas
     # a relay run worth mounting.
     SHARED_LINK_CODES_PER_ACCOUNT_PER_HOUR = 100
 
+    # Signing requests sent AGAIN to a signer who already has one — a resend,
+    # an address correction, the API's send_email on an update, a signer's
+    # delegation (Submitters::ResendGuard). The first request of a document is
+    # bounded by the send quota above; these were bounded by nothing, so one
+    # document could relay unlimited mail from our sending address. Counted
+    # per UTC day; internal and operator accounts are exempt.
+    RESENDS_PER_SIGNER_PER_DAY = 3 # any customer plan, whatever the address
+    # Free, per billing account — hard. A free account holds at most 10 open
+    # documents: resending to every signer of every one of them fits.
+    FREE_RESENDS_PER_DAY = 20
+    PAID_RESENDS_PER_DAY_PER_SEAT = 100 # warn-flag for the operator, never a block (D42)
+
     # Abuse policy — any customer account (lib/sending_pause.rb).
     COMPLAINTS_TO_PAUSE = 1   # one spam complaint pauses sending
     BOUNCE_WINDOW = 20        # hard bounces among the last 20 sends...

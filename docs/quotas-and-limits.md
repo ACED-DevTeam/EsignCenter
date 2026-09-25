@@ -289,6 +289,27 @@ a whole list of strangers from the platform's own sending account, and the
 account's hourly ceiling above is what stops anyone doing it one address at a
 time.
 
+**Resending a signing request.** Creating a document spends a send; every
+request emailed AGAIN to a signer who already has one — "send email", an
+address correction with the email box ticked, `PUT /api/submitters/:id` with
+`send_email` (on a token or the browser session), and a signer delegating the
+document — goes through `Submitters::ResendGuard` instead. These counts live
+in Postgres (`account_counters`, per UTC day), not Redis, so they hold when
+Redis is down. Internal and operator accounts are exempt.
+
+| Rule | Value |
+|---|---|
+| One signer, whatever address it is sent to | 3 per UTC day, any customer plan (`RESENDS_PER_SIGNER_PER_DAY`) |
+| Free account, all signers together | 20 per UTC day, hard (`FREE_RESENDS_PER_DAY`) |
+| Paid account | never refused; a `resend_velocity` flag above 100 per seat per day (`PAID_RESENDS_PER_DAY_PER_SEAT`, D42) |
+
+A refusal writes nothing: the address is not changed and no email is queued.
+The API answers `429` with the reason; the dashboard shows it as an alert; a
+signer trying to delegate sees "This document cannot be delegated right now".
+Changing a signer's address from the dashboard also replaces their signing
+link, exactly as the API always did, so the mailbox that was wrong loses
+access.
+
 **Fail-open rule.** The Redis throttles above fail open by design: if Redis
 is unreachable the limit is off until it is back, and the outage is reported.
 Availability wins for a speed limit. The monthly caps and the sending pause
@@ -309,7 +330,10 @@ for the operator, the account's admins get an email explaining why, what still
 works (signers on documents already sent can still complete; downloads work)
 and that the operator will review, and the operator is alerted. From then on
 every creation path refuses with "Sending is paused for this account while we
-review a delivery problem" until the operator lifts it:
+review a delivery problem", and no signing-request email of any kind goes out —
+not a resend, not a reminder, not the request to the next signer in order (the
+invitation and reminder jobs skip it; nothing is queued for later, so after a
+resume the sender resends) — until the operator lifts it:
 
 ```
 bundle exec rake "operator:resume_sending[ACCOUNT_ID]"
@@ -358,8 +382,8 @@ refuses them, and the engine ignores an override row on one if it ever
 existed.
 
 Warn-flags for the operator (`abuse_flags`): `fair_use_review`,
-`send_velocity`, `in_flight`, `complaint`, `bounce_rate`, and Phase D's
-`document_report`. One per account, kind and period where a period applies;
+`send_velocity`, `resend_velocity`, `in_flight`, `complaint`, `bounce_rate`,
+and Phase D's `document_report`. One per account, kind and period where a period applies;
 Session 8's abuse queue lists them.
 
 ## 5. Storage

@@ -12,7 +12,12 @@
     </div>
     <div class="form-control">
       <%= f.label :email, t('email'), class: 'label' %>
-      <%= f.email_field :email, required: true, class: 'base-input' %>
+      <% if user.persisted? && user == current_user %>
+        <%= f.email_field :email, disabled: true, class: 'base-input' %>
+        <span class="label-text-alt mt-2 mx-1"><%= t('change_your_own_email_address_from_your_profile') %></span>
+      <% else %>
+        <%= f.email_field :email, required: true, class: 'base-input' %>
+      <% end %>
       <% if user.try(:pending_reconfirmation?) %>
         <label class="label">
           <span class="label-text-alt"><%= t('email_address_is_awaiting_confirmation_follow_the_link_in_the_email_to_confirm', email: f.object.unconfirmed_email) %></span>

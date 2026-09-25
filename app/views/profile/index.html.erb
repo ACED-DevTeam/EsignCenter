@@ -24,6 +24,13 @@
           </label>
         <% end %>
       </div>
+      <div class="form-control">
+        <%= label_tag :current_password_for_email, t('current_password_needed_to_change_your_email'), class: 'label' %>
+        <%= password_field_tag :current_password, nil, id: 'current_password_for_email', autocomplete: 'current-password', class: "base-input #{'input-error' if @email_change_password_error}" %>
+        <% if @email_change_password_error %>
+          <%= render 'shared/field_error', message: @email_change_password_error %>
+        <% end %>
+      </div>
       <div class="form-control pt-2">
         <%= f.button button_title(title: t('update'), disabled_with: t('updating')), class: 'base-button' %>
       </div>

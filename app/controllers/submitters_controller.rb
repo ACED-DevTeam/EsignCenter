@@ -27,16 +27,16 @@ class SubmittersController < ApplicationController
       params.delete(:body)
     end
 
-    submitter_preferences = Submitters.normalize_preferences(@submitter.account, current_user, params)
-
-    if submitter_preferences.key?('email_message_uuid')
-      @submitter.preferences['email_message_uuid'] = submitter_preferences['email_message_uuid']
-    end
-
+    assign_email_message(@submitter)
     assign_submitter_attrs(@submitter, submitter_params)
 
+    resend = resend_decision(@submitter, email_changed: rotate_slug_on_new_address(@submitter))
+
+    # Decided before anything is written: a refused resend changes nothing.
+    Submitters::ResendGuard.claim!(@submitter) if resend == :send
+
     if @submitter.save
-      resend = maybe_resend_email(@submitter, params)
+      SendSubmitterInvitationEmailJob.perform_async('submitter_id' => @submitter.id) if resend == :send
 
       SearchEntries.enqueue_reindex(@submitter)
 
@@ -48,28 +48,49 @@ class SubmittersController < ApplicationController
     else
       redirect_back fallback_location: submission_path(submission), alert: I18n.t('unable_to_save')
     end
+  rescue Quotas::LimitReached => e
+    redirect_back fallback_location: submission_path(submission), alert: e.localized_message
   end
 
   private
 
+  def assign_email_message(submitter)
+    submitter_preferences = Submitters.normalize_preferences(submitter.account, current_user, params)
+
+    return unless submitter_preferences.key?('email_message_uuid')
+
+    submitter.preferences['email_message_uuid'] = submitter_preferences['email_message_uuid']
+  end
+
+  # A new address revokes the old signing link, exactly as the API does: the
+  # slug is the credential in the URL, and the mailbox that was wrong must
+  # lose access. Returns whether the address changed.
+  def rotate_slug_on_new_address(submitter)
+    return false unless submitter.will_save_change_to_email?
+
+    submitter.slug = SecureRandom.base58(14)
+
+    true
+  end
+
   # SMS is a hidden feature (no plan has it): `Submitters.normalize_preferences`
   # above already refuses `send_sms`, so only the e-mail resend exists here.
-  # Returns :sent, :throttled, or nil when no resend was asked for.
-  def maybe_resend_email(submitter, params)
-    return unless params[:send_email] == '1' && submitter.email.present?
+  # Returns :send, :throttled, or nil when no resend was asked for.
+  #
+  # The same address emailed within 4 hours is quietly not repeated. That rule
+  # is keyed on this SIGNER, and a changed address is not a way round it but a
+  # correction, which goes out — through Submitters::ResendGuard, whose
+  # per-signer daily count ignores the address entirely.
+  def resend_decision(submitter, email_changed:)
+    return unless params[:send_email] == '1' && Submitters.signature_request_sendable?(submitter)
+    return :send if email_changed
 
-    # Anti-abuse: an invitation sent to this address within 4 hours is not repeated.
-    is_sent_recently = EmailEvent.exists?(email: submitter.email,
-                                          tag: 'submitter_invitation',
+    is_sent_recently = EmailEvent.exists?(tag: 'submitter_invitation',
                                           emailable: submitter,
                                           event_type: 'send',
                                           created_at: 4.hours.ago..Time.current)
 
-    return :throttled if is_sent_recently
-
-    SendSubmitterInvitationEmailJob.perform_async('submitter_id' => submitter.id)
-
-    :sent
+    is_sent_recently ? :throttled : :send
   end
 
   def assign_submitter_attrs(submitter, attrs)

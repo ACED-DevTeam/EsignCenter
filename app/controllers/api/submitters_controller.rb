@@ -67,6 +67,14 @@ module Api
       # serializes with_urls, so the caller receives the fresh slug/URL.
       @submitter.slug = SecureRandom.base58(14) if @submitter.will_save_change_to_email?
 
+      # Asking for the email again is a RESEND (the document's first request
+      # spent its send quota when it was created): refused while sending is
+      # paused, throttled per signer, capped per day on the free plan — and
+      # decided before anything is written (Submitters::ResendGuard).
+      resend = !@submitter.completed_at? && (normalized_params[:send_email] || normalized_params[:send_sms])
+
+      Submitters::ResendGuard.claim!(@submitter) if resend && Submitters.signature_request_sendable?(@submitter)
+
       ApplicationRecord.transaction do
         Submissions::NormalizeParamUtils.save_default_value_attachments!(new_attachments, [@submitter])
 
@@ -82,7 +90,7 @@ module Api
 
       if @submitter.completed_at?
         ProcessSubmitterCompletionJob.perform_async('submitter_id' => @submitter.id)
-      elsif normalized_params[:send_email] || normalized_params[:send_sms]
+      elsif resend
         Submitters.send_signature_requests([@submitter])
       end
 

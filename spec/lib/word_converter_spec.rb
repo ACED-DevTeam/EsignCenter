@@ -53,6 +53,11 @@ RSpec.describe WordConverter do
 
         pid_file = Tempfile.new('fake-soffice-pid')
         ENV['FAKE_SOFFICE_PID_FILE'] = pid_file.path
+        # soffice no longer inherits the app's environment, so the spec hands
+        # its own variable to the fake explicitly.
+        allow(described_class).to receive(:soffice_env).and_wrap_original do |original, *args|
+          original.call(*args).merge('FAKE_SOFFICE_PID_FILE' => pid_file.path)
+        end
         tmpdirs = record_tmpdirs
 
         expect { described_class.call(docx, filename: 'x.docx') }.to raise_error(WordConverter::TimeoutError)
@@ -80,6 +85,55 @@ RSpec.describe WordConverter do
         expect(tmpdirs.size).to eq(2)
         expect(tmpdirs).to all(satisfy { |dir| !Dir.exist?(dir) })
       end
+    end
+
+    context 'with the environment soffice runs in' do
+      stash_env 'SECRET_KEY_BASE', 'STRIPE_SECRET_KEY', 'ADMIN_PROVISION_TOKEN'
+
+      it 'passes only a minimal, explicit environment and none of the app secrets' do
+        ENV['SECRET_KEY_BASE'] = 'secret-key-base-must-not-leak'
+        ENV['STRIPE_SECRET_KEY'] = 'sk_test_must_not_leak'
+        ENV['ADMIN_PROVISION_TOKEN'] = 'provision-token-must-not-leak'
+        stub_const('WordConverter::BINARY', fixture_bin.join('fake_soffice_env').to_s)
+
+        error = nil
+
+        begin
+          described_class.call(docx, filename: 'x.docx')
+        rescue WordConverter::ConversionError => e
+          error = e
+        end
+
+        names = error.message.scan(/^([A-Z_][A-Z0-9_]*)=/).flatten
+
+        expect(names).to include('HOME', 'PATH', 'SAL_USE_VCLPLUGIN')
+        expect(names - %w[HOME PATH TMPDIR LANG LC_ALL SAL_USE_VCLPLUGIN PWD SHLVL _]).to eq([])
+        expect(error.message).not_to include('must-not-leak', 'must_not_leak')
+      end
+    end
+
+    it 'never fetches an image a document links to on another server' do
+      server = TCPServer.new('127.0.0.1', 0)
+      port = server.addr[1]
+      requests = Queue.new
+      listener = Thread.new do
+        loop do
+          client = server.accept
+          requests << client.gets
+          client.write("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+          client.close
+        end
+      rescue IOError
+        nil
+      end
+
+      pdf = described_class.call(docx_linking_image("http://127.0.0.1:#{port}/probe.png"), filename: 'linked.docx')
+
+      expect(pdf).to start_with('%PDF')
+      expect(requests.size).to eq(0)
+    ensure
+      server&.close
+      listener&.join(2)
     end
 
     it 'raises Unavailable when the binary is missing' do
@@ -181,6 +235,51 @@ RSpec.describe WordConverter do
   # Gone means signalling it fails, or it is a zombie: the orphaned child
   # keeps a zombie entry until pid 1 reaps it, and the container's pid 1 does
   # not reap.
+  # A minimal .docx whose only picture is LINKED (not embedded) from `url`:
+  # rendering it faithfully would mean the converter fetching that URL.
+  def docx_linking_image(url)
+    namespaces = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" ' \
+                 'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" ' \
+                 'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" ' \
+                 'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" ' \
+                 'xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"'
+    picture = '<pic:pic><pic:nvPicPr><pic:cNvPr id="1" name="probe.png"/><pic:cNvPicPr/></pic:nvPicPr>' \
+              '<pic:blipFill><a:blip r:link="rIdLinked"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>' \
+              '<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="952500" cy="952500"/></a:xfrm>' \
+              '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic>'
+    document = [
+      %(<?xml version="1.0" encoding="UTF-8"?><w:document #{namespaces}><w:body>),
+      '<w:p><w:r><w:t>Linked picture below</w:t></w:r></w:p><w:p><w:r><w:drawing><wp:inline>',
+      '<wp:extent cx="952500" cy="952500"/><wp:docPr id="1" name="Picture 1"/><a:graphic>',
+      %(<a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">#{picture}),
+      '</a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p></w:body></w:document>'
+    ].join
+    package_rels = 'http://schemas.openxmlformats.org/package/2006/relationships'
+    office_rels = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
+
+    Zip::OutputStream.write_buffer do |zip|
+      zip.put_next_entry('[Content_Types].xml')
+      zip.write('<?xml version="1.0" encoding="UTF-8"?>' \
+                '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' \
+                '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' \
+                '<Default Extension="xml" ContentType="application/xml"/>' \
+                '<Override PartName="/word/document.xml" ContentType="application/' \
+                'vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>')
+      zip.put_next_entry('_rels/.rels')
+      main_part = %(<Relationship Id="rId1" Type="#{office_rels}/officeDocument" Target="word/document.xml"/>)
+      zip.write(relationships(package_rels, main_part))
+      zip.put_next_entry('word/_rels/document.xml.rels')
+      linked = %(<Relationship Id="rIdLinked" Type="#{office_rels}/image" Target="#{url}" TargetMode="External"/>)
+      zip.write(relationships(package_rels, linked))
+      zip.put_next_entry('word/document.xml')
+      zip.write(document)
+    end.string
+  end
+
+  def relationships(namespace, body)
+    %(<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="#{namespace}">#{body}</Relationships>)
+  end
+
   def process_gone?(pid)
     Process.kill(0, pid)
 

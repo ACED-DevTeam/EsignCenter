@@ -1,0 +1,5 @@
+#!/bin/sh
+# Stands in for soffice in specs: prints the environment it was started with
+# to its log and fails, so the spec can read exactly what soffice would see.
+env >&2
+exit 1
