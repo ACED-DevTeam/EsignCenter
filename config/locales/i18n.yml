@@ -470,6 +470,7 @@ en: &en
   ensure_unique_recipients: Ensure unique recipients
   edit_per_party: Edit per party
   reply_to: Reply to
+  reply_to_default_hint: If left blank, replies go to the person who sent the document.
   pending_by_me: Pending by me
   partially_completed: Partially completed
   require_phone_2fa_to_open: Require phone 2FA to open
