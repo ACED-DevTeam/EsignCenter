@@ -1,0 +1,56 @@
+<% content_for(:html_title, 'Sub-processors — EsignCenter') %>
+<% content_for(:html_description, 'The services EsignCenter is built on, what each one is for, and what data reaches it.') %>
+<% content_for(:canonical_url, subprocessors_url) %>
+<% content_for(:indexable, 'true') %>
+<%# The sub-processor list, moved off /trust so the trust page leads with the claims and this detail sits one click away. Keep it in step with the table in config/legal/privacy.html.erb. %>
+
+<section class="mk-ground">
+  <div class="max-w-6xl mx-auto px-4 md:px-2 pt-14 pb-10 md:pt-20 md:pb-12">
+    <div class="max-w-3xl">
+      <p class="text-sm font-semibold uppercase tracking-wider text-indigo-700"><%= link_to 'Trust', trust_path, class: 'hover:underline' %></p>
+      <h1 class="mt-2 text-4xl md:text-5xl font-bold tracking-tight">Sub-processors</h1>
+      <p class="mt-5 text-lg md:text-xl text-base-content/70 leading-relaxed">The services EsignCenter is built on, what each one is for, and what reaches it.</p>
+    </div>
+  </div>
+</section>
+
+<section class="max-w-6xl mx-auto px-4 md:px-2 pb-12 md:pb-16" aria-labelledby="subprocessors-heading">
+  <div>
+    <h2 id="subprocessors-heading" class="sr-only">Sub-processors</h2>
+    <div class=" overflow-x-auto rounded-2xl border border-base-content/10 bg-white">
+      <%# Three columns need a desktop; on a phone each row becomes a card with the column names repeated as small captions. %>
+      <table class="block md:table w-full text-left text-base">
+        <caption class="sr-only">Sub-processors: service, purpose and what it receives</caption>
+        <thead class="hidden md:table-header-group bg-base-200/70 text-sm uppercase tracking-wider text-base-content/70">
+          <tr>
+            <th scope="col" class="px-4 md:px-6 py-3 font-semibold">Service</th>
+            <th scope="col" class="px-4 md:px-6 py-3 font-semibold">Purpose</th>
+            <th scope="col" class="px-4 md:px-6 py-3 font-semibold">What it receives</th>
+          </tr>
+        </thead>
+        <tbody class="block md:table-row-group">
+          <% [
+               ['Render', 'Hosting: the application, background jobs and the PostgreSQL database', 'Everything the application stores, in a US region'],
+               ['Amazon Web Services (S3)', 'File storage: uploaded and signed PDFs, images and account exports', 'Your document files, in a US region'],
+               ['Postmark (an ActiveCampaign company)', 'Email delivery: signing invitations, reminders, receipts and account notices', 'Recipient email addresses, the message and delivery events (delivered, bounced, complained)'],
+               ['Stripe', 'Payments: the paid plan, trial and invoices', 'Your name, email address and card, entered on Stripe\'s own pages; card numbers never touch EsignCenter'],
+               ['Sentry', 'Error monitoring, so a failure is fixed before you have to report it', 'Technical error reports; personal data is not sent by default'],
+               ['Cloudflare Turnstile', 'A bot check on the sign-up form', 'The sign-up request and your network address, once, at sign-up'],
+               ['Google', 'Optional sign-in with a Google account', 'Your Google email address and name, only if you choose to sign in with Google'],
+               ['DigiCert', 'Trusted timestamp authority for every signed PDF', 'A hash of the signature, never the document']
+             ].each do |name, purpose, receives| %>
+            <tr class="block md:table-row border-t border-base-content/5 align-top py-3 md:py-0">
+              <th scope="row" class="block md:table-cell px-4 md:px-6 pt-2 pb-1 md:py-4 font-semibold md:whitespace-nowrap"><%= name %></th>
+              <td class="block md:table-cell px-4 md:px-6 py-1 md:py-4 text-base-content/80"><span class="md:hidden block text-xs uppercase tracking-wider text-base-content/70 mb-0.5">Purpose</span><%= purpose %></td>
+              <td class="block md:table-cell px-4 md:px-6 pt-1 pb-2 md:py-4 text-base-content/80"><span class="md:hidden block text-xs uppercase tracking-wider text-base-content/70 mb-0.5">What it receives</span><%= receives %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section class="max-w-6xl mx-auto px-4 md:px-2 pb-16">
+  <p class="text-base-content/70 max-w-2xl">The formal list is in the <%= link_to 'Privacy Policy', privacy_path, class: 'link' %>. Questions go to <%= mail_to Docuseal::SUPPORT_EMAIL, Docuseal::SUPPORT_EMAIL, class: 'link' %>.</p>
+</section>

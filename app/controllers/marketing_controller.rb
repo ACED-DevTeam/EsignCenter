@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# The public pricing and trust pages (Session 9). Anyone may read them — no
+# The public pricing, trust and sub-processor pages (Session 9). Anyone may read them — no
 # login and no first-run setup redirect, like VerifyController — and they say
 # nothing about the visitor: the pricing table is rendered from
 # lib/pricing_matrix.rb, so what we sell is whatever the code enforces.
@@ -18,4 +18,6 @@ class MarketingController < ApplicationController
   def pricing; end
 
   def trust; end
+
+  def subprocessors; end
 end
