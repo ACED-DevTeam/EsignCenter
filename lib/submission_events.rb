@@ -22,7 +22,7 @@ module SubmissionEvents
 
   # Blank values are dropped so an event never carries an empty `ip` or a nil
   # `uid` — but `false` is an answer, not a blank: the consent event's
-  # `pdf_opened: false` says the signer did not open the PDF, and that has to
+  # `pdf_opened: false` says the browser did not report opening the PDF, and that has to
   # survive into the row.
   def create_with_tracking_data(submitter, event_type, request, data = {})
     SubmissionEvent.create!(submitter:, event_type:, data: {
