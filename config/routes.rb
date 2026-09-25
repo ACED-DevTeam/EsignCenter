@@ -72,6 +72,7 @@ Rails.application.routes.draw do
   # layout for anyone; the signed-out root also renders the landing page.
   get 'pricing' => 'marketing#pricing', as: :pricing
   get 'trust' => 'marketing#trust', as: :trust
+  get 'trust/subprocessors' => 'marketing#subprocessors', as: :subprocessors
   get 'terms' => 'legal#terms', as: :terms
   get 'privacy' => 'legal#privacy', as: :privacy
 

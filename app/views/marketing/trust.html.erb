@@ -20,50 +20,15 @@
       <h2 id="where-heading" class="text-2xl md:text-3xl font-bold tracking-tight">Where your data lives</h2>
     </div>
     <div class="lg:col-span-8 space-y-4 text-base-content/80 leading-relaxed">
-      <p>EsignCenter runs on Render, and the documents you upload and sign are stored in Amazon Web Services S3. Both are in United States regions. The database that holds your account, templates and audit events is Render's managed PostgreSQL in the same place.</p>
+      <%# The SOC 2 Type II reports are the hosting and storage providers' own (Render and AWS, named on /trust/subprocessors), not EsignCenter's; the #not-claimed paragraph says so. %>
+      <p data-soc2 class="font-semibold text-base-content">Built on SOC 2 Type II audited infrastructure.</p>
+      <p>The application, the database that holds your account, templates and audit events, and the documents you upload and sign all live in United States regions. The services we use, and what each one receives, are on our <%= link_to 'sub-processors page', subprocessors_path, class: 'link font-medium' %>.</p>
       <p>You can take everything with you at any time: <strong>Settings → Export</strong> builds one zip of your account with a manifest of checksums, and <strong>Settings → Account</strong> lets an administrator delete the account, confirmed with their password or a code we email them. Deletion is a 90-day decision: the account goes read-only immediately, and on the date shown it is permanently destroyed, unless you cancel before then.</p>
       <p>A few things outlive a permanent deletion, on purpose: the verification record of each signed PDF (its SHA-256 fingerprint, completion date and signer count, kept permanently so a document can still be verified years later; it holds no names and nothing from the document), the subscription and payment history with the person scrubbed out of it, a stub of the account row so those records point at something, and our own log of support access to the account. A file that another account also uses stays for that account. Everything else is destroyed.</p>
     </div>
   </div>
 </section>
 
-<section class="bg-base-200/50 border-y border-base-content/5" aria-labelledby="subprocessors-heading">
-  <div class="max-w-6xl mx-auto px-4 md:px-2 py-12 md:py-16">
-    <h2 id="subprocessors-heading" class="text-2xl md:text-3xl font-bold tracking-tight">Who else processes your data</h2>
-    <p class="mt-3 text-base-content/70 max-w-2xl">The services EsignCenter is built on, what each one is for, and what reaches it.</p>
-    <div class="mt-8 overflow-x-auto rounded-2xl border border-base-content/10 bg-white">
-      <%# Three columns need a desktop; on a phone each row becomes a card with the column names repeated as small captions. %>
-      <table class="block md:table w-full text-left text-base">
-        <caption class="sr-only">Sub-processors: service, purpose and what it receives</caption>
-        <thead class="hidden md:table-header-group bg-base-200/70 text-sm uppercase tracking-wider text-base-content/70">
-          <tr>
-            <th scope="col" class="px-4 md:px-6 py-3 font-semibold">Service</th>
-            <th scope="col" class="px-4 md:px-6 py-3 font-semibold">Purpose</th>
-            <th scope="col" class="px-4 md:px-6 py-3 font-semibold">What it receives</th>
-          </tr>
-        </thead>
-        <tbody class="block md:table-row-group">
-          <% [
-               ['Render', 'Hosting: the application, background jobs and the PostgreSQL database', 'Everything the application stores, in a US region'],
-               ['Amazon Web Services (S3)', 'File storage: uploaded and signed PDFs, images and account exports', 'Your document files, in a US region'],
-               ['Postmark (an ActiveCampaign company)', 'Email delivery: signing invitations, reminders, receipts and account notices', 'Recipient email addresses, the message and delivery events (delivered, bounced, complained)'],
-               ['Stripe', 'Payments: the paid plan, trial and invoices', 'Your name, email address and card, entered on Stripe\'s own pages; card numbers never touch EsignCenter'],
-               ['Sentry', 'Error monitoring, so a failure is fixed before you have to report it', 'Technical error reports; personal data is not sent by default'],
-               ['Cloudflare Turnstile', 'A bot check on the sign-up form', 'The sign-up request and your network address, once, at sign-up'],
-               ['Google', 'Optional sign-in with a Google account', 'Your Google email address and name, only if you choose to sign in with Google'],
-               ['DigiCert', 'Trusted timestamp authority for every signed PDF', 'A hash of the signature, never the document']
-             ].each do |name, purpose, receives| %>
-            <tr class="block md:table-row border-t border-base-content/5 align-top py-3 md:py-0">
-              <th scope="row" class="block md:table-cell px-4 md:px-6 pt-2 pb-1 md:py-4 font-semibold md:whitespace-nowrap"><%= name %></th>
-              <td class="block md:table-cell px-4 md:px-6 py-1 md:py-4 text-base-content/80"><span class="md:hidden block text-xs uppercase tracking-wider text-base-content/70 mb-0.5">Purpose</span><%= purpose %></td>
-              <td class="block md:table-cell px-4 md:px-6 pt-1 pb-2 md:py-4 text-base-content/80"><span class="md:hidden block text-xs uppercase tracking-wider text-base-content/70 mb-0.5">What it receives</span><%= receives %></td>
-            </tr>
-          <% end %>
-        </tbody>
-      </table>
-    </div>
-  </div>
-</section>
 
 <section class="max-w-6xl mx-auto px-4 md:px-2 py-12 md:py-16" aria-labelledby="register-heading">
   <h2 id="register-heading" class="text-2xl md:text-3xl font-bold tracking-tight">The claim register</h2>
@@ -101,7 +66,7 @@
         <%# config/storage.yml (S3, AWS_REGION default us-east-1), docs/render-deploy-checklist.md, docs/operations.md %>
         <tr class="block md:table-row border-t border-base-content/5 align-top py-3 md:py-0" data-claim="us">
           <th scope="row" class="block md:table-cell px-4 md:px-6 pt-2 pb-1 md:py-4 font-semibold">Your data is stored in the United States</th>
-          <td class="block md:table-cell px-4 md:px-6 pt-1 pb-2 md:py-4 text-base-content/80">The application and database run on Render and files live in AWS S3, both in US regions. Sub-processors are listed above.</td>
+          <td class="block md:table-cell px-4 md:px-6 pt-1 pb-2 md:py-4 text-base-content/80">The application, database and files all run in US regions. The providers are listed on the <%= link_to 'sub-processors page', subprocessors_path, class: 'link' %>.</td>
         </tr>
         <%# lib/accounts/export_archive.rb (manifest.json with per-file SHA-256), app/controllers/account_exports_controller.rb, docs/account-deletion.md %>
         <tr class="block md:table-row border-t border-base-content/5 align-top py-3 md:py-0" data-claim="export">
@@ -139,7 +104,7 @@
       <h2 id="not-heading" class="text-2xl md:text-3xl font-bold tracking-tight">What we do not claim</h2>
     </div>
     <div id="not-claimed" class="lg:col-span-8 space-y-4 text-base-content/80 leading-relaxed">
-      <p>We hold no certifications and do not claim any: no SOC 2 report, no HIPAA assessment, and we do not offer a data processing agreement. If your work needs those, EsignCenter is not the right tool yet, and we would rather say so here than in a sales call.</p>
+      <p>EsignCenter itself holds no certifications. The SOC 2 Type II reports behind our infrastructure belong to our hosting and storage providers, not to us: we have no SOC 2 report of our own, no HIPAA assessment, and we do not offer a data processing agreement. If your work needs those, EsignCenter is not the right tool yet, and we would rather say so here than in a sales call.</p>
       <p>Nothing on this site is legal advice. Whether an electronically signed document is enforceable depends on the document, the law that applies to it and the people involved; what we can promise is the evidence above, kept accurately, for every document you sign here.</p>
       <%# Both doors on purpose: the support form routes it and gets a receipt, and the raw address stays visible because a security report must not depend on a form, a CAPTCHA or JavaScript working. %>
       <p>Found a security problem? <%= link_to 'Tell us on the support form', support_path, class: 'link font-medium' %> (choose "Security report"), or email <%= mail_to Docuseal::SUPPORT_EMAIL, Docuseal::SUPPORT_EMAIL, class: 'link font-medium' %> directly. A real person reads it.</p>
