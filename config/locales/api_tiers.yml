@@ -12,7 +12,7 @@ en:
   billing_api_capacity: "Plan and API capacity"
   billing_current_tier: "Current plan: %{plan}"
   billing_switch_to: "Switch to %{plan}"
-  billing_business_price: "$%{base}/month includes 1 seat; $%{seat}/month per additional seat."
+  billing_business_price: "Business plan: $%{base}/month for %{completions} API completions a month and 1 seat; $%{seat}/month per additional seat."
   billing_plan_proration: "Upgrading to Business charges the prorated difference now. Moving to Paid takes effect at renewal, with no credit; Business capacity stays until then."
   billing_business_unavailable: "Business purchases are not available yet."
   billing_packs_unavailable: "API pack purchases are not available yet."
