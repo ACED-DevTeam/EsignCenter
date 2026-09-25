@@ -390,7 +390,14 @@ class BillingSettingsController < ApplicationController
       cancel_url: settings_billing_return_url(cancelled: 1),
       automatic_tax: { enabled: false },
       customer_update: { address: 'auto', name: 'auto' },
-      billing_address_collection: 'auto'
+      billing_address_collection: 'auto',
+      # The automatic-renewal consent, taken on the page that takes the card:
+      # the customer ticks a box agreeing to the Terms and to the renewal
+      # before Stripe will let them pay. Stripe refuses this unless the
+      # account's Terms of Service URL is set in the Dashboard's public
+      # details (docs/billing.md §5).
+      consent_collection: { terms_of_service: 'required' },
+      custom_text: { terms_of_service_acceptance: { message: renewal_consent_message } }
     }
 
     if @trial_available
@@ -399,6 +406,23 @@ class BillingSettingsController < ApplicationController
     end
 
     params
+  end
+
+  # The words beside Checkout's consent box (Stripe renders the Markdown
+  # link). Stripe shows the price and the trial end above it; this says what
+  # happens after that and how to stop it. English only, like the Terms it
+  # links to (docs/legal.md): what was agreed has to be one text.
+  def renewal_consent_message
+    terms = "[Terms of Service](#{root_url.delete_suffix('/')}/terms)"
+    renewal =
+      if @trial_available
+        "After the #{StripeBilling::TRIAL_PERIOD_DAYS}-day free trial, my card is charged automatically " \
+          'every month at the price shown until I cancel. Canceling before the trial ends costs nothing.'
+      else
+        'My card is charged now and then automatically every month at the price shown until I cancel.'
+      end
+
+    "I agree to the #{terms}. #{renewal} I can cancel at any time from Settings → Billing in EsignCenter."
   end
 
   # A double-clicked button inside the same minute must not create two Stripe

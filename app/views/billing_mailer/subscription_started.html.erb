@@ -1,0 +1,28 @@
+<%# The automatic-renewal acknowledgment. Every fact the Checkout consent box
+    stood for, in words the customer can keep: plan, price, when the card is
+    charged, that it renews until cancelled, and how to cancel. Refund and
+    cancellation rules are the Terms' §4, restated, never extended. %>
+<p><%= mail_greeting %></p>
+<% if @trial_ends_at %>
+  <p>Your free trial of the EsignCenter <%= @plan_name %> plan has started. Please keep this email: it sets out what you agreed to at checkout.</p>
+<% else %>
+  <p>Your EsignCenter <%= @plan_name %> subscription has started. Please keep this email: it sets out what you agreed to at checkout.</p>
+<% end %>
+<p><strong>Your plan:</strong> <%= @plan_name %>, <%= pluralize(@seats, 'user') %>.</p>
+<p><strong>Price:</strong> $<%= @monthly_usd %> per month<% unless @business %> ($<%= @price_per_seat %> per user)<% end %>, in US dollars. Sales tax is not included, and we do not currently collect it.</p>
+<% if @trial_ends_at %>
+  <p><strong>When you are charged:</strong> nothing during the trial. When it ends on <%= @trial_ends_at.utc.strftime('%-d %B %Y') %>, your card is charged $<%= @monthly_usd %>, and then again every month until you cancel.</p>
+<% elsif @renews_at %>
+  <p><strong>When you are charged:</strong> your card has been charged for the first month. It is charged $<%= @monthly_usd %> again on <%= @renews_at.utc.strftime('%-d %B %Y') %>, and then every month until you cancel.</p>
+<% else %>
+  <p><strong>When you are charged:</strong> your card has been charged for the first month, and it is charged $<%= @monthly_usd %> again every month until you cancel.</p>
+<% end %>
+<p><strong>Adding people:</strong> every user is a seat. Adding one raises the monthly price, and we show you the amount before you confirm it.</p>
+<p><strong>How to cancel:</strong> in EsignCenter, go to Settings → Billing and choose Manage billing, then Cancel subscription.
+  <% if @trial_ends_at %>
+    Cancel before <%= @trial_ends_at.utc.strftime('%-d %B %Y') %> and the plan costs you nothing.
+  <% end %>
+  After a payment, canceling stops the next renewal: the paid features continue to the end of the month you have paid for, and there are no prorated refunds.</p>
+<p><%= link_to 'Manage your subscription', @billing_url %></p>
+<p>The full rules are in our <%= link_to 'Terms of Service', @terms_url %> (section 4).</p>
+<p>Thanks,<br>EsignCenter</p>

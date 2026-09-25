@@ -331,7 +331,10 @@ each account's own name.
    monitoring is ON with tax collection OFF** (decision D22: no sales tax is
    collected at launch; revisit when a state's economic-nexus threshold,
    typically about $100k a year, approaches; the accountant confirms the
-   home-state Missouri rule).
+   home-state Missouri rule). Under the same Public details, the **Terms of
+   service URL** is `https://esigncenter.com/terms`: Checkout's required
+   Terms and automatic-renewal consent box will not work without it, and
+   every sale would fail.
 
    **One Stripe setting `rake stripe:check` cannot assert — set it by hand.**
    In the Stripe dashboard: **Settings → Billing → Subscriptions and emails →

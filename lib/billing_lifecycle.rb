@@ -36,6 +36,12 @@ module BillingLifecycle
   # state too, but it is the problem, not the recovery).
   RECOVERED_STATES = %w[trialing active canceling].freeze
 
+  # A subscription has STARTED when the row lands on one of these having been
+  # on nothing at all or on `cancelled` (a new row, a Checkout still open, or
+  # a subscription that ended before this one). Every other move between
+  # live states — a trial ending, a card recovering — is the same purchase.
+  STARTED_STATES = %w[trialing active].freeze
+
   # The dedupe counters are keyed on the dunning clock itself, not on a
   # calendar month: a grace period that starts on the 25th runs into the next
   # month, and a monthly counter would reset mid-run and send day 3 twice.
@@ -141,6 +147,35 @@ module BillingLifecycle
     guarded(row) { promote_parked_invites!(row, account) }
     guarded(row) { schedule_seat_reconciliation(row) }
     guarded(row) { send_state_mail!(row, account, transition) }
+
+    nil
+  end
+
+  # The automatic-renewal acknowledgment (BillingMailer#subscription_started),
+  # once per Stripe subscription. `was_state` is the row's access state
+  # before this apply, which is what tells a start from the nightly sweep
+  # re-applying a subscription that has been running for months — rows that
+  # were already live when this shipped are never mailed. The counter is the
+  # second lock: the webhook and the Checkout return both apply the same new
+  # subscription, and only one of them may send. Never raises.
+  def subscription_started!(row, was_state)
+    return unless manageable?(row)
+    return unless STARTED_STATES.include?(row.access_state)
+    return unless was_state.blank? || was_state == 'cancelled'
+    return if row.stripe_subscription_id.blank?
+
+    account = row.account
+
+    return if account.nil? || account.purge_claimed?
+    return unless AccountCounters.increment!(account.id, "started:#{row.stripe_subscription_id}",
+                                             period: COUNTER_PERIOD) == 1
+
+    BillingMailer.subscription_started(account, plan: row.plan, seats: row.quantity,
+                                                monthly_usd: row.monthly_amount_usd,
+                                                trial_ends_at: row.access_state == 'trialing' ? row.trial_end : nil,
+                                                renews_at: row.current_period_end).deliver_later!
+  rescue StandardError => e
+    ErrorReport.error(e, account_id: row.account_id)
 
     nil
   end
