@@ -994,7 +994,7 @@ export default {
     },
     // { version, locale, locale_token, consented, label, link_text,
     // required_message, stale_message, modal_id, pdf_url, view_pdf_text,
-    // open_pdf_first, sender_digest } from the Rails partial;
+    // sender_digest } from the Rails partial;
     // `consented: true` means no checkbox is shown.
     esignConsent: {
       type: Object,

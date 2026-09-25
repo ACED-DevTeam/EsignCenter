@@ -54,31 +54,12 @@ module SigningFormHelper
   # consented yet). Completion buttons stay disabled until it is ticked. Call it
   # with the form expanded (after "Sign now" / "Start now" on collapsed steps).
   #
-  # The box itself is disabled until the signer has opened the document as a
-  # PDF (§7001(c): confirm your device can display the record), so the link
-  # goes first.
-  #
-  # The link opens the PDF in a new tab, which leaves the signing page in the
-  # background — and a background tab gets no requestAnimationFrame, which is
-  # what draw_canvas rides on, so a signature drawn afterwards would come out
-  # as a single dot ("too small or simple"). Real signers come back to the
-  # signing tab; the test says so explicitly.
+  # The "View this document as a PDF" link beside it is optional (v3), so it
+  # is left alone: following it would put the signing page in a background tab.
   def agree_to_esign_consent
     return unless page.has_css?('#esign_consent', wait: 5)
 
-    if page.has_css?('#esign_consent_view_pdf', wait: 1)
-      find_by_id('esign_consent_view_pdf').click
-
-      return_to_signing_tab
-    end
-
     check 'esign_consent'
-  end
-
-  def return_to_signing_tab
-    page.driver.browser.page.command('Page.bringToFront')
-  rescue StandardError
-    nil
   end
 
   def field_value(submitter, field_name)

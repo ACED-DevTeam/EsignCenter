@@ -22,41 +22,79 @@
 # EFFECTIVE_DATE, then recompute the digests below
 # (`EsignConsent.disclosure_sha256(version:, locale:, self_signing:)`).
 #
-# Computed 2026-09-06 from config/locales/i18n.yml for v2 (effective
-# 5 September 2026). Two per locale: the disclosure a signer sent a document by
+# LIVE was computed 2026-09-23 from config/locales/i18n.yml for v3 (effective
+# 23 September 2026). Two per locale: the disclosure a signer sent a document by
 # somebody else reads, and the self-signing variant a sender signing their own
 # document reads, which is fingerprinted separately on the event.
+#
+# ARCHIVED keeps each superseded version's digests exactly as they were pinned
+# while it was live: consents already on record carry them, so the archive
+# snapshot must go on hashing to the same bytes for ever.
 module ConsentDisclosureDigests
-  VERSION = 'v2'
+  VERSION = 'v3'
   LIVE = {
-    'en' => { text: 'e8ddd3babdf9e57a6ad35092be37f20444774d524c567b6e6ed85cd3538be549',
-              self_signing: '5b5a532c674ef2dc7abd99836339065c9826ee77ae92892b28813daeb02fbc04' },
-    'es' => { text: '479e5dc5b4a0bf17c3f59322516fdcf0178af19f07207673ede0ecd51cfcd194',
-              self_signing: '20a19fa59ec4003d58c633bb2b7c74f5e55011dc05cd0a9392bcd1f28a1a0347' },
-    'fr' => { text: 'd960849349677619b95a4e0fbd26772cdc1a3b5e4f325809cefe6e43664ff6b9',
-              self_signing: '5fee9e857fdc31c04a1330fdca75c1ce0cef2b4a117f181c8d4e1242ce8a673f' },
-    'pt' => { text: '8bee90241158d96049c80726d88809580bd4c518c90f53a83f4952ec13c2c529',
-              self_signing: 'cf47d09f91db379edd7e865e7a556e52f698d7a85a3cf8d1eb839a146bf73135' },
-    'de' => { text: 'd3626ad7cb56716210b067fc098c5d49c53da65da4ac9c7e8ac74cd49003d3f1',
-              self_signing: '81ac410d553f55830aac763c1434da55121d668e4e9c8a3f533013c4e63bec16' },
-    'it' => { text: '20455d6cc287ace687a1cf7e46a1b7286492da69e782c9e967d9150659e602db',
-              self_signing: 'cb12a15a443df4492d05c68823523c994a3c53b6156126c350f5b3dc32e72547' },
-    'nl' => { text: 'ab88b38c6a7074efedb31aea857c51361a444b6fb299b613d4bcdabcda52993e',
-              self_signing: '2107c6960d38cedbc7526531b8e216154f1eb41dd53eed4f47c07845d3a844f3' },
-    'pl' => { text: '1a8379fc5b482dc27050387ada29702e399b5864171221611066cd02999904e3',
-              self_signing: 'fd001e8df108971d0220348c93efbbc0b67e3cc500e04bf96930f411c9bf92c6' },
-    'uk' => { text: '5ba5bc57f266893327a26d6f01b8ae9556ff1f5b44bd44911a1fe45c031f85b9',
-              self_signing: '034b5a68422d82c7bf5b8ba4cd0e781bc13f6f3068815ee9fe1fbd0c00b6f480' },
-    'cs' => { text: '9798f341196dd51a85f16e7206698b1de08a339044e8e0475d15bc02e9b40389',
-              self_signing: 'f36b1dfb927c6ee794859fdcb81fd3fd6d70a0454e24180babd640565582f827' },
-    'he' => { text: '47f246f4ac37bf0b9f19413a2292bd0233b8460308edaff0946fc31df3d84a55',
-              self_signing: '478ae253f522b97d2f0d43c55f7c30584f58c2a68f80180d24725c1d2b78d4da' },
-    'ar' => { text: '42247e56810d00ba7e2d5f8c377d67593f68466b8be15b6077df3ee2be5548ac',
-              self_signing: '91d76ef40c1bdd53e515f5229510afdf15701f93d61757c9325e0a51c7de2767' },
-    'ko' => { text: '85bfc897b510a293c2427fc2d5193c01597cea8fff1cf1f80a4c3857d57a5bb3',
-              self_signing: '91c61a17208994dfdbcb3a3e1fc100bceb596672b86477220a3cae352e9ad541' },
-    'ja' => { text: '1bc9765f2f751cea8f3fd596eb3ab87bc8153835376932a6de32a605e9bbc738',
-              self_signing: '7140cac7d5c8200d335376a8fe72e1182b0c7c35025f4ce5a049577ff4bd45a1' }
+    'en' => { text: '1535df5ec7d96384ead1199fd6b8348bac1432c40e721cab441e0c33e83d628b',
+              self_signing: '6e9d64b825b09104557a52f5d10049d451234896e388a0e1c370b21e839c42fd' },
+    'es' => { text: '2495c9e47f3f81b2349d0018a400677a31192268d5cbf2aeb3a877bf75db6f18',
+              self_signing: '5d9c1f9b7d1f614f438168c8315e1333c1002e83a539edfd42f104c330ecb67f' },
+    'fr' => { text: '9117e11655f7bef1a8c3c5e0e13dbb6cf56921fb1ea5e9dd7d8f63f37fa9bf20',
+              self_signing: '9229c8d16dcd930bc2cca6c72e79d6b46b9171849f0916809f09ddd91b7dd100' },
+    'pt' => { text: 'ee56b3a2df2abe9c4d443c37fcc0bcc6d0a795128213ce524579026b5c64a4a1',
+              self_signing: 'd842d7b9246493feb61b8cc1a0d6df2f229cfc0ccaf1f9eb0809d8d3e596795a' },
+    'de' => { text: '36932c5ee12cf18eddf4bbbe8f3a1e918dd79edb3aa3800bcd5763cdde7f56a4',
+              self_signing: '25f35a399c51501ded072455bef188c626412f7d6ea17a8c441ef4967524a7e7' },
+    'it' => { text: '48ed3b9e6244e7686acb7769c473b3e3b8ce1ba6f411372017bbc53bcbcb9d4e',
+              self_signing: 'b3dca79095cb7ac3feb40507ca35468e4f78e83cb15efd263a9a65c5fdb48ef9' },
+    'nl' => { text: '19f0f0857d4120e56c7664caa9a058bb35c18649ac7f52849021e88076a4fb54',
+              self_signing: '296a781153f79c0bbcfc01be66d7899853f69357ad3111a2d9542971d39020fc' },
+    'pl' => { text: '09a1852b8e62306ee5de540b184880408cc01cb679ca9328e2af66113f98b29c',
+              self_signing: 'ebae8f48576d73e2adaabe8dd006dc303373ccbac6de287352a4078824734d72' },
+    'uk' => { text: 'e0f524df912bcd3e4f9764a012c28cd00523145ba23b7f74f36d4b668f80d50d',
+              self_signing: 'f4fdafbbb715fdec0734006214dd0ae55b30edd91211e3263d646a1d8c2ab926' },
+    'cs' => { text: '16430f3b762bc8ae8dc089c687354bc4923e5bc4f00ce9eac7b37da7755c1fd4',
+              self_signing: '7e28eaad6e8a9e9e33eda7489d8298971f8a26a3e9569093ab2df3f845d78d27' },
+    'he' => { text: '65a5f101b2a196620b7ab3bf7a79f053f927ef8ac12b56478bdf04d5a7ce899b',
+              self_signing: 'b6ec5b3e076b9ee8c86b129a9f0ebd003a62eaaa137a26300804a2bd04a0e814' },
+    'ar' => { text: '940c1ab1a6bddc3456aed1a368619ede269179cb673c9d2aef476ab87c769eb5',
+              self_signing: '5eea55b3dea35c1387f437ff10250cdb4076138a8f8df1165561d4dd1f970ae5' },
+    'ko' => { text: 'e94f931e533505fbbbfc8e1831f2e198443824398cb5e10cb3b89a99497c7155',
+              self_signing: 'aaafe22b308c242ec48a6351a25dcd2630f8c1cdae8385150dbde1c950a43af3' },
+    'ja' => { text: '792897877f0c3eb8d7d9a16eb54d05e6c58cc9ed9b89eb53141ffd647378ee8e',
+              self_signing: '32d6d52dad08aae7ff3db83b42adba91b27efdbae9cae6c61ec2609bfe20294d' }
+  }.freeze
+
+  ARCHIVED = {
+    # v2: effective 5 September 2026, superseded by v3 on 23 September 2026.
+    'v2' => {
+      'en' => { text: 'e8ddd3babdf9e57a6ad35092be37f20444774d524c567b6e6ed85cd3538be549',
+                self_signing: '5b5a532c674ef2dc7abd99836339065c9826ee77ae92892b28813daeb02fbc04' },
+      'es' => { text: '479e5dc5b4a0bf17c3f59322516fdcf0178af19f07207673ede0ecd51cfcd194',
+                self_signing: '20a19fa59ec4003d58c633bb2b7c74f5e55011dc05cd0a9392bcd1f28a1a0347' },
+      'fr' => { text: 'd960849349677619b95a4e0fbd26772cdc1a3b5e4f325809cefe6e43664ff6b9',
+                self_signing: '5fee9e857fdc31c04a1330fdca75c1ce0cef2b4a117f181c8d4e1242ce8a673f' },
+      'pt' => { text: '8bee90241158d96049c80726d88809580bd4c518c90f53a83f4952ec13c2c529',
+                self_signing: 'cf47d09f91db379edd7e865e7a556e52f698d7a85a3cf8d1eb839a146bf73135' },
+      'de' => { text: 'd3626ad7cb56716210b067fc098c5d49c53da65da4ac9c7e8ac74cd49003d3f1',
+                self_signing: '81ac410d553f55830aac763c1434da55121d668e4e9c8a3f533013c4e63bec16' },
+      'it' => { text: '20455d6cc287ace687a1cf7e46a1b7286492da69e782c9e967d9150659e602db',
+                self_signing: 'cb12a15a443df4492d05c68823523c994a3c53b6156126c350f5b3dc32e72547' },
+      'nl' => { text: 'ab88b38c6a7074efedb31aea857c51361a444b6fb299b613d4bcdabcda52993e',
+                self_signing: '2107c6960d38cedbc7526531b8e216154f1eb41dd53eed4f47c07845d3a844f3' },
+      'pl' => { text: '1a8379fc5b482dc27050387ada29702e399b5864171221611066cd02999904e3',
+                self_signing: 'fd001e8df108971d0220348c93efbbc0b67e3cc500e04bf96930f411c9bf92c6' },
+      'uk' => { text: '5ba5bc57f266893327a26d6f01b8ae9556ff1f5b44bd44911a1fe45c031f85b9',
+                self_signing: '034b5a68422d82c7bf5b8ba4cd0e781bc13f6f3068815ee9fe1fbd0c00b6f480' },
+      'cs' => { text: '9798f341196dd51a85f16e7206698b1de08a339044e8e0475d15bc02e9b40389',
+                self_signing: 'f36b1dfb927c6ee794859fdcb81fd3fd6d70a0454e24180babd640565582f827' },
+      'he' => { text: '47f246f4ac37bf0b9f19413a2292bd0233b8460308edaff0946fc31df3d84a55',
+                self_signing: '478ae253f522b97d2f0d43c55f7c30584f58c2a68f80180d24725c1d2b78d4da' },
+      'ar' => { text: '42247e56810d00ba7e2d5f8c377d67593f68466b8be15b6077df3ee2be5548ac',
+                self_signing: '91d76ef40c1bdd53e515f5229510afdf15701f93d61757c9325e0a51c7de2767' },
+      'ko' => { text: '85bfc897b510a293c2427fc2d5193c01597cea8fff1cf1f80a4c3857d57a5bb3',
+                self_signing: '91c61a17208994dfdbcb3a3e1fc100bceb596672b86477220a3cae352e9ad541' },
+      'ja' => { text: '1bc9765f2f751cea8f3fd596eb3ab87bc8153835376932a6de32a605e9bbc738',
+                self_signing: '7140cac7d5c8200d335376a8fe72e1182b0c7c35025f4ce5a049577ff4bd45a1' }
+    }
   }.freeze
 end
 
@@ -109,10 +147,11 @@ RSpec.describe 'ESIGN consent version', type: :request do
     # version at all is stale too — nothing vouches for which text that page
     # showed, so the signer reloads and agrees again. Both refusals happen
     # before any write, so both cases assert the same empty aftermath.
-    # `v1` is the archived launch disclosure (config/locales/esign_disclosures):
-    # its text is still readable, but a consent given on it is no longer current.
+    # `v1` and `v2` are archived disclosures (config/locales/esign_disclosures):
+    # their text is still readable, but a consent given on them is no longer current.
     [['for a version other than the current one', { esign_consent_version: 'v0' }],
      ['for the superseded v1 disclosure', { esign_consent_version: 'v1' }],
+     ['for the superseded v2 disclosure', { esign_consent_version: 'v2' }],
      ['without a version at all', {}]].each do |description, version_params|
       it "refuses a consent #{description} as stale and records nothing" do
         complete(submitter, esign_consent: 'true', **version_params)
@@ -495,7 +534,7 @@ RSpec.describe 'ESIGN consent version', type: :request do
 
   # B-F4's CI guard: see ConsentDisclosureDigests above.
   describe 'the live disclosure fingerprints' do
-    it 'still hashes to the pinned v2 digests in every base locale' do
+    it 'still hashes to the pinned v3 digests in every base locale' do
       expect(EsignConsent::VERSION).to eq(ConsentDisclosureDigests::VERSION),
                                        'the version was bumped: re-pin ConsentDisclosureDigests::LIVE'
       expect(EsignConsent.locales).to match_array(ConsentDisclosureDigests::LIVE.keys)
@@ -505,6 +544,21 @@ RSpec.describe 'ESIGN consent version', type: :request do
           .to eq(digests.fetch(:text)), locale
         expect(EsignConsent.disclosure_sha256(version: EsignConsent::VERSION, locale:, self_signing: true))
           .to eq(digests.fetch(:self_signing)), "#{locale} (self-signing)"
+      end
+    end
+
+    # A bump archives the old text; this proves the archive is the text that
+    # was live, byte for byte, for both variants in every base locale.
+    it 'still hashes every archived version to the digests pinned while it was live' do
+      ConsentDisclosureDigests::ARCHIVED.each do |version, locales|
+        expect(EsignConsent.locales).to match_array(locales.keys)
+
+        locales.each do |locale, digests|
+          expect(EsignConsent.disclosure_sha256(version:, locale:))
+            .to eq(digests.fetch(:text)), "#{version} #{locale}"
+          expect(EsignConsent.disclosure_sha256(version:, locale:, self_signing: true))
+            .to eq(digests.fetch(:self_signing)), "#{version} #{locale} (self-signing)"
+        end
       end
     end
   end
@@ -571,7 +625,7 @@ RSpec.describe 'ESIGN consent version', type: :request do
 
     after do
       live_self_signing.each { |locale, keys| I18n.backend.store_translations(locale.to_sym, keys) }
-      unarchive!('v2', EsignConsent.locales)
+      unarchive!('v3', EsignConsent.locales)
     end
 
     # (b) The resolver and the fingerprint are the same text by construction:
@@ -610,45 +664,45 @@ RSpec.describe 'ESIGN consent version', type: :request do
         .to eq(ConsentDisclosureDigests::LIVE.fetch(locale).fetch(:self_signing))
     end
 
-    # (2) The bump this whole rule exists for. v2 is archived (body and
-    # paragraphs together), VERSION moves to v3, and v3 rewrites a self-signing
-    # paragraph. The v2 event's words — and its fingerprint — must not move.
+    # (2) The bump this whole rule exists for. v3 is archived (body and
+    # paragraphs together), VERSION moves to v4, and v4 rewrites a self-signing
+    # paragraph. The v3 event's words — and its fingerprint — must not move.
     it 'keeps an old self-signing consent readable after a bump that rewrites the live paragraphs' do
       complete(self_signer, **current_consent(self_signer))
 
       expect(response).to have_http_status(:ok)
 
       event = consent_events(self_signer).sole
-      as_signed = EsignConsent.disclosure_text(version: 'v2', locale: event.data['locale'], self_signing: true)
+      as_signed = EsignConsent.disclosure_text(version: 'v3', locale: event.data['locale'], self_signing: true)
 
-      archive!('v2', EsignConsent.locales)
-      stub_const('EsignConsent::VERSION', 'v3')
+      archive!('v3', EsignConsent.locales)
+      stub_const('EsignConsent::VERSION', 'v4')
 
       EsignConsent.locales.each do |locale|
         I18n.backend.store_translations(locale.to_sym,
-                                        esign_consent_disclosure_self_signing: "Rewritten for v3 (#{locale}).")
+                                        esign_consent_disclosure_self_signing: "Rewritten for v4 (#{locale}).")
       end
 
       text = EsignConsent.disclosure_text(version: event.data['version'], locale: event.data['locale'],
                                           self_signing: event.data['self_signing'])
 
       expect(text).to eq(as_signed)
-      expect(text).not_to include('Rewritten for v3')
+      expect(text).not_to include('Rewritten for v4')
       expect(EsignConsent.text_sha256(text)).to eq(event.data['disclosure_sha256'])
 
       ConsentDisclosureDigests::LIVE.each do |locale, digests|
-        # Every locale's v2 self-signing text still hashes to what it hashed to
+        # Every locale's v3 self-signing text still hashes to what it hashed to
         # before the bump — the digest on record for those signers.
-        expect(EsignConsent.disclosure_sha256(version: 'v2', locale:, self_signing: true))
-          .to eq(digests.fetch(:self_signing)), locale
-        expect(EsignConsent.disclosure_text(version: 'v2', locale:, self_signing: true))
-          .not_to include('Rewritten for v3'), locale
-
-        # And the edit really did land: v3 is a different text, as it should be.
-        expect(EsignConsent.disclosure_text(version: 'v3', locale:, self_signing: true))
-          .to include("Rewritten for v3 (#{locale}).")
         expect(EsignConsent.disclosure_sha256(version: 'v3', locale:, self_signing: true))
-          .not_to eq(digests.fetch(:self_signing)), "#{locale} (v3)"
+          .to eq(digests.fetch(:self_signing)), locale
+        expect(EsignConsent.disclosure_text(version: 'v3', locale:, self_signing: true))
+          .not_to include('Rewritten for v4'), locale
+
+        # And the edit really did land: v4 is a different text, as it should be.
+        expect(EsignConsent.disclosure_text(version: 'v4', locale:, self_signing: true))
+          .to include("Rewritten for v4 (#{locale}).")
+        expect(EsignConsent.disclosure_sha256(version: 'v4', locale:, self_signing: true))
+          .not_to eq(digests.fetch(:self_signing)), "#{locale} (v4)"
       end
     end
 
@@ -731,9 +785,9 @@ RSpec.describe 'ESIGN consent version', type: :request do
     it 'carries a body AND a self-signing answer for every version in every locale' do
       versions = archived_versions
 
-      # The walk has to be real: v1 is on file today, and so are all 14 base
-      # locales the disclosure ships in.
-      expect(versions).to include('v1')
+      # The walk has to be real: v1 and v2 are on file today, and so are all
+      # 14 base locales the disclosure ships in.
+      expect(versions).to include('v1', 'v2')
       expect(EsignConsent.locales.size).to be >= 14
 
       versions.each do |version|
