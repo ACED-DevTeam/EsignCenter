@@ -325,12 +325,14 @@ module Accounts
     MailConfigs.resolve(account).source != :none
   end
 
-  # Signing requests of every kind — the first one, the next signer's, a
-  # resend, a reminder — stop while the account's sending is paused (a spam
-  # complaint or a bounce storm, lib/sending_pause.rb), paid or free. The
-  # pause used to stop only the creation of new documents, which left an
-  # account under review free to keep mailing the documents it already had.
-  # Internal and operator accounts are never paused.
+  # Signing requests stop while the account's sending is paused (a spam
+  # complaint or a bounce storm, lib/sending_pause.rb), paid or free: a first
+  # request still queued, a resend, a reminder. The pause used to stop only
+  # the creation of new documents, which left an account under review free
+  # to keep mailing the documents it already had. The one exception, the
+  # next signer on a document somebody already signed, lives in
+  # SendSubmitterInvitationEmailJob. Internal and operator accounts are never
+  # paused.
   def can_send_invitation_emails?(account)
     !SendingPause.paused?(account)
   end
