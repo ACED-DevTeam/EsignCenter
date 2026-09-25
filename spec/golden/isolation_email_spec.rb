@@ -207,6 +207,63 @@ RSpec.describe 'Email tenant isolation', type: :lib do
     end
   end
 
+  # Platform notices leave from noreply@, so a reply to a bill, a quota
+  # warning, a deletion or dormancy notice or an invitation has to reach a
+  # person: Reply-To is the support address. The customer's own mail to their
+  # signers is NOT a platform notice and keeps its own rule
+  # (Submitters::ReplyTo): the sender's address, or nothing — never ours.
+  it 'puts the support address on Reply-To for platform notices, and only for them' do
+    account = create(:account, :paid)
+    user = create(:user, account:)
+    invite = create(:account_invite, account:)
+    ENV['SMTP_ADDRESS'] = 'platform.smtp.example'
+    ENV['SMTP_FROM'] = 'EsignCenter <platform@example.com>'
+    allow(MailConfigs).to receive(:delivery_mode).and_return('smtp')
+
+    platform = [
+      BillingMailer.payment_failed(account, day: 1), BillingMailer.suspended(account),
+      QuotaMailer.storage_warning(account), QuotaMailer.completions_warning(account),
+      AccountMailer.deletion_cancelled_to(account, user.email),
+      AccountMailer.dormant_warning_to(account, user.email, days_left: 30, purge_at: 30.days.from_now),
+      AccountMailer.deletion_code(user, code: '123456'),
+      AccountInviteMailer.invitation(invite, invite.raw_token), UserMailer.invitation_email(user)
+    ]
+    platform.each do |delivery|
+      message = delivery.message
+      ActionMailerConfigsInterceptor.delivering_email(message)
+
+      expect(message.from).to eq(['platform@example.com'])
+      expect(message.reply_to).to eq([Docuseal::SUPPORT_EMAIL]), "#{message.subject} has no support Reply-To"
+    end
+
+    # The support form's own notice answers the requester, as it always has.
+    support = SupportMailer.request_received(name: 'Owner', email: 'owner@example.com', topic: 'other',
+                                             topic_label: 'Other', message: 'Help', ip: '127.0.0.1').message
+    expect(support.reply_to).to eq(['owner@example.com'])
+
+    # The SMTP test is sent from the customer's own address and server.
+    expect(SettingsMailer.smtp_successful_setup('owner@example.com', account).message.reply_to).to be_nil
+  end
+
+  it 'leaves signer mail with the sender as Reply-To, never the platform support address' do
+    account = create(:account, :paid)
+    author = create(:user, account:, email: 'sender@acme.example')
+    template = create(:template, account:, author:)
+    submission = create(:submission, template:, created_by_user: author)
+    submitter = create(:submitter, submission:, uuid: template.submitters.first['uuid'],
+                                   email: 'signer@example.com')
+
+    message = SubmitterMailer.invitation_email(submitter).message
+
+    expect(message.reply_to).to eq(['sender@acme.example'])
+    expect(message.reply_to).not_to include(Docuseal::SUPPORT_EMAIL)
+
+    # Signing your own document: nobody new to reply to, so no Reply-To at all.
+    submitter.update!(email: author.email)
+
+    expect(SubmitterMailer.invitation_email(submitter.reload).message.reply_to).to be_nil
+  end
+
   it 'keeps the SMTP setup test on the pin and explicitly excludes failure monitoring' do
     account = create(:account, :paid)
     pin_smtp(account)
