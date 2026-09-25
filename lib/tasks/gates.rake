@@ -263,7 +263,7 @@ module Gates
     {
       file: 'lib/docuseal.rb',
       snippets: ["DOCUSEAL_SOURCE_URL = 'https://github.com/docusealco/docuseal'",
-                 "SUPPORT_EMAIL = 'evan@processorteam.com'"]
+                 "SUPPORT_EMAIL = 'support@aceddev.com'"]
     }
   ].freeze
   # Keeping the partials alive proves nothing if the pages stop rendering them:
@@ -302,7 +302,7 @@ module Gates
   # The QR page carries its own branding partial, so it names its own call.
   QR_RENDER_SITE = 'app/views/templates_share_link_qr/show.html.erb'
   QR_RENDER_CALLS = ["render 'branding'"].freeze
-  EXPECTED_SUPPORT_EMAIL = 'evan@processorteam.com'
+  EXPECTED_SUPPORT_EMAIL = 'support@aceddev.com'
 
   module_function
 

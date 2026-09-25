@@ -33,6 +33,7 @@ class ApplicationMailer < ActionMailer::Base
   after_action :set_message_uuid
   after_action :set_mail_account_header
   after_action :set_mail_route_header
+  after_action :set_platform_reply_to
 
   def default_url_options
     Docuseal.default_url_options.merge(host: ENV.fetch('EMAIL_HOST', Docuseal.default_url_options[:host]))
@@ -189,6 +190,22 @@ class ApplicationMailer < ActionMailer::Base
 
   def smtp_setup_test?
     false
+  end
+
+  # A platform notice leaves from noreply@, and the reader who presses Reply
+  # on a bill, a quota warning or a deletion notice is asking us something —
+  # so the answer goes to support. Only when the mailer has not already named
+  # a Reply-To (SupportMailer points it at the requester), and never on the
+  # SMTP connectivity test, which is sent from the customer's own address
+  # through the customer's own server. The customer's mail to their signers
+  # is not a platform notice and keeps its own Reply-To rules
+  # (Submitters::ReplyTo).
+  def set_platform_reply_to
+    return unless platform_notice?
+    return if smtp_setup_test?
+    return if message.reply_to.present?
+
+    message.reply_to = Docuseal::SUPPORT_EMAIL
   end
 
   def set_mail_account_header
