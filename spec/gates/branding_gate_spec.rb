@@ -218,7 +218,7 @@ RSpec.describe 'Branding gate' do
 
     it 'pins the support email constant' do
       expect(Gates.support_email_failures).to be_empty
-      expect(Docuseal::SUPPORT_EMAIL).to eq('evan@processorteam.com')
+      expect(Docuseal::SUPPORT_EMAIL).to eq('support@aceddev.com')
     end
   end
 

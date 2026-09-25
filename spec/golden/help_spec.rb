@@ -326,9 +326,32 @@ RSpec.describe 'Help centre', type: :request do
       expect(body).to include("#{limits::FREE_SENDS_PER_MONTH} documents sent a month")
       expect(body).to include("#{limits::FREE_IN_FLIGHT} documents out for signature at once")
       expect(body).to include("#{limits::FREE_SEATS} user")
-      expect(body).to include(ActiveSupport::NumberHelper.number_to_human_size(limits::FREE_STORAGE_BYTES))
-      expect(body).to include(ActiveSupport::NumberHelper.number_to_human_size(limits::PAID_STORAGE_BYTES_PER_SEAT))
       expect(body).to include(limits::FREE_COMPLETIONS_WARNING_AT.to_s)
+    end
+
+    # Storage is sold as "we store your documents" (owner decision): the cap
+    # stays in force as a fair-use safeguard, but no customer page names its
+    # size. The article says storage is included, that administrators are
+    # warned first, and that sending and signing never stop.
+    it 'describes storage as included, with no size anywhere in the help centre' do
+      get help_article_path('free-plan-limits')
+
+      body = doc.at_css('article.help-article').text.squish
+      expect(body).to include('Document storage, included.')
+      expect(body).to include('we email its administrators first')
+      expect(body).to include('Storage never stops you sending or signing.')
+
+      HelpCenter.articles.each do |article|
+        get help_article_path(article.slug)
+
+        text = doc.at_css('article.help-article').text
+        # A per-file upload ceiling (verify-a-signed-document) is not storage
+        # and may be stated; a gigabyte figure or either storage cap may not.
+        expect(text).not_to match(/\b\d+(\.\d+)?\s*(GB|TB|gigabytes?)\b/i), "#{article.slug} states a storage size"
+        [limits::FREE_STORAGE_BYTES, limits::PAID_STORAGE_BYTES_PER_SEAT].each do |bytes|
+          expect(text).not_to include(ActiveSupport::NumberHelper.number_to_human_size(bytes))
+        end
+      end
     end
 
     it 'renders the trial length, the seat price and the dunning count from their constants' do

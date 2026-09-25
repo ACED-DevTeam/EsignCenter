@@ -20,13 +20,21 @@ The pages are `/terms` and `/privacy`. They are public — no login, no account
 
 The two documents are **ERB templates, not views**. Every number in them —
 the free plan's five completions, the $10 seat, the 14-day trial, the 90-day
-deletion window, the storage caps — is interpolated from the constant the
+deletion window — is interpolated from the constant the
 product actually applies (`Quotas::Limits`, `StripeBilling::TRIAL_PERIOD_DAYS`,
 `BillingSettingsController::PRICE_PER_SEAT_USD`, `Accounts::Deletion`,
 `Accounts::Retention`, `BillingLifecycle`). A Terms of Service that repeats a
 number by hand will eventually promise an allowance the code does not give,
 and `spec/golden/legal_spec.rb` pins every one of them against its constant so
 that cannot happen quietly.
+
+**Two things are deliberately not stated as numbers.** Storage is described as
+included, subject to fair use: the caps in `Quotas::Limits` still apply as a
+safeguard, but no customer-facing text (these documents, the pricing page,
+help, the usage page, the quota mail) quotes their size, and the legal,
+marketing and help golden specs fail if a gigabyte figure comes back. Sales
+tax is not collected at launch (D22/D22a, Stripe Tax off), so the Terms say
+prices do not include it and that we will tell customers before adding it.
 
 **Rendering is deterministic.** Nothing time-dependent may go into either
 template: the same version always renders the same bytes, wherever and
@@ -114,14 +122,44 @@ archived text for a superseded version, the live text for the current one,
 `LegalDocuments::ArchiveMismatchError` for an archived file that no longer
 matches its recorded digest.
 
-The Privacy Policy has been through this once already: `2026-09-05` is
-archived, `2026-09-06` is live. The change corrected two statements the code
-did not support — what is kept when an account holder signs in (the IP
+The Privacy Policy has been through this more than once: `2026-09-05`,
+`2026-09-06` and `2026-09-23` are archived, and `2026-09-25` is live. The
+`2026-09-06` change corrected two statements the code did not support — what is kept when an account holder signs in (the IP
 address of the current and previous sign-in, and nothing about the browser;
 no separate record at all for a password change or a two-factor enrollment),
 and what an audit trail says about a signer's email (the open and click
 events stay off-plan, but the trail records on every plan that the address
 was verified, because a click on the emailed link is what verifies it).
+
+### The pre-launch copy and legal pass (September 25, 2026)
+
+One bump of each document, covering every change in that review:
+
+| Document | Archived | Now live | Effective | Live SHA-256 |
+| --- | --- | --- | --- | --- |
+| Terms | `2026-09-25` | `2026-09-26` | September 26, 2026 | `37d85b97ceb44190f407bc90492de034a4a4380a9a30d78c4e0eb24dcca15f6c` |
+| Privacy | `2026-09-23` | `2026-09-25` | September 25, 2026 | `11340517403fd1760dcfb0290ae9be41332682da4cd62230bfced2a5396e9e1d` |
+
+The Terms take the next date rather than `2026-09-25` because `2026-09-25`
+was already published (the API usage tiers bump) and two texts may never
+share a version. Both archived texts were rendered from the code as it stood
+before the pass and checked against their recorded digests before being
+written. What changed:
+
+* **Support address** — `support@aceddev.com` (`Docuseal::SUPPORT_EMAIL`),
+  wherever either document names it.
+* **Sign in with Apple** — named beside Google in Terms §2 and §19 and in the
+  Privacy Policy (the random password, the profile we receive, Apple's private
+  relay address, and a row in the sub-processor table).
+* **Storage** — included, subject to fair use; administrators are emailed
+  before uploads pause; sending and signing are never stopped. No sizes.
+* **Sales tax** — prices do not include it, we do not collect it today, and
+  we will say so before adding it to an invoice.
+* **Turnstile** — on the sign-up **and** support forms.
+* **Sub-processor list** — both documents now link `/trust/subprocessors`.
+
+Step 4 above (emailing every account's administrators before the effective
+date) is still owed for this bump. Counsel has not reviewed these texts (§4).
 
 ## 3. What is recorded when somebody agrees
 
@@ -235,9 +273,11 @@ Before launch, a lawyer needs to settle at least these:
 7. **The signer's own consent flow** — the five questions about electronic
    records and signatures, the disclosure text and what is recorded — is a
    separate document, `docs/esign-consent.md`. Review it alongside these.
-8. **The sub-processor list** in the Privacy Policy §5 must match the Trust
-   page (`/trust`) and reality. Changing a vendor changes both, and bumps the
-   Privacy Policy's version.
+8. **The sub-processor list** in the Privacy Policy §5 must match the
+   Sub-processors page (`/trust/subprocessors`) and reality. Changing a vendor
+   changes both, and bumps the Privacy Policy's version;
+   `spec/golden/marketing_spec.rb` fails if a company in the Privacy table is
+   missing from the page.
 9. **Arbitration and a class-action waiver.** There is neither today. Whether
    to add them, and in what form, is a decision with real consequences for
    consumers and is not one an engineer should make.

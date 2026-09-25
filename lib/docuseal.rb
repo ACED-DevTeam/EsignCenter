@@ -16,7 +16,7 @@ module Docuseal
   # app's own address, overridable per deployment.
   PRODUCT_EMAIL_URL = ENV.fetch('PRODUCT_EMAIL_URL', DEFAULT_APP_URL)
   GITHUB_URL = 'https://github.com/ACED-DevTeam/EsignCenter'
-  SUPPORT_EMAIL = 'evan@processorteam.com'
+  SUPPORT_EMAIL = 'support@aceddev.com'
 
   # There is no environment escape hatch for signing certificates: every
   # account signs with the platform certificate or its own row (Session 4).
