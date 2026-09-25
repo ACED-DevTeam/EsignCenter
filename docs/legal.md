@@ -123,7 +123,7 @@ archived text for a superseded version, the live text for the current one,
 matches its recorded digest.
 
 The Privacy Policy has been through this more than once: `2026-09-05`,
-`2026-09-06` and `2026-09-23` are archived, and `2026-09-25` is live. The
+`2026-09-06`, `2026-09-23` and `2026-09-25` are archived, and `2026-09-26` is live. The
 `2026-09-06` change corrected two statements the code did not support — what is kept when an account holder signs in (the IP
 address of the current and previous sign-in, and nothing about the browser;
 no separate record at all for a password change or a two-factor enrollment),
@@ -173,6 +173,33 @@ now pays for an added pack in full when it is added, exactly as an active
 subscription does; the trial continues and the pack renews monthly once it
 ends. The archived `2026-09-26` text was rendered from the prior code and
 checked against its recorded digest. Step 4 is owed for this bump too.
+
+### Sensitive information and Do Not Track (September 25, 2026)
+
+| Document | Archived | Now live | Effective | Live SHA-256 |
+| --- | --- | --- | --- | --- |
+| Terms | `2026-09-27` | `2026-09-28` | September 28, 2026 | `4676747c166e9a64735d93a06a1581f74c9eeabf7455284ff14eb90c86a03a81` |
+| Privacy | `2026-09-25` | `2026-09-26` | September 26, 2026 | `9182dbb72ea37b01cb3425ae1f570feb859ee8f1fc5c8f7f1738ea6c20f199be` |
+
+From Evan's pre-launch terms review:
+
+* **Terms §11, "Sensitive information"** (a subsection, so no section
+  numbers moved). Health records, Social Security numbers and VA file numbers
+  are allowed, because VA benefits claims carry all three and the sender is
+  responsible for having the right to send them. Two things are refused:
+  HIPAA-covered health information from a provider, a health plan or a
+  business working for one (no BAA is signed), and full card numbers or
+  security codes. `spec/golden/legal_spec.rb` bans HIPAA compliance claims
+  and allows the word only in this exclusion.
+* **Privacy §6, Do Not Track.** California's online privacy law requires a
+  statement of how the site answers DNT. There is no cross-site tracking, so
+  the answer is that there is nothing for the signal to turn off.
+* Outside these documents, the same review removed "BAA on request" from the
+  pricing page's Enterprise card. It contradicted the Trust page, and the
+  vendor stack behind the product could not honor one.
+
+Both archived texts were rendered from the code before the edit and checked
+against their recorded digests. Step 4 is owed for this bump.
 
 ## 3. What is recorded when somebody agrees
 
@@ -298,7 +325,13 @@ Before launch, a lawyer needs to settle at least these:
     states. The paid plan converts a free trial into a charged subscription
     (Terms §4), which is exactly the shape those statutes regulate: what has
     to be disclosed before the card is taken, what the acknowledgment email
-    must say, and how easy cancelling has to be.
+    must say, and how easy cancelling has to be. What the product does today:
+    Checkout requires a ticked box agreeing to the Terms and the monthly
+    renewal (`consent_collection`, wording in
+    `BillingSettingsController#renewal_consent_message`); a new subscription
+    sends one acknowledgment email with the plan, price, first charge date and
+    how to cancel (`BillingMailer#subscription_started`); cancelling is online
+    in the Customer Portal. Counsel should still confirm the wording.
 11. **Whether Missouri law will actually carry the weight we put on it** —
     the liability cap (§16), the indemnity (§17) and the venue clause (§27),
     each tested against a consumer rather than a business.
@@ -315,10 +348,12 @@ Before launch, a lawyer needs to settle at least these:
     users accept when they join. Signers never see the Terms at all — they see
     the electronic-signature disclosure. Confirm that is right, and that the
     signer-facing sections say what they need to.
-15. **What regulated data must be excluded**, and whether to say so. There is
-    no exclusion today for data covered by financial, health or education
-    privacy laws, and no statement about whether we will sign a business
-    associate agreement. Both are gaps, and both belong to counsel.
+15. **What regulated data must be excluded.** Terms §11 ("Sensitive
+    information") now excludes HIPAA-covered health information from covered
+    entities and their business associates, and full card numbers, and says
+    no BAA is signed. Health records in a VA benefits claim are deliberately
+    allowed. Financial and education privacy laws are still not addressed;
+    that gap belongs to counsel.
 16. **The S3 bucket's default encryption is a launch-gate check.** The Privacy
     Policy says files are stored with Amazon's server-side encryption
     (§10). `config/storage.yml` sets no encryption option, so the promise is
