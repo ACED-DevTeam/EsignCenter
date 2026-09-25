@@ -25,8 +25,8 @@
       "message": "Unescaped find_by!(uuid: params[:id]) is not risky"
     },
     {
-      "fingerprint": "d9c8c197880110eb43184051f7893439e3cb953baab240d2f00c4075c97df163",
-      "note": "WordConverter spawns LibreOffice with Process.spawn as an argument array (no shell); the only variable parts are the operator-set SOFFICE_PATH env and paths inside a fresh mktmpdir (Session 4 D; fingerprint refreshed after the review-1 F11 reshape)"
+      "fingerprint": "6b3bd1efe50b2f610ecbddecdcabf6376cd2176146094a5b0e74301a86a67cdf",
+      "note": "WordConverter spawns LibreOffice with Process.spawn as an argument array (no shell); the only variable parts are the operator-set SOFFICE_PATH env and paths inside a fresh mktmpdir (Session 4 D; fingerprint refreshed after the review-1 F11 reshape, and again when the environment became the fixed soffice_env allowlist with unsetenv_others)"
     }
   ]
 }
