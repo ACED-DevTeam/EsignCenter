@@ -17,4 +17,19 @@ namespace :release do
 
     abort "Preflight failed: #{failures.size} configuration check(s) need attention"
   end
+
+  desc 'Read-only: list internal-account formula templates and webhook URLs this release refuses'
+  # Meant for the restored copy of production during the migration rehearsal
+  # (docs/operations.md section 2.3). Prints ids, template names and webhook
+  # HOSTS only; exits non-zero when anything needs a decision before deploy.
+  task internal_audit: :environment do
+    result = ReleaseInternalAudit.call
+
+    puts ReleaseInternalAudit.report(result)
+
+    next unless result.findings?
+
+    abort "\nInternal audit: #{result.formula_templates.size + result.refused_webhooks.size} finding(s) " \
+          'need a decision before this release is deployed'
+  end
 end
