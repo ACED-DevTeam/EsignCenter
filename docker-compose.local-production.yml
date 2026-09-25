@@ -25,6 +25,8 @@ services:
       NODE_ENV: production
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/esigncenter
       WORKDIR: /data/docuseal
+      # Files live on the mounted data/app folder, not in a bucket.
+      ALLOW_LOCAL_DISK_STORAGE: "true"
       HOST: localhost:3010
       APP_URL: http://localhost:3010
       FORCE_SSL: "false"
