@@ -1324,6 +1324,10 @@ en: &en
   please_contact_the_requester_to_specify_your_email_for_two_factor_authentication: Please contact the requester to specify your email for two-factor authentication.
   rate_limit_exceeded: Rate limit exceeded
   a_confirmation_email_has_been_sent_to_the_new_email_address: A confirmation email has been sent to the new email address.
+  current_password_needed_to_change_your_email: "Current password (needed only to change your email)"
+  change_your_own_email_address_from_your_profile: "Change your own email address from your profile."
+  confirm_this_address_to_finish_changing_your_product_email: "Confirm this address to finish changing the email address of your %{product} account"
+  if_you_did_not_ask_for_this_change_ignore_this_email_and_nothing_will_change: "If you did not ask for this change, ignore this email and nothing will change."
   email_address_is_awaiting_confirmation_follow_the_link_in_the_email_to_confirm: "%{email} email address is awaiting confirmation. Follow the link in the email to confirm."
   please_confirm_your_email_address_using_the_link_below_: 'Please confirm your email address using the link below:'
   confirm_email: Confirm email
