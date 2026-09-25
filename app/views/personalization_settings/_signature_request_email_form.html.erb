@@ -17,7 +17,8 @@
         <% if can?(:manage, :reply_to) || can?(:manage, :personalization_advanced) %>
           <div class="form-control">
             <%= ff.label :reply_to, t('reply_to'), class: 'label' %>
-            <%= ff.email_field :reply_to, class: 'base-input', dir: 'auto', placeholder: t(:email) %>
+            <%= ff.email_field :reply_to, class: 'base-input', dir: 'auto', placeholder: current_user.email, 'aria-describedby': ff.field_id(:reply_to, :hint) %>
+            <p id="<%= ff.field_id(:reply_to, :hint) %>" class="text-sm text-base-content/60 mt-1"><%= t('reply_to_default_hint') %></p>
           </div>
         <% end %>
       <% end %>

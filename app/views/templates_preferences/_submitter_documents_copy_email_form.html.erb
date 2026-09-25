@@ -31,7 +31,10 @@
       <% if can?(:manage, :reply_to) %>
         <div class="form-control">
           <%= ff.label :documents_copy_email_reply_to, t('reply_to'), class: 'label' %>
-          <%= ff.email_field :documents_copy_email_reply_to, class: 'base-input', dir: 'auto', placeholder: t(:email) %>
+          <%= ff.email_field :documents_copy_email_reply_to, class: 'base-input', dir: 'auto', placeholder: configs['reply_to'].presence || current_user.email, 'aria-describedby': (ff.field_id(:documents_copy_email_reply_to, :hint) if configs['reply_to'].blank?) %>
+          <% if configs['reply_to'].blank? %>
+            <p id="<%= ff.field_id(:documents_copy_email_reply_to, :hint) %>" class="text-sm text-base-content/60 mt-1"><%= t('reply_to_default_hint') %></p>
+          <% end %>
         </div>
       <% end %>
     <% end %>
