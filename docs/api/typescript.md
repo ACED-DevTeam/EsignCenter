@@ -10,6 +10,15 @@
 > `POST /api/templates` ([self-hosted-template-api.md](self-hosted-template-api.md)).
 > The operations this application really answers are the ones in
 > `docs/openapi.json`, rendered at `/docs/api`.
+>
+> **Whose library this is.** The examples below use DocuSeal's own
+> JavaScript/TypeScript client (`@docuseal/api` on npm), pointed at your
+> EsignCenter address. DocuSeal publishes and maintains that library.
+> EsignCenter is an independent fork of DocuSeal and is not affiliated with,
+> endorsed by or supported by DocuSeal, so questions about the library itself go
+> to its maintainers. Every operation here is also a plain HTTPS request with an
+> `X-Auth-Token` header — see [shell.md](shell.md) for the curl form if you
+> would rather not depend on the library.
 
 ### List all submissions
 
