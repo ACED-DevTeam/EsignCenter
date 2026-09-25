@@ -49,7 +49,7 @@ module StorageConfigGuard
     return if problems.empty?
 
     raise Refused, "Storage check refused to boot: #{problems.join('; ')}. " \
-                   'See docs/render-deploy-checklist.md, "Storage pre-check".'
+                   'See docs/operations.md section 2.1 (storage pre-check).'
   end
 
   # Pure: every input is passed in, so the rules can be tested without a
