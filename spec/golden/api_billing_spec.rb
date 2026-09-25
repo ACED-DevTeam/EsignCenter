@@ -462,6 +462,23 @@ RSpec.describe 'API plan billing', type: :request do
       expect(flash[:alert]).to eq(I18n.t('billing_api_packs_unavailable'))
     end
 
+    # Stripe still calls an operator-suspended subscription active, so the
+    # tier guards alone would let a frozen account buy Business or packs.
+    it 'refuses an operator-suspended account at both new billing doors before contacting Stripe' do
+      AccountStates.suspend!(account, reason: 'operator')
+
+      post '/settings/billing/plan', params: { plan: 'business' }
+      expect(response).to redirect_to('/settings/billing')
+      expect(flash[:alert]).to eq(I18n.t('account_suspended_banner_operator'))
+
+      post '/settings/billing/api_packs', params: { quantity: 1 }
+      expect(response).to redirect_to('/settings/billing')
+      expect(flash[:alert]).to eq(I18n.t('account_suspended_banner_operator'))
+
+      expect(row.reload).to have_attributes(plan: 'paid', api_pack_quantity: 0)
+      expect(ApiPackPurchase.count).to eq(0)
+    end
+
     it 'refuses a child account acting on the billing parent' do
       child = create(:account, linked_account_account: AccountLinkedAccount.new(account_type: :linked, account:))
       sign_out(:user)
