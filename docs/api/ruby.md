@@ -10,6 +10,14 @@
 > `POST /api/templates` ([self-hosted-template-api.md](self-hosted-template-api.md)).
 > The operations this application really answers are the ones in
 > `docs/openapi.json`, rendered at `/docs/api`.
+>
+> **Whose library this is.** The examples below use DocuSeal's own Ruby client
+> (the `docuseal` gem), pointed at your EsignCenter address. DocuSeal publishes
+> and maintains that library. EsignCenter is an independent fork of DocuSeal and
+> is not affiliated with, endorsed by or supported by DocuSeal, so questions
+> about the library itself go to its maintainers. Every operation here is also a
+> plain HTTPS request with an `X-Auth-Token` header — see [shell.md](shell.md)
+> for the curl form if you would rather not depend on the library.
 
 ### List all submissions
 
@@ -18,7 +26,7 @@ The API endpoint provides the ability to retrieve a list of available submission
 ```ruby
 require "docuseal"
 
-Docuseal.key = ENV["DOCUSEAL_API_KEY"]
+Docuseal.key = ENV["ESIGNCENTER_API_KEY"]
 Docuseal.url = "https://your-instance.example.com/api"
 
 Docuseal.list_submissions(limit: 10)
@@ -136,7 +144,7 @@ The API endpoint provides the functionality to retrieve information about a subm
 ```ruby
 require "docuseal"
 
-Docuseal.key = ENV["DOCUSEAL_API_KEY"]
+Docuseal.key = ENV["ESIGNCENTER_API_KEY"]
 Docuseal.url = "https://your-instance.example.com/api"
 
 Docuseal.get_submission(1001)
@@ -176,7 +184,7 @@ This endpoint returns a list of partially filled documents for a submission. If 
 ```ruby
 require "docuseal"
 
-Docuseal.key = ENV["DOCUSEAL_API_KEY"]
+Docuseal.key = ENV["ESIGNCENTER_API_KEY"]
 Docuseal.url = "https://your-instance.example.com/api"
 
 Docuseal.get_submission_documents(1001)
@@ -216,7 +224,7 @@ This API endpoint allows you to create signature requests (submissions) for a do
 ```ruby
 require "docuseal"
 
-Docuseal.key = ENV["DOCUSEAL_API_KEY"]
+Docuseal.key = ENV["ESIGNCENTER_API_KEY"]
 Docuseal.url = "https://your-instance.example.com/api"
 
 Docuseal.create_submission({
@@ -634,7 +642,7 @@ The API endpoint provides the functionality to create one-off submission request
 ```ruby
 require "docuseal"
 
-Docuseal.key = ENV["DOCUSEAL_API_KEY"]
+Docuseal.key = ENV["ESIGNCENTER_API_KEY"]
 Docuseal.url = "https://your-instance.example.com/api"
 
 Docuseal.create_submission_from_pdf({
@@ -1214,7 +1222,7 @@ The API endpoint provides functionality to create a one-off submission request f
 ```ruby
 require "docuseal"
 
-Docuseal.key = ENV["DOCUSEAL_API_KEY"]
+Docuseal.key = ENV["ESIGNCENTER_API_KEY"]
 Docuseal.url = "https://your-instance.example.com/api"
 
 Docuseal.create_submission_from_docx({
@@ -1681,7 +1689,7 @@ This API endpoint allows you to create a one-off submission request document usi
 ```ruby
 require "docuseal"
 
-Docuseal.key = ENV["DOCUSEAL_API_KEY"]
+Docuseal.key = ENV["ESIGNCENTER_API_KEY"]
 Docuseal.url = "https://your-instance.example.com/api"
 
 Docuseal.create_submission_from_html({
@@ -2168,7 +2176,7 @@ The API endpoint allows you to archive a submission.
 ```ruby
 require "docuseal"
 
-Docuseal.key = ENV["DOCUSEAL_API_KEY"]
+Docuseal.key = ENV["ESIGNCENTER_API_KEY"]
 Docuseal.url = "https://your-instance.example.com/api"
 
 Docuseal.archive_submission(1001)
@@ -2208,7 +2216,7 @@ The API endpoint provides the ability to retrieve a list of submitters.
 ```ruby
 require "docuseal"
 
-Docuseal.key = ENV["DOCUSEAL_API_KEY"]
+Docuseal.key = ENV["ESIGNCENTER_API_KEY"]
 Docuseal.url = "https://your-instance.example.com/api"
 
 Docuseal.list_submitters(limit: 10)
@@ -2324,7 +2332,7 @@ The API endpoint provides functionality to retrieve information about a submitte
 ```ruby
 require "docuseal"
 
-Docuseal.key = ENV["DOCUSEAL_API_KEY"]
+Docuseal.key = ENV["ESIGNCENTER_API_KEY"]
 Docuseal.url = "https://your-instance.example.com/api"
 
 Docuseal.get_submitter(500001)
@@ -2364,7 +2372,7 @@ The API endpoint allows you to update submitter details, pre-fill or update fiel
 ```ruby
 require "docuseal"
 
-Docuseal.key = ENV["DOCUSEAL_API_KEY"]
+Docuseal.key = ENV["ESIGNCENTER_API_KEY"]
 Docuseal.url = "https://your-instance.example.com/api"
 
 Docuseal.update_submitter(500001, {
@@ -2691,7 +2699,7 @@ The API endpoint provides the ability to retrieve a list of available document t
 ```ruby
 require "docuseal"
 
-Docuseal.key = ENV["DOCUSEAL_API_KEY"]
+Docuseal.key = ENV["ESIGNCENTER_API_KEY"]
 Docuseal.url = "https://your-instance.example.com/api"
 
 Docuseal.list_templates(limit: 10)
@@ -2794,7 +2802,7 @@ The API endpoint provides the functionality to retrieve information about a docu
 ```ruby
 require "docuseal"
 
-Docuseal.key = ENV["DOCUSEAL_API_KEY"]
+Docuseal.key = ENV["ESIGNCENTER_API_KEY"]
 Docuseal.url = "https://your-instance.example.com/api"
 
 Docuseal.get_template(1000001)
@@ -2835,7 +2843,7 @@ The API endpoint provides the functionality to create a fillable document templa
 ```ruby
 require "docuseal"
 
-Docuseal.key = ENV["DOCUSEAL_API_KEY"]
+Docuseal.key = ENV["ESIGNCENTER_API_KEY"]
 Docuseal.url = "https://your-instance.example.com/api"
 
 Docuseal.create_template_from_pdf({
@@ -3205,7 +3213,7 @@ The API endpoint provides the functionality to create a fillable document templa
 ```ruby
 require "docuseal"
 
-Docuseal.key = ENV["DOCUSEAL_API_KEY"]
+Docuseal.key = ENV["ESIGNCENTER_API_KEY"]
 Docuseal.url = "https://your-instance.example.com/api"
 
 Docuseal.create_template_from_docx({
@@ -3542,7 +3550,7 @@ The API endpoint provides the functionality to seamlessly generate a PDF documen
 ```ruby
 require "docuseal"
 
-Docuseal.key = ENV["DOCUSEAL_API_KEY"]
+Docuseal.key = ENV["ESIGNCENTER_API_KEY"]
 Docuseal.url = "https://your-instance.example.com/api"
 
 Docuseal.create_template_from_html({
@@ -3670,7 +3678,7 @@ The API endpoint allows you to clone existing template into a new template.
 ```ruby
 require "docuseal"
 
-Docuseal.key = ENV["DOCUSEAL_API_KEY"]
+Docuseal.key = ENV["ESIGNCENTER_API_KEY"]
 Docuseal.url = "https://your-instance.example.com/api"
 
 Docuseal.clone_template(1000001, {
@@ -3737,7 +3745,7 @@ The API endpoint allows you to merge multiple templates with documents and field
 ```ruby
 require "docuseal"
 
-Docuseal.key = ENV["DOCUSEAL_API_KEY"]
+Docuseal.key = ENV["ESIGNCENTER_API_KEY"]
 Docuseal.url = "https://your-instance.example.com/api"
 
 Docuseal.merge_templates({
@@ -3827,7 +3835,7 @@ The API endpoint provides the functionality to move a document template to a dif
 ```ruby
 require "docuseal"
 
-Docuseal.key = ENV["DOCUSEAL_API_KEY"]
+Docuseal.key = ENV["ESIGNCENTER_API_KEY"]
 Docuseal.url = "https://your-instance.example.com/api"
 
 Docuseal.update_template(1000001, {
@@ -3907,7 +3915,7 @@ The API endpoint allows you to add, remove or replace documents in the template 
 ```ruby
 require "docuseal"
 
-Docuseal.key = ENV["DOCUSEAL_API_KEY"]
+Docuseal.key = ENV["ESIGNCENTER_API_KEY"]
 Docuseal.url = "https://your-instance.example.com/api"
 
 Docuseal.update_template_documents(1000001, {
@@ -4008,7 +4016,7 @@ The API endpoint allows you to archive a document template.
 ```ruby
 require "docuseal"
 
-Docuseal.key = ENV["DOCUSEAL_API_KEY"]
+Docuseal.key = ENV["ESIGNCENTER_API_KEY"]
 Docuseal.url = "https://your-instance.example.com/api"
 
 Docuseal.archive_template(1000001)
