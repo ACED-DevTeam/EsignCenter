@@ -11,7 +11,7 @@ module Accounts
   # docs/account-deletion.md, and `orphans` afterwards proves the walk was
   # complete.
   #
-  # Four things deliberately survive a purge:
+  # Five things deliberately survive a purge:
   #
   #   * verified_documents — the /verify fingerprint records. They hold a
   #     SHA-256, a date and a signer count and name nobody, so they are not
@@ -19,6 +19,9 @@ module Accounts
   #     ever signed would stop verifying. Untouched, account_id included.
   #   * account_subscriptions — the money history. Stripe ids and states, no
   #     documents and no people.
+  #   * api_pack_purchases — the durable invoice/recovery ledger. Only Stripe
+  #     ids, operation ids, quantities and timestamps; no documents or people.
+  #     Kept with the subscription so an unfinished payment remains recoverable.
   #   * the accounts row itself — renamed "Deleted account" and stamped
   #     `purged_at`, so every id that still points at it (a verified document,
   #     a Stripe inbox row) points at something rather than nowhere.

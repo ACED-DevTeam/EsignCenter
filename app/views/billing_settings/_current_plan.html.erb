@@ -1,6 +1,6 @@
 <%# The card a subscribed account sees: what state the subscription is in,
-    when the next thing happens to it, what it costs, and the one door to
-    Stripe that can change any of it. %>
+    when the next thing happens to it, what it costs, and the portal for
+    payment details and cancellation. Plan and pack changes live below it. %>
 <% ends_on = @subscription&.current_period_end %>
 <%# Review-6 S3: a subscription set to cancel at period end still ENDS on that
     date even when its state is the payment problem rather than `canceling`
@@ -28,7 +28,7 @@
         <%= svg_icon('credit_card', class: 'w-6 h-6') %>
       </div>
       <div class="min-w-0">
-        <p class="text-lg font-semibold leading-tight" dir="auto"><%= t("billing_state_#{@view_state}") %></p>
+        <p class="text-lg font-semibold leading-tight" dir="auto"><%= t(@view_state == 'active' ? "usage_plan_#{Plans.key_for(@billing)}" : "billing_state_#{@view_state}") %></p>
         <p class="text-sm text-base-content/70 mt-1" dir="auto" data-billing-headline>
           <% case @view_state %>
           <% when 'trialing' %>
@@ -55,14 +55,16 @@
     <dl class="grid grid-cols-1 sm:grid-cols-[auto_1fr] gap-x-6 gap-y-1 text-sm tabular-nums">
       <dt class="text-base-content/70"><%= t('billing_seats_billed_label') %></dt>
       <dd data-billing-seats><%= @billed_seats %></dd>
-      <dt class="text-base-content/70"><%= t('billing_monthly_cost') %></dt>
+      <dt class="text-base-content/70"><%= t(@subscription.pending_plan || @subscription.effective_api_pack_quantity > @subscription.api_pack_quantity ? 'billing_monthly_cost_at_renewal' : 'billing_monthly_cost') %></dt>
       <dd data-billing-amount>
         <% if trial_cancelled %>
           <%= t('billing_trial_no_charge') %>
+        <% elsif @subscription.plan == Plans::PAID && @subscription.api_pack_quantity.zero? %>
+          <%= t(@view_state == 'trialing' ? 'billing_then_amount_per_month' : 'billing_amount_per_month', total: @monthly_total, price: @price_per_seat) %>
         <% elsif @view_state == 'trialing' %>
-          <%= t('billing_then_amount_per_month', total: @monthly_total, price: @price_per_seat) %>
+          <%= t('billing_tier_trial_amount', total: @monthly_total) %>
         <% else %>
-          <%= t('billing_amount_per_month', total: @monthly_total, price: @price_per_seat) %>
+          <%= t('billing_tier_amount', total: @monthly_total) %>
         <% end %>
       </dd>
     </dl>

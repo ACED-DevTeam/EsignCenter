@@ -107,6 +107,8 @@ class StripeReconciliationJob < ApplicationJob
     SchedulerStamps.record!('stripe_reconciliation') do
       next if StripeBilling.api_key.blank?
 
+      StripeBilling::PackPurchases.reconcile!
+
       report = Report.new(repaired: [], errors: [], requeued: 0, duplicates: [], foreign: [], unlinked: [],
                           settled: [], manual_refunds: [], vanished: [], vanished_skipped: [],
                           key_mismatch: nil, rows: 0, stopped_after: nil)

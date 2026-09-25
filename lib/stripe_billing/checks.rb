@@ -57,7 +57,7 @@ module StripeBilling
     module_function
 
     def rows
-      config_rows + price_rows + portal_rows + webhook_rows
+      config_rows + price_rows + optional_price_rows + portal_rows + webhook_rows
     end
 
     def failed?(rows)
@@ -92,6 +92,36 @@ module StripeBilling
       ]
     rescue Stripe::StripeError => e
       [row('price', FAIL, "Stripe said: #{e.message}")]
+    end
+
+    # Missing optional prices are honest unavailable products, not a broken
+    # Paid deployment. Configured prices must match the D79 recurring amount.
+    def optional_price_rows
+      rows = [[StripeBilling.business_price_id, 'Business', StripeBilling::BUSINESS_BASE_USD],
+              [StripeBilling.api_pack_price_id, 'API pack',
+               StripeBilling::API_PACK_USD]].flat_map do |id, name, dollars|
+        next [row("#{name} price", SKIP, 'not configured — unavailable to purchase')] if id.blank?
+
+        optional_price_checks(id, name, dollars)
+      end
+      prices = [StripeBilling.price_id, StripeBilling.business_price_id, StripeBilling.api_pack_price_id].compact_blank
+      rows << check('plan and pack price ids distinct', prices.uniq.size == prices.size, 'one price per product') if
+        prices.size > 1
+
+      rows
+    end
+
+    def optional_price_checks(id, name, dollars)
+      price = StripeBilling.client.v1.prices.retrieve(id)
+
+      [check("#{name} price active", price.active == true, "active=#{price.active}"),
+       check("#{name} price currency", price.currency == StripeBilling::PRICE_CURRENCY, price.currency),
+       check("#{name} price amount", price.unit_amount == dollars * 100,
+             "#{price.unit_amount} (expected #{dollars * 100})"),
+       check("#{name} price interval", price.recurring&.interval == StripeBilling::PRICE_INTERVAL &&
+                                      price.recurring&.interval_count == 1, 'monthly recurring')]
+    rescue Stripe::StripeError => e
+      [row("#{name} price", FAIL, "Stripe said: #{e.message}")]
     end
 
     def portal_rows

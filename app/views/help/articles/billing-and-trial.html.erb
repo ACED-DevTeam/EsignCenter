@@ -1,7 +1,9 @@
 <p>
-  There is one paid plan: $<%= StripeBilling::PRICE_PER_SEAT_USD %> per user
+  Paid costs $<%= StripeBilling::PRICE_PER_SEAT_USD %> per user
   per month, with a <%= StripeBilling::TRIAL_PERIOD_DAYS %>-day free trial and
-  no per-document fee. Everything to do with money lives on
+  no automatic per-document overage charges. Business costs $<%= StripeBilling::BUSINESS_BASE_USD %>
+  per month with one seat included; extra seats cost $<%= StripeBilling::PRICE_PER_SEAT_USD %>
+  per month. Everything to do with money lives on
   <strong>Settings &rarr; Billing</strong>.
 </p>
 
@@ -27,6 +29,25 @@
   details, and cancel. Seats are not editable there because your seat count is
   simply the number of people in your account &mdash; see
   <%= link_to 'Teams and seats', help_article_path('teams-and-seats') %>.
+</p>
+
+<h2>Plans and API capacity</h2>
+
+<p>
+  Paid includes <%= Quotas::Limits::PAID_API_COMPLETIONS_PER_MONTH %> API completions a month;
+  Business includes <%= Quotas::Limits::BUSINESS_API_COMPLETIONS_PER_MONTH %>, per billing account.
+  API, embedded signing and MCP count once at the first signature per document lineage.
+  Allowances reset on the first day of each UTC calendar month. Documents already sent always finish.
+  Open API documents reserve capacity until signed, declined, expired or archived. At the allowance, new API documents pause; corrections of signed documents and in-app Resubmit remain available.
+</p>
+<p>
+  In Billing settings, upgrading to Business charges the prorated difference now. Moving to Paid
+  takes effect at renewal with no credit, and Business capacity stays until then. Recurring API packs cost
+  $<%= StripeBilling::API_PACK_USD %> per month for <%= Quotas::Limits::API_PACK_COMPLETIONS_PER_MONTH %>
+  extra completions. Each added pack costs the full monthly price now, with no proration, and is
+  available after payment. During a trial, packs are available immediately and billed at trial end.
+  Removing packs takes effect at renewal. If your API capacity is set by an agreement, contact us
+  to change it. Purchase controls appear when the plan or packs are available.
 </p>
 
 <h2>Cancelling and refunds</h2>

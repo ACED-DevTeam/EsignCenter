@@ -55,7 +55,8 @@ module Api
     # A quota or sending-pause refusal on any creation door (submissions,
     # signing sessions): nothing was created, the message says why.
     rescue_from Quotas::LimitReached do |e|
-      render json: { error: e.message }, status: :unprocessable_content
+      render json: { error: e.message },
+             status: e.reason == :api_completions ? :payment_required : :unprocessable_content
     end
 
     # The storage cap on every API door that stores a document (templates,

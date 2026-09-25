@@ -8,11 +8,11 @@
 # at month rollover (docs/quotas-and-limits.md).
 #
 # Free accounts are hard-capped (completions, sends, open documents) on every
-# path that creates a document to sign; paid accounts are never blocked by a
-# quota (D42) — they get warn-flags for the operator; internal and operator
-# accounts are exempt from everything. The one refusal every customer account
-# can meet is the sending pause, which is abuse policy (lib/sending_pause.rb),
-# not quota.
+# path that creates a document to sign. Paid in-app sending gets warn-flags
+# only (D42); D79 adds a hard completion allowance for new API/embed/MCP
+# documents. Internal and operator accounts are exempt from everything.
+# Every customer can also meet the sending pause, which is abuse policy
+# (lib/sending_pause.rb), not quota.
 module Quotas
   # Fixed first argument of the two-int pg_advisory_xact_lock so creation
   # locks never collide with another feature's advisory locks.
@@ -20,6 +20,8 @@ module Quotas
 
   # Where the upgrade call-to-action sends people (Phase D builds the page).
   USAGE_PATH = '/settings/usage'
+  BILLING_PATH = '/settings/billing'
+  API_SOURCES = %w[api embed mcp].freeze
 
   # The snapshot of the durable send counter taken at the instant a paid
   # subscription ended (D43: "counters apply prospectively"). It is written
@@ -46,16 +48,17 @@ module Quotas
   # Every number an account's plan gives it, after the operator's overrides.
   #
   # The first five are CAPS: a free account is refused when it crosses one.
-  # The last three are the paid plan's PER-SEAT warn thresholds — fair use,
+  # The next three are the paid plan's PER-SEAT warn thresholds — fair use,
   # daily send velocity, open documents — which never refuse anything (D42)
   # and only decide when an AbuseFlag is raised for the operator to look at.
   # They live in the same struct because they are overridden the same way and
-  # an operator asking "what are this account's numbers?" means all eight.
+  # an operator asking "what are this account's numbers?" means every field.
+  # The final field is D79's per-account API cap, independent of seats.
   LimitSet = Struct.new(:completions_per_month, :sends_per_month, :in_flight, :seats, :storage_bytes,
-                        :fair_use_per_seat, :sends_per_day_per_seat, :in_flight_per_seat)
+                        :fair_use_per_seat, :sends_per_day_per_seat, :in_flight_per_seat, :api_completions_per_month)
 
   class LimitReached < StandardError
-    REASONS = %i[completions sends in_flight sending_paused suspended].freeze
+    REASONS = %i[completions api_completions sends in_flight sending_paused suspended].freeze
 
     attr_reader :reason, :limit, :resets_at
 
@@ -110,21 +113,34 @@ module Quotas
 
     return defaults unless override
 
-    LimitSet.new(**defaults.to_h, **override.slice(AccountLimitOverride::FIELDS).compact.symbolize_keys)
+    limits = LimitSet.new(**defaults.to_h, **override.slice(AccountLimitOverride::FIELDS).compact.symbolize_keys)
+    limits.api_completions_per_month = nil if limits.api_completions_per_month == -1
+
+    limits
   end
 
   def default_limits_for(billing)
-    case Plans.key_for(billing)
+    plan = Plans.key_for(billing)
+
+    case plan
     when Plans::FREE
       LimitSet.new(completions_per_month: Limits::FREE_COMPLETIONS_PER_MONTH,
                    sends_per_month: Limits::FREE_SENDS_PER_MONTH,
                    in_flight: Limits::FREE_IN_FLIGHT,
                    seats: Limits::FREE_SEATS,
-                   storage_bytes: Limits::FREE_STORAGE_BYTES)
-    when Plans::PAID
-      seats = billing.account_subscription.quantity
+                   storage_bytes: Limits::FREE_STORAGE_BYTES, api_completions_per_month: 0)
+    when Plans::PAID, Plans::BUSINESS
+      subscription = billing.account_subscription
+      seats = subscription.quantity
+      api_base = if plan == Plans::BUSINESS
+                   Limits::BUSINESS_API_COMPLETIONS_PER_MONTH
+                 else
+                   Limits::PAID_API_COMPLETIONS_PER_MONTH
+                 end
+      api_limit = api_base + (subscription.effective_api_pack_quantity * Limits::API_PACK_COMPLETIONS_PER_MONTH)
 
-      LimitSet.new(seats:, storage_bytes: Limits::PAID_STORAGE_BYTES_PER_SEAT * seats,
+      LimitSet.new(seats:, api_completions_per_month: api_limit,
+                   storage_bytes: Limits::PAID_STORAGE_BYTES_PER_SEAT * seats,
                    fair_use_per_seat: Limits::PAID_COMPLETIONS_REVIEW_PER_SEAT,
                    sends_per_day_per_seat: Limits::PAID_SENDS_PER_DAY_PER_SEAT,
                    in_flight_per_seat: Limits::PAID_IN_FLIGHT_PER_SEAT)
@@ -199,6 +215,59 @@ module Quotas
 
     CompletedSubmitter.where(account_id: account_ids(billing), is_first: true,
                              completed_at: month_range(billing)).count
+  end
+
+  # The completion row already snapshots the source and survives document
+  # deletion. Reusing is_first preserves D41/D73 across signers and copies;
+  # joining live submissions here would refund usage when one is deleted.
+  def api_completions_this_month(account)
+    api_completions_scope(account).count
+  end
+
+  def api_completions_scope(account)
+    CompletedSubmitter.where(account_id: account_ids(account), is_first: true, source: API_SOURCES,
+                             completed_at: month_range, submission_created_at: ApiMeteringActivation.starts_at..)
+  end
+
+  # Every eligible automation document holds one slot until its lineage has
+  # a durable first completion. That includes the short interval between a
+  # signer finishing and the async completion job recording it: releasing
+  # early would let a second creation spend the same slot. Later signers of
+  # an already-counted document never hold another reservation.
+  def api_reservations_scope(account)
+    submissions = Submission.arel_table
+    submitters = Submitter.arel_table
+    same_submission = submitters[:submission_id].eq(submissions[:id])
+    declined = Submitter.where(same_submission).where.not(declined_at: nil)
+    family_root = 'COALESCE(submissions.lineage_root_id, submissions.id)'
+    family_completion = CompletedSubmitter.where(is_first: true).where(
+      "submission_id = #{family_root} OR submission_id IN " \
+      "(SELECT family.id FROM submissions family WHERE family.lineage_root_id = #{family_root})"
+    )
+
+    Submission.where(account_id: account_ids(account), source: API_SOURCES, archived_at: nil,
+                     created_at: ApiMeteringActivation.starts_at..)
+              .where(submissions[:expire_at].eq(nil).or(submissions[:expire_at].gt(Time.current)))
+              .where(Submitter.where(same_submission).select(1).arel.exists)
+              .where.not(declined.select(1).arel.exists)
+              .where.not(family_completion.select(1).arel.exists)
+              .left_joins(:template).where(templates: { archived_at: nil })
+  end
+
+  def api_reservations(account)
+    api_reservations_scope(account).count
+  end
+
+  # One SQL snapshot is essential. Two separate counts could read zero
+  # completions before a job commits and zero reservations just afterwards,
+  # admitting another creation into a slot that has already been consumed.
+  def api_capacity_used(account)
+    completions = api_completions_scope(account).select('1 AS slot').to_sql
+    reservations = api_reservations_scope(account).select('1 AS slot').to_sql
+
+    ApplicationRecord.connection.select_value(
+      "SELECT COUNT(*) FROM (#{completions} UNION ALL #{reservations}) AS api_capacity"
+    ).to_i
   end
 
   # Documents sent this month: every submission created on any path, selfsign
@@ -280,7 +349,7 @@ module Quotas
   # being re-sent (D74). A correction of a family that has already been
   # counted cannot add a completion, so the monthly completions cap is not
   # what should stand in its way — every other rule still does.
-  def assert_can_create_submissions!(account, count: 1, correction_of: nil)
+  def assert_can_create_submissions!(account, count: 1, correction_of: nil, source: nil)
     billing = Plans.billing_account(account)
     plan = Plans.key_for(billing)
 
@@ -295,9 +364,18 @@ module Quotas
     # cannot forget it. Never INTERNAL: the early return above is above this.
     raise LimitReached, :suspended if AccountStates.read_only?(account)
 
-    return true unless plan == Plans::FREE
-
     limits = limits_for(billing)
+
+    # D79 deliberately narrows D42: only new automation documents are
+    # refused. Already-created documents complete through the signer pipeline,
+    # which never calls this guard. In-app sends retain their warn-only policy.
+    # Free API access is refused by the existing entitlement guards (D31),
+    # with their established feature errors. D79 changes paid automation only.
+    unless plan == Plans::FREE || counted_family?(correction_of)
+      assert_api_capacity!(billing, source:, count:, limit: limits.api_completions_per_month)
+    end
+
+    return true unless plan == Plans::FREE
 
     if !counted_family?(correction_of) && limits.completions_per_month &&
        completions_this_month(billing) >= limits.completions_per_month
@@ -315,6 +393,14 @@ module Quotas
     true
   end
 
+  def assert_api_capacity!(billing, source:, count:, limit:)
+    return unless API_SOURCES.include?(source.to_s) && limit
+    return if Time.current < ApiMeteringActivation.starts_at
+    return if api_capacity_used(billing) + count <= limit
+
+    raise LimitReached.new(:api_completions, limit:, resets_at: resets_at)
+  end
+
   # D74: is this creation a correction of a document whose family has already
   # been counted? Only then is the completions cap skipped — a correction of
   # a family that never completed is an ordinary new document to sign, and a
@@ -325,8 +411,8 @@ module Quotas
 
   # The reason a share link is closed right now, or nil. Computed on every
   # call — there is no persisted flag to go stale.
-  def share_link_paused?(account)
-    assert_can_create_submissions!(account)
+  def share_link_paused?(account, source: :link)
+    assert_can_create_submissions!(account, source:)
 
     nil
   rescue LimitReached => e
@@ -360,7 +446,9 @@ module Quotas
     when Plans::FREE
       arm_first_completion_prompt(billing, completed_submitter)
       free_completion_warning(billing)
-    when Plans::PAID then paid_completion_signals(billing)
+    when Plans::PAID, Plans::BUSINESS
+      paid_completion_signals(billing)
+      api_completion_warnings(billing)
     end
 
     nil
@@ -440,6 +528,23 @@ module Quotas
     QuotaMailer.completions_warning(billing).deliver_later!
   end
 
+  # One email at each API threshold per UTC month, even if completions race
+  # or a job retries. Buying capacity does not re-arm either monthly notice.
+  def api_completion_warnings(billing)
+    limit = limits_for(billing).api_completions_per_month
+
+    return unless limit&.positive?
+
+    used = api_completions_this_month(billing)
+
+    [80, 100].each do |percent|
+      next if used < (limit * percent / 100.0).ceil
+      next unless AccountCounters.increment!(billing.id, "quota_mail:api_completions:#{percent}") == 1
+
+      QuotaMailer.api_usage_warning(billing, percent).deliver_later!
+    end
+  end
+
   # Fair use for a paid account: an email at 80% of 500 × seats, a review
   # flag at 100%. Neither blocks anything.
   # The fair-use REVIEW level for a paid account: the per-seat number this
@@ -478,7 +583,7 @@ module Quotas
   def record_paid_signals(account)
     billing = Plans.billing_account(account)
 
-    return unless Plans.key_for(billing) == Plans::PAID
+    return unless [Plans::PAID, Plans::BUSINESS].include?(Plans.key_for(billing))
 
     limits = limits_for(billing)
     seats = limits.seats || 1
@@ -531,7 +636,7 @@ module Quotas
   def pause_message(account, reason)
     limits = limits_for(account)
     limit = { completions: limits.completions_per_month, sends: limits.sends_per_month,
-              in_flight: limits.in_flight }[reason.to_sym]
+              in_flight: limits.in_flight, api_completions: limits.api_completions_per_month }[reason.to_sym]
 
     message_for(reason.to_sym, limit:, resets_at: resets_at)
   end
@@ -550,7 +655,12 @@ module Quotas
 
   def seat_message_for(seats, plan:, locale: nil)
     I18n.with_locale(locale || I18n.locale) do
-      plan == Plans::PAID ? I18n.t('seat_limit_paid', count: seats) : I18n.t('seat_limit_free')
+      if [Plans::PAID,
+          Plans::BUSINESS].include?(plan)
+        I18n.t('seat_limit_paid', count: seats)
+      else
+        I18n.t('seat_limit_free')
+      end
     end
   end
 end

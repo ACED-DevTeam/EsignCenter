@@ -44,9 +44,43 @@
 # Session 6 fills the Stripe columns and drives access_state from webhooks.
 class AccountSubscription < ApplicationRecord
   belongs_to :account
+  has_many :api_pack_purchases, dependent: :restrict_with_exception
 
   validates :access_state, inclusion: { in: Plans::ACCESS_STATES }
+  validates :plan, inclusion: { in: [Plans::PAID, Plans::BUSINESS] }
+  validates :api_pack_quantity, :retained_api_pack_quantity,
+            numericality: { only_integer: true, greater_than_or_equal_to: 0 }
   validates :quantity, numericality: { only_integer: true, greater_than_or_equal_to: 1 }
+
+  # A downgrade changes the NEXT invoice without crediting this period.
+  # Plans reads the purchased Business access until the renewal boundary.
+  def effective_plan
+    retained_business_until&.future? ? Plans::BUSINESS : plan
+  end
+
+  def pending_plan
+    plan if effective_plan != plan
+  end
+
+  # Stripe's lower recurring quantity applies to the next invoice. Capacity
+  # already paid for survives until that renewal, without refunding used packs.
+  def effective_api_pack_quantity
+    retained = retained_api_pack_until&.future? ? retained_api_pack_quantity : 0
+
+    [api_pack_quantity, retained].max
+  end
+
+  # The recurring invoice amount. Retained packs are capacity already paid
+  # for, so only Stripe's current recurring quantity belongs in this total.
+  def monthly_amount_usd
+    seats_amount = if plan == Plans::BUSINESS
+                     StripeBilling::BUSINESS_BASE_USD + ((quantity - 1) * StripeBilling::PRICE_PER_SEAT_USD)
+                   else
+                     quantity * StripeBilling::PRICE_PER_SEAT_USD
+                   end
+
+    seats_amount + (api_pack_quantity * StripeBilling::API_PACK_USD)
+  end
 
   # Is this row one that the account it belongs to actually pays through?
   # Two things have to be true, and asking only the second one is a bug we

@@ -18,6 +18,17 @@ class QuotaMailer < ApplicationMailer
     mail(to: @recipients, subject: "You have used #{@used} of #{@limit} free document completions this month")
   end
 
+  def api_usage_warning(account, percent)
+    return if prepare(account).blank?
+
+    @used = Quotas.api_completions_this_month(account)
+    @limit = Quotas.limits_for(account).api_completions_per_month
+    @percent = percent
+    @billing_url = "#{root_url.delete_suffix('/')}#{Quotas::BILLING_PATH}"
+
+    mail(to: @recipients, subject: "API completions: #{percent}% of your monthly allowance used")
+  end
+
   def paid_usage_warning(account)
     return if prepare(account).blank?
 
@@ -49,7 +60,7 @@ class QuotaMailer < ApplicationMailer
 
     @used = Quotas::Storage.human_size(Quotas::Storage.bytes_used(account))
     @limit = Quotas::Storage.human_size(Quotas::Storage.limit_bytes(account))
-    @paid = Plans.key_for(account) == Plans::PAID
+    @paid = Plans.paid_or_better?(account)
 
     mail(to: @recipients, subject: "Your EsignCenter storage is almost full (#{@used} of #{@limit})")
   end

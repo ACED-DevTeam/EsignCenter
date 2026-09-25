@@ -1,14 +1,15 @@
 # frozen_string_literal: true
 
 # The account's own billing page (/settings/billing): what the subscription is
-# doing right now, how many seats it covers, and the two doors to Stripe —
-# Checkout to start the 14-day trial, and the Customer Portal to change the
-# card, see invoices or cancel.
+# doing right now, how many seats it covers, Checkout to start the 14-day
+# trial, and the Customer Portal to change the card, see invoices or cancel. D79 adds the
+# app-owned plan and pack controls; the Portal never edits quantities.
 #
 # Everything is decided about the BILLING account (Plans.billing_account), so a
 # testing or linked child shows its parent's subscription and gets no buttons:
-# the parent pays. The price, the quantity and the trial are server-owned —
-# no request parameter is ever read for them.
+# the parent pays. Checkout's seat count and trial are server-owned. The
+# new controls accept only a plan key or pack count, never a Stripe price;
+# TierChanges validates the request against the current subscription.
 #
 # Stripe is never the app's source of truth here: Checkout and the Portal both
 # come back through webhooks (Session 6 Phase A). The `return` action applies
@@ -17,16 +18,15 @@
 class BillingSettingsController < ApplicationController
   include LaunchGates
 
-  # $10 per seat per month, one price for the whole product. The Stripe price
-  # id is the authority on what is charged; this is only what we print, and
-  # it is spelled once, in lib/stripe_billing.rb, so the public pricing page
-  # reads the same number without reaching into a controller.
+  # Paid seats and extra Business seats share the same $10 price. Stripe's
+  # price id decides the charge; the display constants, including Business's
+  # base and packs, live together in lib/stripe_billing.rb.
   PRICE_PER_SEAT_USD = StripeBilling::PRICE_PER_SEAT_USD
 
   # The paid benefits the free-plan visitor is being sold, in the order they
   # are read. Each is a row of the entitlement matrix (lib/entitlements.rb).
   PAID_BENEFIT_KEYS = %w[
-    billing_benefit_unlimited_documents
+    billing_benefit_unlimited_in_app_documents
     billing_benefit_api
     billing_benefit_conditional_logic
     billing_benefit_reminders
@@ -37,9 +37,10 @@ class BillingSettingsController < ApplicationController
   before_action :require_billing_enabled!
   before_action :load_billing_account
   before_action :load_subscription
-  before_action :require_own_billing!, only: %i[checkout portal return]
-  before_action :refuse_moved_away_account!, only: %i[checkout portal return]
-  before_action :refuse_pending_deletion!, only: %i[checkout portal]
+  before_action :require_own_billing!, only: %i[checkout portal return plan api_packs]
+  before_action :refuse_moved_away_account!, only: %i[checkout portal return plan api_packs]
+  before_action :refuse_pending_deletion!, only: %i[checkout portal plan api_packs]
+  before_action :refuse_suspended_spending!, only: %i[plan api_packs]
 
   helper_method :billing_date
 
@@ -74,6 +75,10 @@ class BillingSettingsController < ApplicationController
     ErrorReport.warning("billing lock wait timed out: #{e.message}", account_id: @billing&.id)
 
     redirect_to settings_billing_path, alert: I18n.t('billing_provider_unreachable')
+  end
+
+  rescue_from StripeBilling::TierChanges::Unavailable do |e|
+    redirect_to settings_billing_path, alert: I18n.t(e.message)
   end
 
   def show
@@ -118,6 +123,22 @@ class BillingSettingsController < ApplicationController
     return refuse_checkout if session.nil?
 
     redirect_to session.url, allow_other_host: true, status: :see_other
+  end
+
+  def plan
+    result = StripeBilling::TierChanges.change_plan!(@subscription, params[:plan].to_s)
+
+    redirect_to settings_billing_path,
+                notice: I18n.t(result == :pending ? 'billing_change_pending' : 'billing_plan_updated')
+  end
+
+  def api_packs
+    result = StripeBilling::TierChanges.change_packs!(@subscription, params[:quantity].to_s)
+
+    redirect_to settings_billing_path,
+                notice: I18n.t({ pending: 'billing_change_pending', expired: 'billing_pack_purchase_expired',
+                                 review: 'billing_pack_purchase_review' }
+                                .fetch(result, 'billing_api_packs_updated'))
   end
 
   def portal
@@ -228,6 +249,20 @@ class BillingSettingsController < ApplicationController
     redirect_to settings_billing_path, alert: I18n.t('billing_refused_pending_deletion')
   end
 
+  # A suspended account keeps the doors that settle what it owes (checkout,
+  # portal) and loses the ones that add to it. Stripe's own state only covers
+  # a payment suspension; an operator suspension can sit on a subscription
+  # Stripe still calls active, and a frozen account must not upgrade to
+  # Business or buy API packs it cannot use.
+  def refuse_suspended_spending!
+    return unless AccountStates.read_only?(current_account)
+
+    operator = AccountStates.suspension_candidates(current_account).filter_map(&:suspension_reason).first == 'operator'
+
+    redirect_to settings_billing_path,
+                alert: I18n.t(operator ? 'account_suspended_banner_operator' : 'billing_refused_suspended')
+  end
+
   def load_subscription
     @subscription = @billing.account_subscription
     # Occupancy: the people who hold a seat plus the invitations holding one
@@ -265,7 +300,7 @@ class BillingSettingsController < ApplicationController
     # not the same as the number of people in the account today. The page
     # quotes the invoice, and says the difference out loud.
     @billed_seats = @subscription&.quantity
-    @monthly_total = PRICE_PER_SEAT_USD * (@billed_seats || @seats_billed)
+    @monthly_total = @subscription ? @subscription.monthly_amount_usd : PRICE_PER_SEAT_USD * @seats_billed
   end
 
   def trial_available?

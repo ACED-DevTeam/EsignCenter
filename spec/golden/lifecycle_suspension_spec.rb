@@ -486,6 +486,7 @@ RSpec.describe 'Account suspension', type: :request do # rubocop:disable RSpec/M
     let(:refused_while_suspended) do
       %w[
         accounts#update
+        billing_settings#plan billing_settings#api_packs
         account_configs#create account_configs#destroy account_custom_fields#create
         account_invites#create account_invites#destroy account_invites#resend
         api_settings#create

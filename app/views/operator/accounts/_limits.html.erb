@@ -7,7 +7,8 @@
 <% rows = [['completions_per_month', @usage.completions], ['sends_per_month', @usage.sends],
            ['in_flight', @usage.in_flight], ['seats', @usage.seats_used],
            ['storage_bytes', @usage.storage_bytes], ['fair_use_per_seat', nil],
-           ['sends_per_day_per_seat', nil], ['in_flight_per_seat', nil]] %>
+           ['sends_per_day_per_seat', nil], ['in_flight_per_seat', nil],
+           ['api_completions_per_month', Quotas.api_completions_this_month(@billing)]] %>
 <div class="card bg-base-100 border border-base-300" data-operator-limits>
   <div class="card-body p-5 gap-4">
     <h2 class="text-xl font-bold"><%= t('operator_limits_title') %></h2>
@@ -52,7 +53,7 @@
     <% if @account.customer? %>
       <div class="border-t border-base-300 pt-4">
         <h3 class="font-semibold mb-1"><%= t('operator_limits_form_title') %></h3>
-        <p class="text-sm text-base-content/70 mb-3"><%= t('operator_limits_form_hint') %></p>
+        <p class="text-sm text-base-content/70 mb-3"><%= t('operator_limits_form_hint') %> <%= t('operator_api_limit_hint') %></p>
         <%# This account is paid for by another one, so its caps are the
             parent's caps: the form writes there, and says so rather than
             letting an operator believe they raised a limit for this row. %>
@@ -71,7 +72,7 @@
               <% value = value.present? ? (value.to_f / 1.gigabyte).round(2) : nil if storage %>
               <label class="form-control">
                 <span class="label-text mb-1"><%= t("operator_limit_#{field}") %><%= ' (GB)' if storage %></span>
-                <input type="number" step="<%= storage ? '0.01' : '1' %>" min="0" name="<%= name %>" value="<%= value %>"
+                <input type="number" step="<%= storage ? '0.01' : '1' %>" min="<%= field == 'api_completions_per_month' ? -1 : 0 %>" name="<%= name %>" value="<%= value %>"
                        class="input input-bordered w-full" autocomplete="off" data-limit-field="<%= field %>"
                        placeholder="<%= defaults.public_send(field).nil? ? t('operator_unlimited') : (storage ? (defaults.storage_bytes.to_f / 1.gigabyte).round(2) : defaults.public_send(field)) %>">
               </label>

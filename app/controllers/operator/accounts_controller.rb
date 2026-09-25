@@ -434,7 +434,9 @@ module Operator
 
         next nil if raw.blank?
 
-        if field == 'storage_bytes'
+        if field == 'api_completions_per_month' && raw == '-1'
+          -1
+        elsif field == 'storage_bytes'
           (decimal!(raw, 'storage (GB)') * 1.gigabyte).round
         else
           whole_number!(raw, field.humanize.downcase)

@@ -15,7 +15,8 @@ sending pause is `lib/sending_pause.rb`; storage is `lib/quotas/storage.rb`.
 | Documents waiting for signatures | 10 | Free | The 11th open document is refused until one completes, is declined, expires or is deleted. |
 | Seats | 1 | Free | Inviting (or reactivating) a second user is refused. |
 | Storage | 1 GB | Free | Uploads by account users are refused; sending and signing keep working (section 5). |
-| Storage | 10 GB per seat | Paid | Same — uploads only, never sending. |
+| API completions | 50 Paid / 500 Business, +50 per API pack | Paid and Business, per billing account | New API/embed/MCP submissions refused; existing documents finish. Emails at 80% and 100%. |
+| Storage | 10 GB per seat | Paid and Business | Same — uploads only, never sending. |
 | Fair-use review | 500 completions per seat per month | Paid | Nothing is blocked. An email at 80%, a review flag for the operator at 100%. |
 | Send velocity | 200 sends per seat per day | Paid | Nothing is blocked; a warn-flag for the operator. |
 | Open documents | 50 per seat | Paid | Nothing is blocked; a warn-flag for the operator. |
@@ -36,9 +37,73 @@ other template.
 test-mode submissions never meter either — test-mode belongs to internal
 accounts only, so nothing a customer does is "test".
 
-**Paid accounts are never auto-blocked by a quota** (D42). The only thing that
-stops a paid account from sending is the complaint/bounce policy, which is
-about abuse, not usage.
+**Paid in-app sending is never auto-blocked by a usage quota** (D42).
+D79 adds one channel-specific exception: new API, embedded-form and MCP
+documents pause when the billing account reaches its API allowance.
+The complaint/bounce sending pause remains a separate abuse policy.
+
+### API completions (D79, rollout correction)
+
+Paid includes **50 API completions/month** per billing account; Business
+includes **500**. Each recurring $10 API pack adds **50**. Seats do not multiply
+this allowance. Trialing accounts receive their plan's allowance; internal
+and operator accounts remain unlimited. Free has no API entitlement.
+
+The durable first-signer completion row counts when its source is `api`,
+`embed`, or `mcp`, in the UTC calendar month. It preserves the same D73 lineage
+rule and billing-account rollup as ordinary completions. Deleting a completed
+document does not refund capacity. Invite, public shared-link and bulk sources
+do not consume API capacity. Public share links keep their existing `link`
+source and SAMEORIGIN framing; API metering adds no new embedding capability.
+Existing signing sessions use `embed` and retain their origin allowlists.
+
+At creation, **current-month completions + open API documents + requested
+batch size must fit the allowance**. Each open API/embed/MCP document reserves
+one unit, including open documents from earlier months. A batch that does not
+fit is refused whole. Declining, expiring, archiving or deleting an unsigned
+document releases its reservation. A first-signer completion replaces the
+reservation with one completion; later signers never reserve another unit.
+A document awaiting its asynchronous metering job retains the reservation
+briefly so that another creator cannot spend that same capacity in the gap.
+The guard reads completions and reservations in one database snapshot under
+the existing billing-account creation lock.
+
+New automation submissions that exceed capacity receive a 402 JSON error
+(MCP uses its JSON tool-error response) explaining the allowance, reset date
+and Billing settings path. Documents already sent always finish. Corrections
+of an already-counted lineage bypass the API capacity check, because they add
+no completion. In-app Resubmit is an in-app action and never meets the API
+capacity check, even when the original document came from the API. Free's
+separate sends, in-flight and completion rules remain unchanged.
+
+Warnings go to active billing-account admins at 80% and 100% of completed
+API usage, once per UTC month each. Reservations do not trigger usage-warning
+emails. Buying packs immediately raises capacity after payment; removals retain
+paid capacity through renewal. Pack changes do not re-arm monthly warnings.
+Usage resets at the UTC month boundary independently of Stripe's renewal date;
+open reservations continue holding capacity until resolved.
+
+**Rollout activation:** set `API_METERING_STARTS_AT` to a fixed ISO8601 timestamp
+with a timezone, for example `2026-10-01T00:00:00Z`, for a coordinated rollout.
+Without that setting, the deployment migration records its execution timestamp
+once in `api_metering_activations`. That database value survives every restart;
+it is never replaced with the process start time. Fresh databases loaded from
+schema initialize the singleton on their first quota lookup instead. Treat the
+configured timestamp as immutable after launch; changing it changes the cohort.
+
+Only submissions **created at or after activation** enter the API completion
+meter, reservations or warning thresholds. Pre-activation documents remain
+excluded even if their first signer finishes after activation. Before a future
+activation timestamp, API capacity enforcement remains off. The completion job
+snapshots `submission_created_at` onto the durable completion row so deleting a
+new document never removes its counted usage. Existing completion rows are
+backfilled from surviving submissions; deleted historical rows without a known
+creation timestamp remain excluded.
+
+Operators can override `api_completions_per_month`: blank inherits the plan,
+`0` refuses new automation documents, and `-1` means unlimited. A numeric
+override replaces the whole allowance, including packs; it never grants
+Free an API entitlement. The console and `rake operator:limits` support it.
 
 ### What "a document completed" means (D41)
 
