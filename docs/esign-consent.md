@@ -208,6 +208,13 @@ delegation, one more for the person the form was handed to — stamped with:
   configured, which is the normal case, the two agree exactly; the header
   keeps the display name, the disclosure prints the bare address.
 
+  The account's invitation-email reply-to is the **organization's** address
+  (Settings → Personalization, administrators only). The reminder and
+  documents-copy mails have reply-to boxes of their own; when theirs is
+  blank they use the organization's address before falling to the sender,
+  so a signer replying to any of their mail reaches the inbox the disclosure
+  names.
+
   Both fields are read off the server's own records, never sent by
   the browser. The form does send back one thing about them: a SHA-256 of the
   name and address **as it rendered them** (`esign_consent_sender_digest`).

@@ -29,13 +29,8 @@
         <%= render 'personalization_settings/markdown_editor', name: ff.field_name(:documents_copy_email_body), value: ff.object.documents_copy_email_body, variables: AccountConfig::EMAIL_VARIABLES[AccountConfig::SUBMITTER_DOCUMENTS_COPY_EMAIL_KEY] %>
       </div>
       <% if can?(:manage, :reply_to) %>
-        <div class="form-control">
-          <%= ff.label :documents_copy_email_reply_to, t('reply_to'), class: 'label' %>
-          <%= ff.email_field :documents_copy_email_reply_to, class: 'base-input', dir: 'auto', placeholder: configs['reply_to'].presence || current_user.email, 'aria-describedby': (ff.field_id(:documents_copy_email_reply_to, :hint) if configs['reply_to'].blank?) %>
-          <% if configs['reply_to'].blank? %>
-            <p id="<%= ff.field_id(:documents_copy_email_reply_to, :hint) %>" class="text-sm text-base-content/60 mt-1"><%= t('reply_to_default_hint') %></p>
-          <% end %>
-        </div>
+        <% reply_to_fallback = configs['reply_to'].presence || AccountConfigs.find_or_initialize_for_key(current_account, AccountConfig::SUBMITTER_INVITATION_EMAIL_KEY).value['reply_to'].presence %>
+        <%= render 'personalization_settings/reply_to_field', ff:, attribute: :documents_copy_email_reply_to, fallback: reply_to_fallback, hint: reply_to_fallback ? t('reply_to_template_hint_fallback', email: reply_to_fallback) : t('reply_to_template_hint_sender') %>
       <% end %>
     <% end %>
   <% end %>

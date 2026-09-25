@@ -39,6 +39,7 @@ module Submitters
       # (review 2, L6).
       value ||= documents_copy_reply_to.presence&.then { |candidate| candidate if address?(candidate) }
       value ||= email_config.value['reply_to'].presence if email_config
+      value ||= organization(submitter)
       value ||= sending_user_address(submitter)
 
       return nil if value.to_s.match?(SubmitterMailer::NO_REPLY_REGEXP)
@@ -50,10 +51,9 @@ module Submitters
     # nothing reachable at all.
     def disclosure(submitter)
       account = submitter.submission.account
-      config = Accounts.custom_email_config(account, AccountConfig::SUBMITTER_INVITATION_EMAIL_KEY)
 
       candidates = [custom(submitter),
-                    config&.value&.dig('reply_to'),
+                    organization(submitter),
                     sending_user_address(submitter),
                     admin_address(account)]
 
@@ -85,6 +85,22 @@ module Submitters
       return unless address?(value)
 
       value
+    end
+
+    # The organization-wide reply-to: the one an administrator types into the
+    # signature request email settings. The reminder and documents-copy mails
+    # have boxes of their own, and a blank one there means "same as the
+    # signature request", not "the sender" — an administrator who routes
+    # replies to one inbox expects every signer mail to follow it, and only
+    # an account with no organization address falls through to each
+    # document's sender. Same entitlement as the rest of the custom copy, and
+    # it has to look like an address to go on a header.
+    def organization(submitter)
+      config = Accounts.custom_email_config(submitter.submission.account,
+                                            AccountConfig::SUBMITTER_INVITATION_EMAIL_KEY)
+      value = config&.value&.dig('reply_to').presence
+
+      value if value && address?(value)
     end
 
     # `Name <a@b.com>` (the shape a custom reply-to and User#friendly_name
@@ -127,6 +143,6 @@ module Submitters
       account.users.active.full_access.admins.order(:id).first&.email
     end
 
-    private_class_method :custom, :bare, :address?, :reachable, :sending_user_address, :admin_address
+    private_class_method :custom, :organization, :bare, :address?, :reachable, :sending_user_address, :admin_address
   end
 end

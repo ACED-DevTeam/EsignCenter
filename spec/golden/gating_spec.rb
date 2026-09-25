@@ -1066,6 +1066,37 @@ RSpec.describe 'Feature gating', type: :request do
       expect(template.reload.preferences['documents_copy_email_reply_to']).to eq('copies@example.com')
     end
 
+    # The signature-request reply-to is the organization's address: the
+    # reminder and documents-copy mails follow it when their own box is blank,
+    # a box of their own still wins, and with no organization address every
+    # signer mail goes back to whoever sent the document.
+    it 'sends reminder and documents-copy replies to the organization reply-to unless they set their own' do
+      save_invitation_reply_to(paid_account, 'contracts@example.com')
+      AccountConfig.create!(account: paid_account, key: AccountConfig::SUBMITTER_INVITATION_REMINDER_EMAIL_KEY,
+                            value: { 'subject' => 'Reminder', 'body' => 'Hello {{submitter.link}}' })
+      copy_config = AccountConfig.create!(account: paid_account, key: AccountConfig::SUBMITTER_DOCUMENTS_COPY_EMAIL_KEY,
+                                          value: { 'subject' => 'Your copy', 'body' => 'Attached' })
+
+      platform_certificate!
+      submitter = sent_submitter_for(paid_account)
+      submitter.update!(completed_at: Time.current)
+
+      expect(SubmitterMailer.invitation_email(submitter, reminder: true).reply_to).to eq(['contracts@example.com'])
+      expect(SubmitterMailer.documents_copy_email(submitter).reply_to).to eq(['contracts@example.com'])
+
+      copy_config.update!(value: copy_config.value.merge('reply_to' => 'copies@example.com'))
+
+      expect(SubmitterMailer.documents_copy_email(submitter.reload).reply_to).to eq(['copies@example.com'])
+
+      copy_config.update!(value: copy_config.value.except('reply_to'))
+      save_invitation_reply_to(paid_account, '')
+      sender = admin_for(paid_account).email
+
+      expect(SubmitterMailer.invitation_email(submitter.reload).reply_to).to eq([sender])
+      expect(SubmitterMailer.invitation_email(submitter, reminder: true).reply_to).to eq([sender])
+      expect(SubmitterMailer.documents_copy_email(submitter).reply_to).to eq([sender])
+    end
+
     it 'refuses the send dialog\'s "save this message to the template" for a free account before anything ' \
        'persists, and saves it for internal' do
       free_template = template_for(free_account)

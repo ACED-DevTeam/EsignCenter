@@ -15,11 +15,8 @@
         </div>
         <%= render 'personalization_settings/email_body_field', ff:, config: f.object %>
         <% if can?(:manage, :reply_to) || can?(:manage, :personalization_advanced) %>
-          <div class="form-control">
-            <%= ff.label :reply_to, t('reply_to'), class: 'label' %>
-            <%= ff.email_field :reply_to, class: 'base-input', dir: 'auto', placeholder: current_user.email, 'aria-describedby': ff.field_id(:reply_to, :hint) %>
-            <p id="<%= ff.field_id(:reply_to, :hint) %>" class="text-sm text-base-content/60 mt-1"><%= t('reply_to_default_hint') %></p>
-          </div>
+          <% organization_reply_to = AccountConfigs.find_or_initialize_for_key(current_account, AccountConfig::SUBMITTER_INVITATION_EMAIL_KEY).value['reply_to'].presence %>
+          <%= render 'personalization_settings/reply_to_field', ff:, fallback: organization_reply_to, hint: organization_reply_to ? t('reply_to_email_hint_organization', email: organization_reply_to) : t('reply_to_email_hint_sender') %>
         <% end %>
         <div class="space-y-3.5">
           <div class="flex items-center justify-between mx-1">
