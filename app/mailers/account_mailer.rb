@@ -169,6 +169,7 @@ class AccountMailer < ApplicationMailer
     @code = code
     @first_name = user.first_name.presence
     @minutes = Accounts::DeletionCodes::TTL.in_minutes.to_i
+    @window_days = Accounts::Deletion::WINDOW_DAYS
     @support_email = Docuseal::SUPPORT_EMAIL
 
     mail(to: user.email, subject: 'Your EsignCenter account deletion code')

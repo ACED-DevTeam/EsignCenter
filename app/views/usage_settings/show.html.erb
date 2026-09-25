@@ -50,7 +50,6 @@
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <%# Fair-use note (paid only) plus the D73 lineage sentence every plan needs: a corrected resend of a signed document is never counted twice. %>
           <% completions_hint = [(@fair_use ? t('fair_use_per_seat', count: @fair_use_per_seat) : nil), t('usage_resend_note')].compact.join(' ') %>
-          <% storage_limit_text = @limits.storage_bytes ? number_to_human_size(@limits.storage_bytes) : nil %>
           <%= render 'usage_settings/meter',
                      key: 'completions',
                      icon: 'circle_check',
@@ -76,6 +75,7 @@
                      used_text: @in_flight,
                      limit: @limits.in_flight,
                      limit_text: @limits.in_flight %>
+          <%# Storage is sold as "we store your documents": the card shows what the account keeps and how close it is to the fair-use cap, never the cap's size. %>
           <%= render 'usage_settings/meter',
                      key: 'storage',
                      icon: 'files',
@@ -83,7 +83,8 @@
                      used: @storage_used,
                      used_text: number_to_human_size(@storage_used),
                      limit: @limits.storage_bytes,
-                     limit_text: storage_limit_text %>
+                     limit_text: nil,
+                     hint: t('usage_storage_hint') %>
           <%# Seats: every seat taken is the normal state (a free account on day one), so full is neutral and only MORE than the seats is a limit problem. %>
           <%= render 'usage_settings/meter',
                      key: 'seats',
@@ -103,7 +104,7 @@
         <% if @plan == Plans::FREE %>
           <%# The one upgrade card the app has (Session 6 wires its [data-upgrade-cta] to the billing page), with this page's own sentence. %>
           <div class="mt-6" data-usage-upgrade>
-            <%= render 'shared/upgrade_cta', feature: t('usage_plan_paid'), title: t('usage_upgrade_title'), body: t('usage_upgrade_hint') %>
+            <%= render 'shared/upgrade_cta', feature: t('usage_plan_paid'), title: t('usage_upgrade_title'), body: t('usage_upgrade_hint', price: StripeBilling::PRICE_PER_SEAT_USD, trial_days: StripeBilling::TRIAL_PERIOD_DAYS) %>
           </div>
         <% end %>
       <% end %>

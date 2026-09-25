@@ -18,7 +18,7 @@ RSpec.describe 'Storage quota', type: :request do
   let(:json_headers) { { 'CONTENT_TYPE' => 'application/json', 'ACCEPT' => 'application/json' } }
   let(:pdf_path) { Rails.root.join('spec/fixtures/sample-document.pdf') }
   let(:pdf_size) { pdf_path.size }
-  let(:warning_subject_prefix) { 'Your EsignCenter storage is almost full' }
+  let(:warning_subject_prefix) { 'Your EsignCenter account is nearing its storage fair-use limit' }
 
   before do
     platform_certificate!
@@ -131,7 +131,13 @@ RSpec.describe 'Storage quota', type: :request do
     cap_text = ActiveSupport::NumberHelper.number_to_human_size(pdf_size - 1)
     expect(response.parsed_body['error'])
       .to eq(I18n.t('storage_limit_reached', locale: :en, used: '0 Bytes', limit: cap_text))
-    expect(response.parsed_body['error']).to start_with('Your storage is full')
+    expect(response.parsed_body['error'])
+      .to start_with('Your account has reached its fair-use limit for document storage')
+    # No size in the refusal, in any locale: storage is never quoted as a number.
+    expect(response.parsed_body['error']).not_to include(cap_text)
+    I18n.available_locales.each do |locale|
+      expect(I18n.t('storage_limit_reached', locale:)).not_to include('%{')
+    end
   end
 
   it 'refuses the dashboard upload, the builder add-document and the logo on a capped free account' do
@@ -255,6 +261,9 @@ RSpec.describe 'Storage quota', type: :request do
     expect(warnings.size).to eq(1)
     expect(warnings.sole.to).to eq([admin_for(free_account).email])
     expect(warnings.sole.body.encoded).to include('never affected by storage')
+    expect(warnings.sole.subject).not_to match(/\d/)
+    expect(warnings.sole.body.encoded).not_to match(/\b\d+(\.\d+)?\s*(Bytes|KB|MB|GB|TB)\b/)
+    expect(warnings.sole.reply_to).to eq([Docuseal::SUPPORT_EMAIL])
 
     # A further upload above 80% (a tiny logo) sends nothing more this month.
     tiny = Tempfile.new(['tiny', '.png'])

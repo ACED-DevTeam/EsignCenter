@@ -3,7 +3,7 @@
 <% if @collision_user %>
   <%# The plain truth, in the email rather than in a dialog after the click:
       accepting is a MOVE, and everything they own comes with them (D50). %>
-  <p>You already have an EsignCenter account (<strong><%= @collision_user.account.name %></strong>). Accepting this invitation moves you and everything in that account — templates, documents and folders — into <strong><%= @account.name %></strong>. Your own account is then closed, and signed documents it has already produced stay verifiable exactly as they are.</p>
+  <p>You already have an EsignCenter account (<strong><%= @collision_user.account.name %></strong>). Accepting this invitation moves you and everything in that account — templates, documents and folders — into <strong><%= @account.name %></strong>. Your own account is then archived: nothing in it is deleted, and signed documents it has already produced stay verifiable exactly as they are.</p>
   <p>You will be asked to sign in as <%= @invite.email %> first, and shown this again before anything moves.</p>
   <p><%= link_to "Review the invitation to #{@account.name}", @accept_url %></p>
 <% else %>
