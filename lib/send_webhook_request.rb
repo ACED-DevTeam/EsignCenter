@@ -20,6 +20,9 @@ module SendWebhookRequest
                                  .new(0, true)
                                  .freeze
 
+  # X-Esigncenter-Signature is the documented header. X-Docuseal-Signature
+  # carries the same value and is deprecated: it stays only so integrations
+  # that already verify it (VA Claims, docs/operations.md) keep working.
   SIGNATURE_HEADERS = %w[X-Docuseal-Signature X-Esigncenter-Signature].freeze
 
   # Cloud instance-metadata / link-local targets are never a legitimate
