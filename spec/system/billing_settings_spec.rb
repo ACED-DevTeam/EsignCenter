@@ -27,8 +27,9 @@ RSpec.describe 'Billing settings' do
     expect(page).to have_current_path(settings_billing_path)
     expect(page).to have_content(I18n.t('billing_state_free'))
     expect(page).to have_content(I18n.t('billing_free_limit_completions', count: 5))
-    expect(page).to have_content(I18n.t('billing_paid_plan_price'))
-    expect(page).to have_button(I18n.t('start_free_trial'))
+    expect(page).to have_content(I18n.t('billing_paid_plan_price', price: StripeBilling::PRICE_PER_SEAT_USD,
+                                                                   trial_days: StripeBilling::TRIAL_PERIOD_DAYS))
+    expect(page).to have_button(I18n.t('start_free_trial', trial_days: StripeBilling::TRIAL_PERIOD_DAYS))
     expect(page).to have_link(I18n.t('billing_view_usage'), href: settings_usage_path)
   end
 
@@ -44,6 +45,6 @@ RSpec.describe 'Billing settings' do
       I18n.t('billing_trial_ends_on', date: I18n.l(10.days.from_now.to_date, format: :long))
     )
     expect(page).to have_button(I18n.t('manage_billing'))
-    expect(page).to have_no_button(I18n.t('start_free_trial'))
+    expect(page).to have_no_button(I18n.t('start_free_trial', trial_days: StripeBilling::TRIAL_PERIOD_DAYS))
   end
 end

@@ -12,7 +12,7 @@
     "description": "The EsignCenter REST API: create templates, send documents for signature and read the results from your own code. Authenticate with an X-Auth-Token header; API access is on the paid plan.",
     "contact": {
       "name": "EsignCenter",
-      "email": "evan@processorteam.com",
+      "email": "support@aceddev.com",
       "url": "https://github.com/AmishHillBilly/EsignCenter"
     }
   },

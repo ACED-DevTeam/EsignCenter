@@ -3764,6 +3764,47 @@ RSpec.describe 'Stripe billing', type: :request do # rubocop:disable RSpec/Multi
       expect_paid_access
     end
 
+    # Launch review, reconciliation gap: Checkout made the customer, the
+    # customer paid, every checkout webhook was lost and the tab was closed
+    # before the return page. The row names only the customer; Stripe bills.
+    # The sweep links the live subscription through the Checkout's own door.
+    it 'links a live subscription on a customer whose row never heard of it' do
+      row = cancelled_row
+      stub_subscription_list(customer_a, { subscription_a => 'active' })
+      stub_subscription(subscription_a, 'subscription-active')
+      alerts = []
+      allow(OperatorAlert).to receive(:deliver) { |args| alerts << args }
+      allow(ErrorReport).to receive(:warning)
+
+      report = described_class.new.perform
+
+      expect(row.reload).to have_attributes(stripe_subscription_id: subscription_a, access_state: 'active')
+      expect(report.linked.sole).to include(account_id: account.id, customer: customer_a,
+                                            subscription: subscription_a, now: 'active')
+      expect(report.errors).to be_empty
+      expect(alerts.sole[:body]).to include("#{subscription_a} on customer #{customer_a}")
+
+      expect_paid_access
+    end
+
+    it 'leaves a customer-only row alone when Stripe holds nothing live of ours for it' do
+      row = cancelled_row
+      stub_subscription_list(customer_a, { subscription_a => 'canceled',
+                                           subscription_b => listed_subscription(subscription_b, 'active',
+                                                                                 price: 'price_someone_else') })
+      allow(OperatorAlert).to receive(:deliver)
+      allow(ErrorReport).to receive(:warning)
+
+      report = described_class.new.perform
+
+      expect(row.reload).to have_attributes(stripe_subscription_id: nil, access_state: 'cancelled')
+      expect(report.linked).to be_empty
+      expect(report.errors).to be_empty
+      expect(WebMock).not_to have_requested(:get, subscription_url(subscription_b))
+
+      expect_free_plan
+    end
+
     # C1: which of two live subscriptions survives is decided on whether it
     # can actually COLLECT, not on age alone. A customer left holding an
     # older subscription that never charged (an abandoned 3-D Secure) or one
@@ -4089,10 +4130,15 @@ RSpec.describe 'Stripe billing', type: :request do # rubocop:disable RSpec/Multi
       expect(report.settled.sole)
         .to include(account_id: account.id, subscription: subscription_b, refunded: '$30.00')
       expect(row.reload.refund_owed_subscription_id).to be_nil
-      # Nothing else was attempted for it: no repair, no duplicate pass.
+      # Nothing else was done to it: no repair, no duplicate pass. The one
+      # read besides the debt is the lost-checkout lookup every customer-only
+      # row gets (it found nothing live here, so nothing was linked).
       expect(report.repaired).to be_empty
       expect(report.errors).to be_empty
-      expect(a_request(:get, %r{api\.stripe\.com/v1/subscriptions\?})).not_to have_been_made
+      expect(report.linked).to be_empty
+      expect(row.stripe_subscription_id).to be_nil
+      expect(a_request(:get, %r{api\.stripe\.com/v1/subscriptions\?})).to have_been_made.once
+      expect(a_request(:delete, %r{api\.stripe\.com/v1/subscriptions/})).not_to have_been_made
     end
 
     # M3: the repair and the owed refund are not the same job, and one must
@@ -5309,7 +5355,7 @@ RSpec.describe 'Stripe billing', type: :request do # rubocop:disable RSpec/Multi
 
   describe 'rake stripe:check' do
     def stub_price(overrides = {})
-      body = { id: fixture_price, object: 'price', active: true, currency: 'usd', unit_amount: 1000,
+      body = { id: fixture_price, object: 'price', livemode: false, active: true, currency: 'usd', unit_amount: 1000,
                recurring: { interval: 'month', interval_count: 1 } }.merge(overrides)
 
       stub_request(:get, %r{\Ahttps://api\.stripe\.com/v1/prices/})
@@ -5327,7 +5373,7 @@ RSpec.describe 'Stripe billing', type: :request do # rubocop:disable RSpec/Multi
     # manifest, so the stub carries them and an example that is about one of
     # them overrides only that one (X7a).
     def stub_portal(subscription_update_enabled: false, cancel: {}, customer_update: {})
-      body = { id: 'bpc_test', object: 'billing_portal.configuration', active: true,
+      body = { id: 'bpc_test', object: 'billing_portal.configuration', livemode: false, active: true,
                features: { invoice_history: { enabled: true }, payment_method_update: { enabled: true },
                            subscription_cancel: { enabled: true, mode: 'at_period_end',
                                                   proration_behavior: 'none' }.merge(cancel),
@@ -5418,6 +5464,38 @@ RSpec.describe 'Stripe billing', type: :request do # rubocop:disable RSpec/Multi
 
       expect(rows.find { |row| row[:name] == 'price amount' })
         .to include(result: 'FAIL', detail: '1500 (expected 1000)')
+    end
+
+    # Launch review: a test-mode price or portal configuration left in place
+    # under a live key passes every shape check and fails the first Checkout.
+    it 'fails when the price or the portal lives in the other Stripe mode than the key' do
+      ENV['STRIPE_SECRET_KEY'] = 'sk_live_fake'
+      stub_price
+      stub_portal
+      stub_endpoints(['https://esign.example.com/stripe/webhooks'])
+
+      rows = StripeBilling::Checks.rows
+
+      expect(rows.find { |row| row[:name] == 'price livemode' })
+        .to include(result: 'FAIL', detail: 'livemode=false (secret key is live)')
+      expect(rows.find { |row| row[:name] == 'portal livemode' }).to include(result: 'FAIL')
+      expect { run_rake_task('stripe:check') }.to raise_error(SystemExit).and output(/FAILED/).to_stderr
+    end
+
+    it 'fails on an archived portal configuration or a price Stripe cannot find' do
+      stub_request(:get, %r{\Ahttps://api\.stripe\.com/v1/prices/})
+        .to_return(stripe_price_missing(fixture_price))
+      stub_portal
+      stub_request(:get, %r{\Ahttps://api\.stripe\.com/v1/billing_portal/configurations/})
+        .to_return(status: 200, headers: { 'Content-Type' => 'application/json' },
+                   body: { id: 'bpc_test', object: 'billing_portal.configuration', livemode: false, active: false,
+                           features: {} }.to_json)
+      stub_endpoints(['https://esign.example.com/stripe/webhooks'])
+
+      rows = StripeBilling::Checks.rows
+
+      expect(rows.find { |row| row[:name] == 'price' }).to include(result: 'FAIL', detail: /No such price/)
+      expect(rows.find { |row| row[:name] == 'portal configuration active' }).to include(result: 'FAIL')
     end
 
     it 'warns rather than fails when no endpoint points at us (the dev stack forwards instead)' do

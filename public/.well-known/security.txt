@@ -1,0 +1,6 @@
+# Security contact for EsignCenter (https://esigncenter.com), operated by EsignCenter LLC.
+# Please report vulnerabilities privately to the address below rather than in a public issue.
+Contact: mailto:support@aceddev.com
+Expires: 2027-09-24T05:00:00.000Z
+Preferred-Languages: en
+Canonical: https://esigncenter.com/.well-known/security.txt

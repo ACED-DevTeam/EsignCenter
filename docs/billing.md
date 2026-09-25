@@ -412,11 +412,21 @@ every subscription the app thinks it has, straight from Stripe:
   automatically and the summary lists it under its own **manual refund
   review** heading, with the last invoice it collected, for a person to
   settle by hand;
-  What the sweep never does is **adopt**: a live subscription the row has
-  never heard of is only named in the summary for a person to look at, never
-  written onto the row on the strength of a list. It also skips the duplicate
-  check entirely for a row whose repair failed: a stale row is no basis for
-  cancelling anything;
+  What the sweep never does is **repoint** a row that already names a
+  subscription: a live subscription that row has never heard of is only
+  named in the summary for a person to look at, never written onto the row
+  on the strength of a list. It also skips the duplicate check entirely for
+  a row whose repair failed: a stale row is no basis for cancelling
+  anything;
+- a row that names a Stripe **customer but no subscription** is a checkout
+  that may have been lost: the customer paid, every checkout webhook went
+  missing and the tab closed before the return page, so Stripe bills while
+  the app shows the free plan. For those rows the sweep asks Stripe for the
+  customer's live subscriptions and links one of ours through the same door
+  the Checkout uses for exactly this case (`Linker.link_live_subscriptions!`,
+  under the row lock: the subscription is re-read and adopted only if it is
+  ours; a second one goes through the duplicate path; a stranger's is left
+  alone). Each one is named in the summary under *"Lost checkouts linked"*;
 - a row still naming a subscription **we** cancelled as a newer duplicate and
   never refunded gets that refund settled here (see above) and named in the
   summary as *"refund settled: $X for sub_…"*. So does a debt the row has
@@ -525,6 +535,15 @@ Two more facts pinned in code, not in the environment:
   `sk_test_`. A key that is neither (a truncated paste, a placeholder) is
   refused too — "not obviously a test key" is not good enough to charge
   people with.
+- **The price ids are checked at the sale, not at boot.** A `price_…` id is
+  only shape-checked at boot (boot never waits on Stripe). At every Checkout,
+  Business upgrade and pack purchase, `StripeBilling::PriceGuard` fetches the
+  price and refuses the sale if it lives in the other Stripe mode than the
+  key, cannot be found, is inactive, or is not the USD monthly amount the app
+  charges. The customer sees *"Subscriptions are paused for a moment while we
+  fix a billing setting. Nothing was charged"*; the operator gets a Sentry
+  error and an alert email (at most hourly per price). A good answer is
+  remembered for ten minutes.
 
 #### A note on the test fixtures and the API version
 
@@ -565,7 +584,11 @@ Prints a PASS/FAIL table and exits non-zero on any FAIL. It asserts, against
 the **live** Stripe account:
 
 - all five variables are set and shaped right;
-- the price is active, USD, $10.00, recurring monthly;
+- the seat price — and the Business and API pack prices when configured — is
+  in the **same Stripe mode as the secret key** (`livemode`), active, USD,
+  recurring monthly, at the amount the app charges ($10, $49, $10). A
+  test-mode id under a live key fails here instead of at the first Checkout;
+- the portal configuration is in the key's mode and active;
 - the portal cannot edit seats, and can cancel, update the card and show
   invoices;
 - the **cancel walk** matches the manifest: a cancellation takes effect at the
@@ -595,8 +618,12 @@ generates in test mode appears there and is forwarded.
 
 ## 7. Launch checklist for real money
 
-1. Create the **live** price ($10, monthly, USD) on the live Stripe account
-   and put its id in `STRIPE_PRICE_ID`.
+1. Create the **live** seat price ($10, monthly, USD) on the live Stripe
+   account and put its id in `STRIPE_PRICE_ID`. With the live secret key
+   exported, run `bundle exec rake stripe:api_prices` for the live Business
+   ($49) and API pack ($10) prices and put the ids it prints in
+   `STRIPE_BUSINESS_PRICE_ID` and `STRIPE_API_PACK_PRICE_ID`. Test-mode ids
+   from the dev environment must not be carried over.
 2. Run `rake stripe:portal_configuration` against the live account and set
    `STRIPE_PORTAL_CONFIGURATION_ID`.
 3. In the Stripe dashboard, add a webhook endpoint at
@@ -613,10 +640,16 @@ generates in test mode appears there and is forwarded.
    - `invoice.payment_action_required`
 4. Copy that endpoint's signing secret into `STRIPE_WEBHOOK_SECRET`.
 5. Set `STRIPE_SECRET_KEY` / `STRIPE_PUBLISHABLE_KEY` to the **live** keys.
-6. Run `bundle exec rake stripe:check` in the production shell. Everything
-   must say PASS (the endpoint line may be the only WARN, and only if step 3
-   was skipped).
-7. Only then set `BILLING_ENABLED=true`.
+6. In the Stripe dashboard: the **statement descriptor** is `ESIGNCENTER`
+   (Settings → Public details), and **Stripe Tax threshold monitoring is on
+   with tax collection off** (D22: no sales tax is collected at launch —
+   revisit when a state's economic-nexus threshold, typically about $100k a
+   year, approaches; the accountant confirms the home-state Missouri rule).
+   Checkout keeps `automatic_tax` disabled until that decision changes.
+7. Run `bundle exec rake stripe:check` in the production shell. Everything
+   must say PASS, including every **livemode** line (the endpoint line may be
+   the only WARN, and only if step 3 was skipped).
+8. Only then set `BILLING_ENABLED=true`.
 
 ## 8. Granting and revoking by hand
 

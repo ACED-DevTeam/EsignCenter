@@ -195,23 +195,63 @@ RSpec.describe 'Error reporting', type: :lib do
                                 value: { 'service' => 'disk' })
     end
 
+    # A blob the previous code wrote under the database storage row's service.
+    # Written as a bare row: building the service here would need its bucket.
+    def create_blob(service_name)
+      ActiveStorage::Blob.create!(key: SecureRandom.base36(28), filename: 'signed.pdf', byte_size: 1,
+                                  checksum: 'x', content_type: 'application/pdf')
+                         .update_column(:service_name, service_name)
+    end
+
     before do
       allow(ErrorReport).to receive(:warning)
       allow(Rails.logger).to receive(:warn)
     end
 
-    it 'warns in production when a storage row exists but no storage env var is set' do
+    # The old code would have served files from where that row pointed; this
+    # code would serve them from the empty container disk. That is a refusal,
+    # not a warning (launch review: storage can silently break on deploy).
+    it 'refuses a production boot when a storage row exists but no storage env var is set' do
       create_storage_row
       production!
 
-      described_class.check!
+      expect { described_class.check! }
+        .to raise_error(StorageConfigGuard::Refused, /active_storage settings row exists/)
+    end
 
-      expect(ErrorReport).to have_received(:warning).with(/active_storage config rows exist/)
-      expect(Rails.logger).to have_received(:warn).with(/active_storage config rows exist/)
+    it 'refuses a production boot when stored files name a cloud service that is not configured' do
+      create_blob('aws_s3')
+      production!
+
+      expect { described_class.check! }
+        .to raise_error(StorageConfigGuard::Refused,
+                        /1 stored file\(s\) use storage service 'aws_s3' but S3_ATTACHMENTS_BUCKET/)
+
+      ENV['S3_ATTACHMENTS_BUCKET'] = 'attachments'
+
+      expect { described_class.check! }.not_to raise_error
+    end
+
+    it 'refuses a production boot when stored files name a service storage.yml does not define' do
+      create_blob('legacy_r2')
+      ENV['S3_ATTACHMENTS_BUCKET'] = 'attachments'
+      production!
+
+      expect { described_class.check! }.to raise_error(StorageConfigGuard::Refused, /'legacy_r2'.*does not define/)
+    end
+
+    it 'only warns about files on the local disk once a bucket is configured' do
+      create_blob('disk')
+      ENV['S3_ATTACHMENTS_BUCKET'] = 'attachments'
+      production!
+
+      expect { described_class.check! }.not_to raise_error
+      expect(ErrorReport).to have_received(:warning).with(/use the local 'disk' service/)
     end
 
     it 'is silent when a storage bucket is configured' do
       create_storage_row
+      create_blob('aws_s3')
       production!
       ENV['S3_ATTACHMENTS_BUCKET'] = 'attachments'
 
@@ -220,20 +260,31 @@ RSpec.describe 'Error reporting', type: :lib do
       expect(ErrorReport).not_to have_received(:warning)
     end
 
-    it 'is silent when no storage row exists' do
+    it 'is silent when no storage row and no files exist' do
       production!
 
-      described_class.check!
-
+      expect { described_class.check! }.not_to raise_error
       expect(ErrorReport).not_to have_received(:warning)
     end
 
     it 'is silent outside production' do
       create_storage_row
+      create_blob('aws_s3')
 
-      described_class.check!
-
+      expect { described_class.check! }.not_to raise_error
       expect(ErrorReport).not_to have_received(:warning)
+    end
+
+    it 'never names a configuration value, only service names and counts' do
+      create(:encrypted_config, account: create(:account), key: EncryptedConfig::FILES_STORAGE_KEY,
+                                value: { 'service' => 'aws_s3',
+                                         'configs' => { 'bucket' => 'secret-bucket-name',
+                                                        'secret_access_key' => 'shh-secret' } })
+      production!
+
+      expect { described_class.check! }.to raise_error(StorageConfigGuard::Refused) { |error|
+        expect(error.message).not_to include('secret-bucket-name', 'shh-secret')
+      }
     end
   end
 end

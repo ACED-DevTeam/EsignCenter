@@ -115,13 +115,55 @@ RSpec.describe 'Legal documents', type: :request do
       expect(terms_html).to include("<td>#{limits::FREE_SENDS_PER_MONTH}</td>")
       expect(terms_html).to include("<td>#{limits::FREE_IN_FLIGHT}</td>")
       expect(terms_html).to include("<td>#{limits::FREE_SEATS}</td>")
-      expect(terms_html).to include("<td>#{limits::FREE_STORAGE_BYTES / 1.gigabyte} GB</td>")
+    end
+
+    # Owner decision (2026-09-25): storage is described as included, subject
+    # to fair use, and never quoted as a size. The caps still apply
+    # (Quotas::Storage); the documents say what happens near them instead.
+    it 'describes storage as included under fair use, with no size in either document' do
+      text = prose(terms_html)
+
+      expect(terms_html).to include("<td>Document storage</td>\n      <td>Included, subject to fair use</td>")
+      expect(text).to include('Storage is included in every plan, subject to fair use.')
+      expect(text).to include('we email your administrators first')
+      expect(text).to include('Storage never stops a document being sent, and it never stops a signer from signing.')
+      expect(text).to include('your uploads and templates, the signed documents and audit trails')
+      expect(text).to include('and your logo')
+
+      LegalDocuments.documents.each do |document|
+        html = LegalDocuments.html(document)
+
+        expect(html).not_to match(/\b\d+(\.\d+)?\s*(MB|GB|TB|gigabytes?)\b/i)
+        [limits::FREE_STORAGE_BYTES, limits::PAID_STORAGE_BYTES_PER_SEAT].each do |bytes|
+          expect(html).not_to include(ActiveSupport::NumberHelper.number_to_human_size(bytes))
+          expect(html).not_to include("#{bytes / 1.gigabyte} GB")
+        end
+      end
+    end
+
+    # D22/D22a: sales tax is not collected at launch and Stripe Tax is off
+    # (BillingSettingsController sends automatic_tax disabled), so the Terms
+    # must not say it is added.
+    it 'says prices exclude sales tax, that we do not collect it, and that we will warn before adding it' do
+      text = prose(terms_html)
+
+      expect(text).to include('Prices are in US dollars and do not include sales tax.')
+      expect(text).to include('We do not currently collect sales tax.')
+      expect(text).to include('we will tell you before we add it to your invoices')
+      expect(text).not_to include('Sales tax is added')
+    end
+
+    it 'names Apple beside Google wherever sign-in providers are described' do
+      text = prose(terms_html)
+
+      expect(text).to include('Signing in with Google or Apple.')
+      expect(text).to include('private relay address')
+      expect(text).to include('<strong>Apple</strong>, if you choose to sign in with an Apple ID.')
     end
 
     it 'states the paid plan in the numbers the billing code applies' do
       expect(terms_html).to include("$#{BillingSettingsController::PRICE_PER_SEAT_USD} per user per month")
       expect(terms_html).to include("#{StripeBilling::TRIAL_PERIOD_DAYS} days, free")
-      expect(terms_html).to include("#{limits::PAID_STORAGE_BYTES_PER_SEAT / 1.gigabyte} GB per seat")
       expect(terms_html).to include("#{limits::PAID_COMPLETIONS_REVIEW_PER_SEAT} per seat per month")
       expect(terms_html).to include("#{limits::PAID_SENDS_PER_DAY_PER_SEAT} per seat per day")
       expect(terms_html).to include("#{limits::PAID_IN_FLIGHT_PER_SEAT} per seat")
@@ -222,6 +264,29 @@ RSpec.describe 'Legal documents', type: :request do
   end
 
   describe 'the Privacy text' do
+    it 'covers Sign in with Apple wherever it covers Google, relay address included' do
+      text = prose(privacy_html)
+
+      expect(text).to include('“Continue with Google” or “Continue with Apple” is given a random password')
+      expect(text).to include('Your Google or Apple profile')
+      expect(text).to include('private relay address that forwards to your real one')
+      expect(text).to include('<td>Apple</td> <td>“Continue with Apple” sign-in</td>')
+    end
+
+    # Turnstile guards the support form too (SupportRequestsController).
+    it 'says the bot check runs on the sign-up and support forms' do
+      expect(prose(privacy_html)).to include('the bot check on the sign-up and support forms')
+      expect(prose(privacy_html)).to include('Bot check on the sign-up and support forms (Turnstile)')
+      expect(privacy_html).not_to include('Bot check on the sign-up form (Turnstile)')
+    end
+
+    it 'names the support address the product actually answers' do
+      LegalDocuments.documents.each do |document|
+        expect(LegalDocuments.html(document)).to include('mailto:support@aceddev.com')
+        expect(LegalDocuments.html(document)).not_to include('processorteam')
+      end
+    end
+
     it 'says opens and clicks are recorded on every plan and only shown on some' do
       # lib/postmark_webhooks.rb records the geo fields for every account;
       # lib/submission_events.rb filters the tracking types on READ.

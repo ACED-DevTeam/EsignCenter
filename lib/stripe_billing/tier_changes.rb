@@ -16,6 +16,10 @@ module StripeBilling
       with_subscription(row) do |subscription|
         next :updated if row.plan == plan
 
+        # The price being moved onto must be the one the app sells, in the
+        # key's mode, before Stripe is asked to charge anything for it.
+        PriceGuard.verify!(plan == Plans::BUSINESS ? :business : :seat)
+
         # Restoring a Business period already paid for is not another sale.
         # Downgrades never credit that period: the lower recurring price is
         # for renewal, while effective_plan retains the current allowance.
@@ -44,6 +48,8 @@ module StripeBilling
           next existing
         end
         next :updated if row.api_pack_quantity == quantity
+
+        PriceGuard.verify!(:api_pack) if quantity > row.api_pack_quantity
 
         prepare_packs!(row, subscription, quantity)
       end

@@ -87,7 +87,9 @@ module PricingMatrix
       row(:api_packs, :limits, false, "+#{api_pack_completions} for $#{api_pack_price}/mo"),
       row(:sends, :limits, free_sends.to_s, UNLIMITED, fair_use: true),
       row(:in_flight, :limits, free_in_flight.to_s, UNLIMITED, fair_use: true),
-      row(:storage, :limits, true, true),
+      # Storage is sold as included on every plan, never as a size: the cap
+      # behind it is a fair-use safeguard (Quotas::Storage), not an allowance.
+      row(:storage, :limits, true, true, enterprise: true),
       row(:seats, :limits, free_seats.to_s, "$#{price_per_seat} per user per month",
           business: "1 included; $#{price_per_seat} per extra user per month"),
 
@@ -123,11 +125,11 @@ module PricingMatrix
     Entitlements::PAID_ONLY - covered_features
   end
 
-  def row(key, group, free, paid, business: paid, features: [], fair_use: false)
+  def row(key, group, free, paid, business: paid, enterprise: group == :limits ? 'Custom' : true, features: [],
+          fair_use: false)
     label_key = %i[completions sends].include?(key) ? "pricing_row_in_app_#{key}" : "pricing_row_#{key}"
 
-    { key:, group:, label_key:, free:, paid:, business:, enterprise: group == :limits ? 'Custom' : true, features:,
-      fair_use: }
+    { key:, group:, label_key:, free:, paid:, business:, enterprise:, features:, fair_use: }
   end
 
   unless unmapped_paid_only_features.empty?

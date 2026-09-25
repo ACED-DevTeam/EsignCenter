@@ -39,6 +39,28 @@ module WordConverter
   TERM_GRACE_SECONDS = 2
   POLL_INTERVAL = 0.05
 
+  # LibreOffice settings written into the fresh per-conversion profile before
+  # it starts, so an uploaded document cannot make the server reach out:
+  #
+  #   * BlockUntrustedRefererLinks — refuses every link (linked images and
+  #     other external resources) from a document outside the trusted
+  #     locations, which an upload never is;
+  #   * Writer's Content/Update/Link = 2 ("never") — linked sections and
+  #     fields are not refreshed from their source while loading;
+  #   * DisableActiveContent — no OLE or DDE links;
+  #   * macros off, at the highest security level, belt and braces (soffice
+  #     does not run document macros in a headless conversion by default).
+  PROFILE_SETTINGS = <<~XML
+    <?xml version="1.0" encoding="UTF-8"?>
+    <oor:items xmlns:oor="http://openoffice.org/2001/registry" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <item oor:path="/org.openoffice.Office.Common/Security/Scripting"><prop oor:name="BlockUntrustedRefererLinks" oor:op="fuse"><value>true</value></prop></item>
+    <item oor:path="/org.openoffice.Office.Common/Security/Scripting"><prop oor:name="DisableActiveContent" oor:op="fuse"><value>true</value></prop></item>
+    <item oor:path="/org.openoffice.Office.Common/Security/Scripting"><prop oor:name="DisableMacrosExecution" oor:op="fuse"><value>true</value></prop></item>
+    <item oor:path="/org.openoffice.Office.Common/Security/Scripting"><prop oor:name="MacroSecurityLevel" oor:op="fuse"><value>3</value></prop></item>
+    <item oor:path="/org.openoffice.Office.Writer/Content/Update"><prop oor:name="Link" oor:op="fuse"><value>2</value></prop></item>
+    </oor:items>
+  XML
+
   Error = Class.new(StandardError)
   TimeoutError = Class.new(Error)
   ConversionError = Class.new(Error)
@@ -184,15 +206,45 @@ module WordConverter
   def spawn_soffice(tmp, input, log_path)
     profile = File.join(tmp, 'profile')
 
+    seed_profile(profile)
+
+    # `unsetenv_others`: LibreOffice gets the handful of variables below and
+    # nothing else. It is parsing a document a stranger uploaded, and the
+    # app's own environment carries SECRET_KEY_BASE, the Stripe and Postmark
+    # keys and the provisioning token — none of which a converter needs, and
+    # all of which a document exploit (or a macro that somehow ran) could
+    # otherwise read straight out of /proc/self/environ.
     Process.spawn(
-      { 'HOME' => tmp, 'SAL_USE_VCLPLUGIN' => 'svp' },
+      soffice_env(tmp),
       BINARY, '--headless', '--norestore', '--nologo', '--nolockcheck',
       "-env:UserInstallation=file://#{profile}",
       '--convert-to', 'pdf', '--outdir', tmp, input,
-      pgroup: true, in: File::NULL, %i[out err] => [log_path, 'w']
+      pgroup: true, unsetenv_others: true, in: File::NULL, %i[out err] => [log_path, 'w']
     )
   rescue Errno::ENOENT, Errno::EACCES => e
     raise Unavailable, "#{BINARY}: #{e.message}"
+  end
+
+  # The whole environment soffice runs with. PATH so the launcher script can
+  # find its own helpers, HOME and TMPDIR inside the throwaway directory (so
+  # the font cache and every scratch file die with it), a UTF-8 locale, and
+  # the headless rendering backend.
+  def soffice_env(tmp)
+    {
+      'PATH' => ENV.fetch('PATH', '/usr/local/bin:/usr/bin:/bin'),
+      'HOME' => tmp,
+      'TMPDIR' => tmp,
+      'LANG' => ENV['LANG'].presence || 'C.UTF-8',
+      'LC_ALL' => ENV['LANG'].presence || 'C.UTF-8',
+      'SAL_USE_VCLPLUGIN' => 'svp'
+    }
+  end
+
+  def seed_profile(profile)
+    user_dir = File.join(profile, 'user')
+
+    FileUtils.mkdir_p(user_dir)
+    File.write(File.join(user_dir, 'registrymodifications.xcu'), PROFILE_SETTINGS)
   end
 
   def wait_with_deadline(pid)

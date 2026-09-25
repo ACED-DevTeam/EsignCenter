@@ -81,6 +81,14 @@ class BillingSettingsController < ApplicationController
     redirect_to settings_billing_path, alert: I18n.t(e.message)
   end
 
+  # The price this sale would use is not the one the app sells (a test-mode
+  # price under a live key, an archived or re-priced one). The operator has
+  # already been told (StripeBilling::PriceGuard); the customer gets a plain
+  # sentence instead of Stripe's "No such price", and nothing was charged.
+  rescue_from StripeBilling::PriceGuard::Misconfigured do
+    redirect_to settings_billing_path, alert: I18n.t('billing_price_unavailable')
+  end
+
   def show
     @free_limits = Quotas.default_limits_for(@billing) if Plans.key_for(@billing) == Plans::FREE
     @limits_overridden = AccountLimitOverride.exists?(account_id: @billing.id)
@@ -95,6 +103,10 @@ class BillingSettingsController < ApplicationController
   # checks and sell the same account two subscriptions.
   def checkout
     return refuse_checkout if live_subscription?
+
+    # Before any Stripe customer is created or any lock taken: a price that
+    # cannot be sold refuses here, with nothing left behind.
+    StripeBilling::PriceGuard.verify!(:seat)
 
     ensure_subscription_row!
 
@@ -523,7 +535,9 @@ class BillingSettingsController < ApplicationController
 
     state = @subscription.reload.access_state
 
-    return { notice: I18n.t('billing_trial_started') } if state == 'trialing'
+    if state == 'trialing'
+      return { notice: I18n.t('billing_trial_started', trial_days: StripeBilling::TRIAL_PERIOD_DAYS) }
+    end
     # Two paid states that are NOT "your subscription is active", and saying
     # so used to contradict the state card the customer was looking at. A
     # subscription whose first payment failed is past_due before it ever

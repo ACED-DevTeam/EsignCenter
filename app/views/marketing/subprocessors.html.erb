@@ -34,9 +34,10 @@
                ['Amazon Web Services (S3)', 'File storage: uploaded and signed PDFs, images and account exports', 'Your document files, in a US region'],
                ['Postmark (an ActiveCampaign company)', 'Email delivery: signing invitations, reminders, receipts and account notices', 'Recipient email addresses, the message and delivery events (delivered, bounced, complained)'],
                ['Stripe', 'Payments: the paid plan, trial and invoices', 'Your name, email address and card, entered on Stripe\'s own pages; card numbers never touch EsignCenter'],
-               ['Sentry', 'Error monitoring, so a failure is fixed before you have to report it', 'Technical error reports; personal data is not sent by default'],
-               ['Cloudflare Turnstile', 'A bot check on the sign-up form', 'The sign-up request and your network address, once, at sign-up'],
+               ['Sentry', 'Error monitoring, so a failure is fixed before you have to report it', 'Technical details of a failure, which can include parts of the request that caused it'],
+               ['Cloudflare Turnstile', 'A bot check on the sign-up and support forms', 'Your network address and the browser signals the check needs, when you use one of those forms'],
                ['Google', 'Optional sign-in with a Google account', 'Your Google email address and name, only if you choose to sign in with Google'],
+               ['Apple', 'Optional sign-in with an Apple ID', 'Your Apple ID email address, or a private relay address from Apple that forwards to it, and your name, only if you choose to sign in with Apple'],
                ['DigiCert', 'Trusted timestamp authority for every signed PDF', 'A hash of the signature, never the document']
              ].each do |name, purpose, receives| %>
             <tr class="block md:table-row border-t border-base-content/5 align-top py-3 md:py-0">

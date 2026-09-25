@@ -13,6 +13,7 @@ RSpec.describe ProductionReadiness, type: :lib do
       'SMTP_FROM' => 'EsignCenter <noreply@example.com>',
       'SMTP_USERNAME' => 'smtp-user',
       'SMTP_PASSWORD' => 'smtp-password',
+      'S3_ATTACHMENTS_BUCKET' => 'attachments-bucket',
       'REGISTRATION_ENABLED' => 'false',
       'BILLING_ENABLED' => 'false'
     }
@@ -78,6 +79,19 @@ RSpec.describe ProductionReadiness, type: :lib do
         .to contain_exactly('SMTP_TRANSPORT_ENCRYPTION', 'SMTP_CERTIFICATE_VERIFICATION')
     end
 
+    # Render wipes the container disk on every deploy: without a bucket the
+    # app would boot healthy and serve every stored PDF from an empty disk.
+    it 'refuses production file storage on the container disk unless explicitly allowed' do
+      env = required_env.merge('S3_ATTACHMENTS_BUCKET' => nil)
+
+      expect(described_class.failures(env).map(&:name)).to eq(['FILE_STORAGE'])
+      expect(described_class.failures(env.merge('GCS_BUCKET' => 'gcs'))).to be_empty
+      expect(described_class.failures(env.merge('ALLOW_LOCAL_DISK_STORAGE' => 'true'))).to be_empty
+      expect(described_class.failures(env.merge('ALLOW_LOCAL_DISK_STORAGE' => '1')).map(&:name))
+        .to eq(['FILE_STORAGE'])
+      expect(described_class.checks(required_env).map(&:message).join).not_to include('attachments-bucket')
+    end
+
     it 'accepts direct SMTP TLS when STARTTLS is disabled' do
       env = required_env.merge('SMTP_ENABLE_STARTTLS' => 'false', 'SMTP_ENABLE_TLS' => 'true')
 
@@ -102,6 +116,13 @@ RSpec.describe ProductionReadiness, type: :lib do
 
       expect { described_class.check_boot!(env) }
         .to raise_error(RuntimeError, /APP_URL.*TIMESERVER_URL/)
+    end
+
+    it 'refuses a production boot with no file storage bucket' do
+      allow(Rails).to receive(:env).and_return(ActiveSupport::EnvironmentInquirer.new('production'))
+
+      expect { described_class.check_boot!(required_env.merge('S3_ATTACHMENTS_BUCKET' => nil)) }
+        .to raise_error(RuntimeError, /File storage needs one of S3_ATTACHMENTS_BUCKET/)
     end
 
     it 'does not constrain local development' do

@@ -19,6 +19,15 @@ module Api
     DEFAULT_LIMIT = 10
     MAX_LIMIT = 100
 
+    # Every quota refusal is a 422 except the two that say "not now": the D79
+    # API allowance (402, buy more) and the resend throttles (429, try again
+    # tomorrow — Submitters::ResendGuard).
+    LIMIT_REACHED_STATUSES = {
+      api_completions: :payment_required,
+      resends: :too_many_requests,
+      signer_resends: :too_many_requests
+    }.freeze
+
     impersonates :user, with: ->(uuid) { User.find_by(uuid:) }
 
     # Pretender has just defined an impersonation-aware `current_user` and a
@@ -55,8 +64,7 @@ module Api
     # A quota or sending-pause refusal on any creation door (submissions,
     # signing sessions): nothing was created, the message says why.
     rescue_from Quotas::LimitReached do |e|
-      render json: { error: e.message },
-             status: e.reason == :api_completions ? :payment_required : :unprocessable_content
+      render json: { error: e.message }, status: LIMIT_REACHED_STATUSES.fetch(e.reason, :unprocessable_content)
     end
 
     # The storage cap on every API door that stores a document (templates,
