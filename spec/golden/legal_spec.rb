@@ -183,7 +183,7 @@ RSpec.describe 'Legal documents', type: :request do
       expect(text).to include('At the allowance we refuse new API, embedded-form and MCP documents')
       expect(text).to include('Documents already sent always remain signable')
       expect(text).to include('monthly price immediately, with no proration')
-      expect(text).to include('billed when the trial ends, without proration')
+      expect(text).to include('a pack added during a trial is paid for when it is added')
       expect(text).to include('with no credit; Business capacity stays until then')
       expect(text).to include('Each open API document reserves one completion')
       expect(text).to include('Corrections of already-signed documents are allowed at the allowance')

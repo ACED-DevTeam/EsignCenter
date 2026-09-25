@@ -255,17 +255,35 @@ RSpec.describe 'API plan billing', type: :request do
       expect(Quotas.limits_for(account.reload).api_completions_per_month).to eq(500)
     end
 
-    it 'allows packs during trial with no charge now and recurring billing at trial end' do
+    # A trial that could add packs for free could take thousands of
+    # completions and cancel before trial end. It pays like any other period.
+    it 'charges trial packs in full now and keeps the trial running' do
+      row.update!(status: 'trialing', access_state: 'trialing', stripe_status: 'trialing')
       read_subscriptions(subscription(status: 'trialing'))
+      creation, _item, payment = stub_pack_invoice
       write = write_subscription(subscription(status: 'trialing', packs: 2),
                                  'proration_behavior' => 'none',
                                  'items' => [{ 'price' => pack_price, 'quantity' => '2' }])
 
       post '/settings/billing/api_packs', params: { quantity: 2 }
 
+      expect(creation).to have_been_requested.once
+      expect(payment).to have_been_requested.once
       expect(write).to have_been_requested.once
-      expect(row.reload.effective_api_pack_quantity).to eq(2)
-      expect(ApiPackPurchase.count).to eq(0)
+      expect(pack_purchase).to have_attributes(amount_cents: 2000, applied_at: be_present)
+      expect(row.reload).to have_attributes(access_state: 'trialing', effective_api_pack_quantity: 2)
+    end
+
+    it 'grants a trial no pack capacity on an unpaid invoice' do
+      row.update!(status: 'trialing', access_state: 'trialing', stripe_status: 'trialing')
+      read_subscriptions(subscription(status: 'trialing'))
+      stub_pack_invoice(paid: false)
+
+      post '/settings/billing/api_packs', params: { quantity: 2 }
+
+      expect(row.reload.effective_api_pack_quantity).to eq(0)
+      expect(pack_purchase.applied_at).to be_nil
+      expect(Quotas.limits_for(account.reload).api_completions_per_month).to eq(50)
     end
 
     it 'schedules a one-seat Business downgrade without credit and keeps Business until renewal' do

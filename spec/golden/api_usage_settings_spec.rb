@@ -59,7 +59,7 @@ RSpec.describe 'API usage settings', type: :request do
       .to include('Removing packs lowers your bill and capacity at renewal.')
   end
 
-  it 'offers trial packs with billing at trial end' do
+  it 'offers trial packs that are paid for when added' do
     ENV['STRIPE_API_PACK_PRICE_ID'] = 'price_packs'
     subscription.update!(plan: 'paid', status: 'trialing', access_state: 'trialing', stripe_status: 'trialing',
                          trial_end: 10.days.from_now)
@@ -67,7 +67,7 @@ RSpec.describe 'API usage settings', type: :request do
     doc = page('/settings/billing')
 
     expect(doc.at_css("form[action='/settings/billing/api_packs']")).to be_present
-    expect(doc.at_css('[data-billing-api-capacity]').text).to include('billed for them when the trial ends')
+    expect(doc.at_css('[data-billing-api-capacity]').text).to include('Packs are not free during your trial')
   end
 
   it 'keeps Business visible until a scheduled downgrade and offers cancellation' do
