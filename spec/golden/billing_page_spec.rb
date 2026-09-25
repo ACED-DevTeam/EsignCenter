@@ -323,6 +323,27 @@ RSpec.describe 'Billing page', type: :request do # rubocop:disable RSpec/Multipl
       expect(account.account_subscription.access_state).to eq('cancelled')
     end
 
+    # A test-mode price left in a live deployment answers Stripe's "No such
+    # price" at Checkout. The customer gets a sentence, the operator gets the
+    # alert, and nothing is created at Stripe on the way.
+    it 'refuses Checkout on a price that does not match the key, before creating anything at Stripe' do
+      ENV['STRIPE_SECRET_KEY'] = 'sk_live_fake'
+      allow(ErrorReport).to receive(:error)
+      allow(OperatorAlert).to receive(:deliver)
+      stub_customer_create
+      stub_checkout_create
+
+      post '/settings/billing/checkout'
+
+      expect(response).to redirect_to('/settings/billing')
+      expect(flash[:alert]).to eq(I18n.t('billing_price_unavailable'))
+      expect(WebMock).not_to have_requested(:post, 'https://api.stripe.com/v1/customers')
+      expect(WebMock).not_to have_requested(:post, 'https://api.stripe.com/v1/checkout/sessions')
+      expect(ErrorReport).to have_received(:error).with(/STRIPE_PRICE_ID \(#{price_id}\) livemode=false/,
+                                                        price_env: 'STRIPE_PRICE_ID')
+      expect(OperatorAlert).to have_received(:deliver).once
+    end
+
     it 'ignores a price, quantity or trial posted by the client' do
       stub_customer_create
       stub_checkout_create

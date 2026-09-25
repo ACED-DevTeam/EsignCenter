@@ -5309,7 +5309,7 @@ RSpec.describe 'Stripe billing', type: :request do # rubocop:disable RSpec/Multi
 
   describe 'rake stripe:check' do
     def stub_price(overrides = {})
-      body = { id: fixture_price, object: 'price', active: true, currency: 'usd', unit_amount: 1000,
+      body = { id: fixture_price, object: 'price', livemode: false, active: true, currency: 'usd', unit_amount: 1000,
                recurring: { interval: 'month', interval_count: 1 } }.merge(overrides)
 
       stub_request(:get, %r{\Ahttps://api\.stripe\.com/v1/prices/})
@@ -5327,7 +5327,7 @@ RSpec.describe 'Stripe billing', type: :request do # rubocop:disable RSpec/Multi
     # manifest, so the stub carries them and an example that is about one of
     # them overrides only that one (X7a).
     def stub_portal(subscription_update_enabled: false, cancel: {}, customer_update: {})
-      body = { id: 'bpc_test', object: 'billing_portal.configuration', active: true,
+      body = { id: 'bpc_test', object: 'billing_portal.configuration', livemode: false, active: true,
                features: { invoice_history: { enabled: true }, payment_method_update: { enabled: true },
                            subscription_cancel: { enabled: true, mode: 'at_period_end',
                                                   proration_behavior: 'none' }.merge(cancel),
@@ -5418,6 +5418,38 @@ RSpec.describe 'Stripe billing', type: :request do # rubocop:disable RSpec/Multi
 
       expect(rows.find { |row| row[:name] == 'price amount' })
         .to include(result: 'FAIL', detail: '1500 (expected 1000)')
+    end
+
+    # Launch review: a test-mode price or portal configuration left in place
+    # under a live key passes every shape check and fails the first Checkout.
+    it 'fails when the price or the portal lives in the other Stripe mode than the key' do
+      ENV['STRIPE_SECRET_KEY'] = 'sk_live_fake'
+      stub_price
+      stub_portal
+      stub_endpoints(['https://esign.example.com/stripe/webhooks'])
+
+      rows = StripeBilling::Checks.rows
+
+      expect(rows.find { |row| row[:name] == 'price livemode' })
+        .to include(result: 'FAIL', detail: 'livemode=false (secret key is live)')
+      expect(rows.find { |row| row[:name] == 'portal livemode' }).to include(result: 'FAIL')
+      expect { run_rake_task('stripe:check') }.to raise_error(SystemExit).and output(/FAILED/).to_stderr
+    end
+
+    it 'fails on an archived portal configuration or a price Stripe cannot find' do
+      stub_request(:get, %r{\Ahttps://api\.stripe\.com/v1/prices/})
+        .to_return(stripe_price_missing(fixture_price))
+      stub_portal
+      stub_request(:get, %r{\Ahttps://api\.stripe\.com/v1/billing_portal/configurations/})
+        .to_return(status: 200, headers: { 'Content-Type' => 'application/json' },
+                   body: { id: 'bpc_test', object: 'billing_portal.configuration', livemode: false, active: false,
+                           features: {} }.to_json)
+      stub_endpoints(['https://esign.example.com/stripe/webhooks'])
+
+      rows = StripeBilling::Checks.rows
+
+      expect(rows.find { |row| row[:name] == 'price' }).to include(result: 'FAIL', detail: /No such price/)
+      expect(rows.find { |row| row[:name] == 'portal configuration active' }).to include(result: 'FAIL')
     end
 
     it 'warns rather than fails when no endpoint points at us (the dev stack forwards instead)' do
