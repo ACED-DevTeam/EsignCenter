@@ -282,10 +282,16 @@ RSpec.describe 'Billing page', type: :request do # rubocop:disable RSpec/Multipl
       expect(free_card.text).not_to match(/\b\d+\s*GB\b/)
 
       paid_card = doc.at('[data-billing-card="paid"]')
-      expect(paid_card.text).to include(I18n.t('billing_paid_plan_price'))
+      price_line = I18n.t('billing_paid_plan_price', price: StripeBilling::PRICE_PER_SEAT_USD,
+                                                     trial_days: StripeBilling::TRIAL_PERIOD_DAYS)
+      expect(paid_card.text).to include(price_line)
+      # The price and trial are the constants billing applies, never typed into the copy.
+      expect(price_line).to start_with("$#{StripeBilling::PRICE_PER_SEAT_USD} per user per month")
+      expect(price_line).to include("#{StripeBilling::TRIAL_PERIOD_DAYS}-day free trial")
       expect(paid_card.text).to include(I18n.t('billing_benefit_api'))
       expect(paid_card.text).to include(I18n.t('billing_seats_billed', count: 1))
-      expect(paid_card.at('[data-billing-checkout-button]').text.strip).to eq(I18n.t('start_free_trial'))
+      expect(paid_card.at('[data-billing-checkout-button]').text.strip)
+        .to eq("Start #{StripeBilling::TRIAL_PERIOD_DAYS}-day free trial")
       expect(paid_card.text).to include(I18n.t('billing_trial_charge_note'))
       expect(doc.at('[data-billing-trial-used]')).to be_nil
       # Nothing to manage yet.
@@ -810,7 +816,10 @@ RSpec.describe 'Billing page', type: :request do # rubocop:disable RSpec/Multipl
 
       doc = page
 
-      expect(doc.at('[data-billing-banner="suspended"]').text).to include(I18n.t('billing_suspended_banner'))
+      expect(doc.at('[data-billing-banner="suspended"]').text)
+        .to include(I18n.t('billing_suspended_banner', days: BillingLifecycle::PAST_DUE_GRACE_DAYS))
+      expect(doc.at('[data-billing-banner="suspended"]').text)
+        .to include("#{BillingLifecycle::PAST_DUE_GRACE_DAYS}-day grace period")
       expect(doc.at('[data-billing-portal-button]')).to be_present
     end
 
@@ -1053,7 +1062,7 @@ RSpec.describe 'Billing page', type: :request do # rubocop:disable RSpec/Multipl
       get '/settings/billing/return', params: { session_id: 'cs_test_ok' }
 
       expect(response).to redirect_to('/settings/billing')
-      expect(flash[:notice]).to eq(I18n.t('billing_trial_started'))
+      expect(flash[:notice]).to eq("Your #{StripeBilling::TRIAL_PERIOD_DAYS}-day trial has started.")
 
       subscription = account.reload.account_subscription
       expect(subscription.access_state).to eq('trialing')

@@ -107,7 +107,7 @@
       </div>
       <div class="border-t border-base-content/10">
         <div class="max-w-6xl mx-auto px-4 md:px-2 py-6 flex flex-col md:flex-row md:items-center md:justify-between gap-3 text-sm text-base-content/70">
-          <p>&copy; <%= Time.current.year %> <%= Docuseal.product_name %>. Hosted in the United States.</p>
+          <p data-copyright>&copy; <%= Time.current.year %> <%= LegalDocuments::OPERATOR_LEGAL_NAME %>. Hosted in the United States.</p>
           <%# AGPL LICENSE_ADDITIONAL_TERMS: the DocuSeal attribution below must stay visible on every page. %>
           <%= render 'shared/attribution' %>
         </div>

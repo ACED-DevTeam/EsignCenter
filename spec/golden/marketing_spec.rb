@@ -17,7 +17,8 @@ RSpec.describe 'Marketing pages', type: :request do
     ['ESIGN compliant', 'ESIGN-compliant', 'court-admissible', 'bank-grade', 'SOC 2', 'HIPAA', 'GDPR']
   end
   let(:sub_processors) do
-    ['Render', 'Amazon Web Services', 'Postmark', 'Stripe', 'Sentry', 'Cloudflare Turnstile', 'Google', 'DigiCert']
+    ['Render', 'Amazon Web Services', 'Postmark', 'Stripe', 'Sentry', 'Cloudflare Turnstile', 'Google', 'Apple',
+     'DigiCert']
   end
   let(:claims) { %w[consent sealed verify audit us export delete open-source support pricing] }
 
@@ -149,9 +150,6 @@ RSpec.describe 'Marketing pages', type: :request do
       expect(cell.call('sends')).to eq([Quotas::Limits::FREE_SENDS_PER_MONTH.to_s, 'Unlimited*', 'Unlimited*',
                                         'Custom'])
       expect(cell.call('in_flight')).to eq([Quotas::Limits::FREE_IN_FLIGHT.to_s, 'Unlimited*', 'Unlimited*', 'Custom'])
-      expect(cell.call('storage')).to eq(%w[Included Included Included Custom])
-      expect(doc.at_css("tr[data-pricing-row='storage'] th").text.squish).to eq('Agreement storage')
-      expect(doc.at_css('main').text).not_to match(/\b\d+\s*GB\b/)
       expect(cell.call('seats').first).to eq(Quotas::Limits::FREE_SEATS.to_s)
       expect(cell.call('api')).to eq(['Not included', 'Included', 'Included', 'Included'])
       expect(cell.call('send_and_sign')).to eq(%w[Included Included Included Included])
@@ -164,6 +162,24 @@ RSpec.describe 'Marketing pages', type: :request do
 
       Entitlements::HIDDEN.each { |feature| expect(rows.map { |r| r['data-pricing-row'] }).not_to include(feature.to_s) }
       %w[SMS bulk SAML SSO formula].each { |word| expect(doc.at_css('table').text).not_to include(word) }
+    end
+
+    # Storage is included on every plan and never quoted as a size (owner
+    # decision); sales tax is not collected at launch (D22), so the page must
+    # not say it is added.
+    it 'sells storage as included with no size, and says nothing about tax' do
+      get '/pricing'
+
+      main = doc.at_css('main').text
+      expect(cell.call('storage')).to eq(%w[Included Included Included Included])
+      expect(doc.at_css("tr[data-pricing-row='storage'] th").text.squish).to eq('Agreement storage')
+      expect(main).not_to match(/\b\d+(\.\d+)?\s*(GB|TB|gigabytes?)\b/i)
+      [Quotas::Limits::FREE_STORAGE_BYTES, Quotas::Limits::PAID_STORAGE_BYTES_PER_SEAT].each do |bytes|
+        expect(main).not_to include(ActiveSupport::NumberHelper.number_to_human_size(bytes))
+      end
+      expect(main).not_to include('storage cap')
+      expect(doc.at_css('#fair-use').text).to include('Prices in US dollars.')
+      expect(main).not_to match(/\btax/i)
     end
 
     it 'shows API allowances, packs and an Enterprise sales contact' do
@@ -234,6 +250,13 @@ RSpec.describe 'Marketing pages', type: :request do
       expect(visible_attribution_links).not_to be_empty
     end
 
+    it 'names the operating company, not only the product, in the footer copyright' do
+      get '/trust'
+
+      expect(doc.at_css('footer [data-copyright]').text.squish)
+        .to eq("© #{Time.current.year} EsignCenter LLC. Hosted in the United States.")
+    end
+
     it 'keeps Trust out of the main nav and in the footer, beside Sub-processors' do
       get '/trust'
 
@@ -255,8 +278,50 @@ RSpec.describe 'Marketing pages', type: :request do
       expect(response.body).to include('(an ActiveCampaign company)')
       forbidden_trust_phrases.each { |phrase| expect(body_text_outside_disclaimer).not_to include(phrase) }
       expect(doc.css("a[href='#{trust_path}']")).not_to be_empty
+      row = ->(name) { doc.css('tbody tr').find { |tr| tr.at_css('th').text.squish == name }.text.squish }
+      # Turnstile guards the support form as well as sign-up
+      # (SupportRequestsController), and Sentry is described the way the
+      # Privacy Policy describes it.
+      expect(row.call('Cloudflare Turnstile')).to include('sign-up and support forms')
+      expect(row.call('Cloudflare Turnstile')).not_to include('once, at sign-up')
+      expect(row.call('Sentry')).to include('can include parts of the request that caused it')
+      expect(row.call('Apple')).to include('private relay address')
+    end
+
+    it 'names every company the Privacy Policy lists as a sub-processor' do
+      get '/trust/subprocessors'
+
+      page_names = doc.at_css('table').text
+      privacy = Nokogiri::HTML(LegalDocuments.html(:privacy))
+      companies = privacy.css('table').find { |table| table.text.include?('DigiCert') }.css('tbody tr td:first-child')
+
+      expect(companies.size).to eq(doc.css('tbody tr').size)
+      companies.each { |company| expect(page_names).to include(company.text.squish) }
       expect(doc.css("a[href='#{privacy_path}']")).not_to be_empty
       expect(visible_attribution_links).not_to be_empty
+    end
+  end
+
+  # RFC 9116. Served as a static file by ActionDispatch::Static (production
+  # enables the public file server), so this walks the real middleware stack.
+  # The Expires check is meant to go red: when it does, renew the file for
+  # another year (less than a year out, per the RFC) — a stale security.txt
+  # tells researchers the contact is not looked after.
+  describe 'GET /.well-known/security.txt' do
+    it 'publishes the security contact, a future expiry, the language and its canonical address' do
+      get '/.well-known/security.txt'
+
+      expect(response).to have_http_status(:ok)
+      expect(response.media_type).to eq('text/plain')
+
+      fields = response.body.lines.map(&:strip).reject { |line| line.empty? || line.start_with?('#') }
+                       .to_h { |line| line.split(': ', 2) }
+
+      expect(fields['Contact']).to eq("mailto:#{Docuseal::SUPPORT_EMAIL}")
+      expect(fields['Preferred-Languages']).to eq('en')
+      expect(fields['Canonical']).to eq('https://esigncenter.com/.well-known/security.txt')
+      expect(fields['Expires']).to match(/\A\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z\z/)
+      expect(Time.iso8601(fields['Expires'])).to be > Time.current
     end
   end
 

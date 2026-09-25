@@ -23,12 +23,11 @@
       <%# The SOC 2 Type II reports are the hosting and storage providers' own (Render and AWS, named on /trust/subprocessors), not EsignCenter's; the #not-claimed paragraph says so. %>
       <p data-soc2 class="font-semibold text-base-content">Built on SOC 2 Type II audited infrastructure.</p>
       <p>The application, the database that holds your account, templates and audit events, and the documents you upload and sign all live in United States regions. The services we use, and what each one receives, are on our <%= link_to 'sub-processors page', subprocessors_path, class: 'link font-medium' %>.</p>
-      <p>You can take everything with you at any time: <strong>Settings → Export</strong> builds one zip of your account with a manifest of checksums, and <strong>Settings → Account</strong> lets an administrator delete the account, confirmed with their password or a code we email them. Deletion is a 90-day decision: the account goes read-only immediately, and on the date shown it is permanently destroyed, unless you cancel before then.</p>
+      <p>You can take everything with you at any time: <strong>Settings → Export</strong> builds one zip of your account with a manifest of checksums, and <strong>Settings → Account</strong> lets an administrator delete the account, confirmed with their password or a code we email them. Deletion is a <%= Accounts::Deletion::WINDOW_DAYS %>-day decision: the account goes read-only immediately, and on the date shown it is permanently destroyed, unless you cancel before then.</p>
       <p>A few things outlive a permanent deletion, on purpose: the verification record of each signed PDF (its SHA-256 fingerprint, completion date and signer count, kept permanently so a document can still be verified years later; it holds no names and nothing from the document), the subscription and payment history with the person scrubbed out of it, a stub of the account row so those records point at something, and our own log of support access to the account. A file that another account also uses stays for that account. Everything else is destroyed.</p>
     </div>
   </div>
 </section>
-
 
 <section class="max-w-6xl mx-auto px-4 md:px-2 py-12 md:py-16" aria-labelledby="register-heading">
   <h2 id="register-heading" class="text-2xl md:text-3xl font-bold tracking-tight">The claim register</h2>
@@ -76,7 +75,7 @@
         <%# app/controllers/accounts_controller.rb, lib/accounts/deletion_codes.rb (emailed code), lib/accounts/purge.rb + docs/account-deletion.md "What survives a purge" (verified_documents, account_subscriptions, scrubbed stripe_event_inboxes, the tombstone row; operator_events untouched) %>
         <tr class="block md:table-row border-t border-base-content/5 align-top py-3 md:py-0" data-claim="delete">
           <th scope="row" class="block md:table-cell px-4 md:px-6 pt-2 pb-1 md:py-4 font-semibold">You can delete your account yourself</th>
-          <td class="block md:table-cell px-4 md:px-6 pt-1 pb-2 md:py-4 text-base-content/80">An administrator can delete the account from Settings → Account, confirmed with their password or an emailed code. The subscription is cancelled at once, the account goes read-only, every administrator is emailed the date, and 90 days later everything is destroyed except the records listed under "Where your data lives" above. Any administrator can cancel the deletion before then.</td>
+          <td class="block md:table-cell px-4 md:px-6 pt-1 pb-2 md:py-4 text-base-content/80">An administrator can delete the account from Settings → Account, confirmed with their password or an emailed code. The subscription is canceled at once, the account goes read-only, every administrator is emailed the date, and <%= Accounts::Deletion::WINDOW_DAYS %> days later everything is destroyed except the records listed under "Where your data lives" above. Any administrator can cancel the deletion before then.</td>
         </tr>
         <%# lib/docuseal.rb (GITHUB_URL), LICENSE, app/views/shared/_powered_by.html.erb (AGPL attribution) %>
         <tr class="block md:table-row border-t border-base-content/5 align-top py-3 md:py-0" data-claim="open-source">
