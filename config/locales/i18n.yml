@@ -1,4 +1,7 @@
 en: &en
+  smtp_delivery_failure_title: "Your email server could not send a message"
+  smtp_delivery_failure_detail: "Last failed attempt: %{time} UTC. %{reason}"
+  smtp_delivery_failure_help: "Check and save your SMTP settings, or remove them to use EsignCenter’s email server. Queued messages will keep retrying."
   dismiss: "Dismiss"
   first_run_checklist_title: "Get your first document signed"
   first_run_checklist_progress: "%{done} of %{total} done"

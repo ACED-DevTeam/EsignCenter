@@ -20,6 +20,8 @@ class EmailSmtpSettingsController < ApplicationController
         current_account
       ).deliver_now!
 
+      AccountSmtpFailures.clear(current_account)
+
       redirect_to settings_email_index_path, notice: I18n.t('changes_have_been_saved')
     else
       render :index, status: :unprocessable_content
@@ -32,6 +34,7 @@ class EmailSmtpSettingsController < ApplicationController
 
   def destroy
     @encrypted_config.destroy! if @encrypted_config.persisted?
+    AccountSmtpFailures.clear(current_account)
 
     redirect_to settings_email_index_path, notice: I18n.t('smtp_settings_have_been_removed')
   end

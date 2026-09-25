@@ -10,6 +10,12 @@ class SettingsMailer < ApplicationMailer
 
   private
 
+  # A connectivity test must exercise the saved pin and report errors to the
+  # settings controller, without generating a second failure notice.
+  def smtp_setup_test?
+    action_name == 'smtp_successful_setup'
+  end
+
   # Written by the platform, not by a customer: the mail layout signs it
   # with the product's name and the support address whatever the account's
   # branding-removal setting says (ApplicationMailer#platform_notice?).

@@ -32,6 +32,7 @@ class ApplicationMailer < ActionMailer::Base
   after_action :set_message_metadata
   after_action :set_message_uuid
   after_action :set_mail_account_header
+  after_action :set_mail_route_header
 
   def default_url_options
     Docuseal.default_url_options.merge(host: ENV.fetch('EMAIL_HOST', Docuseal.default_url_options[:host]))
@@ -179,6 +180,16 @@ class ApplicationMailer < ActionMailer::Base
   end
 
   private
+
+  # Layout and transport are separate only for the explicit SMTP connectivity
+  # test. The interceptor consumes this header before anything leaves the app.
+  def set_mail_route_header
+    headers['X-EC-Mail-Route'] = smtp_setup_test? ? 'smtp-test' : 'platform' if platform_notice?
+  end
+
+  def smtp_setup_test?
+    false
+  end
 
   def set_mail_account_header
     headers['X-EC-Account-Id'] = @_mail_account.id.to_s if @_mail_account
