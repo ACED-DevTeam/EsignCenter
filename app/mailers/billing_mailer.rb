@@ -51,6 +51,31 @@ class BillingMailer < ApplicationMailer
     mail(to: @recipients, subject: 'Your EsignCenter payment went through')
   end
 
+  # The automatic-renewal acknowledgment (docs/legal.md): sent once per Stripe
+  # subscription, when it starts. It writes down what the customer agreed to
+  # in the Checkout consent box, in a form they can keep — the price, how
+  # often it is charged, when the first charge lands and how to stop it.
+  #
+  # The numbers are the ones the row held when the subscription started,
+  # passed in rather than re-read: a mail delivered a minute later must still
+  # describe the purchase, not whatever changed since.
+  def subscription_started(account, plan:, seats:, monthly_usd:, trial_ends_at: nil, renews_at: nil)
+    return if prepare(account).blank?
+
+    @plan_name = plan == Plans::BUSINESS ? 'Business' : 'Paid'
+    @business = plan == Plans::BUSINESS
+    @seats = seats
+    @monthly_usd = monthly_usd
+    @price_per_seat = StripeBilling::PRICE_PER_SEAT_USD
+    @trial_ends_at = trial_ends_at
+    @renews_at = renews_at
+    @terms_url = "#{root_url.delete_suffix('/')}/terms"
+
+    subject = trial_ends_at ? 'Your EsignCenter free trial has started' : 'Your EsignCenter subscription has started'
+
+    mail(to: @recipients, subject:)
+  end
+
   # The plan no longer has room for everyone (D43). Nobody was deleted: one
   # admin keeps full access, the rest became read-only, and this mail says who
   # and where to change it.

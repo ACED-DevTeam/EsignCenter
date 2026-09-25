@@ -324,6 +324,14 @@ RSpec.describe 'Billing page', type: :request do # rubocop:disable RSpec/Multipl
       expect(session.dig('subscription_data', 'metadata', 'esigncenter_account_id')).to eq(account.id.to_s)
       expect(session['payment_method_collection']).to eq('always')
       expect(session['success_url']).to end_with('/settings/billing/return?session_id={CHECKOUT_SESSION_ID}')
+      # Automatic-renewal consent: a required box on the page that takes the
+      # card, naming the Terms, the renewal and the way out.
+      expect(session.dig('consent_collection', 'terms_of_service')).to eq('required')
+      consent = session.dig('custom_text', 'terms_of_service_acceptance', 'message')
+      expect(consent).to match(%r{\AI agree to the \[Terms of Service\]\(https?://[^)\s]+/terms\)\. })
+      expect(consent).to include("After the #{StripeBilling::TRIAL_PERIOD_DAYS}-day free trial")
+      expect(consent).to include('automatically every month').and include('until I cancel')
+      expect(consent).to include('Settings → Billing')
 
       expect(account.reload.account_subscription.stripe_customer_id).to eq('cus_created')
       expect(account.account_subscription.access_state).to eq('cancelled')
@@ -627,6 +635,10 @@ RSpec.describe 'Billing page', type: :request do # rubocop:disable RSpec/Multipl
 
       expect(session['subscription_data']).not_to have_key('trial_period_days')
       expect(session['subscription_data']).not_to have_key('trial_settings')
+      # And the consent box does not promise the trial it no longer sells.
+      consent = session.dig('custom_text', 'terms_of_service_acceptance', 'message')
+      expect(consent).to include('charged now').and include('until I cancel')
+      expect(consent).not_to include('free trial')
       # The key carries the trial answer too, so a stale one is visible there
       # as well as in the body.
       expect(WebMock).to have_requested(:post, 'https://api.stripe.com/v1/checkout/sessions')

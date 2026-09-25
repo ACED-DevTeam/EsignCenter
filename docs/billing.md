@@ -646,6 +646,11 @@ generates in test mode appears there and is forwarded.
    revisit when a state's economic-nexus threshold, typically about $100k a
    year, approaches; the accountant confirms the home-state Missouri rule).
    Checkout keeps `automatic_tax` disabled until that decision changes.
+   Also under Public details: the **Terms of service URL** is
+   `https://esigncenter.com/terms`. Checkout requires the customer to tick
+   the Terms and automatic-renewal consent box (`consent_collection`), and
+   Stripe refuses to create any Checkout session while that URL is blank —
+   every sale would fail.
 7. Run `bundle exec rake stripe:check` in the production shell. Everything
    must say PASS, including every **livemode** line (the endpoint line may be
    the only WARN, and only if step 3 was skipped).

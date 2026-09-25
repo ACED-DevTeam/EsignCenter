@@ -127,6 +127,9 @@ module StripeBilling
       # Read BEFORE the new state is assigned: a paid → free transition is the
       # only moment a free month can start part-way through a calendar month.
       was_paid = paid_row?(account_subscription)
+      # And the state itself, for the one mail that fires on a START
+      # (BillingLifecycle.subscription_started!).
+      was_state = account_subscription.access_state
 
       account_subscription.assign_attributes(attributes_for(account_subscription, stripe_subscription))
 
@@ -149,6 +152,7 @@ module StripeBilling
       # the webhook, the Checkout return and the nightly sweep all react
       # identically (BillingLifecycle). It never raises.
       BillingLifecycle.after_apply!(account_subscription)
+      BillingLifecycle.subscription_started!(account_subscription, was_state)
 
       # Only once the row above is written, because the cancel has to name the
       # subscription this apply just adopted.
