@@ -393,6 +393,26 @@ module Quotas
     true
   end
 
+  # Unarchiving a document puts it back in flight exactly as creating one
+  # does, so a free account at its open-documents cap is refused it the same
+  # way. Called inside with_creation_lock AFTER the row has been reopened, so
+  # the count already includes it; raising rolls the reopen back. A document
+  # that would not be in flight (completed, declined, expired) is never
+  # refused — it takes no slot.
+  def assert_reopen_within_in_flight!(submission)
+    billing = Plans.billing_account(submission.account)
+
+    return true unless Plans.key_for(billing) == Plans::FREE
+
+    limit = limits_for(billing).in_flight
+    scope = in_flight_scope(account_ids(billing))
+
+    return true if limit.nil? || !scope.exists?(id: submission.id)
+    return true if scope.count <= limit
+
+    raise LimitReached.new(:in_flight, limit:, resets_at: resets_at)
+  end
+
   def assert_api_capacity!(billing, source:, count:, limit:)
     return unless API_SOURCES.include?(source.to_s) && limit
     return if Time.current < ApiMeteringActivation.starts_at
