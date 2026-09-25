@@ -61,7 +61,7 @@
         </div>
         <div>
           <p class="font-semibold leading-tight" dir="auto"><%= t('usage_plan_paid') %></p>
-          <p class="text-xs text-base-content/70" dir="auto"><%= t('billing_paid_plan_price') %></p>
+          <p class="text-xs text-base-content/70" dir="auto"><%= t('billing_paid_plan_price', price: StripeBilling::PRICE_PER_SEAT_USD, trial_days: StripeBilling::TRIAL_PERIOD_DAYS) %></p>
         </div>
       </div>
       <ul class="text-sm space-y-1.5" dir="auto">
@@ -81,7 +81,7 @@
       <% if @actionable %>
         <div class="card-actions mt-1">
           <%# Checkout answers with a redirect to stripe.com, so Turbo must stay out of the way. %>
-          <%= button_to t(@trial_available ? 'start_free_trial' : 'upgrade_to_paid'), settings_billing_checkout_path,
+          <%= button_to t(@trial_available ? 'start_free_trial' : 'upgrade_to_paid', trial_days: StripeBilling::TRIAL_PERIOD_DAYS), settings_billing_checkout_path,
                         class: 'btn btn-neutral text-white w-full',
                         form: { class: 'w-full', data: { turbo: false } },
                         data: { turbo: false, billing_checkout_button: true } %>

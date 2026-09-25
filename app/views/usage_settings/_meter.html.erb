@@ -1,4 +1,4 @@
-<%# One usage card: `used` and `limit` are numbers (limit nil = unlimited); `used_text`/`limit_text` are what the human reads. Over the cap the bar is full and the badge says so — the number is never clamped. `full_is_neutral` (seats): exactly at the limit is the ordinary state, shown neutral; only past it is red. %>
+<%# One usage card: `used` and `limit` are numbers (limit nil = unlimited); `used_text`/`limit_text` are what the human reads; a blank `limit_text` (storage) shows the amount and the bar without naming the cap. Over the cap the bar is full and the badge says so — the number is never clamped. `full_is_neutral` (seats): exactly at the limit is the ordinary state, shown neutral; only past it is red. %>
 <% limit = local_assigns[:limit] %>
 <% full_is_neutral = local_assigns[:full_is_neutral] %>
 <% over = limit.present? && (full_is_neutral ? used > limit : used >= limit) %>
@@ -20,7 +20,7 @@
       <% end %>
     </div>
     <p class="text-3xl font-bold tabular-nums" dir="auto">
-      <% if limit.present? %>
+      <% if limit.present? && local_assigns[:limit_text].present? %>
         <%= t('usage_of', used: used_text, limit: limit_text) %>
       <% else %>
         <%= used_text %>

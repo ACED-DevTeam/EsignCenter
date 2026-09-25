@@ -523,7 +523,9 @@ class BillingSettingsController < ApplicationController
 
     state = @subscription.reload.access_state
 
-    return { notice: I18n.t('billing_trial_started') } if state == 'trialing'
+    if state == 'trialing'
+      return { notice: I18n.t('billing_trial_started', trial_days: StripeBilling::TRIAL_PERIOD_DAYS) }
+    end
     # Two paid states that are NOT "your subscription is active", and saying
     # so used to contradict the state card the customer was looking at. A
     # subscription whose first payment failed is past_due before it ever

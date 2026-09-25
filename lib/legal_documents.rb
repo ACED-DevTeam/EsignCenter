@@ -41,22 +41,24 @@ module LegalDocuments
   # still hashes to the digest recorded on the day it was published.
   DOCUMENTS = {
     terms: {
-      version: '2026-09-25',
-      effective_on: Date.new(2026, 9, 25),
-      sha256: '06b39e9a4b2549f0bf3d06e8386b89239d20bf309ecf90195649ea89a3f7a5e7',
+      version: '2026-09-26',
+      effective_on: Date.new(2026, 9, 26),
+      sha256: '37d85b97ceb44190f407bc90492de034a4a4380a9a30d78c4e0eb24dcca15f6c',
       archived: {
         '2026-09-05' => '0373405efc70654fa0f0fed41caf7281ea925402406d091bf68a93153b78d3de',
         '2026-09-23' => 'ecc0015b0000da5ed3d1c5a282b7014aa25c732fe49cfd21b60aa769b8611577',
-        '2026-09-24' => '77a68c64156f26742a4bede94ac5fadf73eb0eb8179daabb9526cacd82524842'
+        '2026-09-24' => '77a68c64156f26742a4bede94ac5fadf73eb0eb8179daabb9526cacd82524842',
+        '2026-09-25' => '06b39e9a4b2549f0bf3d06e8386b89239d20bf309ecf90195649ea89a3f7a5e7'
       }.freeze
     }.freeze,
     privacy: {
-      version: '2026-09-23',
-      effective_on: Date.new(2026, 9, 23),
-      sha256: '4e1eed5cb3fc050655d489a94b0d40a9ac13b4a916032ab4630bac9f658050f2',
+      version: '2026-09-25',
+      effective_on: Date.new(2026, 9, 25),
+      sha256: '11340517403fd1760dcfb0290ae9be41332682da4cd62230bfced2a5396e9e1d',
       archived: {
         '2026-09-05' => '1be7833ba2a2ff38d2b7a5018e45146510a304ddd59f5d3f826488086d52243e',
-        '2026-09-06' => 'c8ea3037ba549f7e97b495e3290253ab799ceead6648606faa374ffad7d2c42c'
+        '2026-09-06' => 'c8ea3037ba549f7e97b495e3290253ab799ceead6648606faa374ffad7d2c42c',
+        '2026-09-23' => '4e1eed5cb3fc050655d489a94b0d40a9ac13b4a916032ab4630bac9f658050f2'
       }.freeze
     }.freeze
   }.freeze
@@ -293,16 +295,14 @@ module LegalDocuments
       dormant_warning_days: Accounts::Retention::DORMANT_WARNING_DAYS,
       paid_retention: duration_words(Accounts::Retention::PAID_RETENTION),
       dormant_after: duration_words(Accounts::Retention::DORMANT_AFTER),
-      gigabytes: method(:gigabytes),
       sentence: method(:sentence)
     }
   end
 
-  # "1 GB", "10 GB" — the storage caps as a reader would write them, from the
-  # byte counts the quota engine actually applies.
-  def gigabytes(bytes)
-    "#{bytes / 1.gigabyte} GB"
-  end
+  # There is deliberately no helper for the storage caps. Storage is described
+  # as included, subject to fair use (owner decision, 2026-09-25): the caps in
+  # Quotas::Limits still apply as a safeguard, but no customer document quotes
+  # their size, and spec/golden/legal_spec.rb fails if one does.
 
   # "60, 30 and 7" — a list of numbers in prose, without pulling a view helper
   # into a document that has to render identically outside a request.

@@ -179,8 +179,22 @@ same constants the app enforces: `Quotas::Limits` (every number),
 `StripeBilling::PRICE_PER_SEAT_USD` / `TRIAL_PERIOD_DAYS`. No number is typed
 into the page.
 
-Both plans advertise agreement storage as included, without a GB amount.
-The storage caps still apply and remain visible in usage, help and the Terms.
+Every plan advertises storage as included ("we store your documents"), and
+no customer-facing page, email or legal text quotes a size — not the pricing
+page, the Terms, help, the usage page or the quota mail. The caps in
+`Quotas::Limits` still apply as a fair-use safeguard (docs/quotas-and-limits.md
+section 5); only operator screens show them in GB. The legal, marketing, help,
+usage-page and storage golden specs fail if a size comes back. The page says
+"Prices in US dollars." and nothing about tax: sales tax is not collected at
+launch (D22/D22a).
+
+## security.txt
+
+`public/.well-known/security.txt` (RFC 9116) names `Docuseal::SUPPORT_EMAIL`
+as the security contact, with a canonical URL on esigncenter.com and an
+`Expires` date less than a year out. It is served by the static file server,
+and `spec/golden/marketing_spec.rb` goes red once `Expires` has passed:
+renew it for another year when that happens.
 
 When `lib/pricing_matrix.rb` loads it checks that **every** paid-only feature in
 the entitlement matrix is named by some row; if one is missing it raises, so the

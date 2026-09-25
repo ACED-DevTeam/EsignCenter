@@ -71,7 +71,10 @@ RSpec.describe 'Usage page', type: :request do
     expect(card(doc, 'in_flight').text).to include(of(2, 10))
     stored = ActiveSupport::NumberHelper.number_to_human_size(Quotas::Storage.bytes_used(free_account))
     expect(Quotas::Storage.bytes_used(free_account)).to be_positive # the signed PDF
-    expect(card(doc, 'storage').text).to include(of(stored, '1 GB'))
+    # Storage shows what the account keeps and a bar, never the cap's size.
+    expect(card(doc, 'storage').text).to include(stored, I18n.t('usage_storage_hint'))
+    expect(card(doc, 'storage').text).not_to match(/\b\d+(\.\d+)?\s*(GB|TB)\b/)
+    expect(card(doc, 'storage').at('progress')).to be_present
     expect(card(doc, 'seats').text).to include(of(1, 1))
     # The one seat is taken — the ordinary state of a free account, shown
     # neutral — and no cap has been hit.
@@ -96,7 +99,9 @@ RSpec.describe 'Usage page', type: :request do
 
     expect(doc.at('[data-usage-upgrade]')).to be_present
     expect(doc.at('[data-usage-upgrade] [data-upgrade-cta]').text).to include(I18n.t('upgrade_plan'))
-    expect(doc.at('[data-usage-upgrade]').text).to include('$10 per user per month')
+    expect(doc.at('[data-usage-upgrade]').text).to include("$#{StripeBilling::PRICE_PER_SEAT_USD} per user per month",
+                                                           "#{StripeBilling::TRIAL_PERIOD_DAYS}-day free trial")
+    expect(doc.at('[data-usage-upgrade]').text).not_to include('%{')
     expect(doc.at('[data-sending-paused-banner]')).to be_nil
     expect(doc.at('#account_settings_menu a[href="/settings/usage"]').text).to eq(I18n.t('usage'))
   end
@@ -194,7 +199,9 @@ RSpec.describe 'Usage page', type: :request do
     expect(card(doc, 'completions').text).to include(I18n.t('usage_resend_note'))
     expect(card(doc, 'completions').text).not_to include(' of ')
     expect(card(doc, 'completions').at('progress')).to be_nil
-    expect(card(doc, 'storage').text).to include(of(ActiveSupport::NumberHelper.number_to_human_size(0), '20 GB'))
+    expect(card(doc, 'storage').text).to include(ActiveSupport::NumberHelper.number_to_human_size(0))
+    expect(card(doc, 'storage').text).not_to match(/\b\d+(\.\d+)?\s*(GB|TB)\b/)
+    expect(card(doc, 'storage').text).not_to include(' of ')
     expect(card(doc, 'seats').text).to include(of(1, 2))
     expect(doc.at('[data-usage-upgrade]')).to be_nil
   end

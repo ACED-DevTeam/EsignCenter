@@ -55,14 +55,15 @@ class QuotaMailer < ApplicationMailer
     mail(to: @recipients, subject: 'Sending is paused on your EsignCenter account')
   end
 
+  # No sizes, by decision: storage is sold as "we store your documents",
+  # and the cap behind it is a fair-use safeguard rather than an allowance
+  # to quote. The mail says what is happening and what to do about it.
   def storage_warning(account)
     return if prepare(account).blank?
 
-    @used = Quotas::Storage.human_size(Quotas::Storage.bytes_used(account))
-    @limit = Quotas::Storage.human_size(Quotas::Storage.limit_bytes(account))
     @paid = Plans.paid_or_better?(account)
 
-    mail(to: @recipients, subject: "Your EsignCenter storage is almost full (#{@used} of #{@limit})")
+    mail(to: @recipients, subject: 'Your EsignCenter account is nearing its storage fair-use limit')
   end
 
   private
@@ -77,6 +78,10 @@ class QuotaMailer < ApplicationMailer
     @resets_at = Quotas.resets_at(account)
     @usage_url = "#{root_url.delete_suffix('/')}#{Quotas::USAGE_PATH}"
     @support_email = Docuseal::SUPPORT_EMAIL
+    # The upgrade line several of these notices carry, from the constants
+    # billing applies, so the mail can never quote a stale price or trial.
+    @price = StripeBilling::PRICE_PER_SEAT_USD
+    @trial_days = StripeBilling::TRIAL_PERIOD_DAYS
 
     @recipients = admin_recipients(account)
   end

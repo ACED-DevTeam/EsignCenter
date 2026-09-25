@@ -395,9 +395,13 @@ is stored, so a refused upload leaves nothing behind):
 All of these store their files through one place
 (`Templates::CreateAttachments.call`, the logo aside), which asks the cap
 once, after zip extraction and before the first blob is written. The person
-uploading sees "Your storage is full (X of Y). Delete documents you no longer
-need or upgrade for more space." — as a page alert on the dashboard, an
-inline error in the builder, and a `422` with the same sentence on the API.
+uploading sees "Your account has reached its fair-use limit for document
+storage, so new uploads are paused. Sending and signing keep working. Delete
+documents you no longer need, or contact support." — as a page alert on the
+dashboard, an inline error in the builder, and a `422` with the same sentence
+on the API. The sentence names no size, in any locale: customers are told
+storage is included, subject to fair use, and the caps above are a safeguard
+rather than an allowance to quote (only operator screens show them in GB).
 
 **Never refused, by design.** A signer's field uploads and drawn signatures,
 the signed PDFs and audit trails the platform generates when a document
@@ -406,8 +410,9 @@ signatures and initials. Storage is a brake on new uploads, never a reason a
 document fails to complete.
 
 **The 80% warning.** When an upload leaves the account at 80% or more of its
-cap, the account's admins get one email per month ("Your EsignCenter storage
-is almost full") saying what counts and how to free space. Like the other
+cap, the account's admins get one email per month ("Your EsignCenter account
+is nearing its storage fair-use limit") saying what counts and how to free
+space, with no sizes in it. Like the other
 quota mail, the once-per-month guard is a durable counter, not a memory.
 
 **Freeing space.** Delete templates and documents you no longer need. There
@@ -427,8 +432,9 @@ Account). It shows, live:
   when sending is paused, with the support address;
 - five meters — documents completed this month, documents sent this month,
   documents awaiting signatures, storage used, seats used — each as "x of N"
-  with a bar. A paid account sees plain numbers for the first three (with
-  the fair-use level noted) and its real caps for storage and seats;
+  with a bar, except storage, which shows the amount kept and a bar with no
+  cap size beside it. A paid account sees plain numbers for the first three
+  (with the fair-use level noted) and its real cap for seats;
 - when the monthly limits reset: the first of next month at 00:00 UTC, and
   the same moment in the account's own timezone;
 - for a free account, the upgrade call-to-action.
