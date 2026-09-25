@@ -83,6 +83,8 @@ RSpec.describe 'Marketing pages', type: :request do
         .to include('Upload or pick a template', 'Add who signs', 'Send', 'Signed and sealed')
       expect(main.css('h2').map { |h| h.text.squish }).to include('Proof, built into every document')
       expect(main.text.squish).to include(infrastructure_claim)
+      # The reports are the providers', not ours; the line points at the paragraph that says so.
+      expect(main.css("a[href='/trust#not-claimed']")).not_to be_empty
       upstream_phrases.each { |phrase| expect(response.body).not_to include(phrase) }
       forbidden_trust_phrases.each { |phrase| expect(body_text_outside_disclaimer).not_to include(phrase) }
       expect(visible_attribution_links).not_to be_empty
