@@ -3764,6 +3764,47 @@ RSpec.describe 'Stripe billing', type: :request do # rubocop:disable RSpec/Multi
       expect_paid_access
     end
 
+    # Launch review, reconciliation gap: Checkout made the customer, the
+    # customer paid, every checkout webhook was lost and the tab was closed
+    # before the return page. The row names only the customer; Stripe bills.
+    # The sweep links the live subscription through the Checkout's own door.
+    it 'links a live subscription on a customer whose row never heard of it' do
+      row = cancelled_row
+      stub_subscription_list(customer_a, { subscription_a => 'active' })
+      stub_subscription(subscription_a, 'subscription-active')
+      alerts = []
+      allow(OperatorAlert).to receive(:deliver) { |args| alerts << args }
+      allow(ErrorReport).to receive(:warning)
+
+      report = described_class.new.perform
+
+      expect(row.reload).to have_attributes(stripe_subscription_id: subscription_a, access_state: 'active')
+      expect(report.linked.sole).to include(account_id: account.id, customer: customer_a,
+                                            subscription: subscription_a, now: 'active')
+      expect(report.errors).to be_empty
+      expect(alerts.sole[:body]).to include("#{subscription_a} on customer #{customer_a}")
+
+      expect_paid_access
+    end
+
+    it 'leaves a customer-only row alone when Stripe holds nothing live of ours for it' do
+      row = cancelled_row
+      stub_subscription_list(customer_a, { subscription_a => 'canceled',
+                                           subscription_b => listed_subscription(subscription_b, 'active',
+                                                                                 price: 'price_someone_else') })
+      allow(OperatorAlert).to receive(:deliver)
+      allow(ErrorReport).to receive(:warning)
+
+      report = described_class.new.perform
+
+      expect(row.reload).to have_attributes(stripe_subscription_id: nil, access_state: 'cancelled')
+      expect(report.linked).to be_empty
+      expect(report.errors).to be_empty
+      expect(WebMock).not_to have_requested(:get, subscription_url(subscription_b))
+
+      expect_free_plan
+    end
+
     # C1: which of two live subscriptions survives is decided on whether it
     # can actually COLLECT, not on age alone. A customer left holding an
     # older subscription that never charged (an abandoned 3-D Secure) or one
@@ -4089,10 +4130,15 @@ RSpec.describe 'Stripe billing', type: :request do # rubocop:disable RSpec/Multi
       expect(report.settled.sole)
         .to include(account_id: account.id, subscription: subscription_b, refunded: '$30.00')
       expect(row.reload.refund_owed_subscription_id).to be_nil
-      # Nothing else was attempted for it: no repair, no duplicate pass.
+      # Nothing else was done to it: no repair, no duplicate pass. The one
+      # read besides the debt is the lost-checkout lookup every customer-only
+      # row gets (it found nothing live here, so nothing was linked).
       expect(report.repaired).to be_empty
       expect(report.errors).to be_empty
-      expect(a_request(:get, %r{api\.stripe\.com/v1/subscriptions\?})).not_to have_been_made
+      expect(report.linked).to be_empty
+      expect(row.stripe_subscription_id).to be_nil
+      expect(a_request(:get, %r{api\.stripe\.com/v1/subscriptions\?})).to have_been_made.once
+      expect(a_request(:delete, %r{api\.stripe\.com/v1/subscriptions/})).not_to have_been_made
     end
 
     # M3: the repair and the owed refund are not the same job, and one must

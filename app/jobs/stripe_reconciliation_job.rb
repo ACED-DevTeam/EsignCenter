@@ -60,9 +60,11 @@ class StripeReconciliationJob < ApplicationJob
   class KeyMismatch < StandardError; end
 
   Report = Struct.new(:repaired, :errors, :requeued, :duplicates, :foreign, :unlinked, :settled,
-                      :manual_refunds, :vanished, :vanished_skipped, :key_mismatch, :rows, :stopped_after) do
+                      :manual_refunds, :vanished, :vanished_skipped, :key_mismatch, :rows, :stopped_after,
+                      :linked) do
     def anything?
       repaired.any? || errors.any? || duplicates.any? || foreign.any? || unlinked.any? || settled.any? ||
+        linked.any? ||
         manual_refunds.any? || vanished.any? || vanished_skipped.any? || key_mismatch.present? ||
         requeued.positive? || stopped_after.present?
     end
@@ -111,7 +113,7 @@ class StripeReconciliationJob < ApplicationJob
 
       report = Report.new(repaired: [], errors: [], requeued: 0, duplicates: [], foreign: [], unlinked: [],
                           settled: [], manual_refunds: [], vanished: [], vanished_skipped: [],
-                          key_mismatch: nil, rows: 0, stopped_after: nil)
+                          key_mismatch: nil, rows: 0, stopped_after: nil, linked: [])
 
       sweep(report)
       report.requeued = requeue_stuck_events
@@ -138,11 +140,19 @@ class StripeReconciliationJob < ApplicationJob
   # refused), and asking only for rows with a subscription id left those
   # debts with nothing to come back for them at all.
   #
+  # And a third kind: a row that names a Stripe CUSTOMER and no subscription
+  # (launch review). Checkout creates the customer before the customer pays;
+  # if every checkout webhook is then lost and the buyer closes the tab before
+  # the return page, Stripe bills a subscription the app has never heard of
+  # and the account sits on the free plan. Only Stripe can say, so the sweep
+  # asks (link_orphaned_customer).
+  #
   # `status` is nullable, and NULL is not 'manual': `where.not` would quietly
   # drop every legacy row and never reconcile it again.
   def eligible_rows
     AccountSubscription.where('status IS DISTINCT FROM ?', MANUAL_STATUS)
-                       .where('stripe_subscription_id IS NOT NULL OR refund_owed_subscription_id IS NOT NULL')
+                       .where('stripe_subscription_id IS NOT NULL OR refund_owed_subscription_id IS NOT NULL ' \
+                              'OR stripe_customer_id IS NOT NULL')
   end
 
   # Where this sweep starts: after the row the last one stopped at, or at the
@@ -173,6 +183,10 @@ class StripeReconciliationJob < ApplicationJob
   # Bounded by SWEEP_BUDGET, and resumed from where the last run stopped.
   def sweep(report)
     each_row(rows_to_sweep, report) do |subscription_row|
+      if subscription_row.stripe_subscription_id.blank? && subscription_row.stripe_customer_id.present?
+        link_orphaned_customer(subscription_row, report)
+      end
+
       # A row that names no subscription has nothing to repair and nothing to
       # measure a duplicate against: it is in this sweep for its debt alone.
       repaired = subscription_row.stripe_subscription_id.present? && repair_row(subscription_row, report)
@@ -443,6 +457,29 @@ class StripeReconciliationJob < ApplicationJob
     end
   end
 
+  # The customer-only row (see eligible_rows): whatever live subscription of
+  # ours Stripe holds for its customer is linked through the very door the
+  # Checkout uses for the same situation (Linker.link_live_subscriptions!,
+  # under the same row lock): the survivor is re-fetched and adopted only if
+  # it is ours, any second one goes through the duplicate path, and a
+  # stranger's is left alone and reported. The row is re-read under the lock
+  # first, so a webhook that got there in between wins. Once linked, the
+  # repair step behind this finds nothing left to do.
+  def link_orphaned_customer(subscription_row, report)
+    linked = StripeBilling::Linker.with_account_lock(subscription_row) do
+      next nil if subscription_row.stripe_subscription_id.present?
+      next nil unless StripeBilling::Linker.link_live_subscriptions!(subscription_row,
+                                                                     subscription_row.stripe_customer_id)
+
+      subscription_row.stripe_subscription_id
+    end
+
+    return if linked.blank?
+
+    report.linked << { account_id: subscription_row.account_id, customer: subscription_row.stripe_customer_id,
+                       subscription: linked, now: subscription_row.access_state }
+  end
+
   # The row's own subscription is not among the live ones — and it may be one
   # WE cancelled as a duplicate and never refunded, because the attempt died
   # between the cancellation at Stripe and the money going back. Nothing else
@@ -560,6 +597,7 @@ class StripeReconciliationJob < ApplicationJob
       "#{report.duplicates.size} duplicate subscription(s) cancelled, " \
       "#{report.foreign.size} foreign subscription(s) left alone, " \
       "#{report.unlinked.size} live subscription(s) not linked to any row, " \
+      "#{report.linked.size} lost checkout(s) linked, " \
       "#{report.settled.size} owed refund(s) settled, " \
       "#{report.manual_refunds.size} duplicate(s) awaiting a manual refund review, " \
       "#{report.vanished.size} subscription(s) Stripe no longer has, " \
@@ -574,6 +612,8 @@ class StripeReconciliationJob < ApplicationJob
       "#{format_customer_subscriptions(report.foreign)}\n\n" \
       "Live subscriptions of ours not linked to any account row (somebody may be paying for nothing):\n" \
       "#{format_customer_subscriptions(report.unlinked)}\n\n" \
+      'Lost checkouts linked (the customer held a live subscription the account row did not name; ' \
+      "it now does):\n#{format_customer_subscriptions(report.linked)}\n\n" \
       "Refunds an earlier attempt owed and this sweep settled:\n#{format_settled(report)}\n\n" \
       'Duplicates cancelled that need a manual refund review (nothing was refunded automatically ' \
       "— see each note):\n#{format_manual_refunds(report)}\n\n" \
