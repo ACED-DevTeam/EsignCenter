@@ -57,12 +57,14 @@ module StripeBilling
       outcome.is_a?(ApiPackPurchase) ? PackPurchases.process!(outcome) : outcome
     end
 
-    # A trial has no immediate charge; Stripe bills its quantity at trial end.
-    # Removals stop recurring at renewal while retained capacity lasts until
-    # then. Restoring that already-owned capacity must not charge twice.
+    # A trial pays for new packs up front like any other period: capacity a
+    # trial could add for free would be free capacity for anyone who cancels
+    # before trial end. Removals stop recurring at renewal while retained
+    # capacity lasts until then. Restoring that owned capacity must not
+    # charge twice.
     def prepare_packs!(row, subscription, quantity)
       covered = row.effective_api_pack_quantity
-      if row.access_state == 'trialing' || quantity <= covered
+      if quantity <= covered
         write_packs!(row, subscription, quantity)
         Linker.apply_current!(row, row.stripe_subscription_id, event_at: Time.current)
 

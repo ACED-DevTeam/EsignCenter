@@ -161,6 +161,19 @@ written. What changed:
 Step 4 above (emailing every account's administrators before the effective
 date) is still owed for this bump. Counsel has not reviewed these texts (§4).
 
+### Trial API packs are paid when added (September 25, 2026)
+
+| Document | Archived | Now live | Effective | Live SHA-256 |
+| --- | --- | --- | --- | --- |
+| Terms | `2026-09-26` | `2026-09-27` | September 27, 2026 | `3b3c34867112071915151994dc8e59b1da85f8815b3807bdb316ae20d19c3542` |
+
+The Terms said packs added during a trial were free until the trial ended,
+which let a trial take any number of packs and cancel before paying. A trial
+now pays for an added pack in full when it is added, exactly as an active
+subscription does; the trial continues and the pack renews monthly once it
+ends. The archived `2026-09-26` text was rendered from the prior code and
+checked against its recorded digest. Step 4 is owed for this bump too.
+
 ## 3. What is recorded when somebody agrees
 
 Two rows — one for the Terms, one for the Privacy Policy — every time a login
