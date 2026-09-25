@@ -172,11 +172,16 @@ module Submitters
     preferences
   end
 
+  # Would send_signature_requests email this signer? Asked by the resend
+  # doors before they spend a Submitters::ResendGuard claim on a request that
+  # was never going to go out.
+  def signature_request_sendable?(submitter)
+    submitter.email.present? && !submitter.declined_at? && submitter.preferences['send_email'] != false
+  end
+
   def send_signature_requests(submitters, delay_seconds: nil)
     submitters.each_with_index do |submitter, index|
-      next if submitter.email.blank?
-      next if submitter.declined_at?
-      next if submitter.preferences['send_email'] == false
+      next unless signature_request_sendable?(submitter)
 
       if delay_seconds
         SendSubmitterInvitationEmailJob.perform_in((delay_seconds + index).seconds, 'submitter_id' => submitter.id)

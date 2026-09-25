@@ -32,7 +32,7 @@
 # an empty period are separate events. Written only through AbuseFlags.record!.
 # Session 8's abuse queue reads this table.
 class AbuseFlag < ApplicationRecord
-  KINDS = %w[fair_use_review send_velocity in_flight complaint bounce_rate document_report].freeze
+  KINDS = %w[fair_use_review send_velocity resend_velocity in_flight complaint bounce_rate document_report].freeze
 
   belongs_to :account
   belongs_to :subject, polymorphic: true, optional: true
