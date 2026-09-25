@@ -893,9 +893,10 @@ RSpec.describe 'ESIGN consent', type: :request do
       expect(modal_sender_email(submitter)).to eq('contracts@acme.example')
     end
 
-    # A documents-copy mail with no copy address of its own keeps behaving as
-    # it did: it never borrows the invitation copy's reply-to.
-    it 'does not lend the invitation reply-to to a documents-copy mail' do
+    # The invitation reply-to is the organization's address. A documents-copy
+    # mail with no copy address of its own follows it, so a signer's reply to
+    # their signed copy reaches the same inbox the disclosure names.
+    it 'lends the invitation reply-to to a documents-copy mail with none of its own' do
       platform_certificate!
       submitter = emailed_submitter_for(paid_account)
       create(:account_config, account: paid_account, key: AccountConfig::SUBMITTER_INVITATION_EMAIL_KEY,
@@ -906,8 +907,8 @@ RSpec.describe 'ESIGN consent', type: :request do
       expect(submitter.reload.completed_at).to be_present
 
       expect(SubmitterMailer.invitation_email(submitter).reply_to).to eq(['invites@acme.example'])
-      expect(SubmitterMailer.documents_copy_email(submitter).reply_to)
-        .to eq([admin_for(paid_account).email])
+      expect(SubmitterMailer.documents_copy_email(submitter).reply_to).to eq(['invites@acme.example'])
+      expect(modal_sender_email(submitter)).to eq('invites@acme.example')
     end
   end
 

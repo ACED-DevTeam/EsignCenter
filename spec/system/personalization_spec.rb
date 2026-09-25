@@ -29,6 +29,7 @@ RSpec.describe 'Personalization' do
       expect(field[:placeholder]).to eq(user.email)
       expect(field.value).to be_blank
     end
-    expect(page).to have_css('p', text: 'If left blank, replies go to the person who sent the document.', visible: :all)
+    expect(page).to have_css('p', text: 'Applies to your whole organization', visible: :all)
+    expect(page).to have_css('p', text: 'Applies to this email across your whole organization', visible: :all)
   end
 end
