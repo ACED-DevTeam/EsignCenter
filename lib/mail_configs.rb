@@ -1,19 +1,20 @@
 # frozen_string_literal: true
 
 module MailConfigs
-  Result = Struct.new(:source, :smtp, :from)
+  Result = Struct.new(:source, :smtp, :from, :account)
 
   OPEN_TIMEOUT = ENV.fetch('SMTP_OPEN_TIMEOUT', '15').to_i
   READ_TIMEOUT = ENV.fetch('SMTP_READ_TIMEOUT', '25').to_i
 
   module_function
 
-  def resolve(account)
-    source_account, email_config = find_smtp_config(account)
+  def resolve(account, platform: false)
+    source_account, email_config = find_smtp_config(account) unless platform
 
     if email_config
       Result.new(
         source: :account,
+        account: source_account,
         smtp: build_account_smtp(email_config.value),
         from: %("#{source_account.name.to_s.delete('"')}" <#{email_config.value['from_email']}>)
       )

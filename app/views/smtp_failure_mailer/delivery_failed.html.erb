@@ -1,0 +1,12 @@
+<p><%= mail_greeting %></p>
+<p>An email from <%= @current_account.name %> could not be sent through your account’s email server.</p>
+<p>
+  Message: <%= @kind %><br>
+  To: <%= @recipients.join(', ') %><br>
+  When: <%= @failed_at %><br>
+  Reason: <%= @reason %>
+</p>
+<p>EsignCenter will keep retrying queued messages. Please check your SMTP settings so your emails can reach their recipients.</p>
+<p><%= link_to 'Review your email settings', @settings_url %> to fix the connection, or remove the settings to use EsignCenter’s email server.</p>
+<p>We send this notice at most once every 24 hours. You can also see the latest failure on the Email SMTP settings page.</p>
+<p>Thanks,<br>EsignCenter</p>

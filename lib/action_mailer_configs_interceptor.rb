@@ -13,7 +13,9 @@ module ActionMailerConfigsInterceptor
     message.instance_variable_set(:@ec_mail_config_applied, true)
 
     account_id = message['X-EC-Account-Id']&.value
+    route = message['X-EC-Mail-Route']&.value
     message['X-EC-Account-Id'] = nil
+    message['X-EC-Mail-Route'] = nil
 
     account = Account.find_by(id: account_id) if account_id.present?
 
@@ -33,11 +35,12 @@ module ActionMailerConfigsInterceptor
       return message
     end
 
-    result = MailConfigs.resolve(account)
+    result = MailConfigs.resolve(account, platform: route == 'platform')
 
     case result.source
     when :account
       deliver_via_smtp(message, result.smtp)
+      monitor_account_delivery(message, result) unless route == 'smtp-test'
       message.from = result.from
     when :env
       deliver_via_smtp(message, result.smtp)
@@ -49,6 +52,11 @@ module ActionMailerConfigsInterceptor
     end
 
     message
+  end
+
+  def monitor_account_delivery(message, result)
+    message.delivery_method(AccountSmtpDelivery, result.smtp)
+    message.delivery_method.account_id = result.account.id
   end
 
   # A failed SMTP send must raise so the Sidekiq mail job retries and the

@@ -13,11 +13,16 @@ end
 module Devise
   module Mailers
     module Helpers
+      # Login and password recovery must work even when a customer's server
+      # is broken. Devise::Mailer inherits ApplicationMailer's routing callback.
+      def platform_notice?
+        true
+      end
+
       def devise_mail(record, action, opts = {}, &)
         assign_message_metadata(action, record)
 
-        # Tag the tenant so the interceptor resolves this account's pinned
-        # SMTP config (Devise::Mailer inherits ApplicationMailer).
+        # Keep the account for delivery tracking and the platform message stream.
         mail_account(record.account) if record.respond_to?(:account) && record.account
 
         initialize_from_record(record)

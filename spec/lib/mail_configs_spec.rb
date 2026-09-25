@@ -69,6 +69,20 @@ RSpec.describe MailConfigs, type: :lib do
       expect(result.from).to eq('platform@example.com')
     end
 
+    it 'bypasses the pin for platform notices, including when no platform server exists' do
+      account = create(:account, :paid)
+      create_smtp_config(account)
+
+      expect(described_class.resolve(account, platform: true).source).to eq(:none)
+
+      ENV['SMTP_ADDRESS'] = 'platform.smtp.example'
+      ENV['SMTP_FROM'] = 'platform@example.com'
+
+      expect(described_class.resolve(account, platform: true))
+        .to have_attributes(source: :env, from: 'platform@example.com')
+      expect(described_class.resolve(account).source).to eq(:account)
+    end
+
     it 'returns none when neither account nor platform SMTP is configured' do
       result = described_class.resolve(create(:account))
 

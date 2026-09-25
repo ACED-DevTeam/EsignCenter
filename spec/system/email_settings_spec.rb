@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 RSpec.describe 'Email Settings' do
+  include_context 'with isolated SMTP environment'
+
   let!(:account) { create(:account, :paid) }
   let!(:user) { create(:user, account:) }
 
@@ -54,6 +56,75 @@ RSpec.describe 'Email Settings' do
 
     before do
       visit settings_email_index_path
+    end
+
+    # Optional artifacts for the implementation/review run, using the same
+    # isolated account and rendered state the assertions just inspected.
+    def capture_smtp_evidence(viewport)
+      return unless ENV['SMTP_SCREENSHOTS'] == 'true'
+
+      # rubocop:disable Lint/Debugger
+      page.save_screenshot(Rails.root.join("tmp/smtp-failure-#{viewport}.png"), full: true)
+      # rubocop:enable Lint/Debugger
+    end
+
+    def record_failure
+      create(:account_config, account:, key: AccountConfig::SMTP_FAILURE_KEY,
+                              value: { 'failed_at' => Time.current.iso8601,
+                                       'notified_at' => Time.current.iso8601,
+                                       'reason' => 'The email server did not accept the sign-in details.' })
+    end
+
+    it 'shows the recent failure on desktop and phone widths' do
+      page.driver.resize(1200, 800)
+      record_failure
+      visit settings_email_index_path
+
+      expect(page).to have_content('Your email server could not send a message')
+      expect(page).to have_content('The email server did not accept the sign-in details.')
+      expect(page).to have_content('UTC')
+      expect(page).to have_button('Remove SMTP settings')
+      capture_smtp_evidence('desktop')
+      page.driver.resize(390, 844)
+      expect(page).to have_content('Your email server could not send a message')
+      expect(page.evaluate_script('document.documentElement.scrollWidth <= window.innerWidth')).to be(true)
+      capture_smtp_evidence('phone')
+    end
+
+    it 'clears the failure after a successful setup test' do
+      record_failure
+      visit settings_email_index_path
+      fill_in 'Password', with: 'password'
+      click_button 'Save'
+
+      expect(page).to have_content('Changes have been saved')
+      expect(page).to have_no_content('Your email server could not send a message')
+      expect(AccountSmtpFailures.recent(account)).to be_nil
+    end
+
+    it 'keeps the recorded failure when the setup test fails' do
+      record_failure
+      delivery = instance_double(ActionMailer::MessageDelivery)
+      allow(SettingsMailer).to receive(:smtp_successful_setup).and_return(delivery)
+      allow(delivery).to receive(:deliver_now!).and_raise(IOError, 'Connection failed')
+      visit settings_email_index_path
+      fill_in 'Password', with: 'password'
+      click_button 'Save'
+
+      expect(page).to have_content('Connection failed')
+      expect(page).to have_content('Your email server could not send a message')
+      expect(AccountSmtpFailures.recent(account)).to be_present
+    end
+
+    it 'removes the pin and clears the recorded failure' do
+      record_failure
+      visit settings_email_index_path
+      accept_confirm { click_button 'Remove SMTP settings' }
+
+      expect(page).to have_content('SMTP settings have been removed')
+      expect(page).to have_no_content('Your email server could not send a message')
+      expect(EncryptedConfig.exists?(encrypted_config.id)).to be(false)
+      expect(AccountSmtpFailures.recent(account)).to be_nil
     end
 
     it 'shows pre-filled SMTP settings' do
