@@ -27,7 +27,7 @@ module ConsentSpecSupport
   BASE_LOCALES = %w[en es it fr pt de pl uk cs he nl ar ko ja].freeze
   CONSENT_KEYS = %w[esign_consent_checkbox_label esign_consent_disclosure_link esign_consent_disclosure_title
                     esign_consent_disclosure_body_html esign_consent_version_label esign_consent_required
-                    esign_consent_version_stale esign_consent_view_pdf esign_consent_open_pdf_first
+                    esign_consent_version_stale esign_consent_view_pdf
                     esign_consent_shown_to esign_consent_sender_not_recorded esign_consent_pdf_opened
                     esign_consent_pdf_not_opened esign_consent_pdf_not_recorded esign_consent_the_sender
                     esign_consent_document_too_many_requests esign_consent_view_first_pdf
@@ -191,7 +191,7 @@ RSpec.describe 'ESIGN consent', type: :request do
   end
 
   # The per-signer audit line for a consent given at `time`
-  # ("Consented to electronic signatures (v2, en): September 01, 2026 10:00").
+  # ("Consented to electronic signatures (v3, en): September 01, 2026 10:00").
   def consent_line(time, locale: 'en')
     pdf_phrase("#{I18n.t('consented_to_electronic_signatures')} (#{EsignConsent::VERSION}, #{locale}): " \
                "#{I18n.l(time.in_time_zone(account.timezone), format: :long, locale: account.locale)}")
@@ -1170,15 +1170,16 @@ RSpec.describe 'ESIGN consent', type: :request do
       expect(response.body).to eq(I18n.t('esign_consent_document_too_many_requests'))
     end
 
-    it 'hands the signing form the link and the two gate strings' do
+    # v3: the link is offered, never required, so no gate string goes with it.
+    it 'hands the signing form the optional PDF link and no gate' do
       submitter = emailed_submitter_for(account)
 
       get "/s/#{submitter.slug}"
 
       expect(esign_consent_contract)
         .to include('pdf_url' => "/s/#{submitter.slug}/document.pdf",
-                    'view_pdf_text' => I18n.t('esign_consent_view_pdf'),
-                    'open_pdf_first' => I18n.t('esign_consent_open_pdf_first'))
+                    'view_pdf_text' => I18n.t('esign_consent_view_pdf'))
+      expect(esign_consent_contract).not_to have_key('open_pdf_first')
     end
   end
 
@@ -1424,7 +1425,7 @@ RSpec.describe 'ESIGN consent', type: :request do
     it 'resolves every consent string in every declared locale, translated for non-English ones' do
       english = %w[esign_consent_checkbox_label esign_consent_disclosure_body_html
                    esign_consent_version_stale esign_consent_view_pdf
-                   esign_consent_open_pdf_first esign_consent_pdf_opened
+                   esign_consent_pdf_opened
                    esign_consent_pdf_not_opened esign_consent_pdf_not_recorded esign_consent_the_sender
                    esign_consent_document_too_many_requests esign_consent_view_first_pdf
                    esign_consent_shown_to esign_consent_sender_not_recorded
