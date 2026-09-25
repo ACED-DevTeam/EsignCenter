@@ -78,6 +78,7 @@ class ProcessSubmitterCompletionJob
         is_first: !Submissions::Lineage.first_completion_exists?(submission),
         template_id: submission.template_id,
         source: submission.source,
+        submission_created_at: submission.created_at,
         sms_count: sms_events.sum { |e| e.data['segments'] || 1 },
         verification_method:,
         completed_at: submitter.completed_at

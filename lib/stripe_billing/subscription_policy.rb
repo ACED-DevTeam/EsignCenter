@@ -58,7 +58,7 @@ module StripeBilling
     # Never true while no price is configured: "" would match an item with
     # no price at all and make a stranger's subscription ours.
     def on_our_price?(stripe_subscription)
-      StripeBilling.price_id.present? && SubscriptionSync.price_item(stripe_subscription).present?
+      SubscriptionSync.price_item(stripe_subscription).present?
     end
 
     # The account id our Checkout writes into `subscription_data.metadata`

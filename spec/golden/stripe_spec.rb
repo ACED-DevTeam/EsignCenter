@@ -5359,7 +5359,13 @@ RSpec.describe 'Stripe billing', type: :request do # rubocop:disable RSpec/Multi
 
       rows = StripeBilling::Checks.rows
 
-      expect(rows.pluck(:result).uniq).to eq(['PASS'])
+      # D79 products are optional: an existing Paid deployment remains
+      # valid while Business and packs are explicitly unavailable.
+      optional_prices = ['Business price', 'API pack price']
+      expect(rows.reject { |r| optional_prices.include?(r[:name]) }.pluck(:result).uniq)
+        .to eq(['PASS'])
+      expect(rows.select { |r| optional_prices.include?(r[:name]) }.pluck(:result))
+        .to eq(%w[SKIP SKIP])
       expect(StripeBilling::Checks.failed?(rows)).to be(false)
       expect { run_rake_task('stripe:check') }.to output(/stripe:check passed/).to_stdout
     end

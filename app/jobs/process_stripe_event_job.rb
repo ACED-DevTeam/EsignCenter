@@ -211,6 +211,12 @@ class ProcessStripeEventJob
 
   def handle_invoice(inbox)
     object = inbox.event_object
+    if (purchase = StripeBilling::PackPurchases.for_invoice_event(object))
+      return if claim_row!(inbox, purchase.account_subscription).nil?
+
+      StripeBilling::PackPurchases.process!(purchase, attempt_payment: false)
+      return processed!(inbox)
+    end
     subscription_id = invoice_subscription_id(object)
     subscription_row = claim_row!(inbox, row_for(subscription_id:, customer_id: object['customer']))
 

@@ -19,6 +19,25 @@ namespace :stripe do
     puts "\nstripe:check passed"
   end
 
+  desc 'Create (or find) the optional D79 Business and API pack prices: rake stripe:api_prices'
+  task api_prices: :environment do
+    [['esigncenter_business_monthly', 'EsignCenter Business', StripeBilling::BUSINESS_BASE_USD,
+      'STRIPE_BUSINESS_PRICE_ID'],
+     ['esigncenter_api_pack_monthly', 'EsignCenter API pack (50 completions)', StripeBilling::API_PACK_USD,
+      'STRIPE_API_PACK_PRICE_ID']].each do |lookup_key, name, dollars, env_key|
+      prices = StripeBilling.client.v1.prices
+      price = prices.list({ lookup_keys: [lookup_key], active: true, limit: 1 }).data.first
+      price ||= prices.create(
+        { currency: StripeBilling::PRICE_CURRENCY, unit_amount: dollars * 100,
+          recurring: { interval: StripeBilling::PRICE_INTERVAL }, lookup_key:, product_data: { name: } },
+        { idempotency_key: lookup_key }
+      )
+
+      puts "#{env_key}=#{price.id}"
+    end
+    puts 'Save these price ids in the deployment environment, then run rake stripe:check.'
+  end
+
   desc 'Create (or find) the Customer Portal configuration: rake stripe:portal_configuration'
   task portal_configuration: :environment do
     version = StripeBilling::Checks::MANIFEST_VERSION

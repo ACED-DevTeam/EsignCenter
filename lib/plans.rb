@@ -17,12 +17,13 @@
 module Plans
   FREE = 'free'
   PAID = 'paid'
+  BUSINESS = 'business'
   INTERNAL = 'internal'
 
-  KEYS = [FREE, PAID, INTERNAL].freeze
+  KEYS = [FREE, PAID, BUSINESS, INTERNAL].freeze
 
   # Plans that unlock every paid-only feature.
-  PAID_OR_BETTER = [PAID, INTERNAL].freeze
+  PAID_OR_BETTER = [PAID, BUSINESS, INTERNAL].freeze
 
   # The app's own verdict on a subscription (AccountSubscription#access_state).
   # Session 6 drives it from Stripe webhooks; `rake plans:grant` / `plans:revoke`
@@ -43,7 +44,7 @@ module Plans
 
     return INTERNAL unless billing.customer?
 
-    paid_subscription?(billing) ? PAID : FREE
+    paid_subscription?(billing) ? billing.account_subscription.effective_plan : FREE
   end
 
   def paid_or_better?(account)

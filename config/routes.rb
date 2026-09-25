@@ -241,6 +241,8 @@ Rails.application.routes.draw do
     resource :usage, only: %i[show], controller: 'usage_settings'
     resource :billing, only: %i[show], controller: 'billing_settings'
     post '/billing/checkout', to: 'billing_settings#checkout', as: :billing_checkout
+    post '/billing/plan', to: 'billing_settings#plan', as: :billing_plan
+    post '/billing/api_packs', to: 'billing_settings#api_packs', as: :billing_api_packs
     post '/billing/portal', to: 'billing_settings#portal', as: :billing_portal
     get '/billing/return', to: 'billing_settings#return', as: :billing_return
     resource :personalization_logo, only: %i[create destroy], controller: 'personalization_logo'

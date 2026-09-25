@@ -10,7 +10,8 @@
              "The free plan is free permanently: #{Quotas::Limits::FREE_COMPLETIONS_PER_MONTH} completed documents a month, " \
              "#{Quotas::Limits::FREE_SENDS_PER_MONTH} sends and one user. The paid plan is " \
              "$#{BillingSettingsController::PRICE_PER_SEAT_USD} per person per month, after a " \
-             "#{StripeBilling::TRIAL_PERIOD_DAYS}-day free trial.",
+             "#{StripeBilling::TRIAL_PERIOD_DAYS}-day free trial. Business is $#{StripeBilling::BUSINESS_BASE_USD} per month " \
+             'including one seat. API capacity is limited by plan, with recurring packs available.',
              'We never delete your documents because you downgraded, cancelled or missed a payment. ' \
              'An account behind on payment goes read-only, not away.',
              'You are responsible for the documents you send and for the people you send them to. ' \

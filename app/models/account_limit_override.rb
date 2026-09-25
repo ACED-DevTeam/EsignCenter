@@ -38,9 +38,16 @@ class AccountLimitOverride < ApplicationRecord
   # the whole list, so a present column always wins over the plan default.
   CAP_FIELDS = %w[completions_per_month sends_per_month in_flight seats storage_bytes].freeze
   PAID_SIGNAL_FIELDS = %w[fair_use_per_seat sends_per_day_per_seat in_flight_per_seat].freeze
-  FIELDS = (CAP_FIELDS + PAID_SIGNAL_FIELDS).freeze
+  API_FIELDS = %w[api_completions_per_month].freeze
+  FIELDS = (CAP_FIELDS + PAID_SIGNAL_FIELDS + API_FIELDS).freeze
+
+  # NULL inherits the plan; -1 explicitly removes the API cap for enterprise
+  # terms. Zero remains a real refusal, just like the other override columns.
+  validates :api_completions_per_month,
+            numericality: { only_integer: true, greater_than_or_equal_to: -1 }, allow_nil: true
 
   belongs_to :account
 
-  validates(*FIELDS.map(&:to_sym), numericality: { only_integer: true, greater_than_or_equal_to: 0 }, allow_nil: true)
+  validates(*(CAP_FIELDS + PAID_SIGNAL_FIELDS).map(&:to_sym),
+            numericality: { only_integer: true, greater_than_or_equal_to: 0 }, allow_nil: true)
 end

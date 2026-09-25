@@ -31,6 +31,24 @@ module StripeBilling
     ENV.fetch('STRIPE_PRICE_ID', nil)
   end
 
+  # D79's optional prices do not participate in configured?: an existing
+  # Paid deployment keeps billing while Business and packs are unavailable.
+  def business_price_id
+    ENV.fetch('STRIPE_BUSINESS_PRICE_ID', nil)
+  end
+
+  def api_pack_price_id
+    ENV.fetch('STRIPE_API_PACK_PRICE_ID', nil)
+  end
+
+  def business_available?
+    business_price_id.to_s.start_with?('price_')
+  end
+
+  def api_packs_available?
+    api_pack_price_id.to_s.start_with?('price_')
+  end
+
   def portal_configuration_id
     ENV.fetch('STRIPE_PORTAL_CONFIGURATION_ID', nil)
   end
@@ -82,6 +100,11 @@ module StripeBilling
 
   # What the app charges for, restated here so `rake stripe:check` can assert
   # the live price still matches the product we sell (docs/billing.md).
+  BUSINESS_BASE_USD = 49
+  API_PACK_USD = 10
+
+  OPTIONAL_CONFIG_KEYS = %w[STRIPE_BUSINESS_PRICE_ID STRIPE_API_PACK_PRICE_ID].freeze
+
   PRICE_UNIT_AMOUNT = 1000
   PRICE_CURRENCY = 'usd'
   PRICE_INTERVAL = 'month'

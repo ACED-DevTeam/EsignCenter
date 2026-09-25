@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_06_120000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_23_130000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gin"
   enable_extension "pg_catalog.plpgsql"
@@ -112,6 +112,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_06_120000) do
 
   create_table "account_limit_overrides", force: :cascade do |t|
     t.bigint "account_id", null: false
+    t.integer "api_completions_per_month"
     t.integer "completions_per_month"
     t.datetime "created_at", null: false
     t.integer "fair_use_per_seat"
@@ -150,6 +151,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_06_120000) do
   create_table "account_subscriptions", force: :cascade do |t|
     t.string "access_state", null: false
     t.bigint "account_id", null: false
+    t.integer "api_pack_quantity", default: 0, null: false
     t.datetime "cancel_at"
     t.boolean "cancel_at_period_end", default: false, null: false
     t.datetime "comp_expires_at"
@@ -159,8 +161,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_06_120000) do
     t.datetime "ended_at"
     t.datetime "last_stripe_event_at"
     t.datetime "past_due_since"
+    t.string "plan", default: "paid", null: false
     t.integer "quantity", default: 1, null: false
     t.string "refund_owed_subscription_id"
+    t.integer "retained_api_pack_quantity", default: 0, null: false
+    t.datetime "retained_api_pack_until"
+    t.datetime "retained_business_until"
     t.string "status"
     t.string "stripe_customer_id"
     t.string "stripe_item_id"
@@ -245,6 +251,35 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_06_120000) do
     t.index ["blob_id", "variation_digest"], name: "index_active_storage_variant_records_uniqueness", unique: true
   end
 
+  create_table "api_metering_activations", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "key", null: false
+    t.datetime "starts_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["key"], name: "index_api_metering_activations_on_key", unique: true
+  end
+
+  create_table "api_pack_purchases", force: :cascade do |t|
+    t.bigint "account_subscription_id", null: false
+    t.integer "added_quantity", null: false
+    t.datetime "applied_at"
+    t.datetime "closed_at"
+    t.datetime "created_at", null: false
+    t.datetime "expires_at", null: false
+    t.string "operation_key", null: false
+    t.datetime "paid_at"
+    t.integer "previous_quantity", null: false
+    t.integer "quantity", null: false
+    t.string "stripe_customer_id", null: false
+    t.string "stripe_invoice_id"
+    t.string "stripe_subscription_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["account_subscription_id"], name: "index_api_pack_purchases_on_account_subscription_id"
+    t.index ["account_subscription_id"], name: "index_one_open_api_pack_purchase", unique: true, where: "((applied_at IS NULL) AND (closed_at IS NULL))"
+    t.index ["operation_key"], name: "index_api_pack_purchases_on_operation_key", unique: true
+    t.index ["stripe_invoice_id"], name: "index_api_pack_purchases_on_stripe_invoice_id", unique: true
+  end
+
   create_table "completed_documents", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.string "sha256", null: false
@@ -261,6 +296,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_06_120000) do
     t.boolean "is_first"
     t.integer "sms_count", null: false
     t.string "source", null: false
+    t.datetime "submission_created_at"
     t.bigint "submission_id", null: false
     t.bigint "submitter_id", null: false
     t.bigint "template_id"
@@ -839,6 +875,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_06_120000) do
   add_foreign_key "accounts", "users", column: "deletion_requested_by_id", on_delete: :nullify
   add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
+  add_foreign_key "api_pack_purchases", "account_subscriptions"
   add_foreign_key "document_generation_events", "submitters"
   add_foreign_key "document_metadata", "accounts"
   add_foreign_key "dynamic_document_versions", "dynamic_documents"

@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Quotas
-  # Storage is the one quota that applies to paid accounts too (10 GB per
+  # Storage applies to paid accounts too (10 GB per
   # seat) — and the one that never touches sending or signing. It blocks
   # ACCOUNT-USER uploads only: every path that stores a document for a
   # template goes through Templates::CreateAttachments.call, which asks

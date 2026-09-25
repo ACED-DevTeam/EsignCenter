@@ -129,6 +129,24 @@ RSpec.describe 'Legal documents', type: :request do
       expect(terms_html).to include("valid for #{BillingLifecycle::INVITE_TOKEN_DAYS} days")
     end
 
+    it 'discloses API allowances, recurring packs and the automation-only pause' do
+      text = prose(terms_html)
+
+      expect(text).to include("Paid includes #{limits::PAID_API_COMPLETIONS_PER_MONTH} API completions per month")
+      expect(text).to include("Business includes #{limits::BUSINESS_API_COMPLETIONS_PER_MONTH}")
+      expect(text).to include("Business costs $#{StripeBilling::BUSINESS_BASE_USD} per month including one seat")
+      expect(text)
+        .to include("A recurring API pack adds #{limits::API_PACK_COMPLETIONS_PER_MONTH} completions per month")
+      expect(text).to include("for $#{StripeBilling::API_PACK_USD} per month on Paid or Business")
+      expect(text).to include('At the allowance we refuse new API, embedded-form and MCP documents')
+      expect(text).to include('Documents already sent always remain signable')
+      expect(text).to include('monthly price immediately, with no proration')
+      expect(text).to include('billed when the trial ends, without proration')
+      expect(text).to include('with no credit; Business capacity stays until then')
+      expect(text).to include('Each open API document reserves one completion')
+      expect(text).to include('Corrections of already-signed documents are allowed at the allowance')
+    end
+
     # D73/D74. These two sentences are the answer to "can I fix a document
     # somebody already signed?", and they are quoted verbatim because the
     # answer people were given has to be the answer the code gives.

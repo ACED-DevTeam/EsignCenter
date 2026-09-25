@@ -1,7 +1,9 @@
 # Billing with Stripe (plain English)
 
-EsignCenter sells one thing: **$10 per person per month, with a 14-day free
-trial, cancel any time.** This page explains who decides what, what happens
+EsignCenter offers **Paid at $10 per seat per month** (50 API completions)
+and **Business at $49 per month including one seat** (500 API completions),
+with extra Business seats at $10. Both offer recurring **API packs: $10 per
+month for 50 more API completions**. There is one 14-day trial per account. This page explains who decides what, what happens
 when a payment succeeds or fails, and exactly what has to be configured in
 Stripe before real money moves.
 
@@ -148,7 +150,7 @@ Inside that lock the rule is short:
 **What counts as ours.** A Stripe customer can carry subscriptions this app
 never sold — another product on a shared Stripe account, something made by
 hand in the dashboard. A subscription is ours only if it carries an item on
-**our price** (`STRIPE_PRICE_ID`) or our own Checkout tagged it with the
+**one of our plan prices** (`STRIPE_PRICE_ID` or `STRIPE_BUSINESS_PRICE_ID`) or our own Checkout tagged it with the
 account's id under **our own name for that tag**
 (`metadata.esigncenter_account_id`, which is also what the Stripe customer we
 create is tagged with). The name matters: the tag used to be the bare
@@ -506,7 +508,7 @@ already exists it prints that one instead of making another.
 | `STRIPE_SECRET_KEY` | `sk_live_…` in production, `sk_test_…` elsewhere | The API key every call is made with. A test key in production **refuses to boot**. |
 | `STRIPE_PUBLISHABLE_KEY` | `pk_…` | The public key. |
 | `STRIPE_WEBHOOK_SECRET` | `whsec_…` | Verifies incoming webhooks. Blank ⇒ the endpoint answers 503. |
-| `STRIPE_PRICE_ID` | `price_…` | The single price sold: $10 / seat / month. |
+| `STRIPE_PRICE_ID` | `price_…` | The Paid seat / extra Business seat price: $10 / month. |
 | `STRIPE_PORTAL_CONFIGURATION_ID` | `bpc_…` | From `rake stripe:portal_configuration`. |
 | `BILLING_ENABLED` | `true` to open | The launch switch for the billing **pages**. The webhook stays open regardless. |
 
@@ -1053,3 +1055,107 @@ above only ever acts on `duplicate` (refund automatically) and
 `duplicate-manual` (a person decides), so a subscription carrying the deletion
 marker reads as *"we ended it, and no money is owed on it"* — which is exactly
 right, and means a deletion can never be mistaken for a duplicate and refunded.
+
+
+## API plans and packs (D79)
+
+`STRIPE_PRICE_ID` remains the existing $10/month seat price. Business adds
+`STRIPE_BUSINESS_PRICE_ID` ($49/month, USD) and packs add
+`STRIPE_API_PACK_PRICE_ID` ($10/month, USD); all three must be distinct.
+The two new variables are optional: `StripeBilling.configured?` still checks
+the original five settings, and production boot accepts missing optional
+prices. The billing page explains that each missing product is unavailable;
+existing Paid subscriptions continue working with 50 API completions.
+Malformed optional values fail the boot guard. Do not remove a price variable
+while subscriptions still carry that price.
+
+An operator can run `bundle exec rake stripe:api_prices` to create or find the
+two prices by stable lookup keys, save the printed IDs into the environment,
+and run `bundle exec rake stripe:check` to verify amounts, currency and monthly
+intervals. These tasks contact Stripe; the automated tests never do. No
+Enterprise price exists: sales terms are handled by account limit overrides.
+Run the database migrations before deploying the new app.
+
+The subscription mirror records the **next recurring invoice**: `plan` and
+`api_pack_quantity`. Already-purchased access survives a reduction through
+`retained_business_until` and `retained_api_pack_quantity` /
+`retained_api_pack_until`. `Plans` reads `effective_plan`, so a Business
+account scheduled to become Paid still receives 500 included completions
+until renewal. Business's base buys one seat; the existing seat price buys
+extra Business seats or all Paid seats. Packs never buy seats. Customer
+Portal quantity editing stays off.
+
+New Checkout starts on Paid. During trial, customers may switch plans and add
+packs with **no immediate invoice and no proration**; Stripe bills the selected
+recurring prices at trial end. Business trial access includes 500 completions.
+
+Billing settings accepts target pack quantities from 0 to 9999. Changes require
+an active or trialing self-billed subscription, without a pending payment or
+external subscription schedule. An operator API override of **any value**
+(including zero or unlimited) disables both self-serve controls; the agreement
+owns capacity and the customer is directed to support.
+
+**Paid → Business:** an active subscription pays the prorated upgrade now;
+Business access starts after Stripe confirms payment. The existing seat item
+changes price, so the request never combines an item deletion with Stripe's
+`pending_if_incomplete`, a combination Stripe does not support.
+
+**Business → Paid:** no credit, and Business capacity lasts until renewal.
+The app changes the next recurring invoice without proration and retains the
+already-paid Business access locally. Keeping Business before renewal restores
+that recurring price without charging again; downgrade/restore cannot generate
+credits or a fresh allowance. This uses no SubscriptionSchedule, so later seat
+changes cannot overwrite a scheduled phase.
+
+**Active pack additions:** each genuinely new pack costs the **full $10 now**,
+regardless of how much of the billing period remains. A durable `ApiPackPurchase`
+operation is committed before money moves. It creates a standalone invoice,
+excludes unrelated pending invoice items, adds one non-discountable full-price
+line, finalizes, and attempts payment. The invoice is not attached to the
+subscription, so it cannot move its period, seat count, status or trial. Only a
+matching paid invoice permits the recurring pack quantity to increase, with
+`proration_behavior: none` and no pending-update payment mode.
+
+These standalone invoices deliberately use the existing launch policy of no
+automatic sales tax (D22/D22a). Their pack line is non-discountable to enforce
+$10 per pack. Tax collection or pack discounts require a future billing change;
+this implementation does not claim to support either.
+
+**Pack removal:** the next recurring invoice is reduced without proration or
+refund. Purchased capacity remains until the original renewal date. Restoring
+that capacity before renewal does not charge twice. If a customer both restores
+removed packs and buys new ones, the already-paid recurring packs are restored
+first, then only the additional units are invoiced. The restored quantity stays
+restored if the additional payment needs a card step. Thus, an unpaid invoice
+crossing renewal cannot revive expired capacity for free.
+
+Each operation has stable idempotency keys and Stripe metadata. Payment webhooks
+re-fetch and verify its customer, metadata and full total; an event payload alone
+never grants packs. Nightly reconciliation resumes paid-but-unapplied operations
+without charging again. Unpaid invoices expire after 24 hours and are voided on
+the next reconciliation/retry. Drafts are finalized with automatic collection disabled
+and then voided, never deleted, so lost responses remain recoverable. A canceled
+subscription's unpaid invoice is voided; a paid invoice that can no longer be fulfilled is recorded and alerts the operator
+for review/refund. Find these debts with
+`ApiPackPurchase.where.not(paid_at: nil).where(applied_at: nil)`.
+
+Invoice search is eventually consistent. If the local invoice id was lost and
+search returns nothing, retries may create only within 23 hours of the durable
+operation (safely inside Stripe's 24-hour idempotency retention). After that,
+automation stops for operator recovery rather than risking another charge. A
+canceled subscription with an unknown invoice stays open and alerts the operator
+until search can recover it; an empty search never closes an ambiguous money operation.
+
+API usage resets on the first day of each **UTC calendar month**, independently
+of subscription renewal. Allowance is per billing account, not per seat.
+In-flight signers always finish. Internal/operator accounts remain unlimited.
+
+The API meter has a fixed deployment boundary: the migration seeds
+`api_metering_activations` (`key=api_usage_tiers`, `starts_at=CURRENT_TIMESTAMP`).
+It survives process restarts. `API_METERING_STARTS_AT`, when supplied, must be
+a timezone-qualified ISO8601 timestamp and overrides that persisted value.
+Fresh schema-loaded databases create the singleton on first quota lookup.
+Only submissions created at or after the boundary participate in API counters,
+reservations and warnings. A durable `completed_submitters.submission_created_at`
+snapshot prevents document deletion from refunding usage; old documents completed
+after deployment remain outside the new API meter.

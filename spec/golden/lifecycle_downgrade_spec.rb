@@ -1023,6 +1023,8 @@ RSpec.describe 'Deleting an account', type: :request do
                                 'naming nobody — and if they went, every document the account ever ' \
                                 'signed would stop verifying.',
         'account_subscriptions' => 'the money history: Stripe ids and states, no documents and no people.',
+        'api_pack_purchases' => 'the invoice/recovery ledger: Stripe and operation ids, quantities and timestamps; ' \
+                                'no documents or people. Unfinished money operations must remain recoverable.',
         'stripe_event_inboxes' => 'the Stripe audit, kept with account_id nullified and the customer ' \
                                   'scrubbed out of the stored event (asserted below).',
         'operator_events' => 'the platform\'s own audit of what an operator did — including the purge ' \
@@ -1292,6 +1294,22 @@ RSpec.describe 'Deleting an account', type: :request do
 
       # And running it again is a no-op.
       expect(Accounts::Purge.call(account)).to eq(:already_purged)
+    end
+
+    it 'keeps unfinished API pack money operations through purge and refuses cascading their subscription' do
+      subscription = create(:account_subscription, account:, access_state: 'cancelled', status: 'canceled',
+                                                   stripe_status: 'canceled', stripe_subscription_id: 'sub_cancelled')
+      purchase = subscription.api_pack_purchases.create!(
+        operation_key: SecureRandom.uuid, stripe_subscription_id: 'sub_cancelled', stripe_customer_id: 'cus_purged',
+        stripe_invoice_id: 'in_unsettled', previous_quantity: 0, quantity: 2, added_quantity: 2, expires_at: 1.day.ago
+      )
+      account.update!(deletion_requested_at: 90.days.ago, purge_scheduled_for: 1.minute.ago)
+
+      expect(Accounts::Purge.call(account)).to eq(:purged)
+      expect(purchase.reload).to have_attributes(closed_at: nil, applied_at: nil, stripe_invoice_id: 'in_unsettled')
+      expect(purchase.account_subscription.account.reload.purged_at).to be_present
+      expect { subscription.destroy! }.to raise_error(ActiveRecord::DeleteRestrictionError)
+      expect(ApiPackPurchase.open.where(id: purchase.id)).to exist
     end
 
     it 'has a place in the inventory, or a written reason to survive, for every table in the schema ' \

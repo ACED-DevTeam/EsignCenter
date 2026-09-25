@@ -3,8 +3,8 @@
 module Quotas
   # The constants table for every quota, throttle and abuse policy in the
   # product (docs/quotas-and-limits.md). Internal and operator accounts are
-  # exempt from every row. Paid accounts are never auto-blocked by a quota
-  # (D42): their rows are warn-flags for the operator, not refusals.
+  # exempt from every row. Paid in-app sending stays warn-only (D42); the
+  # API-channel allowance deliberately refuses new automation documents (D79).
   module Limits
     # Free — hard caps, per UTC calendar month.
     FREE_COMPLETIONS_PER_MONTH = 5     # first-signer completions
@@ -19,6 +19,11 @@ module Quotas
     PAID_COMPLETIONS_REVIEW_PER_SEAT = 500 # fair-use review flag, never a block
     PAID_SENDS_PER_DAY_PER_SEAT = 200      # velocity warn-flag
     PAID_IN_FLIGHT_PER_SEAT = 50           # warn-flag
+
+    # D79: API/embed/MCP capacity is per billing account, never per seat.
+    PAID_API_COMPLETIONS_PER_MONTH = 50
+    BUSINESS_API_COMPLETIONS_PER_MONTH = 500
+    API_PACK_COMPLETIONS_PER_MONTH = 50
 
     # Paid completions soft-warn email; storage 80% warning (both plans).
     WARNING_FRACTION = 0.8
