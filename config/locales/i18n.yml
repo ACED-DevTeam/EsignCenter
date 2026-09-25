@@ -1035,7 +1035,7 @@ en: &en
   secret: Secret
   hmac: HMAC
   hmac_signing_secret: HMAC Signing Secret
-  hmac_signature_header_hint_html: 'Each request is signed with the %{header} header: &lt;timestamp&gt;.&lt;sha256&gt;. The same value is also sent as %{legacy_header} for older integrations.'
+  hmac_signature_header_hint_html: 'Each request is signed with the %{header} header: &lt;timestamp&gt;.&lt;sha256&gt;. The same value is also sent as %{legacy_header} so existing integrations keep working; that header is deprecated, so new integrations should verify %{header}.'
   count_submissions_have_been_created: '%{count} submissions have been created.'
   sms_length_cant_be_longer_than_120_bytes: SMS length can't be longer than 120 bytes
   connected_successfully: Connected successfully.
@@ -2936,7 +2936,7 @@ es: &es
   secret: Secreto
   hmac: HMAC
   hmac_signing_secret: Secreto de firma HMAC
-  hmac_signature_header_hint_html: 'Cada solicitud se firma con el encabezado %{header}: &lt;timestamp&gt;.&lt;sha256&gt;. El mismo valor también se envía como %{legacy_header} para integraciones antiguas.'
+  hmac_signature_header_hint_html: 'Cada solicitud se firma con el encabezado %{header}: &lt;timestamp&gt;.&lt;sha256&gt;. El mismo valor también se envía como %{legacy_header} para que las integraciones existentes sigan funcionando; ese encabezado está obsoleto, así que las integraciones nuevas deben verificar %{header}.'
   count_submissions_have_been_created: '%{count} envíos han sido creados.'
   sms_length_cant_be_longer_than_120_bytes: La longitud del SMS no puede ser mayor a 120 bytes.
   connected_successfully: Conectado con éxito.
@@ -4339,7 +4339,7 @@ it: &it
   secret: Segreto
   hmac: HMAC
   hmac_signing_secret: Segreto di firma HMAC
-  hmac_signature_header_hint_html: 'Ogni richiesta viene firmata con l''intestazione %{header}: &lt;timestamp&gt;.&lt;sha256&gt;. Lo stesso valore viene inviato anche come %{legacy_header} per le integrazioni precedenti.'
+  hmac_signature_header_hint_html: 'Ogni richiesta viene firmata con l''intestazione %{header}: &lt;timestamp&gt;.&lt;sha256&gt;. Lo stesso valore viene inviato anche come %{legacy_header} affinché le integrazioni esistenti continuino a funzionare; quell''intestazione è deprecata, quindi le nuove integrazioni devono verificare %{header}.'
   count_submissions_have_been_created: '%{count} invii sono stati creati.'
   sms_length_cant_be_longer_than_120_bytes: "La lunghezza dell'SMS non può superare i 120 byte."
   connected_successfully: Collegamento avvenuto con successo.
@@ -5742,7 +5742,7 @@ fr: &fr
   secret: Secret
   hmac: HMAC
   hmac_signing_secret: Secret de signature HMAC
-  hmac_signature_header_hint_html: 'Chaque requête est signée avec l''en-tête %{header} : &lt;timestamp&gt;.&lt;sha256&gt;. La même valeur est également envoyée dans %{legacy_header} pour les anciennes intégrations.'
+  hmac_signature_header_hint_html: 'Chaque requête est signée avec l''en-tête %{header} : &lt;timestamp&gt;.&lt;sha256&gt;. La même valeur est également envoyée dans %{legacy_header} pour que les intégrations existantes continuent de fonctionner ; cet en-tête est obsolète, les nouvelles intégrations doivent donc vérifier %{header}.'
   count_submissions_have_been_created: "%{count} soumissions ont été créées."
   sms_length_cant_be_longer_than_120_bytes: La longueur du SMS ne peut pas dépasser 120 octets
   connected_successfully: Connecté avec succès.
@@ -7145,7 +7145,7 @@ pt: &pt
   secret: Segredo
   hmac: HMAC
   hmac_signing_secret: Segredo de assinatura HMAC
-  hmac_signature_header_hint_html: 'Cada requisição é assinada com o cabeçalho %{header}: &lt;timestamp&gt;.&lt;sha256&gt;. O mesmo valor também é enviado como %{legacy_header} para integrações antigas.'
+  hmac_signature_header_hint_html: 'Cada requisição é assinada com o cabeçalho %{header}: &lt;timestamp&gt;.&lt;sha256&gt;. O mesmo valor também é enviado como %{legacy_header} para que as integrações existentes continuem funcionando; esse cabeçalho está obsoleto, então novas integrações devem verificar %{header}.'
   count_submissions_have_been_created: '%{count} submissões foram criadas.'
   sms_length_cant_be_longer_than_120_bytes: O comprimento do SMS não pode ultrapassar 120 bytes
   connected_successfully: Conectado com sucesso.
@@ -8548,7 +8548,7 @@ de: &de
   secret: Geheimnis
   hmac: HMAC
   hmac_signing_secret: HMAC-Signaturgeheimnis
-  hmac_signature_header_hint_html: 'Jede Anfrage wird mit dem %{header}-Header signiert: &lt;timestamp&gt;.&lt;sha256&gt;. Derselbe Wert wird für ältere Integrationen auch als %{legacy_header} gesendet.'
+  hmac_signature_header_hint_html: 'Jede Anfrage wird mit dem %{header}-Header signiert: &lt;timestamp&gt;.&lt;sha256&gt;. Derselbe Wert wird auch als %{legacy_header} gesendet, damit bestehende Integrationen weiter funktionieren; dieser Header ist veraltet, neue Integrationen sollten daher %{header} prüfen.'
   count_submissions_have_been_created: '%{count} Einreichungen wurden erstellt.'
   sms_length_cant_be_longer_than_120_bytes: Die SMS-Länge darf 120 Bytes nicht überschreiten.
   connected_successfully: Erfolgreich verbunden.
@@ -11866,7 +11866,7 @@ nl: &nl
   secret: Geheim
   hmac: HMAC
   hmac_signing_secret: HMAC-ondertekeningsgeheim
-  hmac_signature_header_hint_html: 'Elk verzoek wordt ondertekend met de %{header}-header: &lt;timestamp&gt;.&lt;sha256&gt;. Dezelfde waarde wordt voor oudere integraties ook als %{legacy_header} verzonden.'
+  hmac_signature_header_hint_html: 'Elk verzoek wordt ondertekend met de %{header}-header: &lt;timestamp&gt;.&lt;sha256&gt;. Dezelfde waarde wordt ook als %{legacy_header} verzonden zodat bestaande integraties blijven werken; die header is verouderd, dus nieuwe integraties moeten %{header} verifiëren.'
   count_submissions_have_been_created: "%{count} inzendingen zijn aangemaakt."
   sms_length_cant_be_longer_than_120_bytes: SMS-lengte mag niet langer zijn dan 120 bytes
   connected_successfully: Succesvol verbonden.

@@ -582,8 +582,9 @@ Use one of your own apps' EsignCenter workspaces (an *internal* account).
    mail server (not the platform default).
 2. **Old-header webhook verify.** In the integrating app's logs, confirm the
    `form.started` / `submission.created` webhook arrived and its signature
-   verified using the header the app reads — `X-Docuseal-Signature` (the same
-   value is also sent as `X-Esigncenter-Signature`). A silent "webhook not
+   verified using the header the app reads — today `X-Docuseal-Signature`
+   (deprecated; the same value is also sent as `X-Esigncenter-Signature`,
+   which the app should move to). A silent "webhook not
    authenticated" here means the fork was deployed after the app instead of
    before; fix the order and re-send.
 3. **Signer completion.** Open the invite, sign, complete. Expect: the

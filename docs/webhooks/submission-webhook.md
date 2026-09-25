@@ -7,7 +7,7 @@ Get submission creation, completion, expiration, and archiving notifications usi
 - **'submission.expired'** event is triggered when the submission expires.
 - **'submission.archived'** event is triggered when the submission is archived.
 
-Every request is signed. The `X-Esigncenter-Signature` header carries `<timestamp>.<sha256>` — the hex HMAC-SHA256 of `<timestamp>.<request body>` keyed with the webhook's HMAC signing secret (Settings → Webhooks → HMAC). The same value is also sent as the legacy `X-Docuseal-Signature` header, so an integration may verify whichever it already reads.
+Every request is signed. The `X-Esigncenter-Signature` header carries `<timestamp>.<sha256>` — the hex HMAC-SHA256 of `<timestamp>.<request body>` keyed with the webhook's HMAC signing secret (Settings → Webhooks → HMAC). The same value is also sent as the older `X-Docuseal-Signature` header so existing integrations keep working. That header is deprecated: new integrations should verify `X-Esigncenter-Signature`, and existing ones should switch to it when convenient.
 
 ```json
 {

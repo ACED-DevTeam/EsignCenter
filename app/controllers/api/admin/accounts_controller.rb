@@ -147,9 +147,10 @@ module Api
           api_token: user.access_token.token,
           webhook_url_id: webhook_url&.id,
           # The per-webhook HMAC key every delivery is signed with
-          # (X-Docuseal-Signature). Returned ONCE at provisioning so the
-          # receiver can actually verify the signatures — without it the
-          # signature header is unverifiable noise to the receiving app.
+          # (X-Esigncenter-Signature, plus the deprecated X-Docuseal-Signature).
+          # Returned ONCE at provisioning so the receiver can actually verify
+          # the signatures — without it the signature header is unverifiable
+          # noise to the receiving app.
           webhook_hmac_secret: webhook_url&.hmac_secret
         }, status:
       end

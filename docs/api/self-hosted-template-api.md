@@ -96,8 +96,9 @@ curl -sS -X POST "$ESIGNCENTER_BASE_URL/api/admin/accounts" \
 ```
 
 `api_token` is the token section 3 onwards uses, and `webhook_hmac_secret` is
-returned with provisioning (and a matching idempotent replay). It signs both
-the `X-Docuseal-Signature` and `X-Esigncenter-Signature` headers; store it
+returned with provisioning (and a matching idempotent replay). It signs the
+`X-Esigncenter-Signature` header (and the deprecated `X-Docuseal-Signature`,
+which carries the same value so older integrations keep working); store it
 when you receive it.
 
 **The webhook can be described either way.** Flat, as above

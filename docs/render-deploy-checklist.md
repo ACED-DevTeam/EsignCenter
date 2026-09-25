@@ -183,8 +183,9 @@ automatically when an e-sign account is provisioned: the fork calls the
 webhook URL the app registers, signing every delivery with a per-account key
 the app captures at provisioning and verifies. Every delivery now carries the
 signature in two headers with the same value — `X-Esigncenter-Signature` and
-the older `X-Docuseal-Signature` — so an app can verify whichever it already
-reads and switch to the new name whenever convenient. A well-behaved
+the older, deprecated `X-Docuseal-Signature` — so an app can verify whichever
+it already reads; new code should read `X-Esigncenter-Signature`, and an app
+still on the old name should switch whenever convenient. A well-behaved
 integrating app should also re-check documents on a schedule, so even a missed
 webhook only delays a status by a few minutes. (Accounts provisioned by an
 older version authenticate with their original shared secret and keep
