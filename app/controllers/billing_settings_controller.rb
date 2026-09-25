@@ -40,6 +40,7 @@ class BillingSettingsController < ApplicationController
   before_action :require_own_billing!, only: %i[checkout portal return plan api_packs]
   before_action :refuse_moved_away_account!, only: %i[checkout portal return plan api_packs]
   before_action :refuse_pending_deletion!, only: %i[checkout portal plan api_packs]
+  before_action :refuse_suspended_spending!, only: %i[plan api_packs]
 
   helper_method :billing_date
 
@@ -246,6 +247,20 @@ class BillingSettingsController < ApplicationController
     return unless current_account.pending_deletion?
 
     redirect_to settings_billing_path, alert: I18n.t('billing_refused_pending_deletion')
+  end
+
+  # A suspended account keeps the doors that settle what it owes (checkout,
+  # portal) and loses the ones that add to it. Stripe's own state only covers
+  # a payment suspension; an operator suspension can sit on a subscription
+  # Stripe still calls active, and a frozen account must not upgrade to
+  # Business or buy API packs it cannot use.
+  def refuse_suspended_spending!
+    return unless AccountStates.read_only?(current_account)
+
+    operator = AccountStates.suspension_candidates(current_account).filter_map(&:suspension_reason).first == 'operator'
+
+    redirect_to settings_billing_path,
+                alert: I18n.t(operator ? 'account_suspended_banner_operator' : 'billing_refused_suspended')
   end
 
   def load_subscription
