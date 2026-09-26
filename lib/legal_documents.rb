@@ -41,16 +41,17 @@ module LegalDocuments
   # still hashes to the digest recorded on the day it was published.
   DOCUMENTS = {
     terms: {
-      version: '2026-09-28',
-      effective_on: Date.new(2026, 9, 28),
-      sha256: '4676747c166e9a64735d93a06a1581f74c9eeabf7455284ff14eb90c86a03a81',
+      version: '2026-09-29',
+      effective_on: Date.new(2026, 9, 29),
+      sha256: 'aa90554ed203fa4f5ef7b193e4c815117ced43ae30dabc9e36cd06e66bfcc868',
       archived: {
         '2026-09-05' => '0373405efc70654fa0f0fed41caf7281ea925402406d091bf68a93153b78d3de',
         '2026-09-23' => 'ecc0015b0000da5ed3d1c5a282b7014aa25c732fe49cfd21b60aa769b8611577',
         '2026-09-24' => '77a68c64156f26742a4bede94ac5fadf73eb0eb8179daabb9526cacd82524842',
         '2026-09-25' => '06b39e9a4b2549f0bf3d06e8386b89239d20bf309ecf90195649ea89a3f7a5e7',
         '2026-09-26' => '37d85b97ceb44190f407bc90492de034a4a4380a9a30d78c4e0eb24dcca15f6c',
-        '2026-09-27' => '3b3c34867112071915151994dc8e59b1da85f8815b3807bdb316ae20d19c3542'
+        '2026-09-27' => '3b3c34867112071915151994dc8e59b1da85f8815b3807bdb316ae20d19c3542',
+        '2026-09-28' => '4676747c166e9a64735d93a06a1581f74c9eeabf7455284ff14eb90c86a03a81'
       }.freeze
     }.freeze,
     privacy: {
@@ -106,6 +107,17 @@ module LegalDocuments
   # at this one.
   OPERATOR_POSTAL_ADDRESS = '1911 S National Ave STE 104, Springfield, MO 65802'
   GOVERNING_LAW_STATE = 'Missouri'
+
+  # The agent who receives copyright notices and counter-notices under the
+  # DMCA (Terms §21). The safe harbor in 17 U.S.C. § 512 only applies while
+  # the same agent is registered in the Copyright Office's designated-agent
+  # directory (dmca.copyright.gov/osp, renewed every three years), so these
+  # two values must match that filing exactly — a job title rather than a
+  # person's name, so a staff change does not force a re-filing. The email is
+  # the support address until a dedicated inbox exists; changing either value
+  # bumps the Terms (docs/legal.md §4).
+  COPYRIGHT_AGENT_NAME = 'Copyright Agent'
+  COPYRIGHT_AGENT_EMAIL = Docuseal::SUPPORT_EMAIL
 
   module_function
 
@@ -284,6 +296,8 @@ module LegalDocuments
       operator_legal_name: OPERATOR_LEGAL_NAME,
       operator_postal_address: OPERATOR_POSTAL_ADDRESS,
       governing_law_state: GOVERNING_LAW_STATE,
+      copyright_agent_name: COPYRIGHT_AGENT_NAME,
+      copyright_agent_email: COPYRIGHT_AGENT_EMAIL,
       support_email: Docuseal::SUPPORT_EMAIL,
       github_url: Docuseal::GITHUB_URL,
       version: DOCUMENTS[doc][:version],

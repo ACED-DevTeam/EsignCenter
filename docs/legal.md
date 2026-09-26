@@ -201,6 +201,37 @@ From Evan's pre-launch terms review:
 Both archived texts were rendered from the code before the edit and checked
 against their recorded digests. No customer accounts existed yet, so step 4 had no one to email.
 
+### Copyright complaints under the DMCA (September 25, 2026)
+
+| Document | Archived | Now live | Effective | Live SHA-256 |
+| --- | --- | --- | --- | --- |
+| Terms | `2026-09-28` | `2026-09-29` | September 29, 2026 | `aa90554ed203fa4f5ef7b193e4c815117ced43ae30dabc9e36cd06e66bfcc868` |
+
+Evan asked for a DMCA policy in the Terms before launch. Terms §21 grew
+from a notice recipe into the whole procedure the safe harbor in 17 U.S.C.
+§ 512 expects (a subsection of §21, so no section numbers moved):
+
+* **A designated agent** — `LegalDocuments::COPYRIGHT_AGENT_NAME` (a job
+  title, "Copyright Agent", so a staff change does not force a re-filing) at
+  the operator's postal address, reached at
+  `LegalDocuments::COPYRIGHT_AGENT_EMAIL`. That is the support address until
+  a dedicated inbox exists. Notices go to the agent, not to support.
+* **The notice recipe** is unchanged, plus what happens to a notice that is
+  incomplete and the warning that a knowingly false notice carries liability.
+* **What we do with a valid notice** — remove or disable the material
+  promptly, tell the uploader, and forward them the notice.
+* **The counter-notice** — what the uploader sends to dispute a removal, that
+  it is forwarded to the complainant, and that the material is restored
+  between ten and fourteen business days later unless the complainant tells
+  us they have gone to court.
+* **Repeat infringers** lose their accounts, as before.
+
+The archived `2026-09-28` text was rendered from the prior code and checked
+against its recorded digest. No customer accounts existed yet, so step 4 had
+no one to email. What the words alone do not do is in §4 item 17: the agent
+has to be registered with the Copyright Office, or the section is only a
+promise to answer complaints.
+
 ## 3. What is recorded when somebody agrees
 
 Two rows — one for the Terms, one for the Privacy Policy — every time a login
@@ -360,6 +391,23 @@ Before launch, a lawyer needs to settle at least these:
     kept by the bucket's own default. Confirm it is on for
     `S3_ATTACHMENTS_BUCKET` before launch, and again whenever the bucket
     changes — see `docs/render-deploy-checklist.md`.
+17. **The DMCA designated agent must be registered with the U.S. Copyright
+    Office, or Terms §21 earns no safe harbor.** The filing is online only, at
+    dmca.copyright.gov/osp, costs $6, and **expires after three years** unless
+    renewed (amending or resubmitting restarts the clock; the Office emails
+    reminders to whoever filed). It needs the operator's legal name and street
+    address (no P.O. box), every alternate name the public might search under
+    (EsignCenter, E-Sign Centre, the domain), the agent's name or title,
+    mailing address, **telephone number** and email, and an administrative
+    contact. What the Terms publish must match the filing exactly
+    (`LegalDocuments::COPYRIGHT_AGENT_NAME`, `COPYRIGHT_AGENT_EMAIL`, the
+    operator address), so file first and then correct the constants if they
+    differ — that is a Terms bump. Two things the Terms cannot say yet because
+    nobody has decided them: the agent's **telephone number**, which the
+    regulation requires on the website as well as in the filing, and whether
+    complaints get a **dedicated inbox** (copyright@ on the product domain)
+    instead of the support address. Both are Evan's to settle; counsel should
+    then read §21 with the rest.
 
 ## 5. The pages themselves
 
