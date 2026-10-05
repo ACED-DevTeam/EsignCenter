@@ -231,7 +231,8 @@ RSpec.describe 'Legal documents', type: :request do
 
       expect(text).to include('Digital Millennium Copyright Act')
       expect(text).to include("#{LegalDocuments::COPYRIGHT_AGENT_NAME}<br> EsignCenter LLC<br> " \
-                              '1911 S National Ave STE 104, Springfield, MO 65802<br>')
+                              '1911 S National Ave STE 104, Springfield, MO 65802<br> ' \
+                              "#{LegalDocuments::COPYRIGHT_AGENT_PHONE}<br>")
       expect(text).to include("mailto:#{LegalDocuments::COPYRIGHT_AGENT_EMAIL}")
       expect(text).to include('Send copyright notices and counter-notices to that agent')
       expect(text).to include('a statement, made under penalty of perjury, that you believe in good faith ' \
