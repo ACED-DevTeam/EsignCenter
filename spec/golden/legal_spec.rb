@@ -222,6 +222,27 @@ RSpec.describe 'Legal documents', type: :request do
       end
     end
 
+    # Terms §21. The DMCA safe harbor turns on three things the document has
+    # to carry: the designated agent (the same one filed with the Copyright
+    # Office), the notice and counter-notice procedure, and a repeat-infringer
+    # rule. A section that names support instead of the agent is the old text.
+    it 'names the DMCA designated agent and gives both the notice and the counter-notice procedure' do
+      text = prose(terms_html)
+
+      expect(text).to include('Digital Millennium Copyright Act')
+      expect(text).to include("#{LegalDocuments::COPYRIGHT_AGENT_NAME}<br> EsignCenter LLC<br> " \
+                              '1911 S National Ave STE 104, Springfield, MO 65802<br> ' \
+                              "#{LegalDocuments::COPYRIGHT_AGENT_PHONE}<br>")
+      expect(text).to include("mailto:#{LegalDocuments::COPYRIGHT_AGENT_EMAIL}")
+      expect(text).to include('Send copyright notices and counter-notices to that agent')
+      expect(text).to include('a statement, made under penalty of perjury, that you believe in good faith ' \
+                              'the material was removed or disabled by mistake or because it was misidentified')
+      expect(text).to include('consent to the jurisdiction of the federal district court')
+      expect(text).to include('restore it between ten and fourteen business days')
+      expect(text).to include('We close the accounts of people who repeatedly upload material that infringes ' \
+                              'copyright.')
+    end
+
     # Review 1 corrected each of these against the code that implements them.
     it 'describes an unpaid or paused subscription the way the billing code treats it' do
       # StripeBilling::SubscriptionSync maps `unpaid` and `paused` to
