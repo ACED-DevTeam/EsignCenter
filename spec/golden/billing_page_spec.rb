@@ -375,6 +375,10 @@ RSpec.describe 'Billing page', type: :request do # rubocop:disable RSpec/Multipl
       expect(consent).to match(%r{\AI agree to the \[Terms of Service\]\(https?://[^)\s]+/terms\)\. })
       expect(consent).to include("After the #{StripeBilling::TRIAL_PERIOD_DAYS}-day free trial")
       expect(consent).to include('automatically every month').and include('until I cancel')
+      expect(consent).to include('Canceling before the trial ends avoids plan charges')
+      expect(consent).to include('Optional API packs are charged immediately, including during the trial')
+      expect(consent).to include('canceling does not automatically refund purchased packs')
+      expect(consent).not_to include('costs nothing')
       expect(consent).to include('Settings → Billing')
 
       expect(account.reload.account_subscription.stripe_customer_id).to eq('cus_created')

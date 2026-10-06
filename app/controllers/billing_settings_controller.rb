@@ -427,7 +427,9 @@ class BillingSettingsController < ApplicationController
     renewal =
       if @trial_available
         "After the #{StripeBilling::TRIAL_PERIOD_DAYS}-day free trial, my card is charged automatically " \
-          'every month at the price shown until I cancel. Canceling before the trial ends costs nothing.'
+          'every month at the price shown until I cancel. Canceling before the trial ends avoids plan charges. ' \
+          'Optional API packs are charged immediately, including during the trial; ' \
+          'canceling does not automatically refund purchased packs.'
       else
         'My card is charged now and then automatically every month at the price shown until I cancel.'
       end
