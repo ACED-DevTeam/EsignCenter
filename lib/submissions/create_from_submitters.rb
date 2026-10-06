@@ -7,11 +7,58 @@ module Submissions
     module_function
 
     # rubocop:disable Metrics
+    # Readiness first, then the quota check for the whole batch, then the
+    # creations — all under the account's creation lock so concurrent senders
+    # serialise (lib/quotas.rb). A refusal raises before anything is saved.
+    # The expiry jobs are scheduled once the lock (and its transaction) is
+    # released, so a job can never run against a row that has not committed.
     def call(template:, user:, submissions_attrs:, source:, submitters_order:, params: {}, with_template: true,
              new_fields: nil)
+      submissions = Quotas.with_creation_lock(template.account) do
+        Templates.assert_documents_ready!(template)
+
+        Quotas.assert_can_create_submissions!(template.account, count: creating_count(template, submissions_attrs),
+                                                                source:)
+
+        saved = build_and_save(template:, user:, submissions_attrs:, source:, submitters_order:, params:,
+                               with_template:, new_fields:)
+
+        Quotas.record_paid_signals(template.account)
+
+        saved
+      end
+
+      maybe_enqueue_expire_at(submissions)
+
+      submissions
+    end
+
+    # How many submissions the batch will actually create: an entry produces
+    # one only when at least one of its submitters resolves to a template
+    # role and carries an email, phone or name — the same rules build_and_save
+    # applies when it skips a submitter.
+    def creating_count(template, submissions_attrs)
+      Array.wrap(submissions_attrs).count { |attrs| attrs_has_submitters?(template, attrs) }
+    end
+
+    def attrs_has_submitters?(template, attrs)
+      Array.wrap(attrs[:submitters]).each_with_index.any? do |submitter_attrs, index|
+        roles = Array.wrap(submitter_attrs[:roles])
+
+        next true if roles.size > 1
+
+        submitter_attrs = submitter_attrs.merge(role: roles.first) if roles.size == 1
+
+        find_submitter_uuid(template.submitters, submitter_attrs, index).present? &&
+          submitter_attrs.slice('email', 'phone', 'name').compact_blank.present?
+      end
+    end
+
+    def build_and_save(template:, user:, submissions_attrs:, source:, submitters_order:, params:, with_template:,
+                       new_fields:)
       preferences = Submitters.normalize_preferences(user.account, user, params)
 
-      submissions = Array.wrap(submissions_attrs).filter_map do |attrs|
+      Array.wrap(submissions_attrs).filter_map do |attrs|
         submission_preferences = Submitters.normalize_preferences(user.account, user, attrs)
         submission_preferences = preferences.merge(submission_preferences)
 
@@ -86,6 +133,17 @@ module Submissions
           raise BaseError, 'Recipient emails should differ' if submission_emails.uniq.size != submission_emails.size
         end
 
+        # The uuid IS the signing role, so two entries that resolve to the
+        # same one are two people in one role — refused by the unique index on
+        # `submitters (submission_id, uuid)`, which the API used to answer with
+        # a 500 (review 2, H3). A caller reaches this by naming the same `uuid`
+        # twice, or by naming two roles that resolve to one. Same shape as the
+        # duplicate-`role` rule the params validator already applies, and last
+        # of the batch's rules so the counts and the emails still answer first.
+        submitter_uuids = submission.submitters.map(&:uuid)
+
+        raise BaseError, 'uuid must be unique in `submitters`.' if submitter_uuids.uniq.size != submitter_uuids.size
+
         next if submission.submitters.blank?
 
         maybe_add_invite_submitters(submission, template, attrs[:submitters])
@@ -94,10 +152,6 @@ module Submissions
 
         submission.tap(&:save!)
       end
-
-      maybe_enqueue_expire_at(submissions)
-
-      submissions
     end
 
     def maybe_set_dynamic_documents(submission)
@@ -188,6 +242,8 @@ module Submissions
 
     def maybe_set_template_fields(submission, submitters_attrs, default_submitter_uuid: nil, with_template: true,
                                   new_fields: nil)
+      assert_entitled_field_params!(submission, submitters_attrs)
+
       template_fields = (submission.template_fields || submission.template.fields).deep_dup
 
       submitters = submission.template_submitters || submission.template.submitters
@@ -213,6 +269,15 @@ module Submissions
       submission
     end
     # rubocop:enable Metrics
+
+    # Per-submission field overrides can carry a formula (hidden for everyone)
+    # or conditions (paid-only): the same refusal as a builder save, before
+    # anything is merged into the submission's fields.
+    def assert_entitled_field_params!(submission, submitters_attrs)
+      fields = Array.wrap(submitters_attrs).flat_map { |attrs| Array.wrap(attrs[:fields]) }
+
+      Templates::AssertEntitledFields.call(submission.account, fields) if fields.present?
+    end
 
     def merge_submitters_and_fields(submitter_attrs, template_submitters, template_fields)
       selected_submitters = submitter_attrs[:roles].map do |role|

@@ -19,10 +19,17 @@ class SubmissionEventsController < ApplicationController
     'delegate_form' => 'user_share',
     'start_verification' => 'player_play',
     'complete_verification' => 'check',
-    'invite_party' => 'user_plus'
+    'invite_party' => 'user_plus',
+    'esign_consent' => 'shield_check'
   }.freeze
 
   load_and_authorize_resource :submission
 
-  def index; end
+  def index
+    @delivery_tracking = Entitlements.allowed?(current_account, :delivery_tracking)
+    @submission_events = @submission.submission_events.order(:event_timestamp)
+    return if @delivery_tracking
+
+    @submission_events = @submission_events.where.not(event_type: SubmissionEvents::TRACKING_TYPES)
+  end
 end

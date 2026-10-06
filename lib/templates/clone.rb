@@ -6,6 +6,11 @@ module Templates
 
     # rubocop:disable Metrics
     def call(original_template, author:, external_id: nil, name: nil, folder_name: nil)
+      # A clone shares the original's blobs (CloneAttachments). While a Word
+      # document is still converting there is no PDF to share yet, and no job
+      # would ever finish the copy; a failed one would only copy the failure.
+      Templates.assert_documents_ready!(original_template)
+
       template = author.account.templates.new
 
       template.external_id = external_id
@@ -27,6 +32,22 @@ module Templates
                                                 original_template.fields.deep_dup,
                                                 original_template.schema.deep_dup,
                                                 original_template.preferences.deep_dup)
+
+      # ...but never the two seeding markers. They say "we put this document
+      # here" and "nobody has opened it since", and both are untrue of a copy
+      # somebody asked for by hand. Carried across, the customer's own copy
+      # would be invisible to the first-run checklist's "have they chosen a
+      # document of their own yet?" (StarterTemplates.not_marked) and could be
+      # offered to Accounts::MoveUser#drop_untouched_starters! as a duplicate
+      # to throw away (review 10 cycle 2, Q4).
+      template.preferences = template.preferences.except(StarterTemplates::STARTER_PREFERENCE_KEY,
+                                                         StarterTemplates::STARTER_PRISTINE_KEY)
+
+      # A clone is a NEW template, own account included: every copied
+      # condition or formula counts as introduced (no baseline), so a free
+      # account cannot multiply a conditional template — the original stays
+      # readable and usable (D43) — and nobody can clone a formula field.
+      Templates::AssertEntitledFields.call(author.account, template.fields, schema: template.schema)
 
       if name.present? && template.schema.size == 1 &&
          original_template.schema.first['name'] == original_template.name &&

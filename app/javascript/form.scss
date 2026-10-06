@@ -71,6 +71,38 @@ button[disabled] .enabled, button.btn-disabled .enabled {
   @apply radio bg-white radio-sm;
 }
 
+/* Accessibility (Session 9), the signer's half of the rule that also lives in
+   application.scss. The signing page is the one screen a stranger meets, and
+   it is often met from a keyboard: everything that can be landed on says so.
+   The tooltip rule is the same fix as the app bundle's — daisyUI keeps a
+   faded-out bubble in the layout, up to 20rem of it, which on a phone is real
+   sideways scroll; it is keyed on `data-tip` so the responsive variants are
+   covered too. And one switch that stills every animation for a reader
+   who asked their OS for less motion. */
+a:focus-visible,
+button:focus-visible,
+summary:focus-visible,
+[tabindex]:focus-visible {
+  outline: 3px solid #4f46e5;
+  outline-offset: 3px;
+}
+
+[data-tip]:not(:hover):not(:focus):not(:focus-within):not(.tooltip-open)::before,
+[data-tip]:not(:hover):not(:focus):not(:focus-within):not(.tooltip-open)::after {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 .font-times {
   font-family: "Times New Roman", Times, ui-serif, serif, Cambria, Georgia;
 }

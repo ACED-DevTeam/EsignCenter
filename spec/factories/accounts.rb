@@ -10,6 +10,27 @@ FactoryBot.define do
       teams_count { 2 }
     end
 
+    trait :internal do
+      account_kind { Account::INTERNAL_KIND }
+    end
+
+    trait :operator do
+      account_kind { Account::OPERATOR_KIND }
+    end
+
+    # A customer account on the paid plan: the ONE place specs say "paid"
+    # (spec/golden/gating_spec.rb included). `seats` sets the subscription's
+    # quantity.
+    trait :paid do
+      transient do
+        seats { 1 }
+      end
+
+      after(:create) do |account, evaluator|
+        create(:account_subscription, account:, access_state: 'active', quantity: evaluator.seats)
+      end
+    end
+
     trait :with_testing_account do
       after(:create) do |account|
         testing_account = account.dup.tap { |a| a.name = "Testing - #{account.name}" }

@@ -3,6 +3,15 @@
 class TemplatesCloneAndReplaceController < ApplicationController
   load_and_authorize_resource :template
 
+  # Raised by Templates::Clone (before anything is saved) while a Word
+  # document of the original is still converting or failed to convert.
+  rescue_from Templates::DocumentsNotReady do |e|
+    respond_to do |f|
+      f.html { redirect_back(fallback_location: root_path, alert: e.message) }
+      f.json { render json: { error: e.message }, status: :unprocessable_content }
+    end
+  end
+
   def create
     return head :unprocessable_content if params[:files].blank?
 
@@ -37,6 +46,26 @@ class TemplatesCloneAndReplaceController < ApplicationController
     respond_to do |f|
       f.html { render turbo_stream: turbo_stream.append(params[:form_id], html: helpers.tag.prompt_password) }
       f.json { render json: { error: 'PDF encrypted', status: 'pdf_encrypted' }, status: :unprocessable_content }
+    end
+  rescue StandardError => e
+    refuse_upload!(e, cloned_template)
+  end
+
+  private
+
+  # A refused file (unsupported format, Word limits) gets its specific
+  # message; anything else propagates. The clone is saved before its files
+  # are checked, so a refusal must not leave a half-built copy behind.
+  def refuse_upload!(error, cloned_template)
+    message = Templates::CreateAttachments.upload_error_message(error)
+
+    raise error if message.nil?
+
+    cloned_template.destroy! if cloned_template&.persisted?
+
+    respond_to do |f|
+      f.html { redirect_to root_path, alert: message }
+      f.json { render json: { error: message }, status: :unprocessable_content }
     end
   end
 end

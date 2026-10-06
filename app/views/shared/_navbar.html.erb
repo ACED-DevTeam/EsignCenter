@@ -4,9 +4,6 @@
     <a href="<%= root_path %>" class="text-2xl font-bold items-center flex space-x-2">
       <%= render 'shared/title' %>
     </a>
-    <span class="hidden sm:inline">
-      <%= render 'shared/github' if request.path.starts_with?('/settings') %>
-    </span>
   </div>
   <% if signed_in? %>
     <div class="space-x-4 flex items-center">
@@ -17,6 +14,12 @@
       <% else %>
         <div class="flex items-center justify-center space-x-4 mr-1">
           <%= render 'shared/navbar_buttons' %>
+          <%# The platform-operator console. Hidden entirely from everybody
+              else — the surface answers them with a 404, so a link they could
+              see would only be a link to a page that does not exist for them. %>
+          <% if operator_access? %>
+            <%= link_to t('operator_console'), operator_accounts_path, class: 'hidden md:inline-flex font-medium text-lg', id: 'operator_console_button' %>
+          <% end %>
           <%= link_to t('settings'), settings_profile_index_path, class: 'hidden md:inline-flex font-medium text-lg', id: 'account_settings_button' %>
         </div>
       <% end %>
@@ -39,7 +42,7 @@
               <% end %>
             </li>
           <% end %>
-          <% if (can?(:manage, EncryptedConfig) && current_user == true_user) || (current_user != true_user && current_account.testing?) %>
+          <% if test_mode_available? && ((can?(:manage, EncryptedConfig) && current_user == true_user) || (current_user != true_user && current_account.testing?)) %>
             <%= form_for '', url: testing_account_path, method: current_account.testing? ? :delete : :post, html: { class: 'w-full py-1' } do |f| %>
               <label class="flex items-center pl-6 pr-4 py-2 border-y border-base-300 -ml-2 -mr-2" for="testing_toggle">
                 <submit-form data-on="change" class="flex">
@@ -51,6 +54,29 @@
               </label>
             <% end %>
           <% end %>
+          <%# The three public pages the app itself should point at: they open in
+              the marketing layout, so a full page load rather than a Turbo
+              visit, and they sit above sign-out with a divider so the last
+              item in the menu stays the one people reach for. %>
+          <li>
+            <%= link_to help_path, class: 'flex items-center', data: { turbo: false } do %>
+              <%= svg_icon('circle_question', class: 'w-5 h-5 flex-shrink-0 stroke-2') %>
+              <span class="mr-1 whitespace-nowrap"><%= t('nav_help_centre') %></span>
+            <% end %>
+          </li>
+          <li>
+            <%= link_to support_path, class: 'flex items-center', data: { turbo: false } do %>
+              <%= svg_icon('mail', class: 'w-5 h-5 flex-shrink-0 stroke-2') %>
+              <span class="mr-1 whitespace-nowrap"><%= t('nav_contact_support') %></span>
+            <% end %>
+          </li>
+          <li>
+            <%= link_to api_reference_path, class: 'flex items-center', data: { turbo: false } do %>
+              <%= svg_icon('code', class: 'w-5 h-5 flex-shrink-0 stroke-2') %>
+              <span class="mr-1 whitespace-nowrap"><%= t('nav_api_reference') %></span>
+            <% end %>
+          </li>
+          <li class="border-t border-base-300 -mx-2 my-1" aria-hidden="true"></li>
           <li>
             <%= button_to destroy_user_session_path, method: :delete, data: { turbo: false }, class: 'flex items-center' do %>
               <%= svg_icon('logout', class: 'w-5 h-5 flex-shrink-0 stroke-2 mr-2 inline') %>
@@ -61,17 +87,26 @@
       </div>
     </div>
   <% else %>
-    <div class="flex space-x-2">
+    <div class="flex space-x-2 shrink-0">
       <% if request.path != new_user_session_path && request.path != setup_index_path %>
-        <%= link_to new_user_session_path({ lang: params[:lang] }.compact_blank), class: 'font-medium text-lg' do %>
+        <%= link_to new_user_session_path({ lang: params[:lang] }.compact_blank), class: 'font-medium text-lg shrink-0' do %>
           <span class="flex items-center justify-center space-x-1">
             <%= svg_icon('login', class: 'w-6 h-6') %>
-            <span><%= t('sign_in') %></span>
+            <%# The word is dropped on the narrowest phones: the icon and the
+                link's own accessible name carry it, and the two buttons plus
+                the wordmark did not fit inside 390px otherwise. %>
+            <span class="hidden sm:inline"><%= t('sign_in') %></span>
           </span>
         <% end %>
       <% end %>
-      <% if Docuseal.multitenant? && !request.path.in?([registration_path, new_registration_path]) %>
-        <%= link_to registration_path({ lang: params[:lang] }.compact_blank), class: 'btn btn-neutral btn-sm btn-outline' do %>
+      <%# Self-service sign-up follows the REGISTRATION_ENABLED switch; the registration routes themselves arrive with the signup session, so the button also waits for them. A full page load on purpose: the sign-up page carries its own security policy (the Turnstile widget's host), which a Turbo visit would not apply. %>
+      <%# The "check your email" page is part of signing up, so it offers no
+          second way to start: it is the same reason the registration pages
+          themselves do not, and on a 390px screen it was the button that
+          pushed the header sideways. %>
+      <% if Docuseal.registration_enabled? && respond_to?(:registration_path) &&
+            !request.path.in?([registration_path, new_registration_path, confirm_registration_path]) %>
+        <%= link_to registration_path({ lang: params[:lang] }.compact_blank), class: 'btn btn-neutral btn-sm btn-outline', data: { turbo: false } do %>
           <span class="flex items-center justify-center space-x-1">
             <span class="hidden sm:block capitalize"><%= t('create_free_account') %></span>
             <span class="md:hidden"><%= t('sign_up') %></span>

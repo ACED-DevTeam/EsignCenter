@@ -5,8 +5,6 @@ class SubmissionsPreviewController < ApplicationController
   skip_before_action :authenticate_user!
   skip_authorization_check
 
-  prepend_before_action :maybe_redirect_com, only: %i[show completed]
-
   TTL = 40.minutes
 
   def show
@@ -31,7 +29,7 @@ class SubmissionsPreviewController < ApplicationController
     end
 
     if use_signature?(@submission) && !signature_valid
-      Rollbar.info("TTL: #{@submission.id}") if defined?(Rollbar)
+      ErrorReport.info("TTL: #{@submission.id}")
 
       return redirect_to submissions_preview_completed_path(@submission.slug)
     end
@@ -56,9 +54,8 @@ class SubmissionsPreviewController < ApplicationController
   def use_signature?(submission)
     return false if current_user && can?(:read, submission)
     return true if submission.submitters.any? do |e|
-      e.preferences['require_phone_2fa'] || e.preferences['require_email_2fa']
+      e.preferences['require_email_2fa']
     end
-    return true if submission.template&.preferences&.dig('require_phone_2fa')
     return true if submission.template&.preferences&.dig('require_email_2fa')
 
     !submission_valid_ttl?(submission)

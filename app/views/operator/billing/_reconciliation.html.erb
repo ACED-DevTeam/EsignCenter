@@ -1,0 +1,135 @@
+<%# Last night's sweep, kept in Redis by StripeReconciliationJob. The lists
+    that need a person are the point: subscriptions that are live at Stripe
+    and linked to nothing (somebody may be paying for nothing), duplicates
+    that were cancelled but not refunded, and subscriptions Stripe no longer
+    has at all. %>
+<div class="card bg-base-100 border border-base-300" data-operator-reconciliation>
+  <div class="card-body p-5 gap-4">
+    <h2 class="text-xl font-bold"><%= t('operator_reconciliation_title') %></h2>
+
+    <% if @report.blank? %>
+      <p class="text-sm text-base-content/70" data-no-reconciliation><%= t('operator_reconciliation_none') %></p>
+    <% else %>
+      <p class="text-sm">
+        <%= t('operator_reconciliation_ran_at', at: @report['ran_at'].to_s) %>
+        · <%= t('operator_reconciliation_rows', count: @report['rows'].to_i) %>
+      </p>
+      <% if @report['stopped_after'].present? %>
+        <div class="alert items-start bg-base-100 border border-red-400 text-red-400" data-reconciliation-budget>
+          <%= t('operator_reconciliation_budget_exhausted', count: @report['rows'].to_i, id: @report['stopped_after']) %>
+        </div>
+      <% end %>
+
+      <div class="flex flex-wrap gap-2 text-sm">
+        <% { repaired: 'operator_reconciliation_repaired', duplicates: 'operator_reconciliation_duplicates',
+             settled: 'operator_reconciliation_settled', foreign: 'operator_reconciliation_foreign',
+             errors: 'operator_reconciliation_errors' }.each do |key, label| %>
+          <span class="badge badge-outline whitespace-nowrap" data-reconciliation-count="<%= key %>">
+            <%= t(label) %>: <%= Array(@report[key.to_s]).size %>
+          </span>
+        <% end %>
+        <span class="badge badge-outline whitespace-nowrap" data-reconciliation-count="requeued">
+          <%= t('operator_reconciliation_requeued') %>: <%= @report['requeued'].to_i %>
+        </span>
+      </div>
+
+      <% manual = Array(@report['manual_refunds']) %>
+      <div>
+        <h3 class="font-semibold mb-2"><%= t('operator_reconciliation_manual_review') %></h3>
+        <% if manual.empty? %>
+          <p class="text-sm text-base-content/70" data-no-manual-review><%= t('operator_reconciliation_no_manual_review') %></p>
+        <% else %>
+          <ul class="space-y-2">
+            <% manual.each do |entry| %>
+              <li class="text-sm" data-manual-review-row="<%= entry['cancelled'] %>">
+                <%= link_to "##{entry['account_id']}", operator_account_path(entry['account_id']), class: 'link' %>
+                — <span class="font-mono break-all"><%= entry['cancelled'] %></span>
+                <pre class="text-xs bg-base-200 rounded p-2 mt-1 overflow-x-auto whitespace-pre-wrap"><%= entry['note'] %></pre>
+              </li>
+            <% end %>
+          </ul>
+        <% end %>
+      </div>
+
+      <% vanished = Array(@report['vanished']) %>
+      <% if vanished.any? %>
+        <div>
+          <h3 class="font-semibold mb-2"><%= t('operator_reconciliation_vanished') %></h3>
+          <ul class="text-sm space-y-1">
+            <% vanished.each do |entry| %>
+              <li data-vanished-row="<%= entry['subscription'] %>">
+                <%= link_to "##{entry['account_id']}", operator_account_path(entry['account_id']), class: 'link' %>
+                — <span class="font-mono break-all"><%= entry['subscription'] %></span>
+                (<%= entry['was'] %> → <%= entry['now'] %>)
+              </li>
+            <% end %>
+          </ul>
+        </div>
+      <% end %>
+
+      <% skipped = Array(@report['vanished_skipped']) %>
+      <% if skipped.any? %>
+        <div>
+          <h3 class="font-semibold mb-2"><%= t('operator_reconciliation_vanished_skipped') %></h3>
+          <p class="text-sm text-base-content/70 mb-2 max-w-3xl"><%= t('operator_reconciliation_vanished_skipped_hint') %></p>
+          <ul class="text-sm space-y-1">
+            <% skipped.each do |entry| %>
+              <li data-vanished-skipped-row="<%= entry['subscription'] %>">
+                <%= link_to "##{entry['account_id']}", operator_account_path(entry['account_id']), class: 'link' %>
+                — <span class="font-mono break-all"><%= entry['subscription'] %></span>
+                <span class="text-base-content/70">— <%= entry['reason'] %></span>
+              </li>
+            <% end %>
+          </ul>
+        </div>
+      <% end %>
+
+      <% if @report['key_mismatch'].present? %>
+        <div class="alert items-start bg-base-100 border border-red-400 text-red-400" data-reconciliation-key-mismatch>
+          <%= t('operator_reconciliation_key_mismatch', reason: @report['key_mismatch']) %>
+        </div>
+      <% end %>
+
+      <% unlinked = Array(@report['unlinked']) %>
+      <div>
+        <h3 class="font-semibold mb-2"><%= t('operator_reconciliation_unlinked') %></h3>
+        <p class="text-sm text-base-content/70 mb-2 max-w-3xl"><%= t('operator_reconciliation_unlinked_hint') %></p>
+        <% if unlinked.empty? %>
+          <p class="text-sm text-base-content/70" data-no-unlinked><%= t('operator_reconciliation_no_unlinked') %></p>
+        <% else %>
+          <div class="space-y-3">
+            <% unlinked.each do |entry| %>
+              <div class="rounded-lg border border-base-300 p-3" data-unlinked-row="<%= entry['subscription'] %>">
+                <p class="text-sm break-all">
+                  <span class="font-mono"><%= entry['subscription'] %></span>
+                  <span class="text-base-content/70">· <%= t('operator_reconciliation_customer') %> <span class="font-mono"><%= entry['customer'] %></span></span>
+                  <span class="text-base-content/70">· <%= t('operator_reconciliation_seen_on') %> <%= link_to "##{entry['account_id']}", operator_account_path(entry['account_id']), class: 'link' %></span>
+                </p>
+                <%= form_with url: operator_adopt_stripe_subscription_path, method: :post, data: { turbo: false }, class: 'mt-2 flex flex-col md:flex-row gap-2 md:items-end' do %>
+                  <input type="hidden" name="subscription_id" value="<%= entry['subscription'] %>">
+                  <label class="form-control">
+                    <span class="label-text mb-1"><%= t('operator_reconciliation_adopt_account') %></span>
+                    <input type="number" min="1" name="account_id" value="<%= entry['account_id'] %>" class="input input-bordered input-sm w-40" autocomplete="off" required>
+                  </label>
+                  <label class="form-control flex-grow">
+                    <span class="label-text mb-1"><%= t('operator_reason_label') %></span>
+                    <input type="text" name="reason" class="input input-bordered input-sm w-full" autocomplete="off" required minlength="<%= Operator::BaseController::MINIMUM_REASON_LENGTH %>">
+                  </label>
+                  <%# Only needed when the subscription carries neither our own
+                      account tag nor a customer this account already holds:
+                      the door refuses that case until it is ticked, and the
+                      audit row records that it was. %>
+                  <label class="label cursor-pointer justify-start gap-2">
+                    <%= check_box_tag :confirm_untagged, '1', false, id: "confirm_untagged_#{entry['subscription']}", class: 'checkbox checkbox-sm', data: { confirm_untagged: entry['subscription'] } %>
+                    <span class="label-text text-xs"><%= t('operator_reconciliation_confirm_untagged') %></span>
+                  </label>
+                  <button type="submit" class="btn btn-sm btn-primary whitespace-nowrap" data-operator-action="adopt"><%= t('operator_reconciliation_adopt') %></button>
+                <% end %>
+              </div>
+            <% end %>
+          </div>
+        <% end %>
+      </div>
+    <% end %>
+  </div>
+</div>

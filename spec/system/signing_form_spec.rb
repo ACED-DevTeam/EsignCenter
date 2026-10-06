@@ -4,6 +4,50 @@ RSpec.describe 'Signing Form' do
   let(:account) { create(:account) }
   let(:author) { create(:user, account:) }
 
+  # The signer advances by the fields' positions on the PDF, across each row
+  # before moving down. The factory's array groups field types instead.
+  def complete_all_fields_in_page_order
+    fill_in 'First Name', with: 'John'
+    click_button 'next'
+
+    %w[Red Blue].each { |color| check color }
+    click_button 'next'
+
+    find('#dropzone').click
+    find('input[type="file"]', visible: false).attach_file(Rails.root.join('spec/fixtures/sample-image.png'))
+    click_button 'next'
+
+    fill_in 'Birthday', with: I18n.l(20.years.ago, format: '%Y-%m-%d')
+    click_button 'next'
+
+    select 'Male', from: 'Gender'
+    click_button 'next'
+
+    check 'Do you agree?'
+    click_button 'next'
+
+    # Initials occupy the right-hand field beside the checkbox.
+    draw_canvas
+    click_button 'next'
+
+    choose 'Boy'
+    click_button 'next'
+
+    find('#dropzone').click
+    find('input[type="file"]', visible: false).attach_file(Rails.root.join('spec/fixtures/sample-document.pdf'))
+    click_button 'next'
+
+    # The full signature and character boxes are on the next row.
+    draw_canvas
+    click_button 'next'
+
+    fill_in 'Cell code', with: '123'
+    click_button 'next'
+
+    fill_in 'House number', with: '123'
+    find('#submit_form_button').click
+  end
+
   context 'when the template form link is opened' do
     let(:template) do
       create(:template, shared_link: true, account:, author:, except_field_types: %w[phone payment stamp])
@@ -85,55 +129,9 @@ RSpec.describe 'Signing Form' do
       fill_in 'Email', with: 'john.dou@example.com'
       click_button 'Start'
 
-      # Text step
-      fill_in 'First Name', with: 'John'
-      click_button 'next'
+      agree_to_esign_consent
 
-      # Date step
-      fill_in 'Birthday', with: I18n.l(20.years.ago, format: '%Y-%m-%d')
-      click_button 'next'
-
-      # Checkbox step
-      check 'Do you agree?'
-      click_button 'next'
-
-      # Radio step
-      choose 'Boy'
-      click_button 'next'
-
-      # Signature step
-      draw_canvas
-      click_button 'next'
-
-      # Number step
-      fill_in 'House number', with: '123'
-      click_button 'next'
-
-      # Multiple choice step
-      %w[Red Blue].each { |color| check color }
-      click_button 'next'
-
-      # Select step
-      select 'Male', from: 'Gender'
-      click_button 'next'
-
-      # Initials step
-      draw_canvas
-      click_button 'next'
-
-      # Image step
-      find('#dropzone').click
-      find('input[type="file"]', visible: false).attach_file(Rails.root.join('spec/fixtures/sample-image.png'))
-      click_button 'next'
-
-      # File step
-      find('#dropzone').click
-      find('input[type="file"]', visible: false).attach_file(Rails.root.join('spec/fixtures/sample-document.pdf'))
-      click_button 'next'
-
-      # Cell step
-      fill_in 'Cell code', with: '123'
-      find('#submit_form_button').click
+      complete_all_fields_in_page_order
 
       expect(page).to have_button('Download')
       expect(page).to have_content('Document has been signed!')
@@ -172,55 +170,9 @@ RSpec.describe 'Signing Form' do
       fill_in 'Phone', with: '+17732298825'
       click_button 'Start'
 
-      # Text step
-      fill_in 'First Name', with: 'John'
-      click_button 'next'
+      agree_to_esign_consent
 
-      # Date step
-      fill_in 'Birthday', with: I18n.l(20.years.ago, format: '%Y-%m-%d')
-      click_button 'next'
-
-      # Checkbox step
-      check 'Do you agree?'
-      click_button 'next'
-
-      # Radio step
-      choose 'Boy'
-      click_button 'next'
-
-      # Signature step
-      draw_canvas
-      click_button 'next'
-
-      # Number step
-      fill_in 'House number', with: '123'
-      click_button 'next'
-
-      # Multiple choice step
-      %w[Red Blue].each { |color| check color }
-      click_button 'next'
-
-      # Select step
-      select 'Male', from: 'Gender'
-      click_button 'next'
-
-      # Initials step
-      draw_canvas
-      click_button 'next'
-
-      # Image step
-      find('#dropzone').click
-      find('input[type="file"]', visible: false).attach_file(Rails.root.join('spec/fixtures/sample-image.png'))
-      click_button 'next'
-
-      # File step
-      find('#dropzone').click
-      find('input[type="file"]', visible: false).attach_file(Rails.root.join('spec/fixtures/sample-document.pdf'))
-      click_button 'next'
-
-      # Cell step
-      fill_in 'Cell code', with: '123'
-      find('#submit_form_button').click
+      complete_all_fields_in_page_order
 
       expect(page).to have_button('Download')
       expect(page).to have_content('Document has been signed!')
@@ -251,8 +203,7 @@ RSpec.describe 'Signing Form' do
     end
 
     it 'completes the form when identity verification with a 2FA code is enabled', sidekiq: :inline do
-      create(:encrypted_config, key: EncryptedConfig::ESIGN_CERTS_KEY,
-                                value: GenerateCertificate.call.transform_values(&:to_pem))
+      platform_certificate!
 
       template.update(preferences: { link_form_fields: %w[email name], shared_link_2fa: true })
 
@@ -272,43 +223,9 @@ RSpec.describe 'Signing Form' do
 
       click_button 'Submit'
 
-      fill_in 'First Name', with: 'John'
-      click_button 'next'
+      agree_to_esign_consent
 
-      fill_in 'Birthday', with: I18n.l(20.years.ago, format: '%Y-%m-%d')
-      click_button 'next'
-
-      check 'Do you agree?'
-      click_button 'next'
-
-      choose 'Boy'
-      click_button 'next'
-
-      draw_canvas
-      click_button 'next'
-
-      fill_in 'House number', with: '123'
-      click_button 'next'
-
-      %w[Red Blue].each { |color| check color }
-      click_button 'next'
-
-      select 'Male', from: 'Gender'
-      click_button 'next'
-
-      draw_canvas
-      click_button 'next'
-
-      find('#dropzone').click
-      find('input[type="file"]', visible: false).attach_file(Rails.root.join('spec/fixtures/sample-image.png'))
-      click_button 'next'
-
-      find('#dropzone').click
-      find('input[type="file"]', visible: false).attach_file(Rails.root.join('spec/fixtures/sample-document.pdf'))
-      click_button 'next'
-
-      fill_in 'Cell code', with: '123'
-      find('#submit_form_button').click
+      complete_all_fields_in_page_order
 
       expect(page).to have_button('Download')
       expect(page).to have_content('Document has been signed!')
@@ -350,55 +267,9 @@ RSpec.describe 'Signing Form' do
     end
 
     it 'complete the form' do
-      # Text step
-      fill_in 'First Name', with: 'John'
-      click_button 'next'
+      agree_to_esign_consent
 
-      # Date step
-      fill_in 'Birthday', with: I18n.l(20.years.ago, format: '%Y-%m-%d')
-      click_button 'next'
-
-      # Checkbox step
-      check 'Do you agree?'
-      click_button 'next'
-
-      # Radio step
-      choose 'Boy'
-      click_button 'next'
-
-      # Signature step
-      draw_canvas
-      click_button 'next'
-
-      # Number step
-      fill_in 'House number', with: '123'
-      click_button 'next'
-
-      # Multiple choice step
-      %w[Red Blue].each { |color| check color }
-      click_button 'next'
-
-      # Select step
-      select 'Male', from: 'Gender'
-      click_button 'next'
-
-      # Initials step
-      draw_canvas
-      click_button 'next'
-
-      # Image step
-      find('#dropzone').click
-      find('input[type="file"]', visible: false).attach_file(Rails.root.join('spec/fixtures/sample-image.png'))
-      click_button 'next'
-
-      # File step
-      find('#dropzone').click
-      find('input[type="file"]', visible: false).attach_file(Rails.root.join('spec/fixtures/sample-document.pdf'))
-      click_button 'next'
-
-      # Cell step
-      fill_in 'Cell code', with: '123'
-      find('#submit_form_button').click
+      complete_all_fields_in_page_order
 
       expect(page).to have_button('Download')
       expect(page).to have_content('Document has been signed!')
@@ -437,10 +308,13 @@ RSpec.describe 'Signing Form' do
     it 'completes the form if the field is filled' do
       visit submit_form_path(slug: submitter.slug)
 
+      agree_to_esign_consent
+
       input = find_field('First Name')
 
       expect(input[:required]).to be_truthy
-      expect(input[:placeholder]).to eq 'Type here...'
+      expect(input[:placeholder]).to eq('')
+      expect(page).to have_css("label[for='#{input[:id]}']", text: 'First Name', visible: :all)
 
       fill_in 'First Name', with: 'Mary'
       find('#submit_form_button').click
@@ -456,16 +330,18 @@ RSpec.describe 'Signing Form' do
     it 'toggle multiple text button' do
       visit submit_form_path(slug: submitter.slug)
 
+      agree_to_esign_consent
+
       input = find_field('First Name')
 
       expect(input.tag_name).to eq('input')
 
-      find(:css, 'div[data-tip="Toggle Multiline Text"]').click
+      click_button 'Toggle Multiline Text'
 
       input = find_field('First Name')
 
       expect(input.tag_name).to eq('textarea')
-      expect(page).not_to have_selector(:css, 'div[data-tip="Toggle Multiline Text"]')
+      expect(page).not_to have_button('Toggle Multiline Text')
 
       fill_in 'First Name', with: 'Very long text'
       find('#submit_form_button').click
@@ -489,6 +365,8 @@ RSpec.describe 'Signing Form' do
     it 'completes the form if the field is filled' do
       visit submit_form_path(slug: submitter.slug)
 
+      agree_to_esign_consent
+
       input = find_field('Birthday')
 
       expect(input[:required]).to be_truthy
@@ -506,6 +384,8 @@ RSpec.describe 'Signing Form' do
 
     it 'pre-fills the current date into the form field' do
       visit submit_form_path(slug: submitter.slug)
+
+      agree_to_esign_consent
 
       input = find_field('Birthday')
 
@@ -538,6 +418,8 @@ RSpec.describe 'Signing Form' do
     it 'completes the form if the checkbox is checked' do
       visit submit_form_path(slug: submitter.slug)
 
+      agree_to_esign_consent
+
       check 'Do you agree?'
       find('#submit_form_button').click
 
@@ -559,6 +441,8 @@ RSpec.describe 'Signing Form' do
 
     it 'completes the form if the checkbox is checked' do
       visit submit_form_path(slug: submitter.slug)
+
+      agree_to_esign_consent
 
       %w[Girl Boy].map { |v| find_field(v) }.each { |input| expect(input[:required]).to be_truthy }
 
@@ -585,6 +469,8 @@ RSpec.describe 'Signing Form' do
       visit submit_form_path(slug: submitter.slug)
 
       find('#expand_form_button').click
+
+      agree_to_esign_consent
       draw_canvas
       click_button 'Sign and Complete'
 
@@ -600,6 +486,8 @@ RSpec.describe 'Signing Form' do
       visit submit_form_path(slug: submitter.slug)
 
       find('#expand_form_button').click
+
+      agree_to_esign_consent
       page.find('canvas').click([], { x: 150, y: 100 })
 
       alert_text = page.accept_alert do
@@ -613,6 +501,8 @@ RSpec.describe 'Signing Form' do
       visit submit_form_path(slug: submitter.slug)
 
       find('#expand_form_button').click
+
+      agree_to_esign_consent
       click_button 'Type'
       fill_in 'signature_text_input', with: 'John Doe'
       click_button 'Sign and Complete'
@@ -641,6 +531,8 @@ RSpec.describe 'Signing Form' do
       visit submit_form_path(slug: submitter.slug)
 
       find('#expand_form_button').click
+
+      agree_to_esign_consent
       draw_canvas
       select 'Approved'
       click_button 'Sign and Complete'
@@ -663,6 +555,8 @@ RSpec.describe 'Signing Form' do
 
     it 'completes the form if the field is filled' do
       visit submit_form_path(slug: submitter.slug)
+
+      agree_to_esign_consent
 
       input = find_field('House number')
 
@@ -691,6 +585,8 @@ RSpec.describe 'Signing Form' do
     it 'completes the form if the multiple choice is checked' do
       visit submit_form_path(slug: submitter.slug)
 
+      agree_to_esign_consent
+
       %w[Red Green].each { |color| check color }
       find('#submit_form_button').click
 
@@ -712,6 +608,8 @@ RSpec.describe 'Signing Form' do
 
     it 'completes the form if the multiple choice is checked' do
       visit submit_form_path(slug: submitter.slug)
+
+      agree_to_esign_consent
 
       select 'Female', from: 'Gender'
 
@@ -737,6 +635,8 @@ RSpec.describe 'Signing Form' do
       visit submit_form_path(slug: submitter.slug)
 
       find('#expand_form_button').click
+
+      agree_to_esign_consent
       fill_in 'initials_text_input', with: 'John Doe'
       find('#submit_form_button').click
 
@@ -752,6 +652,8 @@ RSpec.describe 'Signing Form' do
       visit submit_form_path(slug: submitter.slug)
 
       find('#expand_form_button').click
+
+      agree_to_esign_consent
       click_button 'Draw'
       draw_canvas
       find('#submit_form_button').click
@@ -768,6 +670,8 @@ RSpec.describe 'Signing Form' do
       visit submit_form_path(slug: submitter.slug)
 
       find('#expand_form_button').click
+
+      agree_to_esign_consent
       find('span[data-tip="Click to upload"]').click
       find('input[type="file"]', visible: false).attach_file(Rails.root.join('spec/fixtures/sample-image.png'))
 
@@ -795,6 +699,8 @@ RSpec.describe 'Signing Form' do
       visit submit_form_path(slug: submitter.slug)
 
       find('#expand_form_button').click
+
+      agree_to_esign_consent
       find('#dropzone').click
       find('input[type="file"]', visible: false).attach_file(Rails.root.join('spec/fixtures/sample-image.png'))
       find('#submit_form_button').click
@@ -819,6 +725,8 @@ RSpec.describe 'Signing Form' do
       visit submit_form_path(slug: submitter.slug)
 
       find('#expand_form_button').click
+
+      agree_to_esign_consent
       find('#dropzone').click
       find('input[type="file"]', visible: false).attach_file(Rails.root.join('spec/fixtures/sample-document.pdf'))
       find('#submit_form_button').click
@@ -842,10 +750,13 @@ RSpec.describe 'Signing Form' do
     it 'completes the form if the field is filled' do
       visit submit_form_path(slug: submitter.slug)
 
+      agree_to_esign_consent
+
       input = find_field('Cell code')
 
       expect(input[:required]).to be_truthy
-      expect(input[:placeholder]).to eq 'Type here...'
+      expect(input[:placeholder]).to eq('')
+      expect(page).to have_css("label[for='#{input[:id]}']", text: 'Cell code', visible: :all)
 
       fill_in 'Cell code', with: '456'
       find('#submit_form_button').click
@@ -957,16 +868,19 @@ RSpec.describe 'Signing Form' do
 
     it 'completes the form and saves the conditional field when all required fields are filled' do
       visit submit_form_path(slug: submitter.slug)
+
+      agree_to_esign_consent
       fill_in 'Full Name (optional)', with: 'John Doe'
       click_button 'next'
 
       fill_in 'Email (optional)', with: 'john.due@example.com'
       click_button 'next'
 
-      fill_in 'Phone (optional)', with: '+1 (773) 229-8825'
+      # Once the condition is met, Comment appears above Phone on the page.
+      fill_in 'Comment', with: 'This is a comment'
       click_button 'next'
 
-      fill_in 'Comment', with: 'This is a comment'
+      fill_in 'Phone (optional)', with: '+1 (773) 229-8825'
       find('#submit_form_button').click
 
       expect(page).to have_content('Form has been completed!')
@@ -982,16 +896,19 @@ RSpec.describe 'Signing Form' do
 
     it 'completes the form and saves the conditional field when minimum required fields are filled' do
       visit submit_form_path(slug: submitter.slug)
+
+      agree_to_esign_consent
       fill_in 'Full Name (optional)', with: 'John Doe'
       click_button 'next'
 
       fill_in 'Email (optional)', with: 'john.due@example.com'
       click_button 'next'
 
-      fill_in 'Phone (optional)', with: ''
+      # Once the condition is met, Comment appears above Phone on the page.
+      fill_in 'Comment', with: 'This is a comment'
       click_button 'next'
 
-      fill_in 'Comment', with: 'This is a comment'
+      fill_in 'Phone (optional)', with: ''
       find('#submit_form_button').click
 
       expect(page).to have_content('Form has been completed!')
@@ -1007,6 +924,8 @@ RSpec.describe 'Signing Form' do
 
     it 'completes the form without saving the conditional field when not enough fields are filled' do
       visit submit_form_path(slug: submitter.slug)
+
+      agree_to_esign_consent
 
       fill_in 'Full Name (optional)', with: 'Jane Doe'
       click_button 'next'
@@ -1030,6 +949,8 @@ RSpec.describe 'Signing Form' do
 
     it 'completes the form without saving the conditional field when only partial fields are filled' do
       visit submit_form_path(slug: submitter.slug)
+
+      agree_to_esign_consent
 
       fill_in 'Full Name (optional)', with: ''
       click_button 'next'
@@ -1067,6 +988,8 @@ RSpec.describe 'Signing Form' do
 
       visit submit_form_path(slug: first_submitter.slug)
 
+      agree_to_esign_consent
+
       fill_in 'First Name', with: 'Jahn'
       find('#submit_form_button').click
 
@@ -1090,8 +1013,8 @@ RSpec.describe 'Signing Form' do
 
         expect(page).to have_content('This submission has multiple signers, which prevents the use of a sharing link ' \
                                      "as it's unclear which signer is responsible for specific fields. " \
-                                     'To resolve this, follow this guide to define the default signer details.')
-        expect(page).to have_link('guide', href: 'https://www.docuseal.com/resources/pre-filling-recipients')
+                                     "To resolve this, define the default signer details under the template's " \
+                                     'Preferences → Recipients so this link opens as the sender.')
       end
 
       it 'shows a "Not found" error message if a logged-out user associated with the template account opens the link' do
@@ -1149,6 +1072,8 @@ RSpec.describe 'Signing Form' do
     end
 
     it 'sends completed email' do
+      agree_to_esign_consent
+
       fill_in 'First Name', with: 'Adam'
       click_on 'next'
       draw_canvas
@@ -1212,8 +1137,7 @@ RSpec.describe 'Signing Form' do
 
     before do
       template.update(preferences: { require_email_2fa: true })
-      create(:encrypted_config, key: EncryptedConfig::ESIGN_CERTS_KEY,
-                                value: GenerateCertificate.call.transform_values(&:to_pem))
+      platform_certificate!
     end
 
     it 'completes the form if the one-time password is filled correctly' do
@@ -1227,6 +1151,8 @@ RSpec.describe 'Signing Form' do
       fill_in 'one_time_code', with: one_time_code
 
       click_button 'Submit'
+
+      agree_to_esign_consent
 
       fill_in 'First Name', with: 'Mary'
       find('#submit_form_button').click
@@ -1263,6 +1189,8 @@ RSpec.describe 'Signing Form' do
 
       click_button 'Submit'
 
+      agree_to_esign_consent
+
       fill_in 'First Name', with: 'Mary'
       find('#submit_form_button').click
 
@@ -1289,6 +1217,8 @@ RSpec.describe 'Signing Form' do
     it 'shows header complete button and hides download after filling required fields' do
       visit submit_form_path(slug: submitter.slug)
 
+      agree_to_esign_consent
+
       expect(page).to have_button('Decline')
       expect(page).to have_css('download-button[aria-label="Download"]', visible: true)
       expect(page).not_to have_css('#complete_button_container button')
@@ -1303,6 +1233,8 @@ RSpec.describe 'Signing Form' do
 
     it 'completes the form via header complete button skipping optional fields' do
       visit submit_form_path(slug: submitter.slug)
+
+      agree_to_esign_consent
 
       fill_in 'First Name', with: 'John Doe'
       click_button 'next'

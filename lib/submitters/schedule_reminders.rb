@@ -12,6 +12,9 @@ module Submitters
     # SendSubmitterInvitationReminderEmailJob), so duplicate scheduling never double-sends.
     def call(submitter)
       return if submitter.sent_at.blank?
+      # Reminders are paid-only: a reminders row on a free account (e.g. saved
+      # before a downgrade) stays in place but schedules nothing.
+      return unless Entitlements.allowed?(submitter.account, :reminders)
 
       config = AccountConfigs.find_for_account(submitter.account, AccountConfig::SUBMITTER_REMINDERS)
       value = config&.value

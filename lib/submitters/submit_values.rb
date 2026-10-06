@@ -25,16 +25,46 @@ module Submitters
       unless submitter.submission_events.exists?(event_type: 'start_form')
         SubmissionEvents.create_with_tracking_data(submitter, 'start_form', request)
 
-        WebhookUrls.enqueue_events(submitter, 'form.started')
+        enqueue_after_commit { WebhookUrls.enqueue_events(submitter, 'form.started') }
+      end
+
+      if params[:esign_consent].to_s == 'true'
+        # Every consent that reaches this module came from a signing page —
+        # the form step and the invite request are the only two callers — so
+        # the signed locale pair that page issued is REQUIRED here
+        # (`require_locale:`). Without it a request could simply omit the
+        # pair and have the record fall back to its own locale, which is the
+        # `?lang=`/Accept-Language value the client chose. See
+        # EsignConsent.record!.
+        EsignConsent.record!(submitter, request, version: params[:esign_consent_version].presence,
+                                                 locale: params[:esign_consent_locale].presence,
+                                                 locale_token: params[:esign_consent_locale_token].presence,
+                                                 pdf_opened: params[:esign_consent_pdf_opened],
+                                                 sender_digest: params[:esign_consent_sender_digest].presence,
+                                                 require_locale: true)
       end
 
       update_submitter!(submitter, params, request, validate_required:)
 
       submitter.submission.save!
 
-      ProcessSubmitterCompletionJob.perform_async('submitter_id' => submitter.id) if submitter.completed_at?
+      if submitter.completed_at?
+        enqueue_after_commit { ProcessSubmitterCompletionJob.perform_async('submitter_id' => submitter.id) }
+      end
 
       submitter
+    end
+
+    # Sidekiq knows nothing about the database transaction that is open around
+    # it: a job pushed from inside one can be picked up by a worker before the
+    # rows it needs are committed — or at all, if the transaction then rolls
+    # back. Every caller here used to run outside a transaction, so this was
+    # only a rule to remember; the invite door now wraps the whole invite-then-
+    # complete in one (SubmitFormInviteController), so the rule is enforced
+    # here instead. With nothing open the block runs straight away, which is
+    # what the ordinary form step still does.
+    def enqueue_after_commit(&)
+      ActiveRecord.after_all_transactions_commit(&)
     end
 
     def update_submitter!(submitter, params, request, validate_required: true)
@@ -43,7 +73,11 @@ module Submitters
       submitter.values.merge!(values)
       submitter.opened_at ||= Time.current
 
-      assign_completed_attributes(submitter, request, validate_required:) if params[:completed] == 'true'
+      if params[:completed] == 'true'
+        EsignConsent.require!(submitter)
+
+        assign_completed_attributes(submitter, request, validate_required:)
+      end
 
       ApplicationRecord.transaction do
         reason_field = maybe_set_signature_reason!(values, submitter, params)
@@ -62,7 +96,7 @@ module Submitters
         submitter.save!
       end
 
-      SearchEntries.enqueue_reindex(submitter) if submitter.completed_at?
+      enqueue_after_commit { SearchEntries.enqueue_reindex(submitter) } if submitter.completed_at?
 
       submitter
     end
@@ -93,7 +127,7 @@ module Submitters
 
         raise RequiredFieldError, uuid if validate_required
 
-        Rollbar.warning("Required field #{submitter.id}: #{uuid}") if defined?(Rollbar)
+        ErrorReport.warning("Required field #{submitter.id}: #{uuid}")
       end
 
       submitter
@@ -478,7 +512,9 @@ module Submitters
 
         submission.submitters.create!(uuid: s['uuid'], email:, phone:, account_id: submitter.account_id)
 
-        SubmissionEvents.create_with_tracking_data(submitter, 'invite_party', request, { uuid: submitter.uuid })
+        # The uuid of the party this field just invited, not of the signer who
+        # filled the field in — the event answers "who was brought in".
+        SubmissionEvents.create_with_tracking_data(submitter, 'invite_party', request, { uuid: s['uuid'] })
 
         is_invited = true
       end
@@ -493,7 +529,7 @@ module Submitters
       raise ValidationError, 'Invalid field' if field['submitter_uuid'] != submitter.uuid
 
       if field['readonly'] == true
-        Rollbar.warning("Readonly field #{submitter.id}: #{field['uuid']}") if defined?(Rollbar)
+        ErrorReport.warning("Readonly field #{submitter.id}: #{field['uuid']}")
 
         raise ValidationError, 'Read-only field'
       end

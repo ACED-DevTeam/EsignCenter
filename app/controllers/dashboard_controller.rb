@@ -3,7 +3,6 @@
 class DashboardController < ApplicationController
   skip_before_action :authenticate_user!, only: %i[index]
 
-  before_action :maybe_redirect_product_url
   before_action :maybe_render_landing
   before_action :maybe_redirect_mfa_setup
 
@@ -19,12 +18,6 @@ class DashboardController < ApplicationController
 
   private
 
-  def maybe_redirect_product_url
-    return if !Docuseal.multitenant? || signed_in?
-
-    redirect_to Docuseal::PRODUCT_URL, allow_other_host: true
-  end
-
   def maybe_redirect_mfa_setup
     return unless signed_in?
     return if current_user.otp_required_for_login
@@ -39,6 +32,8 @@ class DashboardController < ApplicationController
   def maybe_render_landing
     return if signed_in?
 
-    render 'pages/landing'
+    # The public landing page (Session 9), in the marketing layout the
+    # pricing, trust and legal pages share, and in English like them.
+    with_english { render 'marketing/landing', layout: 'marketing' }
   end
 end

@@ -15,7 +15,7 @@ class TemplatesUploadsController < ApplicationController
     save_template!(@template, url_params)
 
     documents, = Templates::CreateAttachments.call(@template, url_params || params, extract_fields: true)
-    schema = documents.map { |doc| { attachment_uuid: doc.uuid, name: doc.filename.base } }
+    schema = documents.map { |doc| Templates::CreateAttachments.schema_item(doc) }
 
     if @template.fields.blank?
       @template.fields = Templates::ProcessDocument.normalize_attachment_fields(@template, documents)
@@ -33,14 +33,40 @@ class TemplatesUploadsController < ApplicationController
   rescue Templates::CreateAttachments::PdfEncrypted
     render turbo_stream: turbo_stream.append(params[:form_id], html: helpers.tag.prompt_password)
   rescue StandardError => e
-    Rollbar.error(e) if defined?(Rollbar)
+    refuse_upload!(e)
+  end
 
-    raise if Rails.env.local?
+  private
+
+  # The template is saved before its files are stored, and files are stored
+  # one by one: a refusal anywhere in the batch must not leave that template
+  # (with whatever was attached before the refused file) behind on the
+  # dashboard. A conversion job already queued for it finds nothing to do.
+  def refuse_upload!(error)
+    discard_template!
+
+    message = Templates::CreateAttachments.upload_error_message(error)
+
+    return redirect_to(root_path, alert: message) if message
+
+    # A download that failed or was cut off at the size cap is the user's
+    # condition, not a defect; anything else is reported.
+    unless error.is_a?(DownloadUtils::UnableToDownload)
+      ErrorReport.error(error)
+
+      raise error if Rails.env.local?
+    end
 
     redirect_to root_path, alert: I18n.t('unable_to_update_file')
   end
 
-  private
+  def discard_template!
+    return unless @template.persisted?
+
+    @template.destroy!
+  rescue StandardError => e
+    ErrorReport.warning(e, template_id: @template.id)
+  end
 
   def save_template!(template, url_params)
     template.account = current_account
@@ -55,14 +81,29 @@ class TemplatesUploadsController < ApplicationController
     template
   end
 
+  # The download is bounded before anything is read into memory whole: a
+  # Word file stops at the converter's cap (and is refused with its message),
+  # anything else at the API's per-document cap.
   def create_file_params_from_url
-    tempfile = Tempfile.new
-    tempfile.binmode
-    tempfile.write(DownloadUtils.call(params[:url], validate: true).body)
-    tempfile.rewind
-
     filename = URI.decode_www_form_component(params[:filename]) if params[:filename].present?
     filename ||= File.basename(URI.decode_www_form_component(params[:url]))
+
+    word = Templates::CreateAttachments::DOCUMENT_EXTENSIONS.include?(File.extname(filename).downcase)
+    max_bytes = word ? WordConverter::MAX_FILE_SIZE : Templates::CreateFromApi::MAX_DOCUMENT_SIZE
+
+    body =
+      begin
+        DownloadUtils.call(params[:url], validate: true, max_bytes:).body
+      rescue DownloadUtils::TooLarge
+        raise WordConverter::FileTooLarge if word
+
+        raise
+      end
+
+    tempfile = Tempfile.new
+    tempfile.binmode
+    tempfile.write(body)
+    tempfile.rewind
 
     file = ActionDispatch::Http::UploadedFile.new(
       tempfile:,

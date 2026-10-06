@@ -1,0 +1,75 @@
+<%= content_for(:canonical_url, new_registration_url) %>
+<%= content_for(:html_title, "#{t('create_your_free_account')} — #{Docuseal.product_name}") %>
+<%# Every link into this page carries data-turbo: false, but a link added later would not have to remember: this makes the page itself refuse to be painted inside another document, which is what the widened Turnstile policy below needs (layouts/_head_tags.html.erb). %>
+<% content_for(:turbo_visit_control, 'reload') %>
+<div class="max-w-lg mx-auto px-2">
+  <h1 class="text-4xl font-bold text-center mt-8"><%= t('create_your_free_account') %></h1>
+  <p class="text-center text-base-content/70 mt-3" dir="auto"><%= t('free_tier_summary') %></p>
+  <% if Registrations.google_enabled? || Registrations.apple_enabled? %>
+    <div class="mt-8 space-y-3">
+      <%= render 'devise/shared/google_button' %>
+      <%= render 'devise/shared/apple_button' %>
+    </div>
+    <div class="divider my-6 text-base-content/60"><%= t('or_sign_up_with_email') %></div>
+  <% end %>
+  <%# Full page loads on purpose: the Turnstile widget script has to run again on every render. %>
+  <%= form_for(resource, as: resource_name, url: registration_path, html: { class: 'space-y-6 mt-6', autocomplete: 'on' }, data: { turbo: false }) do |f| %>
+    <div class="space-y-2" dir="auto">
+      <%= render 'devise/registrations/errors', resource: %>
+      <%# The alert above already says everything about an address that is
+          taken — it names the address and offers both ways forward — so the
+          same fact is not repeated in red under the field. field_error_proc
+          prints every error it is left, so this one error is retired here,
+          after the alert has read it and on this form alone; the field keeps
+          the outline it would have had, and every other error on every other
+          form still speaks for itself. %>
+      <% email_taken = resource.errors.delete(:email, :taken).present? %>
+      <set-timezone data-input-id="signup_timezone"></set-timezone>
+      <%= hidden_field_tag 'user[timezone]', nil, id: 'signup_timezone' %>
+      <%# The versions of the Terms and the Privacy Policy this page is showing.
+          Sent back with the form so the agreement that is recorded is the text
+          the person actually had in front of them: a page opened before a
+          wording change cannot record the new one (LegalDocuments). %>
+      <% LegalDocuments.version_fields.each do |field, value| %>
+        <%= hidden_field_tag field, value %>
+      <% end %>
+      <div class="form-control">
+        <%= label_tag 'user_name', t('full_name'), class: 'label' %>
+        <%= text_field_tag 'user[name]', @name, id: 'user_name', required: true, autofocus: true, autocomplete: 'name', class: 'base-input' %>
+      </div>
+      <div class="form-control">
+        <%= f.label :email, t(:email), class: 'label' %>
+        <%= f.email_field :email, required: true, autocomplete: 'email', class: "base-input#{' input-error' if email_taken}" %>
+      </div>
+      <div class="form-control">
+        <%= f.label :password, class: 'label' do %>
+          <span><%= t(:password) %></span>
+          <span class="label-text-alt text-base-content/60"><%= t('minimum_password_length_characters_minimum', minimum_password_length: Devise.password_length.min) %></span>
+        <% end %>
+        <password-input class="block relative">
+          <%= f.password_field :password, required: true, minlength: Devise.password_length.min, autocomplete: 'new-password', placeholder: '************', class: 'base-input w-full pr-10', data: { target: 'password-input.passwordInput' } %>
+          <button data-target="password-input.togglePasswordVisibility" type="button" class="absolute inset-y-0 h-12 right-0 pr-3 flex items-center">
+            <span data-target="password-input.hiddenPasswordIcon">
+              <%= svg_icon('eye', class: 'w-6 h-6 shrink-0') %>
+            </span>
+            <span data-target="password-input.visiblePasswordIcon" class="hidden">
+              <%= svg_icon('eye_off', class: 'w-6 h-6 shrink-0') %>
+            </span>
+          </button>
+        </password-input>
+      </div>
+      <%# Cloudflare Turnstile: the token it writes into this form is verified server-side on submit (lib/turnstile.rb). %>
+      <div class="form-control pt-2">
+        <div class="cf-turnstile" data-sitekey="<%= ENV.fetch('TURNSTILE_SITE_KEY', nil) %>" data-theme="auto" data-size="flexible"></div>
+      </div>
+    </div>
+    <div class="form-control">
+      <%= f.button button_title(title: t('create_free_account'), disabled_with: t('creating_account')), class: 'base-button' %>
+    </div>
+    <p class="text-sm text-center text-base-content/70" dir="auto">
+      <%= t('by_creating_an_account_you_agree_to_html', terms: link_to(t('terms_of_service'), '/terms', class: 'link link-hover'), privacy: link_to(t('privacy_policy'), '/privacy', class: 'link link-hover')) %>
+    </p>
+  <% end %>
+  <%= render 'devise/shared/links' %>
+</div>
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>

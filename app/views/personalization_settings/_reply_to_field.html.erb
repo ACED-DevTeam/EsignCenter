@@ -1,0 +1,8 @@
+<%# A blank reply-to falls back to `fallback` (another reply-to box) or, with none, to whoever sent the document (Submitters::ReplyTo); the placeholder shows that default. %>
+<% attribute = local_assigns.fetch(:attribute, :reply_to) %>
+<% hint_id = ff.field_id(attribute, :hint) %>
+<div class="form-control">
+  <%= ff.label attribute, t('reply_to'), class: 'label' %>
+  <%= ff.email_field attribute, class: 'base-input', dir: 'auto', placeholder: local_assigns[:fallback].presence || current_user.email, 'aria-describedby': hint_id %>
+  <p id="<%= hint_id %>" class="text-sm text-base-content/60 mt-1"><%= hint %></p>
+</div>

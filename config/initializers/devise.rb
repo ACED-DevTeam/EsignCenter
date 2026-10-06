@@ -4,7 +4,7 @@ Devise.otp_allowed_drift = 60.seconds
 
 class FailureApp < Devise::FailureApp
   def respond
-    Rollbar.warning('Invalid password') if defined?(Rollbar) && warden_message == :invalid
+    ErrorReport.warning('Invalid password') if warden_message == :invalid
 
     super
   end
@@ -13,8 +13,17 @@ end
 module Devise
   module Mailers
     module Helpers
+      # Login and password recovery must work even when a customer's server
+      # is broken. Devise::Mailer inherits ApplicationMailer's routing callback.
+      def platform_notice?
+        true
+      end
+
       def devise_mail(record, action, opts = {}, &)
         assign_message_metadata(action, record)
+
+        # Keep the account for delivery tracking and the platform message stream.
+        mail_account(record.account) if record.respond_to?(:account) && record.account
 
         initialize_from_record(record)
 
@@ -119,7 +128,10 @@ Devise.setup do |config|
   # It will change confirmation, password recovery and other workflows
   # to behave the same regardless if the e-mail provided was right or wrong.
   # Does not affect registerable.
-  # config.paranoid = true
+  #
+  # On: the confirmation and password forms answer the same way for a known
+  # and an unknown address, so nobody can list who has an account here.
+  config.paranoid = true
 
   # By default Devise will store the user in session. You can skip storage for
   # particular strategies by setting this option.
@@ -170,7 +182,9 @@ Devise.setup do |config|
   # without confirming their account.
   # Default is 0.days, meaning the user cannot access the website without
   # confirming their account.
-  config.allow_unconfirmed_access_for = nil
+  # Unconfirmed users may never sign in; every trusted creation path calls
+  # skip_confirmation!, so only future public-signup users are gated.
+  config.allow_unconfirmed_access_for = 0.days
 
   # A period that the user is allowed to confirm their account before their
   # token becomes invalid. For example, if set to 3.days, the user can confirm
@@ -184,6 +198,14 @@ Devise.setup do |config|
   # initial account confirmation) to be applied. Requires additional unconfirmed_email
   # db field (see migrations). Until confirmed, new email is stored in
   # unconfirmed_email column, and copied to email column on successful confirmation.
+  # ON (launch security review): a changed address is held in
+  # unconfirmed_email and only becomes the sign-in address once the link
+  # mailed to the NEW address is opened. With it off, anybody could rename
+  # their own login to an address they do not own (ceo@victim.example) and
+  # then collect that address's "Continue with Google" sign-ins and password
+  # resets. Sign-in, password reset and OAuth all look up `email` only, never
+  # `unconfirmed_email`. Every server-side path that sets an address creates a
+  # new row (before_update never runs), so none needs skip_reconfirmation!.
   config.reconfirmable = true
 
   # Defines which key will be used when confirming an account
@@ -319,6 +341,47 @@ Devise.setup do |config|
   # so you need to do it manually. For the users scope, it would be:
   # config.omniauth_path_prefix = '/my_engine/users/auth'
 
+  # Two sign-in providers, Google and Apple (D61). Missing credentials do not
+  # break boot in either case: the button hides and the authorize endpoint is
+  # never offered (Registrations.google_enabled? / .apple_enabled?).
+  config.omniauth :google_oauth2,
+                  ENV.fetch('GOOGLE_OAUTH_CLIENT_ID', nil),
+                  ENV.fetch('GOOGLE_OAUTH_CLIENT_SECRET', nil),
+                  scope: 'email,profile',
+                  prompt: 'select_account'
+
+  # Apple mints no long-lived client secret. The strategy signs a sixty-second
+  # JWT with the .p8 key on every exchange, which is why the secret argument is
+  # empty and the team id, the key id and the key itself carry the credentials.
+  # The env value is read here rather than through Registrations so that boot
+  # never has to autoload application code; the `\n` unescaping matches
+  # Registrations.apple_private_key, because a hosting panel stores a
+  # multi-line key as one line.
+  #
+  # `scope: 'email name'` is what makes Apple ask the person to share their
+  # address and their name — and it is also what makes the callback a
+  # cross-site form POST rather than a redirect
+  # (AppleFormPostCookieMiddleware).
+  #
+  # The four values are read per request rather than frozen at boot: the
+  # strategy turns the private key into an OpenSSL key object the moment a
+  # request phase runs, so a key that was still a placeholder when the process
+  # started must not be baked in — the door would stay broken until a restart.
+  # `setup` is OmniAuth's own hook for exactly this, and it runs before both
+  # the request phase and the callback.
+  config.omniauth :apple,
+                  ENV.fetch('APPLE_OAUTH_CLIENT_ID', nil),
+                  '',
+                  scope: 'email name',
+                  setup: lambda { |env|
+                    options = env['omniauth.strategy'].options
+
+                    options[:client_id] = ENV.fetch('APPLE_OAUTH_CLIENT_ID', nil)
+                    options[:team_id] = ENV.fetch('APPLE_OAUTH_TEAM_ID', nil)
+                    options[:key_id] = ENV.fetch('APPLE_OAUTH_KEY_ID', nil)
+                    options[:pem] = Registrations.apple_private_key
+                  }
+
   # ==> Hotwire/Turbo configuration
   # When using Devise with Hotwire/Turbo, the http status for error responses
   # and some redirects must match the following. The default in Devise for existing
@@ -336,4 +399,11 @@ Devise.setup do |config|
 
   ActiveSupport.run_load_hooks(:devise_config, config)
 end
+
+# The authorize endpoint accepts POST only (a GET link could be planted on a
+# third-party page); omniauth-rails_csrf_protection checks the CSRF token on
+# that POST. While REGISTRATION_ENABLED is off, RegistrationGateMiddleware
+# (config/application.rb) answers 404 for every /auth/* path before OmniAuth
+# can redirect anyone to Google or Apple.
+OmniAuth.config.allowed_request_methods = [:post]
 # rubocop:enable Metrics/BlockLength

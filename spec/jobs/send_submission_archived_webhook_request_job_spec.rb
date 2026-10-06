@@ -1,15 +1,14 @@
 # frozen_string_literal: true
 
 RSpec.describe SendSubmissionArchivedWebhookRequestJob do
-  let(:account) { create(:account) }
+  let(:account) { create(:account, :paid) }
   let(:user) { create(:user, account:) }
   let(:template) { create(:template, account:, author: user) }
   let(:submission) { create(:submission, template:, created_by_user: user) }
   let(:webhook_url) { create(:webhook_url, account:, events: ['submission.archived']) }
 
   before do
-    create(:encrypted_config, key: EncryptedConfig::ESIGN_CERTS_KEY,
-                              value: GenerateCertificate.call.transform_values(&:to_pem))
+    platform_certificate!
   end
 
   describe '#perform' do

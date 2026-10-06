@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 describe SendSubmitterInvitationReminderEmailJob do
-  let(:account) { create(:account) }
+  let(:account) { create(:account, :paid) }
   let(:author) { create(:user, account:) }
   let(:template) { create(:template, account:, author:) }
   let(:submission) { create(:submission, :with_submitters, template:, created_by_user: author, source: 'api') }
@@ -10,7 +10,7 @@ describe SendSubmitterInvitationReminderEmailJob do
 
   before do
     submitter.update!(sent_at: 2.days.ago)
-    allow(SubmitterMailer).to receive(:invitation_email).with(submitter).and_return(mail)
+    allow(SubmitterMailer).to receive(:invitation_email).with(submitter, reminder: true).and_return(mail)
   end
 
   def perform(index = 1)
@@ -26,6 +26,13 @@ describe SendSubmitterInvitationReminderEmailJob do
 
     expect(mail).to have_received(:deliver_now!)
     expect(reminder_events.first.data['reminder_index']).to eq(1)
+  end
+
+  it 'sends nothing for an account that is no longer entitled to reminders (D43: the scheduled job goes inert)' do
+    downgrade_to_free!(account)
+
+    expect { perform(1) }.not_to change(reminder_events, :count)
+    expect(mail).not_to have_received(:deliver_now!)
   end
 
   it 'does not send once the submitter has completed' do

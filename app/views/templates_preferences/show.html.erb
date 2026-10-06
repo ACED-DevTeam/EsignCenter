@@ -1,5 +1,6 @@
 <%= render 'shared/turbo_modal_large', title: t('preferences') do %>
-  <% show_api = Docuseal.multitenant? || current_account.testing? || !current_account.linked_account_account %>
+  <%# The API/embed tab is shown to everyone; it renders the upgrade CTA when the plan lacks embedding (conversion). %>
+  <% show_api = true %>
   <% show_recipients = @template.submitters.to_a.length > 1 %>
   <% options = [[t('general'), 'general']] %>
   <% options << [t('recipients'), 'recipients'] if show_recipients %>
@@ -20,6 +21,10 @@
   <% end %>
   <div id="general" class="px-5 mb-4">
     <%= render 'access' %>
+    <%# BCC is a paid row: the form for an entitled account, the compact upgrade CTA otherwise (TemplatesPreferencesController refuses the value regardless). %>
+    <% if cannot?(:use, :bcc) %>
+      <%= render 'shared/upgrade_cta', feature: t('completed_documents_notification_bcc_address'), compact: true, class: 'mt-3 mb-4' %>
+    <% else %>
     <%= form_for @template, url: template_preferences_path(@template), method: :post, html: { autocomplete: 'off', class: 'mt-2' }, data: { close_on_submit: false } do |f| %>
       <toggle-on-submit data-element-id="bcc_saved_alert"></toggle-on-submit>
       <%= f.fields_for :preferences, Struct.new(:bcc_completed).new(@template.preferences['bcc_completed']) do |ff| %>
@@ -40,6 +45,7 @@
           <span id="bcc_saved_alert" class="text-sm invisible font-normal mt-0.5"><%= t('changes_have_been_saved') %></span>
         </div>
       </div>
+    <% end %>
     <% end %>
     <%= form_for @template, url: template_preferences_path(@template), method: :post, html: { autocomplete: 'off', class: 'mb-5' }, data: { close_on_submit: false } do |f| %>
       <%= f.fields_for :preferences, Struct.new(:default_expire_at_duration, :default_expire_at).new(@template.preferences['default_expire_at_duration'], @template.preferences['default_expire_at'] ? Time.zone.parse(@template.preferences['default_expire_at']).in_time_zone(current_account.timezone) : nil) do |ff| %>
@@ -67,7 +73,7 @@
         <%= form_for @template, url: template_preferences_path(@template), method: :post, html: { autocomplete: 'off', class: 'mt-1' }, data: { close_on_submit: false } do |f| %>
           <toggle-on-submit data-element-id="form_saved_alert"></toggle-on-submit>
           <% configs = AccountConfigs.find_or_initialize_for_key(current_account, AccountConfig::SUBMITTER_COMPLETED_EMAIL_KEY).value %>
-          <%= f.fields_for :preferences, Struct.new(:completed_redirect_url, :completed_message, :require_phone_2fa, :require_email_2fa).new(@template.preferences['completed_redirect_url'].presence, Struct.new(:title, :body).new(*(@template.preferences['completed_message'] || {}).values_at('title', 'body')), @template.preferences['require_phone_2fa'] == true, @template.preferences['require_email_2fa'] == true) do |ff| %>
+          <%= f.fields_for :preferences, Struct.new(:completed_redirect_url, :completed_message, :require_email_2fa).new(@template.preferences['completed_redirect_url'].presence, Struct.new(:title, :body).new(*(@template.preferences['completed_message'] || {}).values_at('title', 'body')), @template.preferences['require_email_2fa'] == true) do |ff| %>
             <div class="form-control mb-2">
               <%= ff.label :completed_redirect_url, t('redirect_on_completion_url'), class: 'label' %>
               <%= ff.url_field :completed_redirect_url, required: false, class: 'base-input', dir: 'auto' %>
@@ -138,6 +144,9 @@
   <% end %>
   <% if show_api %>
     <div id="api" class="hidden mt-2 mb-4 px-5">
+      <% if cannot?(:use, :embed) %>
+        <%= render 'shared/upgrade_cta', feature: t('api_and_embedding'), class: 'mt-2' %>
+      <% else %>
       <div>
         <label class="text-sm font-semibold" for="template_id">
           <%= t('template_id') %>
@@ -168,7 +177,6 @@
           <% end %>
         </div>
       </div>
-      <%= render 'templates_code_modal/placeholder' %>
       <%= render 'templates/embedding', template: @template %>
       <% if can?(:manage, TemplateSharing.new(template: @template)) %>
         <%= form_for '', url: template_sharings_testing_index_path, method: :post, html: { class: 'mt-1' }, data: { close_on_submit: false } do |f| %>
@@ -185,6 +193,7 @@
         <div class="mb-4">
         </div>
       <% end %>
+    <% end %>
     </div>
   <% end %>
 <% end %>

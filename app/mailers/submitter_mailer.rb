@@ -6,8 +6,35 @@ class SubmitterMailer < ApplicationMailer
 
   NO_REPLY_REGEXP = /no-?reply@/i
 
-  def invitation_email(submitter)
+  # `reminder: true` is the nudge sent days later by
+  # SendSubmitterInvitationReminderEmailJob. It is the same email in the same
+  # layout; only the copy can differ, and only if the customer wrote reminder
+  # copy of their own.
+  #
+  # The order for a reminder, most specific first, and each of subject and
+  # body falls through it on its own:
+  #
+  #   1. this template's reminder copy   (Preferences → Signature request reminder email)
+  #   2. the account's reminder copy     (Personalization → Signature Request Reminder Email)
+  #   3. the invitation copy of this send — the ad-hoc message typed into the
+  #      send dialog, then the per-signer copy, then this template's
+  #   4. the account's invitation copy
+  #   5. the stock default
+  #
+  # Steps 3-5 are the ordinary invitation chain untouched, so an account that
+  # never wrote reminder copy sends exactly the mail it sends today. The
+  # account-wide reminder wording sits ABOVE the invitation copies on purpose
+  # (Q1): a customer who writes one sentence for every reminder on the
+  # Personalization page expects to see it even on the templates that carry
+  # their own signature-request wording, which is most of them.
+  #
+  # Reminder copy is part of the paid "custom email templates" row, and it is
+  # read through the same `custom_email_*` helpers as every other custom
+  # wording — so a paid account that downgrades goes quietly back to the
+  # default copy with its rows left where they are (D43: inert, not purged).
+  def invitation_email(submitter, reminder: false)
     @current_account = submitter.submission.account
+    mail_account(@current_account)
     @submitter = submitter
 
     if submitter.preferences['email_message_uuid']
@@ -15,23 +42,28 @@ class SubmitterMailer < ApplicationMailer
     end
 
     template_submitters_index = @email_message.blank? ? build_submitter_preferences_index(@submitter) : {}
+    template_preferences = @submitter.template&.preferences
+    reminder_preferences = template_preferences if reminder
 
-    @body = @email_message&.body.presence ||
-            template_submitters_index.dig(@submitter.uuid, 'request_email_body').presence ||
-            @submitter.template&.preferences&.dig('request_email_body').presence
+    sources = {
+      reminder_preferences:,
+      reminder_config: reminder ? custom_email_config(AccountConfig::SUBMITTER_INVITATION_REMINDER_EMAIL_KEY) : nil,
+      signer_preferences: template_submitters_index[@submitter.uuid],
+      template_preferences:,
+      invitation_config: custom_email_config(AccountConfig::SUBMITTER_INVITATION_EMAIL_KEY)
+    }
 
-    @subject = @email_message&.subject.presence ||
-               template_submitters_index.dig(@submitter.uuid, 'request_email_subject').presence ||
-               @submitter.template&.preferences&.dig('request_email_subject').presence
+    @body = invitation_email_copy('body', sources)
+    @subject = invitation_email_copy('subject', sources)
 
-    @email_config = AccountConfigs.find_for_account(@current_account, AccountConfig::SUBMITTER_INVITATION_EMAIL_KEY)
-    @body ||= fetch_config_email_body(@email_config, @submitter)
+    # Still needed below for the reply-to address and as build_invite_subject's
+    # last resort; the reminder row wins it when there is one, exactly as the
+    # copy chain above does.
+    @email_config = sources[:reminder_config] || sources[:invitation_config]
 
     assign_message_metadata('submitter_invitation', @submitter)
 
     reply_to = build_submitter_reply_to(@submitter, email_config: @email_config)
-
-    maybe_set_custom_domain(@submitter)
 
     I18n.with_locale(@current_account.locale) do
       subject = build_invite_subject(@subject, @email_config, submitter)
@@ -47,6 +79,7 @@ class SubmitterMailer < ApplicationMailer
 
   def completed_email(submitter, user, to: nil)
     @current_account = submitter.submission.account
+    mail_account(@current_account)
     @submitter = submitter
     @submission = submitter.submission
     @user = user
@@ -55,7 +88,7 @@ class SubmitterMailer < ApplicationMailer
 
     Submissions::EnsureResultGenerated.call(submitter)
 
-    @email_config = AccountConfigs.find_for_account(@current_account, AccountConfig::SUBMITTER_COMPLETED_EMAIL_KEY)
+    @email_config = custom_email_config(AccountConfig::SUBMITTER_COMPLETED_EMAIL_KEY)
 
     add_completed_email_attachments!(
       submitter,
@@ -65,10 +98,10 @@ class SubmitterMailer < ApplicationMailer
                       template_preferences['completed_notification_email_attach_audit'] != false
     )
 
-    @subject = template_preferences['completed_notification_email_subject'].presence
+    @subject = custom_email_copy(template_preferences, 'completed_notification_email_subject')
     @subject ||= @email_config.value['subject'] if @email_config
 
-    @body = template_preferences['completed_notification_email_body'].presence
+    @body = custom_email_copy(template_preferences, 'completed_notification_email_body')
     @body ||= fetch_config_email_body(@email_config, @submitter)
 
     assign_message_metadata('submitter_completed', @submitter)
@@ -86,6 +119,7 @@ class SubmitterMailer < ApplicationMailer
 
   def declined_email(submitter, user)
     @current_account = submitter.submission.account
+    mail_account(@current_account)
     @submitter = submitter
     @submission = submitter.submission
     @user = user
@@ -104,6 +138,7 @@ class SubmitterMailer < ApplicationMailer
 
   def documents_copy_email(submitter, to: nil, sig: false)
     @current_account = submitter.submission.account
+    mail_account(@current_account)
     @submitter = submitter
     @sig = submitter.signed_id(expires_in: SIGN_TTL, purpose: :download_completed) if sig
 
@@ -111,7 +146,7 @@ class SubmitterMailer < ApplicationMailer
 
     Submissions::EnsureResultGenerated.call(@submitter)
 
-    @email_config = AccountConfigs.find_for_account(@current_account, AccountConfig::SUBMITTER_DOCUMENTS_COPY_EMAIL_KEY)
+    @email_config = custom_email_config(AccountConfig::SUBMITTER_DOCUMENTS_COPY_EMAIL_KEY)
 
     add_completed_email_attachments!(
       submitter,
@@ -121,16 +156,14 @@ class SubmitterMailer < ApplicationMailer
                       (@email_config.nil? || @email_config.value['attach_audit_log'] != false)
     )
 
-    @subject = template_preferences['documents_copy_email_subject'].presence
+    @subject = custom_email_copy(template_preferences, 'documents_copy_email_subject')
     @subject ||= @email_config.value['subject'] if @email_config
 
-    @body = template_preferences['documents_copy_email_body'].presence
+    @body = custom_email_copy(template_preferences, 'documents_copy_email_body')
     @body ||= fetch_config_email_body(@email_config, @submitter)
 
     assign_message_metadata('submitter_documents_copy', @submitter)
     reply_to = build_submitter_reply_to(submitter, email_config: @email_config, documents_copy_email: true)
-
-    maybe_set_custom_domain(@submitter)
 
     I18n.with_locale(@current_account.locale) do
       subject =
@@ -144,6 +177,8 @@ class SubmitterMailer < ApplicationMailer
   end
 
   def otp_verification_email(submitter, locale: nil)
+    @current_account = submitter.submission.account
+    mail_account(@current_account)
     @submitter = submitter
     @otp_code = EmailVerificationCodes.generate([submitter.email.downcase.strip, submitter.slug].join(':'))
 
@@ -156,18 +191,44 @@ class SubmitterMailer < ApplicationMailer
 
   private
 
+  # Custom email copy is paid-only and read at send time (Accounts.custom_email_*):
+  # nil for an unentitled account, so the default copy renders.
+  def custom_email_config(key)
+    Accounts.custom_email_config(@current_account, key)
+  end
+
+  def custom_email_copy(preferences, key)
+    Accounts.custom_email_copy(@current_account, preferences, key)
+  end
+
+  # The reply-to a template carries for its documents-copy email, read the way
+  # every other piece of custom email copy on this template is read.
+  #
+  # It used to be dug straight out of `template.preferences`, which meant a
+  # reply-to saved while the account was paid stayed on the outgoing mail
+  # forever after a downgrade — while the subject and body beside it in the
+  # same form correctly went back to the defaults. D43 is that a downgrade
+  # makes paid copy INERT and never deletes it: the row stays exactly where
+  # the customer left it, and comes back to life when they pay again.
+  #
+  # A helper of its own so the reply-to resolver can simply call it.
+  def template_documents_copy_reply_to(submitter)
+    custom_email_copy(submitter.template&.preferences, 'documents_copy_email_reply_to')
+  end
+
+  # The header half of the resolver the ESIGN disclosure also reads
+  # (Submitters::ReplyTo). Header semantics are unchanged from before it was
+  # extracted: the configured address with its display name, no header at all
+  # for a no-reply address or a self-signed document, and never this account's
+  # own administrator mailbox published on an outgoing mail. The disclosure
+  # asks the other half, which keeps looking until it finds somewhere a signer
+  # can write to — docs/esign-consent.md §2 says where the two differ.
   def build_submitter_reply_to(submitter, email_config: nil, documents_copy_email: nil)
-    reply_to = submitter.preferences['reply_to'].presence
-    reply_to ||= submitter.template&.preferences&.dig('documents_copy_email_reply_to').presence if documents_copy_email
-    reply_to ||= email_config.value['reply_to'].presence if email_config
-
-    if reply_to.blank? && (submitter.submission.created_by_user || submitter.template.author)&.email != submitter.email
-      reply_to = (submitter.submission.created_by_user || submitter.template.author)&.friendly_name&.sub(/\+\w+@/, '@')
-    end
-
-    return nil if reply_to.to_s.match?(NO_REPLY_REGEXP)
-
-    reply_to
+    Submitters::ReplyTo.header(
+      submitter,
+      email_config:,
+      documents_copy_reply_to: documents_copy_email ? template_documents_copy_reply_to(submitter) : nil
+    )
   end
 
   def add_completed_email_attachments!(submitter, with_audit_log: true, with_documents: true)
@@ -212,14 +273,16 @@ class SubmitterMailer < ApplicationMailer
     user.role == 'integration' ? user.friendly_name.sub(/\+\w+@/, '@') : user.friendly_name
   end
 
+  # The stock subjects carry the same `{account.name}` / `{template.name}`
+  # variables the customisable ones do (they are the defaults the
+  # Personalization editor offers), so the fallback goes through
+  # ReplaceEmailVariables too — otherwise a free account would send a subject
+  # with the raw tokens in it.
   def build_invite_subject(subject, email_config, submitter)
-    if email_config || subject
-      ReplaceEmailVariables.call(subject || email_config.value['subject'], submitter:)
-    elsif submitter.with_signature_fields?
-      I18n.t(:you_are_invited_to_sign_a_document)
-    else
-      I18n.t(:you_are_invited_to_submit_a_form)
-    end
+    default_key =
+      submitter.with_signature_fields? ? :you_are_invited_to_sign_a_document : :you_are_invited_to_submit_a_form
+
+    ReplaceEmailVariables.call(subject || email_config&.value&.dig('subject') || I18n.t(default_key), submitter:)
   end
 
   def build_submitter_preferences_index(submitter)
@@ -258,13 +321,24 @@ class SubmitterMailer < ApplicationMailer
     end
   end
 
-  def fetch_config_email_body(email_config, _submitter = nil)
-    email_config ? email_config.value['body'].presence : nil
+  # One walk of the reminder/invitation fallback order documented on
+  # #invitation_email, for one field ('subject' or 'body'). Subject and body
+  # walk it separately, so a reminder row that carries only a subject leaves
+  # the body to the wording below it rather than blanking it.
+  def invitation_email_copy(field, sources)
+    custom_email_copy(sources[:reminder_preferences], "invitation_reminder_email_#{field}") ||
+      fetch_config_email_value(sources[:reminder_config], field) ||
+      @email_message&.public_send(field).presence ||
+      custom_email_copy(sources[:signer_preferences], "request_email_#{field}") ||
+      custom_email_copy(sources[:template_preferences], "request_email_#{field}") ||
+      fetch_config_email_value(sources[:invitation_config], field)
   end
 
-  def maybe_set_custom_domain(submitter)
-    if Docuseal.multitenant? && (config = AccountConfig.find_by(account_id: submitter.account_id, key: :custom_domain))
-      @custom_domain = config.value
-    end
+  def fetch_config_email_value(email_config, field)
+    email_config ? email_config.value[field].presence : nil
+  end
+
+  def fetch_config_email_body(email_config, _submitter = nil)
+    fetch_config_email_value(email_config, 'body')
   end
 end

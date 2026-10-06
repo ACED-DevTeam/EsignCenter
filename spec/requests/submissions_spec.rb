@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 describe 'Submission API' do
-  let(:account) { create(:account, :with_testing_account) }
+  let(:account) { create(:account, :internal, :with_testing_account) }
   let(:testing_account) { account.testing_accounts.first }
   let(:author) { create(:user, account:) }
   let(:testing_author) { create(:user, account: testing_account) }
@@ -181,6 +181,46 @@ describe 'Submission API' do
 
       expect(response).to have_http_status(:unprocessable_content)
       expect(response.parsed_body).to eq({ 'error' => 'role must be unique in `submitters`.' })
+    end
+
+    # The uuid IS the role, so two entries resolving to one are two people in
+    # one role. The database refuses that (the unique index on
+    # `submitters (submission_id, uuid)`); before this rule the caller got a
+    # 500 and an error report for the same mistake that, spelled with `role`,
+    # gets the 422 above (review 2, H3).
+    it 'returns an error if two submitters name the same uuid' do
+      shared_uuid = multiple_submitters_template.submitters.first['uuid']
+
+      expect do
+        post '/api/submissions', headers: { 'x-auth-token': author.access_token.token }, params: {
+          template_id: multiple_submitters_template.id,
+          send_email: true,
+          submitters: [
+            { uuid: shared_uuid, role: 'First Party', email: 'john.doe@example.com' },
+            { uuid: shared_uuid, role: 'Second Party', email: 'jane.doe@example.com' }
+          ]
+        }.to_json
+      end.not_to change(Submission, :count)
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.parsed_body).to eq({ 'error' => 'uuid must be unique in `submitters`.' })
+    end
+
+    # N7. The 422 above is the backstop for ONE index. A unique-constraint
+    # failure from anywhere else in `/api/*` is a bug nobody has named, and
+    # dressing it up as a well-formed refusal — filed as a warning, answered
+    # "Record already exists" — is how that bug hides for months.
+    it 'does not dress an unrelated unique-constraint failure up as a refusal' do
+      allow(Submissions).to receive(:create_from_submitters)
+        .and_raise(ActiveRecord::RecordNotUnique,
+                   'PG::UniqueViolation: duplicate key value violates unique constraint "index_users_on_email"')
+
+      expect do
+        post '/api/submissions', headers: { 'x-auth-token': author.access_token.token }, params: {
+          template_id: templates[0].id, send_email: true,
+          submitters: [{ email: 'jane.doe@example.com' }]
+        }.to_json
+      end.to raise_error(ActiveRecord::RecordNotUnique, /index_users_on_email/)
     end
 
     it 'returns an error if number of submitters more than in the template' do

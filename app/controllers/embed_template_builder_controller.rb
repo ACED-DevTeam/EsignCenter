@@ -12,8 +12,25 @@ class EmbedTemplateBuilderController < ApplicationController
   before_action :load_template
   before_action :validate_template_param!, except: :show
   before_action :validate_builder_session!
-  before_action :validate_request_origin!, except: :show
+  # Frame headers before the entitlement check: the branded refusal page is
+  # shown inside the customer's iframe too, so it needs the same
+  # X-Frame-Options removal and frame-ancestors as a successful show.
   before_action :set_embed_frame_headers
+  before_action :require_embed_entitlement!
+  before_action :validate_request_origin!, except: :show
+
+  # The builder token is minted by an entitled account, but the embed row is
+  # checked on every request too (validate_builder_session!), so a token from
+  # a paid period stops working the moment the account is downgraded. The
+  # iframe page itself renders a short refusal; every other action is called
+  # by the builder script and gets the usual 403 JSON.
+  rescue_from Entitlements::UpgradeRequired do |e|
+    if action_name == 'show' && !request.xhr?
+      render :upgrade_required, status: :forbidden
+    else
+      render json: { error: Entitlements.refusal_message(e.feature) }, status: :forbidden
+    end
+  end
 
   def show
     @template_data = Templates.serialize_for_builder(@template)
@@ -22,7 +39,15 @@ class EmbedTemplateBuilderController < ApplicationController
   end
 
   def update_template
+    Templates::AssertEntitledFields.call(@template.account, template_params[:fields],
+                                         schema: template_params[:schema], baseline: @template)
+
     @template.assign_attributes(template_params)
+
+    # The converting/failed flags come from the attachments, never from the
+    # client (see Templates.refresh_conversion_flags).
+    Templates.refresh_conversion_flags(@template) if template_params.key?(:schema)
+
     @template.save!
 
     SearchEntries.enqueue_reindex(@template)
@@ -44,9 +69,7 @@ class EmbedTemplateBuilderController < ApplicationController
 
     documents, = Templates::CreateAttachments.call(@template, params, extract_fields: true)
 
-    schema = documents.map do |doc|
-      { attachment_uuid: doc.uuid, name: doc.filename.base }
-    end
+    schema = documents.map { |doc| Templates::CreateAttachments.schema_item(doc) }
 
     render json: {
       schema:,
@@ -61,6 +84,22 @@ class EmbedTemplateBuilderController < ApplicationController
     }
   rescue Templates::CreateAttachments::PdfEncrypted
     render json: { error: 'PDF encrypted', status: 'pdf_encrypted' }, status: :unprocessable_content
+  rescue StandardError => e
+    message = Templates::CreateAttachments.upload_error_message(e)
+
+    raise if message.nil?
+
+    render json: { error: message }, status: :unprocessable_content
+  end
+
+  # The embedded builder's copy of TemplateDocumentsController#status, under
+  # the builder token; `id` is the attachment uuid.
+  def document_status
+    result = Templates::ConversionStatus.call(@template, params[:id])
+
+    return render json: { error: I18n.t('not_found') }, status: :not_found if result.nil?
+
+    render json: result
   end
 
   def detect_fields
@@ -95,6 +134,11 @@ class EmbedTemplateBuilderController < ApplicationController
 
   def load_template
     @template = Template.find_signed!(params[:token], purpose: :embed_builder)
+
+    # A builder token is minted through the API key, so it is refused with the
+    # other token doors once the account leaves the active state — the same
+    # 404 an invalid token gets, before any action runs.
+    raise ActionController::RoutingError, I18n.t('not_found') unless AccountStates.tokens_allowed?(@template.account)
   rescue ActiveSupport::MessageVerifier::InvalidSignature
     raise ActionController::RoutingError, I18n.t('not_found')
   end
@@ -112,6 +156,10 @@ class EmbedTemplateBuilderController < ApplicationController
 
     raise ActionController::RoutingError, I18n.t('not_found') if @builder_preferences['origin'].blank?
     raise ActionController::RoutingError, I18n.t('not_found') if expires_at&.past?
+  end
+
+  def require_embed_entitlement!
+    Entitlements.require!(@template.account, :embed)
   end
 
   def validate_request_origin!
@@ -132,7 +180,7 @@ class EmbedTemplateBuilderController < ApplicationController
   def template_params
     params.require(:template).permit(
       :name,
-      { schema: [[:attachment_uuid, :google_drive_file_id, :name, :dynamic,
+      { schema: [[:attachment_uuid, :google_drive_file_id, :name, :dynamic, :pending_fields,
                   { conditions: [%i[field_uuid value action operation]] }]],
         submitters: [%i[name uuid is_requester linked_to_uuid invite_via_field_uuid
                         invite_by_uuid optional_invite_by_uuid email order]],

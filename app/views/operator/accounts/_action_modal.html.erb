@@ -1,0 +1,7 @@
+<%# The account page's action modal, which is the console's one modal
+    (operator/shared/_reason_action) under this page's own uuid prefix. It was
+    a second copy of the same markup until the ids were the only thing left
+    that differed, and two copies of a dialog is how one of them quietly loses
+    the reason field. Locals: key, url, label, hint; optional button_class,
+    confirm_class, extra_field. %>
+<%= render 'operator/shared/reason_action', local_assigns.merge(uuid_prefix: 'operator_action_') %>

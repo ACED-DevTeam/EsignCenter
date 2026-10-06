@@ -524,6 +524,7 @@ module Templates
         inter_op_num_threads: 1,
         intra_op_num_threads: CPU_THREADS,
         enable_mem_pattern: false,
+        # infra-keep: ONNX memory-arena tuning, not a feature switch.
         enable_cpu_mem_arena: Docuseal.multitenant? || Rails.env.development?,
         providers: ['CPUExecutionProvider']
       )

@@ -500,7 +500,7 @@
     </label>
   </li>
   <li
-    v-if="field.type == 'number'"
+    v-if="withFormula && field.type == 'number'"
     class="field-settings-formula"
   >
     <label
@@ -610,7 +610,7 @@ export default {
     IconTypography,
     IconX
   },
-  inject: ['template', 't', 'dateFormats', 'locale'],
+  inject: ['template', 't', 'dateFormats', 'locale', 'withFormula'],
   props: {
     field: {
       type: Object,
@@ -830,7 +830,7 @@ export default {
       } else if (format === 'percent') {
         return `${number}%`
       } else if (format === 'percent_space') {
-        return `${String(number).replace('.', ',')} %`
+        return `${String(number).replace('.', ',')} %`
       } else {
         return number
       }

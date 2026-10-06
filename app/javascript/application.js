@@ -14,7 +14,6 @@ import MenuActive from './elements/menu_active'
 import ClipboardCopy from './elements/clipboard_copy'
 import DynamicList from './elements/dynamic_list'
 import DownloadButton from './elements/download_button'
-import SetOriginUrl from './elements/set_origin_url'
 import SetTimezone from './elements/set_timezone'
 import AutoresizeTextarea from './elements/autoresize_textarea'
 import SubmittersAutocomplete from './elements/submitter_autocomplete'
@@ -55,6 +54,15 @@ import OpenModal from './elements/open_modal'
 import BarChart from './elements/bar_chart'
 import FieldCondition from './elements/field_condition'
 import ConfirmUpload from './elements/confirm_upload'
+// Opens a <dialog> next to the button that asks for it. It has always lived
+// in the signer form pack; the account-deletion confirmation (Settings →
+// Account, Session 7 Phase C) is the first place in the authenticated app
+// that needs one, so the same element is registered here too.
+import ModalButton from './elements/modal_button'
+// The public marketing pages (Session 9): reveal-on-scroll sections and the
+// header's phone menu. Both are inert without JavaScript on purpose.
+import RevealOnScroll from './elements/reveal_on_scroll'
+import MarketingMenu from './elements/marketing_menu'
 
 import * as TurboInstantClick from './lib/turbo_instant_click'
 
@@ -62,6 +70,7 @@ TurboInstantClick.start()
 
 document.addEventListener('turbo:before-cache', () => {
   window.flash?.remove()
+  document.getElementById('autosave_toast')?.remove()
 })
 
 document.addEventListener('keyup', (e) => {
@@ -106,7 +115,6 @@ safeRegisterElement('menu-active', MenuActive)
 safeRegisterElement('clipboard-copy', ClipboardCopy)
 safeRegisterElement('dynamic-list', DynamicList)
 safeRegisterElement('download-button', DownloadButton)
-safeRegisterElement('set-origin-url', SetOriginUrl)
 safeRegisterElement('set-timezone', SetTimezone)
 safeRegisterElement('autoresize-textarea', AutoresizeTextarea)
 safeRegisterElement('submitters-autocomplete', SubmittersAutocomplete)
@@ -148,6 +156,9 @@ safeRegisterElement('open-modal', OpenModal)
 safeRegisterElement('bar-chart', BarChart)
 safeRegisterElement('field-condition', FieldCondition)
 safeRegisterElement('confirm-upload', ConfirmUpload)
+safeRegisterElement('modal-button', ModalButton)
+safeRegisterElement('reveal-on-scroll', RevealOnScroll)
+safeRegisterElement('marketing-menu', MarketingMenu)
 
 safeRegisterElement('template-builder', class extends HTMLElement {
   connectedCallback () {
@@ -201,7 +212,8 @@ safeRegisterElement('template-builder', class extends HTMLElement {
       withReplaceAndCloneUpload: this.dataset.withReplaceAndCloneUpload !== 'false',
       withDownload: this.dataset.withDownload !== 'false',
       currencies: (this.dataset.currencies || '').split(',').filter(Boolean),
-      acceptFileTypes: this.dataset.acceptFileTypes,
+      // An empty attribute means "the builder's default list" (Word off).
+      acceptFileTypes: this.dataset.acceptFileTypes || undefined,
       showTourStartForm: this.dataset.showTourStartForm === 'true',
       onChange: (nextTemplate) => notifyEmbedParent('change', {
         template: this.buildEmbedTemplateDetail(nextTemplate)
@@ -283,7 +295,6 @@ safeRegisterElement('import-list', class extends HTMLElement {
 
     this.app = createApp(ImportList, {
       template: JSON.parse(this.dataset.template),
-      multitenant: this.dataset.multitenant === 'true',
       authenticityToken: document.querySelector('meta[name="csrf-token"]')?.content,
       i18n: JSON.parse(this.dataset.i18n || '{}')
     })

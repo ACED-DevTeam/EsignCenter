@@ -51,6 +51,11 @@ WORKDIR /app
 RUN apk add --no-cache libpq vips redis onnxruntime && \
     rm -f /usr/bin/onnx_test_runner /usr/bin/onnxruntime_test
 
+# LibreOffice Writer (headless) converts Word uploads (.docx/.doc) to PDF in a
+# dedicated Sidekiq queue (Session 4, D48). Metric-compatible fonts keep the
+# layout faithful: Liberation (Times/Arial/Courier), Carlito (Calibri), DejaVu.
+RUN apk add --no-cache libreoffice-writer font-liberation font-carlito font-dejavu && fc-cache -f
+
 RUN addgroup -g 2000 docuseal && adduser -u 2000 -G docuseal -s /bin/sh -D -h /home/docuseal docuseal
 
 RUN echo $'.include = /etc/ssl/openssl.cnf\n\
@@ -77,6 +82,12 @@ COPY --chown=docuseal:docuseal ./log ./log
 COPY --chown=docuseal:docuseal ./lib ./lib
 COPY --chown=docuseal:docuseal ./public ./public
 COPY --chown=docuseal:docuseal ./tmp ./tmp
+# The OpenAPI description that /docs/api and /docs/openapi.json are built from
+# (lib/openapi_document.rb reads it off disk on the first request). Nothing
+# above copies the repository root, so without this line the running image has
+# no docs/ at all and both pages fail. spec/golden/api_reference_spec.rb reads
+# this file and goes red if the line is dropped or the path moves.
+COPY --chown=docuseal:docuseal ./docs/openapi.json ./docs/openapi.json
 COPY --chown=docuseal:docuseal LICENSE LICENSE_ADDITIONAL_TERMS README.md Rakefile config.ru .version ./
 COPY --chown=docuseal:docuseal .version ./public/version
 

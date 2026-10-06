@@ -1,0 +1,30 @@
+<div>
+  <%= link_to t('operator_back_to_accounts'), operator_accounts_path, class: 'link text-sm' %>
+  <h1 class="text-4xl font-bold mt-2 break-words" dir="auto"><%= @account.name %></h1>
+  <div class="mt-3">
+    <%= render 'operator/accounts/state_badges', account: @account, usage: @usage, read_only_count: @read_only_count %>
+  </div>
+  <dl class="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-1 text-sm mt-4">
+    <div>
+      <dt class="text-base-content/70"><%= t('operator_column_id') %></dt>
+      <dd class="tabular-nums" data-account-id><%= @account.id %></dd>
+    </div>
+    <div>
+      <dt class="text-base-content/70"><%= t('operator_column_kind') %></dt>
+      <dd><%= t("operator_kind_#{@account.account_kind}") %></dd>
+    </div>
+    <div>
+      <dt class="text-base-content/70"><%= t('operator_column_created') %></dt>
+      <dd><%= l(@account.created_at.utc, format: :short) %></dd>
+    </div>
+    <div>
+      <dt class="text-base-content/70"><%= t('operator_column_last_active') %></dt>
+      <dd><%= @account.last_active_at ? l(@account.last_active_at.utc, format: :short) : '—' %></dd>
+    </div>
+  </dl>
+  <% if @testing_children.any? %>
+    <p class="text-sm text-base-content/70 mt-3" data-testing-children>
+      <%= t('operator_testing_children', ids: @testing_children.map(&:id).join(', ')) %>
+    </p>
+  <% end %>
+</div>

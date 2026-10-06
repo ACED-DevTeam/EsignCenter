@@ -1,17 +1,41 @@
 <% has_archived = can?(:manage, :countless) || current_account.templates.where.not(archived_at: nil).exists? %>
-<% show_dropzone = params[:q].blank? && @pagy.pages == 1 && ((@template_folders.size < 10 && @templates.size.zero?) || (@template_folders.size < 7 && @templates.size < 4) || (@template_folders.size < 4 && @templates.size < 7)) %>
+<%# Nobody is invited to upload a document they would then be refused. That is
+    the same question the Upload/Create buttons below already ask, so it is
+    asked once here and every drop target hangs off it: a suspended account,
+    an account being deleted, a member parked read-only by a downgrade and an
+    ordinary viewer all see the page without a dropzone rather than a dropzone
+    that fails. %>
+<% can_create_templates = can?(:create, ::Template) %>
+<% show_dropzone = can_create_templates && params[:q].blank? && @pagy.pages == 1 && ((@template_folders.size < 10 && @templates.size.zero?) || (@template_folders.size < 7 && @templates.size < 4) || (@template_folders.size < 4 && @templates.size < 7)) %>
 <% if Docuseal.demo? %><%= render 'shared/demo_alert' %><% end %>
+<%# The two dashboard cards a new or newly-successful customer account sees
+    (Session 10, D50): the three-step first-run checklist and the one-time
+    upgrade nudge after the first signed document. Both partials decide for
+    themselves whether there is anything to show, so the two dashboards ask
+    the same question in the same words. %>
+<%# Worked out ONCE, here, and passed down: `FirstRunChecklist.for` runs the
+    three done-state queries, and asking twice ran six of them, one a jsonb
+    scan with no index behind it. %>
+<% first_run_steps = signed_in? && current_account.customer? ? FirstRunChecklist.for(account: current_account, user: current_user, can_create_templates:) : nil %>
+<% if signed_in? && current_account.customer? %>
+  <%= render 'dashboard/first_run_checklist', steps: first_run_steps %>
+  <%= render 'dashboard/first_completion_prompt' %>
+<% end %>
 <dashboard-dropzone>
-  <%= form_for '', url: '', id: form_id = SecureRandom.uuid, method: :post, class: 'hidden', data: { target: 'dashboard-dropzone.form' }, html: { enctype: 'multipart/form-data' } do %>
-    <input name="form_id" value="<%= form_id %>">
-    <button type="submit"></button>
-    <input id="dashboard_dropzone_input" name="files[]" type="file" multiple>
+  <% if can_create_templates %>
+    <%= form_for '', url: '', id: form_id = SecureRandom.uuid, method: :post, class: 'hidden', data: { target: 'dashboard-dropzone.form' }, html: { enctype: 'multipart/form-data' } do %>
+      <input name="form_id" value="<%= form_id %>">
+      <button type="submit"></button>
+      <input id="dashboard_dropzone_input" name="files[]" type="file" multiple>
+    <% end %>
   <% end %>
   <div class="flex justify-between items-center w-full mb-4 relative">
-    <% unless show_dropzone %>
-      <%= render 'templates/dashboard_dropzone', style: 'height: 114px' %>
+    <% if can_create_templates %>
+      <% unless show_dropzone %>
+        <%= render 'templates/dashboard_dropzone', style: 'height: 114px' %>
+      <% end %>
+      <%= render 'templates/dashboard_folder_dropzone', style: 'height: 114px' %>
     <% end %>
-    <%= render 'templates/dashboard_folder_dropzone', style: 'height: 114px' %>
     <div class="flex items-center flex-grow min-w-0">
       <% if has_archived || @pagy.count.nil? || @pagy.count > 0 || @template_folders.present? %>
         <div class="mr-2">
@@ -26,11 +50,11 @@
       <% if params[:q].present? || @pagy.pages > 1 || @template_folders.present? %>
         <%= render 'shared/search_input' %>
       <% end %>
-      <% if can?(:create, ::Template) %>
+      <% if can_create_templates %>
         <span class="hidden sm:block">
           <%= render 'templates/upload_button' %>
         </span>
-        <%= link_to new_template_path, class: 'white-button !border gap-2', data: { turbo_frame: :modal } do %>
+        <%= link_to new_template_path, class: 'white-button !border gap-2', 'aria-label': t('create'), data: { turbo_frame: :modal } do %>
           <%= svg_icon('plus', class: 'w-6 h-6 stroke-2') %>
           <span class="hidden md:block"><%= t('create') %></span>
         <% end %>
@@ -57,12 +81,25 @@
   <% if @templates.present? %>
     <div class="grid gap-4 md:grid-cols-3">
       <%= render partial: 'templates/template', collection: @templates %>
+      <%# The app tour's welcome card stands aside for the first-run checklist
+          above (Session 10 review 1): two onboarding widgets making the same
+          offer, 200 pixels apart, on a brand-new account's first screen is one
+          too many, and the checklist is the one that ticks itself off from the
+          real data. The tour itself is untouched and stays reachable from the
+          template builder; only its "Welcome / Start tour" card is suppressed.
+
+          Asked of the ACCOUNT rather than of today's card (session 10 walk,
+          W2): a checklist that has just ticked its third step retires itself,
+          and reading "is the card on the page?" put the tour's welcome back
+          on the screen of somebody who had that moment sent their first
+          document. %>
+      <% tour_welcome_superseded = signed_in? && FirstRunChecklist.supersedes_app_tour?(current_account) %>
       <% if (show_dropzone && current_user.created_at > 2.weeks.ago && current_user == true_user) || params[:tour] == 'true' %>
         <% user_config = current_user.user_configs.find_or_initialize_by(key: UserConfig::SHOW_APP_TOUR) %>
         <% if user_config.new_record? || user_config.value || params[:tour] == 'true' %>
           <div class="hidden md:block">
-            <app-tour id="app_tour" data-show-tour="<%= params[:tour] == 'true' || user_config.value %>" data-type="dashboard" data-next-page-path="<%= @templates.first && can?(:edit, @templates.first) ? edit_template_path(@templates.first, params.permit(:tour)) : settings_account_path %>" data-i18n="<%= t('app_tour').to_json %>"></app-tour>
-            <% if user_config.new_record? && !params.key?(:tour) %>
+            <app-tour id="app_tour" data-show-tour="<%= params[:tour] == 'true' || user_config.value %>" data-type="dashboard" data-next-page-path="<%= @templates.first && can?(:edit, @templates.first) ? edit_template_path(@templates.first, params.permit(:tour)) : settings_account_path %>" data-i18n="<%= t('app_tour').merge(support_description: t('app_tour.support_description', support_email: Docuseal::SUPPORT_EMAIL)).to_json %>"></app-tour>
+            <% if user_config.new_record? && !params.key?(:tour) && !tour_welcome_superseded %>
               <div id="app_tour_manager" class="h-36 rounded-2xl pt-3 px-7 w-full border border-dashed border-base-300">
                 <div class="text-xl text-center font-semibold text-base-content">
                   <%= t('welcome_to_docuseal') %>
@@ -87,7 +124,19 @@
   <% end %>
 </dashboard-dropzone>
 <% if show_dropzone %>
+  <%# A first-run shelf should say what belongs on it. The dropzone below is
+      the action; this is the one sentence that explains what it makes. It
+      only appears while the shelf really is empty — once there is anything
+      to look at, the dropzone speaks for itself. %>
+  <% if @templates.blank? && @template_folders.blank? && params[:q].blank? %>
+    <p class="mt-8 text-center text-base-content/70" data-templates-empty-hint><%= t('templates_empty_state_hint') %></p>
+  <% end %>
   <%= render 'templates/dropzone' %>
+<% elsif !can_create_templates && @templates.blank? && @template_folders.blank? && params[:q].blank? %>
+  <%# Without the dropzone an empty dashboard is a heading over nothing at
+      all. The banner above already says why creating is off, so this only has
+      to say that the shelf is empty. %>
+  <p class="mt-16 text-center text-base-content/60"><%= t('no_documents_here_yet') %></p>
 <% end %>
 <% if @templates.present? || @template_folders.present? || params[:q].blank? %>
   <% if @pagy.pages > 1 %>

@@ -99,7 +99,8 @@
       type="submit"
       name="completed"
       value="true"
-      :disabled="isSubmittingComplete"
+      :disabled="isSubmittingComplete || esignConsentBlocked"
+      :aria-describedby="esignConsentBlocked ? 'esign_consent_required' : undefined"
     >
       <span class="flex items-center">
         <IconInnerShadowTop
@@ -124,7 +125,8 @@
       type="submit"
       name="completed"
       value="true"
-      :disabled="isSubmittingComplete"
+      :disabled="isSubmittingComplete || esignConsentBlocked"
+      :aria-describedby="esignConsentBlocked ? 'esign_consent_required' : undefined"
     >
       <span class="flex items-center">
         <IconInnerShadowTop
@@ -218,7 +220,8 @@
         v-else
         type="button"
         class="btn btn-sm btn-neutral text-white px-4 flex-none"
-        :disabled="isSubmitting || isSubmittingComplete"
+        :disabled="isSubmitting || isSubmittingComplete || esignConsentBlocked"
+        :aria-describedby="esignConsentBlocked ? 'esign_consent_required' : undefined"
         @click="onCompleteBarClick"
       >
         <span class="flex items-center">
@@ -533,7 +536,6 @@
             :signature-src="signatureSrc"
             :button-text="submitButtonText"
             :dry-run="dryRun"
-            :with-disclosure="withDisclosure"
             :with-qr-button="withQrButton"
             :submitter="submitter"
             :show-field-names="showFieldNames"
@@ -623,6 +625,17 @@
             @submit="!isSubmitting && submitStep()"
           />
         </div>
+        <EsignConsent
+          v-if="esignConsentRequired"
+          ref="esignConsent"
+          v-model="esignConsentChecked"
+          :pdf-opened="esignConsentPdfOpened"
+          :config="esignConsent"
+          :error="showEsignConsentRequired"
+          :stale="esignConsentStale"
+          :locale-invalid="esignConsentLocaleInvalid"
+          @pdf-opened="esignConsentPdfOpened = true"
+        />
         <div
           v-if="(currentField.type !== 'payment' && currentField.type !== 'verification' && currentField.type !== 'kba') || submittedValues[currentField.uuid]"
           :class="['signature', 'cells', 'text'].includes(currentField.type) ? 'mt-2' : 'mt-4 md:mt-6'"
@@ -632,7 +645,8 @@
             ref="submitButton"
             type="submit"
             class="base-button w-full flex justify-center submit-form-button"
-            :disabled="isButtonDisabled"
+            :disabled="isButtonDisabled || esignConsentBlocked"
+            :aria-describedby="esignConsentBlocked ? 'esign_consent_required' : undefined"
           >
             <span class="flex">
               <IconInnerShadowTop
@@ -665,13 +679,20 @@
         :submitter-slug="submitterSlug"
         :authenticity-token="authenticityToken"
         :url="baseUrl + submitPath + '/invite'"
+        :esign-consent="esignConsentChecked"
+        :esign-consent-version="esignConsent.version"
+        :esign-consent-locale="esignConsent.locale"
+        :esign-consent-locale-token="esignConsent.locale_token"
+        :esign-consent-pdf-opened="esignConsentPdfOpened"
+        :esign-consent-pdf-url="esignConsent.pdf_url || ''"
+        :esign-consent-sender-digest="esignConsent.sender_digest"
         :style="{ maxWidth: isBreakpointMd ? '582px' : '' }"
         @success="[isInvite = false, performComplete($event)]"
+        @consent-refused="refuseInviteWithoutEsignConsent"
       />
       <FormCompleted
         v-else
         :is-demo="isDemo"
-        :attribution="attribution"
         :has-signature-fields="stepFields.some((fields) => fields.some((f) => ['signature', 'initials'].includes(f.type)))"
         :has-multiple-documents="hasMultipleDocuments"
         :completed-button="completedRedirectUrl ? {} : completedButton"
@@ -753,7 +774,8 @@
         <button
           type="button"
           class="btn btn-neutral text-white w-full"
-          :disabled="isSubmitting || isSubmittingComplete"
+          :disabled="isSubmitting || isSubmittingComplete || esignConsentBlocked"
+          :aria-describedby="esignConsentBlocked ? 'esign_consent_required' : undefined"
           @click="completeNow"
         >
           {{ t('complete_anyway') }}
@@ -769,6 +791,7 @@ import FormulaFieldAreas from './formula_areas'
 import AccessibilityAreas from './accessibility_areas'
 import ImageStep from './image_step'
 import SignatureStep from './signature_step'
+import EsignConsent from './esign_consent'
 import InitialsStep from './initials_step'
 import AttachmentStep from './attachment_step'
 import MultiSelectStep from './multi_select_step'
@@ -826,6 +849,7 @@ export default {
   components: {
     FieldAreas,
     AccessibilityAreas,
+    EsignConsent,
     ImageStep,
     SignatureStep,
     AppearsOn,
@@ -968,10 +992,14 @@ export default {
       required: false,
       default: true
     },
-    withDisclosure: {
-      type: Boolean,
+    // { version, locale, locale_token, consented, label, link_text,
+    // required_message, stale_message, modal_id, pdf_url, view_pdf_text,
+    // sender_digest } from the Rails partial;
+    // `consented: true` means no checkbox is shown.
+    esignConsent: {
+      type: Object,
       required: false,
-      default: false
+      default: () => ({ consented: true })
     },
     reuseSignature: {
       type: Boolean,
@@ -1073,11 +1101,6 @@ export default {
       required: false,
       default: false
     },
-    attribution: {
-      type: Boolean,
-      required: false,
-      default: true
-    },
     language: {
       type: String,
       required: false,
@@ -1141,7 +1164,13 @@ export default {
       isFormStarted: false,
       recalculateButtonDisabledKey: '',
       isAccessibilityMode: false,
-      showBlankConfirm: false
+      showBlankConfirm: false,
+      isEsignConsented: this.esignConsent.consented !== false,
+      esignConsentChecked: false,
+      esignConsentPdfOpened: false,
+      showEsignConsentRequired: false,
+      esignConsentStale: false,
+      esignConsentLocaleInvalid: false
     }
   },
   computed: {
@@ -1287,6 +1316,14 @@ export default {
     currentStepFields () {
       return this.stepFields[this.currentStep] || []
     },
+    esignConsentRequired () {
+      return !this.isEsignConsented
+    },
+    // Consent is still owed and the box is unticked: every completion path
+    // refuses (buttons disabled, submitStep/completeNow bail out).
+    esignConsentBlocked () {
+      return this.esignConsentRequired && !this.esignConsentChecked
+    },
     browserLanguage () {
       return (navigator.language || navigator.userLanguage || 'en').split('-')[0]
     },
@@ -1426,6 +1463,11 @@ export default {
   watch: {
     expand (value) {
       this.isFormVisible = value
+    },
+    esignConsentChecked (value) {
+      if (value) {
+        this.showEsignConsentRequired = false
+      }
     },
     currentStepFields (value) {
       if (isEmpty(value) && this.currentStep > 0) {
@@ -1760,16 +1802,29 @@ export default {
           this.submittedValues[fieldUuid] = this.values[fieldUuid]
         })
 
+        if (this.esignConsentChecked) {
+          this.isEsignConsented = true
+        }
+
         return Promise.resolve({})
       } else if (this.isCompleted) {
         return Promise.resolve({})
       } else {
+        const body = formData || new FormData(this.$refs.form)
+        // The consent checkbox lives inside the steps form, so any request built
+        // from it carries `esign_consent=true` once the box is ticked.
+        const withEsignConsent = body.get('esign_consent') === 'true'
+
         return fetch(this.baseUrl + this.submitPath, {
           method: 'POST',
-          body: formData || new FormData(this.$refs.form),
+          body,
           ...this.fetchOptions
         }).then((response) => {
           if (response.status === 200) {
+            if (withEsignConsent) {
+              this.isEsignConsented = true
+            }
+
             currentFieldUuids.forEach((fieldUuid) => {
               this.submittedValues[fieldUuid] = this.values[fieldUuid]
 
@@ -1792,6 +1847,12 @@ export default {
       return this.$refs.areas.scrollIntoArea(area)
     },
     async submitStep (e) {
+      if (this.esignConsentBlocked) {
+        this.refuseWithoutEsignConsent()
+
+        return
+      }
+
       this.isSubmitting = true
 
       const forceComplete = e?.submitter?.getAttribute('name') === 'completed'
@@ -1851,6 +1912,28 @@ export default {
               }
 
               return Promise.reject(new Error('Required field: ' + data.field_uuid))
+            } else if (data.error === 'esign_consent_required') {
+              // The server has no consent on record for this signer: show the
+              // checkbox again (with its message) instead of a generic alert.
+              this.isEsignConsented = false
+              this.esignConsentChecked = false
+              this.refuseWithoutEsignConsent()
+            } else if (data.error === 'esign_consent_version_stale') {
+              // The disclosure changed since this page loaded: the checkbox
+              // comes back with the reload message; a reload shows the new
+              // disclosure and a fresh, enabled checkbox.
+              this.isEsignConsented = false
+              this.esignConsentChecked = false
+              this.esignConsentStale = true
+              this.refuseWithoutEsignConsent()
+            } else if (data.error === 'esign_consent_locale_invalid') {
+              // The server could not confirm which language this page showed
+              // the disclosure in. Its own message: nothing was updated, and
+              // a reload issues a fresh, signed language token.
+              this.isEsignConsented = false
+              this.esignConsentChecked = false
+              this.esignConsentLocaleInvalid = true
+              this.refuseWithoutEsignConsent()
             } else if (data.error) {
               const i18nKey = data.error.replace(/\s+/g, '_').toLowerCase()
 
@@ -1915,6 +1998,12 @@ export default {
     onCompleteBarClick () {
       if (this.isSubmitting || this.isSubmittingComplete) return
 
+      if (this.esignConsentBlocked) {
+        this.refuseWithoutEsignConsent()
+
+        return
+      }
+
       if (this.blankStepFields.length) {
         this.showBlankConfirm = true
 
@@ -1937,6 +2026,29 @@ export default {
 
         this.goToStep(this.stepFields.indexOf(step), true)
       }
+    },
+    // The invite request carries the same consent the form step does, so the
+    // server refuses it in the same three ways — and the answer has to be the
+    // same too. The invite screen replaces the form, so the signer is put back
+    // on it: the checkbox is where the message and the reason live.
+    refuseInviteWithoutEsignConsent (error) {
+      this.isInvite = false
+      this.isEsignConsented = false
+      this.esignConsentChecked = false
+      this.esignConsentStale = error === 'esign_consent_version_stale'
+      this.esignConsentLocaleInvalid = error === 'esign_consent_locale_invalid'
+
+      this.refuseWithoutEsignConsent()
+    },
+    // Every completion path (Next/Complete, header Complete, one-tap Complete,
+    // "Complete anyway") lands here when consent is owed and unticked: open the
+    // form, show the required message by the checkbox and move focus to it.
+    refuseWithoutEsignConsent () {
+      this.showBlankConfirm = false
+      this.showEsignConsentRequired = true
+      this.isFormVisible = true
+
+      this.$nextTick(() => this.$refs.esignConsent?.focus())
     },
     completeNow () {
       this.showBlankConfirm = false

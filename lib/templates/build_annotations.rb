@@ -19,7 +19,7 @@ module Templates
         end
       end
     rescue StandardError => e
-      Rollbar.error(e) if defined?(Rollbar)
+      ErrorReport.error(e)
 
       []
     end

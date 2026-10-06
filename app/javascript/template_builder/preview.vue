@@ -2,12 +2,29 @@
   <div>
     <div class="relative">
       <img
+        v-if="previewImage"
         :src="previewImage.url"
         :width="previewImage.metadata.width"
         :height="previewImage.metadata.height"
         class="rounded border"
         loading="lazy"
       >
+      <div
+        v-else
+        class="rounded border bg-base-100 flex items-center justify-center converting-document-preview"
+        :style="{ aspectRatio: '1400 / 1812' }"
+      >
+        <IconFileAlert
+          v-if="item.conversion_failed"
+          class="w-8 h-8 text-error"
+          :stroke-width="1.4"
+        />
+        <IconInnerShadowTop
+          v-else
+          class="w-8 h-8 animate-spin text-base-content/60"
+          :stroke-width="1.4"
+        />
+      </div>
       <div
         class="group flex justify-end cursor-pointer top-0 bottom-0 left-0 right-0 absolute p-1 hover:bg-black/10 transition-colors rounded"
         @click="$emit('scroll-to', item)"
@@ -181,7 +198,7 @@
 <script>
 import Contenteditable from './contenteditable'
 import Upload from './upload'
-import { IconRouteAltLeft, IconSortDescending2, IconDotsVertical, IconTrashX, IconBolt, IconInnerShadowTop } from '@tabler/icons-vue'
+import { IconRouteAltLeft, IconSortDescending2, IconDotsVertical, IconTrashX, IconBolt, IconInnerShadowTop, IconFileAlert } from '@tabler/icons-vue'
 import ConditionsModal from './conditions_modal'
 import ReplaceButton from './replace'
 import GoogleDriveDocumentSettings from './google_drive_document_settings'
@@ -201,7 +218,8 @@ export default {
     IconSortDescending2,
     IconDotsVertical,
     IconTrashX,
-    IconBolt
+    IconBolt,
+    IconFileAlert
   },
   inject: ['t', 'getFieldTypeIndex', 'baseFetch'],
   props: {

@@ -1,0 +1,62 @@
+# Recurring Sidekiq jobs (sidekiq-cron). This is sidekiq-cron's default
+# schedule file: the gem's own startup hook loads it when a Sidekiq server
+# boots (source "schedule", so a job deleted here is purged on deploy).
+scheduler_heartbeat:
+  cron: '* * * * *'
+  class: 'SchedulerHeartbeatJob'
+  queue: recurrent
+  description: 'Writes the scheduler heartbeat that /up reports as scheduler_last_tick_at'
+
+# Stripe is the source of truth for who is paying; webhooks are how we hear
+# about it and webhooks get lost. Once a night we ask Stripe about every
+# subscription we think we have and repair whatever drifted.
+stripe_reconciliation:
+  cron: '0 6 * * *'
+  class: 'StripeReconciliationJob'
+  queue: billing
+  description: 'Re-reads every Stripe subscription, repairs drift and re-enqueues stuck webhook events'
+
+# The billing clock: reminder emails through the 14-day grace period, the
+# suspension at the end of it, and the seats of invitations nobody accepted
+# (lib/billing_lifecycle.rb). Hourly, so the deadline lands within the hour
+# rather than up to a day late.
+billing_lifecycle:
+  cron: '15 * * * *'
+  class: 'BillingLifecycleJob'
+  queue: billing
+  description: 'Sends past-due reminders, suspends accounts whose 14-day grace period ran out, and releases the seats of expired invitations'
+
+# The retention clock (D43): warning emails for accounts that have gone unused
+# — no sign-in and no authenticated activity — for nearly a year, the one-week
+# reminder before a scheduled deletion, the purges themselves, and the
+# account-export housekeeping (the seven-day expiry, the failed-file tidy-up
+# and the release of a build whose worker died). Daily rather
+# than hourly — every deadline here is a date, not an hour — and early enough
+# in the morning that a person is around if the operator alert fires.
+account_retention:
+  cron: '30 4 * * *'
+  class: 'AccountRetentionJob'
+  queue: default
+  description: 'Sends dormant-account and scheduled-deletion warnings, expires account-export zips and releases abandoned builds, and purges accounts whose date has passed'
+
+# The comp clock (Session 8). Paid access the operator gave away always
+# carries the date it ends; this is what ends it, down the same revoke path a
+# hand-revoke takes. Hourly at :45 — a quarter of an hour clear of the billing
+# clock at :15, so the two never contend for the same account row — and on the
+# billing queue, because what it does is billing.
+comp_expiry:
+  cron: '45 * * * *'
+  class: 'CompExpiryJob'
+  queue: billing
+  description: 'Revokes complimentary paid plans whose expiry date has passed'
+
+# The hourly tidy-up (HousekeepingJob): support sessions the operator walked
+# away from, which are over but have no audited ending until something writes
+# one, and Postmark webhooks parked because they arrived before their own send
+# row. At :05, clear of the billing clock at :15 and the comp clock at :45, and
+# on the default queue because neither sweep is billing work.
+housekeeping:
+  cron: '5 * * * *'
+  class: 'HousekeepingJob'
+  queue: default
+  description: 'Closes support sessions whose hour ran out unattended and attributes or drops parked email webhooks'

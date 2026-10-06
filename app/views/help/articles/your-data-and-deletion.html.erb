@@ -1,0 +1,89 @@
+<p>
+  Your documents are yours. You can take a complete copy at any time, and you
+  can close the account yourself without asking anyone. This page explains both,
+  and exactly what is left behind afterwards.
+</p>
+
+<h2>Take a copy: the account export</h2>
+
+<p>
+  <strong>Settings &rarr; Export</strong> builds one zip holding everything in
+  the account: every template with the files you uploaded, every completed
+  signed document, the files and signature images your signers sent, the audit
+  trail PDF for each document, a record of each document in JSON and one CSV
+  covering them all &mdash; plus a <code>manifest.json</code> listing every
+  file with its size and SHA-256 checksum, so you can prove nothing was altered
+  on the way to you. If anything could not be included, the manifest names it
+  and says why.
+</p>
+
+<ol>
+  <li>Ask for the export and close the page. It is built in the background.</li>
+  <li>We email you when it is ready; the email links to the page, never to the file, so signing in is always required.</li>
+  <li>Press <strong>Download</strong>. The link it makes lasts <%= Accounts::Exports::DOWNLOAD_URL_TTL.inspect %>, and a fresh one is made each time you press it.</li>
+</ol>
+
+<p>
+  The file itself is kept for <%= Accounts::Exports::TTL.inspect %> and then
+  deleted; ask for another whenever you like, up to
+  <%= Accounts::Exports::MAX_PER_DAY %> a day. Exports work on the free plan,
+  on a suspended account and on an account already scheduled for deletion.
+  That is the point of them.
+</p>
+
+<h2>Deleting your account</h2>
+
+<p>
+  Deleting is a <%= Accounts::Deletion::WINDOW_DAYS %>-day decision, not a
+  button that empties a database.
+</p>
+
+<ol>
+  <li>An administrator opens <strong>Settings &rarr; Account</strong>, presses <strong>Delete my account</strong> and confirms.</li>
+  <li>Straight away the subscription is cancelled &mdash; you are not charged again &mdash; and the account becomes read-only. Everyone can still sign in, read, download and export.</li>
+  <li>Every administrator is emailed the exact date, and a reminder goes out <%= Accounts::Retention::DELETION_REMINDER_DAYS %> days before it.</li>
+  <li>On that date, <%= Accounts::Deletion::WINDOW_DAYS %> days later, everything is permanently destroyed.</li>
+  <li>Any administrator can press <strong>Cancel deletion</strong> at any point before then. Nothing was lost, so nothing has to be restored.</li>
+</ol>
+
+<p>
+  Your email addresses stay reserved for you until the purge, so nobody else
+  can register them in the meantime.
+</p>
+
+<aside class="help-callout">
+  <p>
+    <strong>Good to know:</strong> export first. The zip is the only copy that
+    keeps the files your signers sent and the checksums that prove the set is
+    intact, and after the purge date there is nothing left for us to send you.
+  </p>
+</aside>
+
+<h2>Accounts nobody uses</h2>
+
+<p>
+  An account nobody has used for <%= Accounts::Retention::DORMANT_AFTER.inspect %>
+  is deleted too, with warning emails
+  <%= Accounts::Retention::DORMANT_WARNING_DAYS.to_sentence %> days beforehand
+  to everybody in it. Simply using the account resets the whole clock. An
+  account with paid access is never treated as dormant, and an account that
+  used to pay keeps everything for at least
+  <%= Accounts::Retention::PAID_RETENTION.inspect %> after the subscription
+  ended, whatever the dates say.
+</p>
+
+<h2>What survives a permanent deletion</h2>
+
+<ul>
+  <li><strong>The verification record of each signed PDF</strong> &mdash; a fingerprint, a completion date and a signer count. It names nobody, and without it every document you ever signed would stop verifying for the people holding it.</li>
+  <li><strong>The subscription and payment history</strong>, with the person scrubbed out of it: ids, amounts and dates stay, names and addresses do not.</li>
+  <li><strong>A stub of the account row</strong>, renamed, so those records point at something rather than nowhere.</li>
+  <li><strong>Our own log of support access</strong> to the account.</li>
+</ul>
+
+<p>
+  Everything else is destroyed. The same list, with the evidence behind it, is
+  on our <%= link_to 'trust page', trust_path %>; the formal wording is in the
+  <%= link_to 'Privacy Policy', privacy_path %>. See also
+  <%= link_to 'Verify a signed document', help_article_path('verify-a-signed-document') %>.
+</p>

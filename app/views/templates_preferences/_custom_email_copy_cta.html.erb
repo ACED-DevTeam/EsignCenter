@@ -1,0 +1,9 @@
+<%# Custom email copy is a paid row: this replaces the subject/body form (and its Save button) for an account without :custom_email_templates. The "reset to default" label targets the hidden reset button_to above it, so a downgraded account can still clear its legacy copy — cleanup never needs the entitlement (D43). Locals: feature (collapse title), reset_link_id, show_reset. %>
+<%= render 'shared/upgrade_cta', feature:, body: t('custom_email_templates_are_available_on_the_paid_plan'), compact: true, class: 'mt-1 mb-2' %>
+<% if show_reset %>
+  <div class="flex justify-end px-1">
+    <label for="<%= reset_link_id %>" class="label underline cursor-pointer">
+      <%= t('reset_default') %>
+    </label>
+  </div>
+<% end %>

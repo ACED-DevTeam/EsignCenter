@@ -1,0 +1,52 @@
+<%# Everything that is about to happen, then the two deliberate actions that
+    make it happen: proving who you are, and ticking a box under the list.
+
+    Two ways to prove it (review batch 2, K9). Your password is the usual
+    one. A code emailed to your own address is the other, and it is the one
+    that works for an administrator who signs in with Google and therefore
+    has no password they have ever seen. Both are offered to everybody: the
+    app cannot tell a real password from the random token OmniAuth generated,
+    so it does not try to guess which one you have. %>
+<% purge_date = Accounts::Deletion.format_date(Accounts::Deletion.purge_date) %>
+<div class="space-y-4 pt-2" data-delete-account-modal>
+  <p class="text-sm"><%= t('account_deletion_modal_intro', days: Accounts::Deletion::WINDOW_DAYS) %></p>
+  <ul class="list-disc list-outside pl-5 space-y-1 text-sm">
+    <li><%= t('account_deletion_bullet_subscription') %></li>
+    <li><%= t('account_deletion_bullet_read_only') %></li>
+    <li><%= t('account_deletion_bullet_permanent', date: purge_date) %></li>
+    <li><%= t('account_deletion_bullet_cancel') %></li>
+    <li><%= t('account_deletion_bullet_email') %></li>
+    <li><%= t('account_deletion_bullet_verify') %></li>
+  </ul>
+  <%# "Export first" is a real door now (Session 8 phase D): one zip with
+      everything in it, built in the background. Read here rather than passed
+      in, so the card tells the truth wherever the modal is rendered from. %>
+  <% ready_export = Accounts::Exports.latest(current_account)&.then { |e| e if e.downloadable? } %>
+  <div class="border rounded-xl p-3 space-y-1">
+    <p class="font-semibold text-sm"><%= t('account_deletion_export_headline') %></p>
+    <p class="text-sm"><%= t('account_deletion_export_hint', date: purge_date) %></p>
+    <% if ready_export %>
+      <p class="text-sm" data-account-export-ready><%= t('account_deletion_export_ready', date: Accounts::Deletion.format_date(ready_export.created_at)) %></p>
+    <% end %>
+    <p class="text-sm">
+      <%= link_to t('account_deletion_export_button'), settings_account_export_path, class: 'link font-semibold' %>
+    </p>
+  </div>
+  <%= form_for '', url: settings_account_path, method: :delete, html: { autocomplete: 'off', class: 'space-y-4' } do |f| %>
+    <div class="form-control">
+      <%= label_tag :password, t('account_deletion_password_label'), class: 'label' %>
+      <%= password_field_tag :password, nil, autocomplete: 'current-password', class: 'base-input', data: { delete_account_password: true } %>
+    </div>
+    <div class="form-control">
+      <%= label_tag :confirmation_code, t('account_deletion_code_label'), class: 'label' %>
+      <%= text_field_tag :confirmation_code, nil, autocomplete: 'one-time-code', inputmode: 'numeric', maxlength: 6, class: 'base-input', data: { delete_account_code: true } %>
+      <span class="text-xs pt-1"><%= t('account_deletion_code_hint') %></span>
+    </div>
+    <label class="flex items-start gap-2 cursor-pointer text-sm">
+      <%= check_box_tag :confirm, '1', false, required: true, class: 'checkbox checkbox-sm mt-0.5', data: { delete_account_confirm: true } %>
+      <span><%= t('account_deletion_confirm_label', date: purge_date) %></span>
+    </label>
+    <%= f.button button_title(title: t('account_deletion_submit_button'), disabled_with: t('submitting')), class: 'btn btn-error btn-block text-white' %>
+  <% end %>
+  <%= button_to t('account_deletion_send_code_button'), deletion_code_settings_account_path, method: :post, class: 'btn btn-outline btn-block', data: { send_deletion_code_button: true } %>
+</div>

@@ -5,6 +5,9 @@ module Api
     CREATE_RATE_LIMIT = 300
     CREATE_RATE_TTL = 1.minute
 
+    # The embedded template builder is the `embed` matrix row, refused for
+    # token and session callers alike.
+    before_action -> { Entitlements.require!(current_account, :embed) }
     before_action :load_template_builder_session, only: :show
 
     def show
@@ -27,12 +30,14 @@ module Api
       render json: { error: 'The PDF is password-protected. Upload an unencrypted PDF.' },
              status: :unprocessable_content
     rescue Templates::CreateAttachments::InvalidFileType
-      render json: { error: 'Unsupported document format. Only PDF and image files are supported.' },
+      render json: { error: Templates::CreateAttachments::UNSUPPORTED_FORMAT_API_MESSAGE },
              status: :unprocessable_content
+    rescue Templates::DocumentsNotReady => e
+      render json: { error: e.message }, status: :unprocessable_content
     rescue ActiveRecord::RecordNotFound
       render json: { error: 'Template not found' }, status: :unprocessable_content
     rescue DownloadUtils::UnableToDownload => e
-      Rollbar.warning(e) if defined?(Rollbar)
+      ErrorReport.warning(e)
 
       render json: { error: e.message }, status: :unprocessable_content
     end
@@ -52,6 +57,7 @@ module Api
         :expires_in_minutes,
         {
           metadata: {},
+          custom_fields: [%i[name type role title]],
           documents: [%i[name file]],
           submitters: [%i[name role]],
           fields: [[:uuid, :name, :type, :role, :required, :readonly, :title, :description, :default_value,

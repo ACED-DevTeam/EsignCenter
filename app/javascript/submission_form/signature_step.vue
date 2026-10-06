@@ -315,20 +315,6 @@
       {{ t('scan_the_qr_code_with_the_camera_app_to_open_the_form_on_mobile_and_draw_your_signature') }}
     </div>
     <div
-      v-else-if="withDisclosure"
-      dir="auto"
-      class="text-base-content/60 text-xs text-center w-full mt-1 select-none"
-    >
-      {{ t('by_clicking_you_agree_to_the').replace('{button}', buttonText.charAt(0).toUpperCase() + buttonText.slice(1)) }} <span>
-        <span class="inline md:hidden">
-          {{ t('esignature_disclosure') }}
-        </span>
-        <span class="hidden md:inline">
-          {{ t('electronic_signature_disclosure') }}
-        </span>
-      </span>
-    </div>
-    <div
       v-else
       class="mt-5 md:mt-7"
     />
@@ -339,6 +325,7 @@
 import { IconReload, IconCamera, IconSignature, IconTextSize, IconArrowsDiagonalMinimize2, IconQrcode, IconX } from '@tabler/icons-vue'
 import { cropCanvasAndExportToPNG } from './crop_canvas'
 import { isValidSignatureCanvas, isCanvasBlocked } from './validate_signature'
+import { reportError } from './report_error'
 import SignaturePad from 'signature_pad'
 import AppearsOn from './appears_on'
 import FileDropzone from './dropzone'
@@ -388,11 +375,6 @@ export default {
       default: true
     },
     dryRun: {
-      type: Boolean,
-      required: false,
-      default: false
-    },
-    withDisclosure: {
       type: Boolean,
       required: false,
       default: false
@@ -879,9 +861,7 @@ export default {
           if (isCanvasBlocked()) {
             alert(this.t('browser_privacy_settings_block_canvas'))
 
-            if (window.Rollbar) {
-              window.Rollbar.info('Canvas blocked')
-            }
+            reportError('Canvas blocked')
           } else {
             alert(this.t('signature_is_too_small_or_simple_please_redraw'))
           }
@@ -943,9 +923,7 @@ export default {
             if (isCanvasBlocked()) {
               alert(this.t('browser_privacy_settings_block_canvas'))
 
-              if (window.Rollbar) {
-                window.Rollbar.info('Canvas blocked')
-              }
+              reportError('Canvas blocked')
             } else {
               alert(this.t('signature_is_too_small_or_simple_please_redraw'))
             }

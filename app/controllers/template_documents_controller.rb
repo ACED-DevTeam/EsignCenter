@@ -20,9 +20,7 @@ class TemplateDocumentsController < ApplicationController
 
     documents, = Templates::CreateAttachments.call(@template, params, extract_fields: true)
 
-    schema = documents.map do |doc|
-      { attachment_uuid: doc.uuid, name: doc.filename.base }
-    end
+    schema = documents.map { |doc| Templates::CreateAttachments.schema_item(doc) }
 
     render json: {
       schema:,
@@ -37,5 +35,23 @@ class TemplateDocumentsController < ApplicationController
     }
   rescue Templates::CreateAttachments::PdfEncrypted
     render json: { error: 'PDF encrypted', status: 'pdf_encrypted' }, status: :unprocessable_content
+  rescue StandardError => e
+    message = Templates::CreateAttachments.upload_error_message(e)
+
+    raise if message.nil?
+
+    render json: { error: message }, status: :unprocessable_content
+  end
+
+  # Polled by the builder while a Word document is converted; `id` is the
+  # attachment uuid.
+  def status
+    authorize!(:read, @template)
+
+    result = Templates::ConversionStatus.call(@template, params[:id])
+
+    return render json: { error: I18n.t('not_found') }, status: :not_found if result.nil?
+
+    render json: result
   end
 end

@@ -1,0 +1,41 @@
+<div class="flex-wrap space-y-4 md:flex md:flex-nowrap md:space-y-0 md:space-x-10">
+  <%= render 'operator/shared/nav' %>
+  <div class="md:flex-grow min-w-0">
+    <h1 class="text-4xl font-bold mb-2"><%= t('operator_tab_events') %></h1>
+    <p class="text-base-content/70 mb-5"><%= t('operator_events_intro') %></p>
+
+    <%= form_with url: operator_events_path, method: :get, data: { turbo: false }, class: 'card bg-base-100 border border-base-300 mb-5' do %>
+      <div class="card-body p-4 gap-3">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+          <label class="form-control">
+            <span class="label-text mb-1"><%= t('operator_events_filter_account') %></span>
+            <input type="number" min="1" name="account_id" value="<%= params[:account_id] %>" class="input input-bordered w-full" autocomplete="off" data-events-filter="account">
+          </label>
+          <label class="form-control">
+            <span class="label-text mb-1"><%= t('operator_events_filter_action') %></span>
+            <select name="event_action" class="select select-bordered w-full" data-events-filter="action">
+              <%= options_for_select([[t('operator_filter_any'), '']] + @actions.map { |action| [action, action] }, params[:event_action]) %>
+            </select>
+          </label>
+          <div class="flex gap-2">
+            <button type="submit" class="btn btn-primary"><%= t('operator_filter_apply') %></button>
+            <%= link_to t('operator_filter_clear'), operator_events_path, class: 'btn btn-ghost' %>
+          </div>
+        </div>
+      </div>
+    <% end %>
+
+    <% if @account %>
+      <p class="text-sm mb-3" data-events-account-filter>
+        <%= t('operator_events_showing_account', name: @account.name, id: @account.id) %>
+      </p>
+    <% end %>
+
+    <% if @events.empty? %>
+      <p class="text-base-content/70" data-no-operator-events><%= t('operator_history_none') %></p>
+    <% else %>
+      <%= render 'operator/events/table', events: @events %>
+    <% end %>
+    <%= render 'shared/pagination', pagy: @pagy, items_name: 'operator_events' %>
+  </div>
+</div>

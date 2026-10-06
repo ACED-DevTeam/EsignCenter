@@ -12,8 +12,10 @@ class PasswordsController < Devise::PasswordsController
   end
 
   def create
+    # Never reveal whether the email exists: an unknown address gets the same
+    # "instructions sent" answer as a known one.
     super do |resource|
-      resource.errors.clear unless Docuseal.multitenant?
+      resource.errors.clear
     end
   end
 

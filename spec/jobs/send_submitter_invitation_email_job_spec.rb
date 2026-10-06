@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 describe SendSubmitterInvitationEmailJob do
-  let(:account) { create(:account) }
+  let(:account) { create(:account, :paid) }
   let(:author) { create(:user, account:) }
   let(:template) { create(:template, account:, author:) }
   let(:submission) { create(:submission, :with_submitters, template:, created_by_user: author, source: 'api') }

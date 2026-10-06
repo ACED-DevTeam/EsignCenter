@@ -7,9 +7,6 @@ class SendTestWebhookRequestJob
 
   USER_AGENT = 'EsignCenter Webhook'
 
-  HttpsError = Class.new(StandardError)
-  LocalhostError = Class.new(StandardError)
-
   def perform(params = {})
     submitter = Submitter.find_by(id: params['submitter_id'])
 
@@ -19,25 +16,26 @@ class SendTestWebhookRequestJob
 
     return unless webhook_url
 
-    if Docuseal.multitenant?
-      uri = begin
-        URI(webhook_url.url)
-      rescue URI::Error
-        Addressable::URI.parse(webhook_url.url).normalize
-      end
+    # Webhooks are paid-only. A test send queued for (or by) an account that
+    # is no longer entitled makes no request (D43 — the URL row stays, inert),
+    # the same as every real delivery in SendWebhookRequest.
+    return unless Entitlements.allowed?(webhook_url.account, :webhooks)
 
-      raise HttpsError, 'Only HTTPS is allowed.' if uri.scheme != 'https' || [443, nil].exclude?(uri.port)
-      raise LocalhostError, "Can't send to localhost." if uri.host.in?(SendWebhookRequest::LOCALHOSTS)
+    uri = SendWebhookRequest.validate_webhook_uri!(webhook_url)
+    address = SendWebhookRequest.deliverable_address!(uri, webhook_url.account)
+    body = {
+      event_type: 'form.completed',
+      timestamp: Time.current.iso8601,
+      data: Submitters::SerializeForWebhook.call(submitter)
+    }.to_json
+
+    SendWebhookRequest.post(uri, address) do |req|
+      req.headers['Content-Type'] = 'application/json'
+      req.headers['User-Agent'] = USER_AGENT
+      req.headers.merge!(webhook_url.secret.to_h) if webhook_url.secret.present?
+      req.body = body
+
+      SendWebhookRequest.add_signature_headers!(req.headers, webhook_url, body:)
     end
-
-    Faraday.post(webhook_url.url,
-                 {
-                   event_type: 'form.completed',
-                   timestamp: Time.current.iso8601,
-                   data: Submitters::SerializeForWebhook.call(submitter)
-                 }.to_json,
-                 'Content-Type' => 'application/json',
-                 'User-Agent' => USER_AGENT,
-                 **webhook_url.secret.to_h)
   end
 end

@@ -45,3 +45,37 @@ dump.rdb
 # Created at container boot by docker-compose.dev (leaks through the live mount);
 # committing it breaks the production build (Dockerfile ln -s hits File exists).
 /public/fonts/DancingScript-Regular.otf
+
+# Claude planning docs
+/plans
+
+# Local secrets for the standalone build (never committed)
+/.env.standalone.local
+
+# Playwright CLI scratch snapshots from staging walks
+.playwright-cli/
+
+# Local credentials and private release artifacts. Keep example env files public.
+/.env.*
+!/.env.example
+!/.env.sample
+!/.env.*.example
+/*.env
+/*.log
+/evidence/
+/backups/
+/private-release-*/
+/db/*.sql
+/db/*.sql.gz
+/db/*.dump
+/db/*.backup
+!/db/structure.sql
+!/db/seeds.sql
+/RESULTS*.txt
+/FINAL-LOCAL-VALIDATION*.txt
+/RELEASE-SEQUENCE*.txt
+/READINESS-FOLLOWUP*.txt
+/*-HANDOFF*.txt
+/docs/release-readiness-*.md
+/docs/launch-review-*.md
+/docs/api-usage-tiers-verification.md

@@ -7,6 +7,8 @@ class TestingAccountsController < ApplicationController
     authorize!(:manage, current_account)
     authorize!(:manage, current_user)
 
+    return if refuse_customer_test_mode
+
     impersonate_user(Accounts.find_or_create_testing_user(true_user.account))
 
     redirect_back(fallback_location: root_path)

@@ -31,7 +31,7 @@ module EmbedOrigins
   # Flatten one or more origin inputs (a string, a comma-joined string, or an
   # array of those) into a clean list of individual origin strings.
   def collect(*values)
-    values.flatten.flat_map { |value| value.to_s.split(',') }.map(&:strip).reject(&:blank?)
+    values.flatten.flat_map { |value| value.to_s.split(',') }.map(&:strip).compact_blank
   end
 
   # collect + validate + normalize, de-duplicated. Used to persist the full set

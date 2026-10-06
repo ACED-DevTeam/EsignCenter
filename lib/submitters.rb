@@ -139,7 +139,17 @@ module Submitters
     ActiveStorage::Attachment.create!(blob:, name: 'attachments', record: submitter)
   end
 
+  # Every submission/submitter path funnels through normalize_preferences, so
+  # the two preference-borne paid/hidden features are refused at this one
+  # seam, before anything (an EmailMessage row included) is stored.
+  def require_preference_entitlements!(account, params)
+    Entitlements.require!(account, :bcc) if params['bcc_completed'].present?
+    Entitlements.require!(account, :sms) if params['send_sms'].in?(TRUE_VALUES)
+  end
+
   def normalize_preferences(account, user, params)
+    require_preference_entitlements!(account, params)
+
     preferences = {}
 
     message_params = params['message'].presence || params.slice('subject', 'body').presence
@@ -153,7 +163,6 @@ module Submitters
     preferences['email_message_uuid'] = email_message.uuid if email_message
     preferences['send_email'] = params['send_email'].in?(TRUE_VALUES) if params.key?('send_email')
     preferences['send_sms'] = params['send_sms'].in?(TRUE_VALUES) if params.key?('send_sms')
-    preferences['require_phone_2fa'] = params['require_phone_2fa'].in?(TRUE_VALUES) if params.key?('require_phone_2fa')
     preferences['require_email_2fa'] = params['require_email_2fa'].in?(TRUE_VALUES) if params.key?('require_email_2fa')
     preferences['bcc_completed'] = params['bcc_completed'] if params.key?('bcc_completed')
     preferences['reply_to'] = params['reply_to'] if params.key?('reply_to')
@@ -163,11 +172,16 @@ module Submitters
     preferences
   end
 
+  # Would send_signature_requests email this signer? Asked by the resend
+  # doors before they spend a Submitters::ResendGuard claim on a request that
+  # was never going to go out.
+  def signature_request_sendable?(submitter)
+    submitter.email.present? && !submitter.declined_at? && submitter.preferences['send_email'] != false
+  end
+
   def send_signature_requests(submitters, delay_seconds: nil)
     submitters.each_with_index do |submitter, index|
-      next if submitter.email.blank?
-      next if submitter.declined_at?
-      next if submitter.preferences['send_email'] == false
+      next unless signature_request_sendable?(submitter)
 
       if delay_seconds
         SendSubmitterInvitationEmailJob.perform_in((delay_seconds + index).seconds, 'submitter_id' => submitter.id)
@@ -227,12 +241,38 @@ module Submitters
     "#{filename}.#{blob.filename.extension}"
   end
 
+  # Both doors that mail a share-link verification code come through here (the
+  # start form's 2FA branch and the "resend" button's own endpoint), so the
+  # two guards live here rather than in either controller.
+  #
+  # The submitter is an unsaved, in-memory record built from whatever an
+  # anonymous visitor posted: no model validation has ever run on this
+  # address, and ActionMailer's `mail(to:)` splits a comma-separated string
+  # into as many recipients as it holds. Left unchecked the endpoint is an
+  # open relay — one POST, a list of strangers mailed from our own sending
+  # account, and no Submission row for any quota to count. So: exactly one
+  # well-formed address, matched against the anchored single-address pattern
+  # the API validators already use (Params::BaseValidator), which admits no
+  # comma, semicolon, angle bracket, space, newline or carriage return.
+  #
+  # The per-account ceiling sits on top of the per-IP one because a pool of
+  # proxies walks around a per-IP limit while the account — the thing actually
+  # being abused — cannot be changed without signing up again.
   def send_shared_link_email_verification_code(submitter, request:)
-    RateLimit.call("send-otp-code-#{request.remote_ip}", limit: 2, ttl: 45.seconds, enabled: true)
+    template = submitter.submission.template
 
-    TemplateMailer.otp_verification_email(submitter.submission.template, email: submitter.email).deliver_later!
+    unless submitter.email.to_s.match?(User::FULL_EMAIL_REGEXP)
+      raise UnableToSendCode, submitter.errors.full_message(:email, I18n.t('errors.messages.invalid'))
+    end
+
+    RateLimit.call("send-otp-code-#{request.remote_ip}", limit: 2, ttl: 45.seconds, enabled: true)
+    RateLimit.call("send-otp-code-account-#{template.account_id}",
+                   limit: Quotas::Limits::SHARED_LINK_CODES_PER_ACCOUNT_PER_HOUR, ttl: 1.hour,
+                   enabled: template.account.customer?)
+
+    TemplateMailer.otp_verification_email(template, email: submitter.email).deliver_later!
   rescue RateLimit::LimitApproached
-    Rollbar.warning("Limit verification code for template: #{submitter.submission.template.id}") if defined?(Rollbar)
+    ErrorReport.warning("Limit verification code for template: #{template.id}")
 
     raise UnableToSendCode, I18n.t('too_many_attempts')
   end
@@ -280,6 +320,13 @@ module Submitters
     )
   end
 
+  # Legacy one-shot backfill for the day `is_first` was added: it recomputes
+  # the flag per SUBMISSION, not per resubmit lineage (D73). Deliberately
+  # left that way — nothing calls it any more, and every row it could touch
+  # predates `submissions.resubmitted_from_id`, so every one of those rows
+  # has a NULL origin and a lineage-aware pass would compute exactly the same
+  # answer. Live metering is lineage-aware in
+  # ProcessSubmitterCompletionJob#create_completed_submitter!.
   def populate_completed_is_first
     Account.find_each do |account|
       submissions_index = {}

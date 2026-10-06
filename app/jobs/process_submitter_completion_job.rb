@@ -6,7 +6,23 @@ class ProcessSubmitterCompletionJob
   def perform(params = {})
     submitter = Submitter.find(params['submitter_id'])
 
-    create_completed_submitter!(submitter)
+    completed_submitter = create_completed_submitter!(submitter)
+
+    # Metering (D41/D73): a document counts the first time ANY signer
+    # completes it; later signers, corrections and resubmits never add — a
+    # resubmitted copy inherits its origin's count through
+    # Submissions::Lineage in create_completed_submitter! below. Internal and
+    # operator accounts are not metered. Counting and its warning mail must
+    # never be able to stop the completion pipeline below (the signed PDF is
+    # generated further down), so a failure here is reported and swallowed —
+    # the same contract as Quotas.record_paid_signals.
+    if completed_submitter.is_first && submitter.account.customer?
+      begin
+        Quotas.after_first_completion(submitter.account, completed_submitter)
+      rescue StandardError => e
+        ErrorReport.error(e, account_id: submitter.account_id)
+      end
+    end
 
     is_all_completed = !submitter.submission.submitters.exists?(completed_at: nil)
 
@@ -51,18 +67,25 @@ class ProcessSubmitterCompletionJob
         complete_verification_event.data['method']
       end
 
-    completed_submitter.assign_attributes(
-      submission_id: submitter.submission_id,
-      account_id: submission.account_id,
-      is_first: !CompletedSubmitter.exists?(submission: submitter.submission_id, is_first: true),
-      template_id: submission.template_id,
-      source: submission.source,
-      sms_count: sms_events.sum { |e| e.data['segments'] || 1 },
-      verification_method:,
-      completed_at: submitter.completed_at
-    )
+    # The family's first completion is decided and written in ONE step: two
+    # sibling copies of the same document completing at the same moment would
+    # otherwise both read "nobody has finished this family yet" and both count
+    # (D73, Submissions::Lineage).
+    Submissions::Lineage.with_family_lock(submission) do
+      completed_submitter.assign_attributes(
+        submission_id: submitter.submission_id,
+        account_id: submission.account_id,
+        is_first: !Submissions::Lineage.first_completion_exists?(submission),
+        template_id: submission.template_id,
+        source: submission.source,
+        submission_created_at: submission.created_at,
+        sms_count: sms_events.sum { |e| e.data['segments'] || 1 },
+        verification_method:,
+        completed_at: submitter.completed_at
+      )
 
-    completed_submitter.save!
+      completed_submitter.save!
+    end
 
     completed_submitter
   rescue ActiveRecord::RecordNotUnique
@@ -148,7 +171,12 @@ class ProcessSubmitterCompletionJob
     end
   end
 
+  # BCC is a paid-only row read at send time: addresses saved while paid stay
+  # in place after a downgrade (D43) but no copy goes out until the account is
+  # entitled again.
   def build_bcc_addresses(submission)
+    return [] unless Entitlements.allowed?(submission.account, :bcc)
+
     bcc = submission.preferences['bcc_completed'].presence ||
           submission.template&.preferences&.dig('bcc_completed').presence ||
           submission.account.account_configs

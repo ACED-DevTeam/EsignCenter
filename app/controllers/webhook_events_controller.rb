@@ -3,6 +3,9 @@
 class WebhookEventsController < ApplicationController
   load_and_authorize_resource :webhook_url, parent: false, id_param: :webhook_id
   before_action :load_webhook_event
+  # Resending an event is a webhook write: refused for an unentitled account
+  # (viewing the event history stays open so a downgrade never hides it).
+  before_action -> { Entitlements.require!(current_account, :webhooks) }, only: :resend
 
   def show
     return unless current_ability.can?(:read, @webhook_event.record)

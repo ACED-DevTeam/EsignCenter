@@ -1,15 +1,14 @@
 # frozen_string_literal: true
 
 RSpec.describe SendSubmissionCreatedWebhookRequestJob do
-  let(:account) { create(:account) }
+  let(:account) { create(:account, :paid) }
   let(:user) { create(:user, account:) }
   let(:template) { create(:template, account:, author: user) }
   let(:submission) { create(:submission, :with_submitters, template:, created_by_user: user) }
   let(:webhook_url) { create(:webhook_url, account:, events: ['submission.created']) }
 
   before do
-    create(:encrypted_config, key: EncryptedConfig::ESIGN_CERTS_KEY,
-                              value: GenerateCertificate.call.transform_values(&:to_pem))
+    platform_certificate!
   end
 
   describe '#perform' do
@@ -113,6 +112,27 @@ RSpec.describe SendSubmissionCreatedWebhookRequestJob do
       end.not_to change(described_class.jobs, :size)
 
       expect(WebMock).to have_requested(:post, webhook_url.url).once
+    end
+
+    it 'records an unsafe customer URL as a terminal error without sending or retrying' do
+      unsafe_url = 'http://localhost/webhook'
+      webhook_url.update_column(:url, unsafe_url)
+      event_uuid = SecureRandom.uuid
+
+      expect do
+        described_class.new.perform('submission_id' => submission.id, 'webhook_url_id' => webhook_url.id,
+                                    'event_uuid' => event_uuid)
+      end.not_to change(described_class.jobs, :size)
+
+      expect(a_request(:post, unsafe_url)).not_to have_been_made
+
+      event = WebhookEvent.find_by!(webhook_url:, uuid: event_uuid)
+      attempt = event.webhook_attempts.sole
+
+      expect(event.status).to eq('error')
+      expect(attempt.response_status_code).to eq(0)
+      expect(attempt.response_body).to eq('Only HTTPS is allowed.')
+      expect(described_class.jobs).to be_empty
     end
   end
 end

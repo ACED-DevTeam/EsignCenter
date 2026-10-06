@@ -34,8 +34,10 @@ module Api
       render json: Submitters::SerializeForApi.call(@submitter, with_template: true, with_events: true, params:)
     end
 
-    # rubocop:disable Metrics/MethodLength
+    # rubocop:disable Metrics/MethodLength, Metrics/AbcSize
     def update
+      Params::PhoneTwoFactorRejector.call(params)
+
       if @submitter.completed_at?
         return render json: { error: 'Submitter has already completed the submission.' }, status: :unprocessable_content
       end
@@ -65,6 +67,14 @@ module Api
       # serializes with_urls, so the caller receives the fresh slug/URL.
       @submitter.slug = SecureRandom.base58(14) if @submitter.will_save_change_to_email?
 
+      # Asking for the email again is a RESEND (the document's first request
+      # spent its send quota when it was created): refused while sending is
+      # paused, throttled per signer, capped per day on the free plan — and
+      # decided before anything is written (Submitters::ResendGuard).
+      resend = !@submitter.completed_at? && (normalized_params[:send_email] || normalized_params[:send_sms])
+
+      Submitters::ResendGuard.claim!(@submitter) if resend && Submitters.signature_request_sendable?(@submitter)
+
       ApplicationRecord.transaction do
         Submissions::NormalizeParamUtils.save_default_value_attachments!(new_attachments, [@submitter])
 
@@ -80,7 +90,7 @@ module Api
 
       if @submitter.completed_at?
         ProcessSubmitterCompletionJob.perform_async('submitter_id' => @submitter.id)
-      elsif normalized_params[:send_email] || normalized_params[:send_sms]
+      elsif resend
         Submitters.send_signature_requests([@submitter])
       end
 
@@ -89,18 +99,18 @@ module Api
       render json: Submitters::SerializeForApi.call(@submitter, with_template: false, with_urls: true,
                                                                 with_events: false, params:)
     rescue Submitters::NormalizeValues::BaseError, DownloadUtils::UnableToDownload => e
-      Rollbar.warning(e) if defined?(Rollbar)
+      ErrorReport.warning(e)
 
       render json: { error: e.message }, status: :unprocessable_content
     end
-    # rubocop:enable Metrics/MethodLength
+    # rubocop:enable Metrics/MethodLength, Metrics/AbcSize
 
     def submitter_params
       submitter_params = params.key?(:submitter) ? params.require(:submitter) : params
 
       submitter_params.permit(
         :send_email, :send_sms, :reply_to, :completed_redirect_url, :uuid, :name, :email, :role,
-        :completed, :phone, :application_key, :external_id, :go_to_last, :require_phone_2fa, :require_email_2fa,
+        :completed, :phone, :application_key, :external_id, :go_to_last, :require_email_2fa,
         { metadata: {}, values: {}, readonly_fields: [], message: %i[subject body],
           fields: [[:name, :uuid, :default_value, :value, :required,
                     :readonly, :validation_pattern, :invalid_message,
@@ -209,10 +219,6 @@ module Api
 
       submitter.preferences['send_sms'] = submitter_preferences['send_sms'] if submitter_preferences.key?('send_sms')
       submitter.preferences['reply_to'] = submitter_preferences['reply_to'] if submitter_preferences.key?('reply_to')
-
-      if submitter_preferences.key?('require_phone_2fa')
-        submitter.preferences['require_phone_2fa'] = submitter_preferences['require_phone_2fa']
-      end
 
       if submitter_preferences.key?('require_email_2fa')
         submitter.preferences['require_email_2fa'] = submitter_preferences['require_email_2fa']

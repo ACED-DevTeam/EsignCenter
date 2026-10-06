@@ -1,0 +1,17 @@
+<%# Shown by <submit-form data-on="..."> after a setting saves itself (app/javascript/elements/submit_form.js). %>
+<% [['saved', t('settings_have_been_saved'), svg_icon('circle_check', class: 'stroke-success flex-none w-6 h-6'), 'status'],
+    ['failed', t('your_change_could_not_be_saved_please_try_again'), svg_icon('exclamation_circle', class: 'stroke-error flex-none w-6 h-6'), 'alert']].each do |kind, message, icon, role| %>
+  <template id="autosave_<%= kind %>_toast">
+    <div id="autosave_toast" role="<%= role %>" class="fixed top-0 left-0 right-0 pointer-events-none" style="z-index: 1000">
+      <div class="max-w-xl mx-auto mt-1.5">
+        <div class="px-4 py-3 rounded-2xl bg-base-200 shadow-md flex items-center justify-between mx-4 md:mx-0 pointer-events-auto">
+          <div class="flex items-center space-x-3">
+            <%= icon %>
+            <span><%= message %></span>
+          </div>
+          <remove-on-event data-selector-id="autosave_toast" class="mr-1 cursor-pointer" aria-label="<%= t('close') %>">&times;</remove-on-event>
+        </div>
+      </div>
+    </div>
+  </template>
+<% end %>

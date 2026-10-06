@@ -4,6 +4,11 @@ module Api
   class AttachmentsController < ActionController::API
     include ActionController::Cookies
     include ActiveStorage::SetCurrent
+    # This door has its own ActionController::API base — no Devise, no
+    # Pretender — but it does honour the session cookie, and it is keyed on a
+    # submitter slug rather than on who is asking. That is enough for a
+    # support session to reach it, so it gets the rule too (review batch 2).
+    include SupportImpersonationSessionRefusal
 
     COOKIE_STORE_LIMIT = 10
 
@@ -20,13 +25,13 @@ module Api
         image = ImageUtils.load_vips(file.read, content_type: file.content_type)
 
         if ImageUtils.blank?(image)
-          Rollbar.error("Empty signature: #{@submitter.id}") if defined?(Rollbar)
+          ErrorReport.error("Empty signature: #{@submitter.id}")
 
           return render json: { error: "#{params[:type]} is empty" }, status: :unprocessable_content
         end
 
         if ImageUtils.error?(image)
-          Rollbar.error("Error signature: #{@submitter.id}") if defined?(Rollbar)
+          ErrorReport.error("Error signature: #{@submitter.id}")
 
           return render json: { error: "#{params[:type]} error, try to sign on another device" },
                         status: :unprocessable_content
@@ -43,7 +48,7 @@ module Api
 
       render json: attachment.as_json(only: %i[uuid created_at], methods: %i[url filename content_type])
     rescue Submitters::MaliciousFileExtension => e
-      Rollbar.error(e) if defined?(Rollbar)
+      ErrorReport.error(e)
 
       render json: { error: e.message }, status: :unprocessable_content
     end
@@ -53,7 +58,8 @@ module Api
         !submitter.completed_at? &&
         !submitter.submission.archived_at? &&
         !submitter.submission.expired? &&
-        !submitter.submission.template&.archived_at?
+        !submitter.submission.template&.archived_at? &&
+        !submitter.account.archived_at?
     end
 
     def build_new_cookie_signatures_json(submitter, attachment)

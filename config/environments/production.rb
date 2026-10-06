@@ -2,10 +2,19 @@
 
 require 'active_support/core_ext/integer/time'
 require 'active_support/core_ext/string'
+require 'ipaddr'
+
+require_relative '../../lib/trusted_proxies'
 
 Rails.backtrace_cleaner.remove_silencers!
 
 Rails.application.configure do
+  # Render's private hop is trusted by Rails already. Cloudflare's public
+  # edges are not, so keep Rails' defaults and add the exact published ranges.
+  # Assigned in one expression on purpose: the test environment never loads
+  # this file, so spec/golden/client_ip_spec.rb proves the line by reading it.
+  config.action_dispatch.trusted_proxies = TrustedProxies.all
+
   # Settings specified here will take precedence over those in config/application.rb.
 
   # Code is not reloaded between requests.
@@ -61,11 +70,13 @@ Rails.application.configure do
   # config.action_cable.url = "wss://example.com/cable"
   # config.action_cable.allowed_request_origins = [ "http://example.com", /http:\/\/example.*/ ]
 
-  # Assume all access to the app is happening through a SSL-terminating reverse proxy.
-  config.assume_ssl = ENV['FORCE_SSL'].present? && ENV['FORCE_SSL'] != 'false'
+  # Production is HTTPS-only. ProductionReadiness refuses to boot unless
+  # FORCE_SSL is exactly "true"; keeping these settings unconditional means a
+  # typo can never turn an accidental production boot into an HTTP service.
+  config.assume_ssl = true
 
   # Force all access to the app over SSL, use Strict-Transport-Security, and use secure cookies.
-  config.force_ssl = ENV['FORCE_SSL'].present? && ENV['FORCE_SSL'] != 'false'
+  config.force_ssl = true
 
   # Include generic and useful information about system operation, but avoid logging too much
   # information to avoid inadvertent exposure of personally identifiable information (PII).
@@ -154,6 +165,7 @@ Rails.application.configure do
     {
       host: controller.request.host,
       fwd: controller.request.remote_ip,
+      xff: controller.request.get_header('HTTP_X_FORWARDED_FOR'),
       params: {
         id: params[:id],
         template_id: params[:template_id],

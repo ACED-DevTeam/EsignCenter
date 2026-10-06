@@ -1,0 +1,103 @@
+<% content_for(:html_title, "#{t('invite_page_title', team: @account.name)} — EsignCenter") %>
+<%# Spacing note: this page renders inside the FORM layout, whose stylesheet is
+    built from tailwind.form.config.js — and that config's content list does not
+    include app/views/invites, so any utility used only here is purged out of
+    the bundle (checkpoint 7, B5: the card's padding and every space-y-* were
+    simply not in the CSS). Everything below is deliberately built from classes
+    the signing pages already use — mb-*/mt-*, gap-2, p-4 — rather than from
+    space-y-* and p-5, so the page is correctly spaced whatever the asset build
+    does next. %>
+<main class="max-w-xl mx-auto px-4 mt-10 md:mt-16 mb-8">
+  <div>
+    <div class="text-center mb-8">
+      <div class="mx-auto w-16 h-16 rounded-full bg-base-200 flex items-center justify-center mb-3">
+        <%= svg_icon('users', class: 'w-9 h-9') %>
+      </div>
+      <h1 dir="auto" class="text-3xl md:text-4xl font-bold mb-3">
+        <%= t('invite_page_title', team: @account.name) %>
+      </h1>
+      <p dir="auto" class="text-base-content/80 leading-relaxed">
+        <%= t('invite_page_intro', inviter: @invite.invited_by&.full_name.presence || @account.name, team: @account.name) %>
+      </p>
+    </div>
+
+    <% if @error %>
+      <div class="alert items-start bg-base-100 border border-red-400 text-red-400 mb-6" role="alert">
+        <%= svg_icon('info_circle', class: 'stroke-current shrink-0 h-6 w-6') %>
+        <p dir="auto" class="text-sm"><%= @error %></p>
+      </div>
+    <% end %>
+
+    <% if @move_offer %>
+      <%# The move, in plain words, before the button that does it (D50).
+          @holder is whoever owns the INVITED address right now, asked on this
+          request — not the collision_user_id the row was written with. %>
+      <div class="rounded-2xl border border-base-300 bg-base-200 p-4 mb-6">
+        <p dir="auto" class="font-medium mb-3"><%= t('invite_move_heading', team: @account.name) %></p>
+        <ul class="list-none text-sm text-base-content/80">
+          <li class="flex gap-2 mb-2">
+            <span aria-hidden="true">&bull;</span>
+            <span dir="auto"><%= t('invite_move_point_documents', old_team: @holder.account.name, team: @account.name) %></span>
+          </li>
+          <li class="flex gap-2 mb-2">
+            <span aria-hidden="true">&bull;</span>
+            <span dir="auto"><%= t('invite_move_point_closed', old_team: @holder.account.name) %></span>
+          </li>
+          <li class="flex gap-2">
+            <span aria-hidden="true">&bull;</span>
+            <span dir="auto"><%= t('invite_move_point_verify') %></span>
+          </li>
+        </ul>
+      </div>
+      <% if @signed_in_as_invitee %>
+        <%= form_with url: invite_path(token: params[:token]), method: :post, local: true, class: 'mb-8' do |f| %>
+          <%= f.button button_title(title: t('invite_move_button', team: @account.name)), class: 'base-button w-full' %>
+        <% end %>
+      <% else %>
+        <div class="text-center mb-8">
+          <p dir="auto" class="text-sm text-base-content/70 mb-3"><%= t('invite_sign_in_required', email: @invite.email) %></p>
+          <%= link_to t('sign_in'), new_user_session_path, class: 'base-button w-full' %>
+        </div>
+      <% end %>
+    <% else %>
+      <%= form_with url: invite_path(token: params[:token]), method: :post, local: true, class: 'mb-8' do |f| %>
+        <div class="flex gap-3 mb-4">
+          <div class="form-control w-full">
+            <%= f.label :first_name, t('first_name'), class: 'label font-medium mb-1' %>
+            <%= f.text_field :first_name, value: params[:first_name], required: true, class: 'base-input w-full', dir: 'auto' %>
+          </div>
+          <div class="form-control w-full">
+            <%= f.label :last_name, t('last_name'), class: 'label font-medium mb-1' %>
+            <%= f.text_field :last_name, value: params[:last_name], required: true, class: 'base-input w-full', dir: 'auto' %>
+          </div>
+        </div>
+        <div class="form-control mb-4">
+          <%= f.label :email, t('email'), class: 'label font-medium mb-1' %>
+          <%= f.text_field :email, value: @invite.email, disabled: true, class: 'base-input w-full' %>
+        </div>
+        <div class="form-control mb-6">
+          <%= f.label :password, t('password'), class: 'label font-medium mb-1' %>
+          <%= f.password_field :password, required: true, minlength: 6, autocomplete: 'new-password', class: 'base-input w-full' %>
+        </div>
+        <%# The versions of the two documents this page is showing, sent back
+            with the form for the same reason the sign-up form sends them: an
+            invitation link is good for a week, and the wording can change
+            inside it. %>
+        <% LegalDocuments.version_fields.each do |field, value| %>
+          <%= hidden_field_tag field, value %>
+        <% end %>
+        <%# Accepting creates a login, so the same sentence the sign-up form
+            carries belongs here, in the same words and with the same links
+            (LegalDocuments records the agreement on this path too). %>
+        <p class="text-center text-sm text-base-content/70 mb-4" dir="auto">
+          <%= t('by_creating_an_account_you_agree_to_html', terms: link_to(t('terms_of_service'), '/terms', class: 'link link-hover'), privacy: link_to(t('privacy_policy'), '/privacy', class: 'link link-hover')) %>
+        </p>
+        <%= f.button button_title(title: t('invite_accept_button', team: @account.name)), class: 'base-button w-full' %>
+      <% end %>
+    <% end %>
+
+    <p class="text-center text-sm text-base-content/60" dir="auto">
+      <%= t('invite_expires_on', date: l(@invite.expires_at.to_date, format: :long)) %>
+    </p>
+  </div>
+</main>

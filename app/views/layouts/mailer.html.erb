@@ -1,12 +1,112 @@
+<%# The frame every email this app sends goes through.
+
+    Deliberately old-fashioned: one presentation TABLE at most 600px wide,
+    a system font stack and no remote images at all. The wordmark is TEXT —
+    an image would be blocked by half the mail clients on earth, would leak
+    an "opened" signal to whoever hosted it, and would break the day a CDN
+    hiccups. Widths and colours are written inline as well as in the style
+    block, because Outlook ignores most of the block and Gmail drops it in
+    some views.
+
+    The BODY is left alone. Signer mail carries wording the customer wrote
+    (SubmitterMailer's custom bodies, rendered from Markdown), so the layout
+    puts a frame around it and imposes nothing inside it — no headings, no
+    accent colours, no restyled links.
+
+    Three signatures sit at the bottom, and each answers a different question.
+
+    The SUPPORT line is on platform notices and nowhere else — billing,
+    account, quota, invitations, operator, SMTP, the mail we write to the
+    person who runs an account. It is deliberately absent from signer mail
+    even on a free account: a signer's questions are about the DOCUMENT, and
+    they go to the person who sent it, not to us. Putting our address at the
+    bottom of somebody else's correspondence only misdirects them.
+
+    The WORDMARK is the platform's too, but it answers "who runs this?", which
+    a signer does have a reason to ask. So it stays on signer mail and
+    disappears only when that account has paid for branding removal — and it
+    stays on a platform notice whatever the flag says, because the reader has
+    to recognise who is writing to them.
+
+    The line underneath comes from shared/mailer_attribution, and it is NOT
+    the DocuSeal attribution — a previous version of this comment said it was
+    and was simply wrong. The AGPL attribution points are the interactive ones
+    (shared/_powered_by, shared/_attribution), which `rake gates:branding`
+    pins. What the partial carries in mail is the product's own "Sent using
+    EsignCenter…" line, which an account may switch off once it has paid for
+    branding removal — and, on a platform notice, the plainer "Sent by
+    EsignCenter" instead, because a bill reminder is not the place to sell
+    free document signing. %>
+<% content = yield %>
+<% notice = platform_notice? %>
+<% branded = notice || !Accounts.branding_removed?(@current_account) %>
+<%# Rendered up here so the footer rule below can ask whether it said anything.
+    The partial decides for itself whether the "Sent using" line appears; all
+    this does is avoid drawing an empty bordered strip under a mail where it
+    decided not to and there is no support line either. Nothing here can
+    suppress it — `attribution` is printed verbatim whenever it has content. %>
+<% attribution = render(partial: 'shared/mailer_attribution') %>
+<% footer = notice || attribution.to_s.strip.present? %>
 <!DOCTYPE html>
 <html>
   <head>
     <title></title>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <style></style>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { margin: 0; padding: 0; width: 100% !important; background-color: #f4f5f7; }
+      table { border-collapse: collapse; }
+      .ec-body { font-size: 15px; line-height: 1.6; color: #1f2933; }
+      .ec-body p { margin: 0 0 16px; }
+      .ec-body ul, .ec-body ol { margin: 0 0 16px; padding-inline-start: 22px; }
+      .ec-body li { margin: 0 0 6px; }
+      .ec-body h1, .ec-body h2, .ec-body h3 { margin: 0 0 12px; line-height: 1.3; }
+      .ec-body a { color: #1d4ed8; }
+      .ec-foot { font-size: 12px; line-height: 1.5; color: #6b7280; }
+      .ec-foot p { margin: 0 0 8px; }
+      .ec-foot a { color: #6b7280; }
+      @media only screen and (max-width: 620px) {
+        .ec-pad { padding: 24px 20px !important; }
+      }
+    </style>
   </head>
-  <body dir="<%= TextUtils.rtl?(yield) ? 'rtl' : 'auto' %>">
-    <%= yield %>
-    <%= render partial: 'shared/mailer_attribution' %>
+  <%# Direction comes from the LANGUAGE this mail is being rendered in, not
+      from sniffing the characters in it. Sniffing got both ends wrong: an
+      English notice quoting one Hebrew document name flipped the whole frame
+      to right-to-left, and a Hebrew mail whose visible words were a Latin
+      company name stayed left-to-right. The mailers already render inside
+      `I18n.with_locale` (the account's language for customer mail, English
+      for platform notices), so the locale is the honest answer. %>
+  <body dir="<%= TextUtils.rtl_locale?(I18n.locale) ? 'rtl' : 'auto' %>" style="margin: 0; padding: 0; background-color: #f4f5f7;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #f4f5f7;">
+      <tr>
+        <td align="center" style="padding: 24px 12px;">
+          <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width: 100%; max-width: 600px; background-color: #ffffff; border: 1px solid #e5e7eb; border-radius: 12px;">
+            <% if branded %>
+              <tr>
+                <td class="ec-pad" style="padding: 24px 32px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+                  <div data-mail-wordmark style="font-size: 17px; font-weight: 700; letter-spacing: -0.2px; color: #111827;"><%= Docuseal.product_name %></div>
+                </td>
+              </tr>
+            <% end %>
+            <tr>
+              <td class="ec-body ec-pad" style="padding: <%= branded ? '20px' : '32px' %> 32px 32px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 15px; line-height: 1.6; color: #1f2933;">
+                <%= content %>
+              </td>
+            </tr>
+            <% if footer %>
+              <tr>
+                <td class="ec-foot ec-pad" style="padding: 20px 32px 24px; border-top: 1px solid #e5e7eb; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 12px; line-height: 1.5; color: #6b7280;">
+                  <% if notice %>
+                    <p data-mail-support style="margin: 0 0 8px;"><%= mail_to Docuseal::SUPPORT_EMAIL %></p>
+                  <% end %>
+                  <%= attribution %>
+                </td>
+              </tr>
+            <% end %>
+          </table>
+        </td>
+      </tr>
+    </table>
   </body>
 </html>

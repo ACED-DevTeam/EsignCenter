@@ -34,12 +34,19 @@
 #  index_submitters_on_external_id                  (external_id)
 #  index_submitters_on_slug                         (slug) UNIQUE
 #  index_submitters_on_submission_id                (submission_id)
+#  index_submitters_on_submission_id_and_uuid       (submission_id,uuid) UNIQUE
 #
 # Foreign Keys
 #
 #  fk_rails_...  (submission_id => submissions.id)
 #
 class Submitter < ApplicationRecord
+  # The unique index that says one person per role per submission
+  # (db/migrate/20260906090000). Named here because two doors have to tell the
+  # refusal it makes apart from every other constraint failure before they
+  # answer 422 for it — Api::ApiBaseController and SubmitFormController.
+  ROLE_INDEX = 'index_submitters_on_submission_id_and_uuid'
+
   belongs_to :submission
   belongs_to :account
   has_one :template, through: :submission
@@ -59,6 +66,7 @@ class Submitter < ApplicationRecord
   has_many_attached :attachments
   has_many_attached :preview_documents
   has_many :template_accesses, through: :submission
+  # infra-keep (Session 8 owns the EmailEvent projection and decides destroy-vs-anonymize).
   has_many :email_events, as: :emailable, dependent: (Docuseal.multitenant? ? nil : :destroy)
 
   has_many :document_generation_events, dependent: :destroy

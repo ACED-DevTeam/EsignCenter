@@ -6,8 +6,6 @@ class SubmissionsController < ApplicationController
 
   load_and_authorize_resource :submission, only: %i[show destroy]
 
-  prepend_before_action :maybe_redirect_com, only: %i[show]
-
   before_action only: :create do
     authorize!(:create, Submission)
   end
@@ -38,7 +36,10 @@ class SubmissionsController < ApplicationController
   end
 
   def create
-    save_template_message(@template, params) if params[:save_message] == '1'
+    # The dialog's "save message" is checked for entitlement before anything
+    # persists, but written to the template only once the documents were
+    # created — a refused send leaves the template untouched.
+    template_message = template_message_params(params) if params[:save_message] == '1'
 
     [params.delete(:subject), params.delete(:body)] if params[:is_custom_message] != '1'
 
@@ -54,6 +55,8 @@ class SubmissionsController < ApplicationController
         create_submissions(@template, submissions_params, params)
       end
 
+    save_template_message(@template, template_message) if template_message
+
     WebhookUrls.enqueue_events(submissions, 'submission.created')
 
     Submissions.send_signature_requests(submissions)
@@ -61,10 +64,14 @@ class SubmissionsController < ApplicationController
     SearchEntries.enqueue_reindex(submissions)
 
     redirect_to template_path(@template), notice: I18n.t('new_recipients_have_been_added')
-  rescue Submissions::CreateFromSubmitters::BaseError => e
+  rescue Submissions::CreateFromSubmitters::BaseError, Templates::DocumentsNotReady => e
     render turbo_stream: turbo_stream.replace(:submitters_error, partial: 'submissions/error',
                                                                  locals: { error: e.message }),
            status: :unprocessable_content
+  rescue Quotas::LimitReached => e
+    # Nothing was created and no job was enqueued: the reason goes back to
+    # the template page as an alert (flashes are plain text here).
+    redirect_back fallback_location: template_path(@template), alert: e.localized_message
   end
 
   def destroy
@@ -101,9 +108,22 @@ class SubmissionsController < ApplicationController
                                        params: params.merge('send_completed_email' => true))
   end
 
-  def save_template_message(template, params)
-    template.preferences['request_email_subject'] = params[:subject] if params[:subject].present?
-    template.preferences['request_email_body'] = params[:body] if params[:body].present?
+  # Saving the dialog's message onto the template is per-template email copy
+  # (the custom-email-templates row): the entitlement is refused before
+  # anything persists, and the message itself is kept for after the send.
+  def template_message_params(params)
+    message = { subject: params[:subject].presence, body: params[:body].presence }.compact
+
+    return if message.blank?
+
+    Entitlements.require!(current_account, :custom_email_templates)
+
+    message
+  end
+
+  def save_template_message(template, message)
+    template.preferences['request_email_subject'] = message[:subject] if message[:subject]
+    template.preferences['request_email_body'] = message[:body] if message[:body]
 
     template.save!
   end

@@ -5,20 +5,16 @@
     <% if Docuseal.enable_pwa? %>
       <link rel="manifest" href="/manifest.json">
     <% end %>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <%= csrf_meta_tags %>
-    <% if ENV['ROLLBAR_CLIENT_TOKEN'] %>
-      <meta name="rollbar-token" content="<%= ENV.fetch('ROLLBAR_CLIENT_TOKEN', nil) %>">
-      <%= javascript_pack_tag 'rollbar', 'application', defer: true %>
-    <% else %>
-      <%= javascript_pack_tag 'application', defer: true %>
-    <% end %>
+    <%= javascript_pack_tag 'application', defer: true %>
     <% if canonical_url = content_for(:canonical_url) %>
       <link href="<%= canonical_url %>" rel="canonical">
     <% end %>
     <%= stylesheet_pack_tag 'application', media: 'all' %>
   </head>
   <body>
+    <%= render 'shared/support_impersonation_banner' %>
     <% if params[:modal].present? %>
       <% modal_uri = Addressable::URI.parse(params[:modal]) %>
       <% url_params = Rails.application.routes.recognize_path(modal_uri.path, method: :get) %>
@@ -30,6 +26,7 @@
     <turbo-frame id="drawer"></turbo-frame>
     <%= render 'shared/navbar' %>
     <% if flash.present? %><%= render 'shared/flash' %><% end %>
+    <%= render 'shared/autosave_toasts' %>
     <div class="max-w-6xl mx-auto px-4 md:px-2 mb-8">
       <%= yield %>
     </div>

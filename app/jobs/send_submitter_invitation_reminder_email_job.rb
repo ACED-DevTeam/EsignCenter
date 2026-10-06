@@ -22,7 +22,12 @@ class SendSubmitterInvitationReminderEmailJob
   private
 
   def deliver_reminder(submitter, claim)
-    mail = SubmitterMailer.invitation_email(submitter)
+    # `reminder: true` lets the mailer prefer the customer's reminder wording
+    # (per-template `invitation_reminder_email_*`, or the account-level
+    # submitter_invitation_reminder_email row) over the invitation wording.
+    # Both are paid-only, and the mailer falls back to the invitation copy
+    # whenever no reminder copy applies.
+    mail = SubmitterMailer.invitation_email(submitter, reminder: true)
 
     Submitters::ValidateSending.call(submitter, mail)
 
@@ -50,6 +55,8 @@ class SendSubmitterInvitationReminderEmailJob
     return false if submitter.preferences['send_email'] == false
     return false if submitter.submission.archived_at? || submitter.template&.archived_at?
     return false if submitter.submission.expired?
+    # Reminders are paid-only: a reminder scheduled while paid does not fire after a downgrade (D43 — inert, not purged).
+    return false unless Entitlements.allowed?(submitter.account, :reminders)
 
     if submitter.submission.source == 'invite' && !Accounts.can_send_emails?(submitter.account, on_events: true)
       return false

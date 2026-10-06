@@ -133,6 +133,9 @@
             >
             <button
               class="btn btn-primary btn-ghost text-base hidden md:flex"
+              :class="{ 'opacity-50 cursor-not-allowed tooltip tooltip-bottom': documentsNotReadyMessage }"
+              :data-tip="documentsNotReadyMessage"
+              :aria-disabled="!!documentsNotReadyMessage"
               type="submit"
             >
               <IconWritingSign
@@ -149,6 +152,9 @@
             id="sign_yourself_button"
             :href="`/templates/${template.id}/submissions/new?selfsign=true`"
             class="btn btn-primary btn-ghost text-base hidden md:flex"
+            :class="{ 'opacity-50 cursor-not-allowed tooltip tooltip-bottom': documentsNotReadyMessage }"
+            :data-tip="documentsNotReadyMessage"
+            :aria-disabled="!!documentsNotReadyMessage"
             data-turbo-frame="modal"
             @click="maybeShowErrorTemplateAlert"
           >
@@ -166,6 +172,9 @@
             :href="`/templates/${template.id}/submissions/new?with_link=true`"
             data-turbo-frame="modal"
             class="white-button md:!px-6"
+            :class="{ 'opacity-50 cursor-not-allowed tooltip tooltip-bottom': documentsNotReadyMessage }"
+            :data-tip="documentsNotReadyMessage"
+            :aria-disabled="!!documentsNotReadyMessage"
             @click="maybeShowErrorTemplateAlert"
           >
             <IconUsersPlus
@@ -394,8 +403,18 @@
               v-for="(document, index) in sortedDocuments"
               :key="document.uuid"
             >
+              <ConvertingDocument
+                v-if="template.schema[index].converting || template.schema[index].conversion_failed"
+                :ref="setDocumentRefs"
+                :document="document"
+                :item="template.schema[index]"
+                :editable="editable"
+                :is-timed-out="conversionTimedOutUuids.includes(document.uuid)"
+                :data-document-uuid="document.uuid"
+                @remove="onDocumentRemove"
+              />
               <DynamicDocument
-                v-if="template.schema[index].dynamic"
+                v-else-if="template.schema[index].dynamic"
                 :ref="setDocumentRefs"
                 :editable="editable"
                 :document="dynamicDocuments.find((dynamicDocument) => dynamicDocument.uuid === document.uuid)"
@@ -541,6 +560,7 @@
             :default-submitters="defaultSubmitters"
             :draw-field-type="drawFieldType"
             :custom-fields="customFields"
+            :custom-fields-readonly="embedded"
             :with-custom-fields="withCustomFields"
             :with-fields-search="withFieldsSearch"
             :default-fields="[...defaultRequiredFields, ...defaultFields]"
@@ -658,6 +678,7 @@ import DragPlaceholder from './drag_placeholder'
 import Fields from './fields'
 import MobileDrawField from './mobile_draw_field'
 import Document from './document'
+import ConvertingDocument from './converting_document'
 import Logo from './logo'
 import Contenteditable from './contenteditable'
 import DocumentPreview from './preview'
@@ -669,6 +690,9 @@ import { IconPlus, IconUsersPlus, IconDeviceFloppy, IconChevronDown, IconEye, Ic
 import { v4 } from 'uuid'
 import { ref, computed, toRaw, defineAsyncComponent } from 'vue'
 import * as i18n from './i18n'
+
+const CONVERSION_POLL_INTERVAL = 3000
+const CONVERSION_POLL_TIMEOUT = 5 * 60 * 1000
 
 const isEmpty = (obj) => {
   if (obj == null) return true
@@ -687,6 +711,7 @@ export default {
     Upload,
     DragPlaceholder,
     Document,
+    ConvertingDocument,
     Fields,
     IconInfoCircle,
     MobileDrawField,
@@ -728,7 +753,7 @@ export default {
       isPaymentConnected: this.isPaymentConnected,
       withFormula: this.withFormula,
       withConditions: this.withConditions,
-      withCustomFields: this.withCustomFields,
+      withCustomFields: this.withCustomFields && !this.embedded,
       isInlineSize: this.isInlineSize,
       defaultDrawFieldType: this.defaultDrawFieldType,
       selectedAreasRef: computed(() => this.selectedAreasRef),
@@ -1072,6 +1097,8 @@ export default {
       selectedSubmitter: null,
       showDrawField: false,
       pendingFieldAttachmentUuids: [],
+      conversionPolls: {},
+      conversionTimedOutUuids: [],
       drawField: null,
       drawFieldType: null,
       drawCustomField: null,
@@ -1249,10 +1276,31 @@ export default {
 
       return index
     },
+    // Send, sign-yourself and share are held back while a Word document is
+    // converting or failed: the server refuses them too (Templates.assert_documents_ready!).
+    documentsNotReadyMessage () {
+      if (this.template.schema.some((item) => item.conversion_failed)) {
+        return this.t('document_conversion_failed')
+      }
+
+      if (this.template.schema.some((item) => item.converting)) {
+        return this.t('documents_still_converting')
+      }
+
+      return null
+    },
     sortedDocuments () {
       return this.template.schema.map((item) => {
         return this.template.documents.find(doc => doc.uuid === item.attachment_uuid)
       })
+    }
+  },
+  watch: {
+    'template.schema': {
+      handler () {
+        this.syncConversionPolling()
+      },
+      deep: true
     }
   },
   created () {
@@ -1320,17 +1368,19 @@ export default {
     window.addEventListener('resize', this.onWindowResize)
     window.addEventListener('dragleave', this.onWindowDragLeave)
 
-    this.$nextTick(() => {
-      if (document.location.search?.includes('stripe_connect_success')) {
-        document.querySelector('form[action="/auth/stripe_connect"]')?.closest('.dropdown')?.querySelector('label')?.focus()
-      }
-    })
+    // The upstream Stripe Connect return handler lived here (focus the payment
+    // field's settings dropdown after ?stripe_connect_success). Both the route
+    // it came back from and the form it looked for are gone from this fork.
 
     this.template.schema.forEach((item) => {
       if (item.pending_fields) {
         this.pendingFieldAttachmentUuids.push(item.attachment_uuid)
       }
     })
+
+    this.mergeUnclaimedDocumentFields()
+
+    this.syncConversionPolling()
   },
   unmounted () {
     document.removeEventListener('keyup', this.onKeyUp)
@@ -1338,6 +1388,8 @@ export default {
 
     window.removeEventListener('resize', this.onWindowResize)
     window.removeEventListener('dragleave', this.onWindowDragLeave)
+
+    Object.keys(this.conversionPolls).forEach((uuid) => this.stopConversionPolling(uuid))
   },
   beforeUpdate () {
     this.documentRefs = []
@@ -1916,9 +1968,25 @@ export default {
     t (key) {
       return this.i18n[key] || i18n[this.language]?.[key] || i18n.en[key] || key
     },
+    // "Remove" for the fields found in an uploaded or converted document:
+    // only the areas on those documents go (a field lives in
+    // field.areas[].attachment_uuid, never at the top level), a field left
+    // with no area goes with them, and every other field on the template
+    // stays. The schema items say `pending_fields: false` explicitly so the
+    // server drops the marker instead of carrying it over (see
+    // Templates.refresh_conversion_flags) and no later mount merges the
+    // removed fields again.
     removePendingFields () {
-      this.template.fields = this.template.fields.filter((f) => {
-        return this.template.schema.find((item) => item.attachment_uuid === f.attachment_uuid && item.pending_fields)
+      const attachmentUuids = [...this.pendingFieldAttachmentUuids]
+
+      attachmentUuids.forEach((attachmentUuid) => {
+        this.removeAreasByAttachmentUuid(attachmentUuid)
+      })
+
+      this.template.schema.forEach((item) => {
+        if (attachmentUuids.includes(item.attachment_uuid)) {
+          item.pending_fields = false
+        }
       })
 
       this.save()
@@ -2192,24 +2260,20 @@ export default {
         this.save()
       }
     },
+    // Every condition on any field or document that points at the removed
+    // field goes: rebuilt with filter rather than spliced while iterating,
+    // which skipped the neighbour of a removed entry and left a condition
+    // pointing at a field that no longer exists.
     removeFieldConditions (field) {
       this.template.fields.forEach((f) => {
         if (f.conditions) {
-          f.conditions.forEach((c) => {
-            if (c.field_uuid === field.uuid) {
-              f.conditions.splice(f.conditions.indexOf(c), 1)
-            }
-          })
+          f.conditions = f.conditions.filter((c) => c.field_uuid !== field.uuid)
         }
       })
 
       this.template.schema.forEach((item) => {
         if (item.conditions) {
-          item.conditions.forEach((c) => {
-            if (c.field_uuid === field.uuid) {
-              item.conditions.splice(item.conditions.indexOf(c), 1)
-            }
-          })
+          item.conditions = item.conditions.filter((c) => c.field_uuid !== field.uuid)
         }
       })
     },
@@ -3107,6 +3171,14 @@ export default {
       this.save()
     },
     maybeShowErrorTemplateAlert (e) {
+      // The hover tooltip on the held-back buttons never shows on a touch
+      // device, so the tap gets the same words out loud.
+      if (this.documentsNotReadyMessage) {
+        e.preventDefault()
+
+        return alert(this.documentsNotReadyMessage)
+      }
+
       if (!this.isAllRequiredFieldsAdded) {
         e.preventDefault()
 
@@ -3192,6 +3264,187 @@ export default {
       }
 
       documentRef.scrollToArea(area)
+    },
+    // Word documents arrive as placeholders (`converting: true` in the
+    // schema); each one is polled until the background job has swapped the
+    // PDF in, then its pages render in place without a reload.
+    syncConversionPolling () {
+      this.template.schema.forEach((item) => {
+        if (item.converting && !this.conversionPolls[item.attachment_uuid] && !this.conversionTimedOutUuids.includes(item.attachment_uuid)) {
+          this.conversionPolls[item.attachment_uuid] = { startedAt: Date.now(), timer: null }
+
+          this.scheduleConversionPoll(item.attachment_uuid)
+        }
+      })
+
+      Object.keys(this.conversionPolls).forEach((uuid) => {
+        if (!this.template.schema.some((item) => item.attachment_uuid === uuid && item.converting)) {
+          this.stopConversionPolling(uuid)
+        }
+      })
+    },
+    scheduleConversionPoll (attachmentUuid) {
+      const poll = this.conversionPolls[attachmentUuid]
+
+      if (!poll) return
+
+      poll.timer = setTimeout(() => this.pollConversion(attachmentUuid), CONVERSION_POLL_INTERVAL)
+    },
+    stopConversionPolling (attachmentUuid) {
+      const poll = this.conversionPolls[attachmentUuid]
+
+      if (poll?.timer) clearTimeout(poll.timer)
+
+      delete this.conversionPolls[attachmentUuid]
+    },
+    pollConversion (attachmentUuid) {
+      const poll = this.conversionPolls[attachmentUuid]
+
+      if (!poll) return
+
+      if (Date.now() - poll.startedAt > CONVERSION_POLL_TIMEOUT) {
+        this.stopConversionPolling(attachmentUuid)
+        this.conversionTimedOutUuids.push(attachmentUuid)
+
+        return
+      }
+
+      this.baseFetch(`/templates/${this.template.id}/documents/${attachmentUuid}/status`, {
+        headers: { Accept: 'application/json' }
+      }).then(async (resp) => {
+        if (resp.status === 404) {
+          return this.stopConversionPolling(attachmentUuid)
+        }
+
+        if (!resp.ok) {
+          return this.scheduleConversionPoll(attachmentUuid)
+        }
+
+        const data = await resp.json()
+
+        if (data.status === 'ready') {
+          this.onConversionReady(attachmentUuid, data)
+        } else if (data.status === 'failed') {
+          this.onConversionFailed(attachmentUuid, data)
+        } else {
+          this.scheduleConversionPoll(attachmentUuid)
+        }
+      }).catch(() => {
+        this.scheduleConversionPoll(attachmentUuid)
+      })
+    },
+    // A Word conversion that finished while no builder was open left its
+    // extracted fields in the document's metadata and `pending_fields` on
+    // the schema item, with nothing in template.fields yet: merge them here
+    // exactly as the poll would have, then save (which also drops the
+    // marker, so a later mount never merges twice).
+    mergeUnclaimedDocumentFields () {
+      if (!this.editable) return
+
+      const merged = []
+
+      this.template.schema.forEach((item) => {
+        if (!item.pending_fields) return
+
+        const document = this.template.documents.find((doc) => doc.uuid === item.attachment_uuid)
+        const pdfFields = document?.metadata?.pdf?.fields
+
+        if (!pdfFields?.length) return
+
+        const claimed = this.template.fields.some((field) => {
+          return (field.areas || []).some((area) => area.attachment_uuid === item.attachment_uuid)
+        })
+
+        if (claimed) return
+
+        pdfFields.forEach((field) => {
+          field.submitter_uuid = this.selectedSubmitter.uuid
+
+          this.insertField(field)
+        })
+
+        // Merged: the marker has done its job. Only the server arms it, so
+        // it must not ride along on every later autosave.
+        delete item.pending_fields
+
+        merged.push(item.attachment_uuid)
+      })
+
+      if (merged.length) {
+        // save() clears the keep-or-remove prompt, so the prompt is raised
+        // after it — the same order the upload flow uses.
+        this.save()
+
+        this.pendingFieldAttachmentUuids.push(...merged)
+      }
+    },
+    onConversionReady (attachmentUuid, data) {
+      this.stopConversionPolling(attachmentUuid)
+
+      const index = this.template.schema.findIndex((item) => item.attachment_uuid === attachmentUuid)
+
+      if (index === -1) return
+
+      const item = this.template.schema[index]
+      const nextItem = { ...item, ...data.schema_item, name: item.name }
+
+      delete nextItem.converting
+      delete nextItem.conversion_failed
+
+      this.template.schema.splice(index, 1, nextItem)
+
+      const documentIndex = this.template.documents.findIndex((doc) => doc.uuid === attachmentUuid)
+
+      if (documentIndex === -1) {
+        this.template.documents.push(data.document)
+      } else {
+        this.template.documents.splice(documentIndex, 1, data.document)
+      }
+
+      if (this.editable) {
+        // The job never touches template.fields (a save from this builder
+        // would overwrite it): the fields it found travel in the document's
+        // metadata and are merged here, exactly like an added PDF's.
+        const pdfFields = data.document?.metadata?.pdf?.fields
+
+        if (pdfFields?.length) {
+          pdfFields.forEach((field) => {
+            field.submitter_uuid = this.selectedSubmitter.uuid
+
+            this.insertField(field)
+          })
+        }
+
+        // The status payload carries the server's `pending_fields` marker;
+        // once the fields are merged here it must not be sent back on every
+        // later autosave (only the server arms it).
+        delete nextItem.pending_fields
+
+        // save() clears the keep-or-remove prompt, so the prompt is raised
+        // after it — the same order the upload flow uses.
+        this.save()
+
+        if (pdfFields?.length) {
+          this.pendingFieldAttachmentUuids.push(attachmentUuid)
+        }
+      }
+    },
+    onConversionFailed (attachmentUuid, data) {
+      this.stopConversionPolling(attachmentUuid)
+
+      const index = this.template.schema.findIndex((item) => item.attachment_uuid === attachmentUuid)
+
+      if (index === -1) return
+
+      const nextItem = { ...this.template.schema[index], ...data.schema_item, name: this.template.schema[index].name, conversion_failed: true }
+
+      delete nextItem.converting
+
+      this.template.schema.splice(index, 1, nextItem)
+
+      if (this.editable) {
+        this.save()
+      }
     },
     baseFetch (path, options = {}) {
       return fetch(this.baseUrl + path, {

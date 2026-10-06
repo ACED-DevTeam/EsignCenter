@@ -20,14 +20,18 @@
         <% end %>
       <% end %>
     </div>
-    <%= render 'bcc_form', config: @bcc_config %>
+    <% if can?(:use, :bcc) %>
+      <%= render 'bcc_form', config: @bcc_config %>
+    <% else %>
+      <%= render 'shared/upgrade_cta', feature: t('completed_documents_notification_bcc_address'), class: 'my-4' %>
+    <% end %>
     <div class="flex justify-between items-end mb-4 mt-8">
       <h2 class="text-3xl font-bold">
         <%= t('sign_request_email_reminders') %>
       </h2>
     </div>
     <%= render 'reminder_banner' %>
-    <%= render 'reminder_form', config: @reminder_config %>
+    <%= render 'reminder_form', config: @reminder_config if can?(:use, :reminders) %>
   </div>
   <div class="w-0 md:w-52"></div>
 </div>

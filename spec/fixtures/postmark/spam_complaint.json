@@ -1,0 +1,24 @@
+{
+  "MessageID": "883953f4-6105-42a2-a16a-77a8eac79483",
+  "MessageStream": "outbound",
+  "Tag": "submitter_invitation",
+  "Metadata": {
+    "message-uuid": "cf132906-39c6-424d-bba8-2f7ddbe82bbf"
+  },
+  "ServerID": 23,
+  "Email": "signer@example.com",
+  "From": "noreply@example.com",
+  "BouncedAt": "2026-09-04T16:33:54.9070259Z",
+  "DumpAvailable": false,
+  "CanActivate": false,
+  "Subject": "Please sign",
+  "Content": "Excluded from storage",
+  "RecordType": "SpamComplaint",
+  "ID": 692560174,
+  "Type": "SpamComplaint",
+  "TypeCode": 100001,
+  "Name": "Spam complaint",
+  "Description": "Recipient reported spam.",
+  "Details": "Abuse complaint",
+  "Inactive": true
+}

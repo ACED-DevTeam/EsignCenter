@@ -15,7 +15,7 @@ module Templates
         replaced_attachment_uuid = replaced_document_schema&.fetch('attachment_uuid', nil) ||
                                    replaced_document_schema&.fetch(:attachment_uuid, nil)
 
-        template.schema[index] = { 'attachment_uuid' => document.uuid, 'name' => document.filename.base }
+        template.schema[index] = Templates::CreateAttachments.schema_item(document).stringify_keys
 
         if replaced_document_schema
           template.fields.each do |field|

@@ -1,0 +1,17 @@
+<%# The proof a purge left nothing behind: four tables with no foreign key to
+    `accounts`, so the database itself would never have complained. Read-only,
+    exactly what `rake accounts:purge` prints at the end of a run. %>
+<div class="card bg-base-100 border border-base-300" data-operator-orphans>
+  <div class="card-body p-5 gap-3">
+    <h2 class="text-xl font-bold"><%= t('operator_orphans_title') %></h2>
+    <p class="text-sm text-base-content/70"><%= t('operator_orphans_hint') %></p>
+    <dl class="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-1 text-sm tabular-nums">
+      <% @orphans.each do |table, count| %>
+        <div>
+          <dt class="text-base-content/70"><%= table %></dt>
+          <dd data-orphan-count="<%= table %>"><%= count %></dd>
+        </div>
+      <% end %>
+    </dl>
+  </div>
+</div>

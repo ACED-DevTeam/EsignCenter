@@ -1,0 +1,31 @@
+<%# Everything the visitor typed is printed as TEXT — ERB escapes it, and the message keeps its own line breaks through white-space: pre-wrap rather than through any markup of theirs. A support mailbox must never render a stranger's HTML. %>
+<p><strong><%= @topic_label %></strong> from <%= @name %> &lt;<%= @email %>&gt;</p>
+
+<p>Reply to this email and it goes straight back to them.</p>
+
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width: 100%; margin: 0 0 16px;">
+  <tr>
+    <td style="padding: 4px 12px 4px 0; color: #6b7280; white-space: nowrap;">Account</td>
+    <td style="padding: 4px 0;"><%= @account_facts ? @account_facts[:name] : 'Not signed in' %></td>
+  </tr>
+  <% if @account_facts %>
+    <tr>
+      <td style="padding: 4px 12px 4px 0; color: #6b7280; white-space: nowrap;">Account id</td>
+      <td style="padding: 4px 0;"><%= @account_facts[:id] %> (<%= @account_facts[:kind] %>)</td>
+    </tr>
+    <tr>
+      <td style="padding: 4px 12px 4px 0; color: #6b7280; white-space: nowrap;">Plan</td>
+      <td style="padding: 4px 0;"><%= @account_facts[:plan] %></td>
+    </tr>
+    <tr>
+      <td style="padding: 4px 12px 4px 0; color: #6b7280; white-space: nowrap;">Signed in as</td>
+      <td style="padding: 4px 0;"><%= @account_facts[:user_email] %> (user <%= @account_facts[:user_id] %>)</td>
+    </tr>
+  <% end %>
+  <tr>
+    <td style="padding: 4px 12px 4px 0; color: #6b7280; white-space: nowrap;">Sent from</td>
+    <td style="padding: 4px 0;"><%= @ip %></td>
+  </tr>
+</table>
+
+<div style="white-space: pre-wrap; border-left: 3px solid #e5e7eb; padding-left: 14px;"><%= @message %></div>

@@ -21,6 +21,7 @@ module Submissions
     TESTING_FOOTER = GenerateResultAttachments::TESTING_FOOTER
 
     RTL_REGEXP = TextUtils::RTL_REGEXP
+    RTL_LOCALES = TextUtils::RTL_LOCALES
     MAX_IMAGE_HEIGHT = 100
 
     CHECKSUM_LIMIT = 30
@@ -58,7 +59,7 @@ module Submissions
           document.write(io)
         end
 
-        ActiveStorage::Attachment.create!(
+        attachment = ActiveStorage::Attachment.create!(
           blob: ActiveStorage::Blob.create_and_upload!(
             io: io.tap(&:rewind), filename: "#{I18n.t('audit_log')} - " \
                                             "#{submission.name || submission.template.name}.pdf"
@@ -66,12 +67,34 @@ module Submissions
           name: 'audit_trail',
           record: submission
         )
+
+        # Filed only now that the bytes are stored (VerifiedDocuments, H2), and
+        # in the same breath as the retirement of what it replaces (review 10,
+        # Q1). `EnsureAuditGenerated` regenerates after a `fail` lock event, so
+        # a second `audit_trail` attachment used to pile up on a `has_one` —
+        # and `submission.audit_trail_attachment` serves the FIRST, whose
+        # fingerprint the new row has just taken away. One decision: the row
+        # moves and the superseded file goes, or neither does.
+        ApplicationRecord.transaction do
+          if pkcs
+            VerifiedDocuments.record!(io.string, submission:, kind: 'audit_trail',
+                                                 output_key: "audit_trail:#{submission.id}")
+          end
+
+          VerifiedDocuments.retire_superseded_output!(record: submission, name: 'audit_trail',
+                                                      keep: attachment, account_id: submission.account_id)
+        end
+
+        attachment
       end
     end
 
     def build_audit_trail(submission)
       account = submission.account
-      verify_url = Rails.application.routes.url_helpers.settings_esign_url(
+      visible_events = SubmissionEvents.for_display(submission.submission_events, account:)
+      # The public verification page (no login): anyone holding the PDF can
+      # confirm the completion date and signer count, never the identities.
+      verify_url = Rails.application.routes.url_helpers.verify_url(
         **Docuseal.default_url_options, host: ENV.fetch('EMAIL_HOST', Docuseal.default_url_options[:host])
       )
 
@@ -247,6 +270,10 @@ module Submissions
 
         next if submitter.blank?
 
+        # Signing FACTS (completion, delegation, the emailed-link click and
+        # e-mail/phone verification) come from every event: they are evidence
+        # of who signed and how, on every plan. Only the event LOG below is
+        # filtered by the delivery-tracking entitlement.
         submission_events = submission.submission_events.select { |e| e.submitter_id == submitter.id }
 
         delegated_event = submission_events.select(&:delegate_form?).max_by(&:event_timestamp)
@@ -262,6 +289,8 @@ module Submissions
         verify_email_event = submission_events.find(&:email_verified?)
 
         verify_phone_event = submission_events.find(&:phone_verified?)
+
+        consent_event = submission_events.find(&:esign_consent?)
 
         is_id_verified = submission_events.any?(&:complete_verification?)
 
@@ -292,6 +321,22 @@ module Submissions
                 },
                 is_kba_passed && {
                   text: "#{I18n.t('knowledge_based_authentication')}: #{I18n.t('passed')}\n"
+                },
+                consent_event && {
+                  text: "#{I18n.t('consented_to_electronic_signatures')} " \
+                        "(#{consent_event.data.values_at('version', 'locale').compact.join(', ')}): " \
+                        "#{I18n.l(consent_event.event_timestamp.in_time_zone(timezone),
+                                  format: with_timestamp_seconds ? :detailed : :long, locale: account.locale)} " \
+                        "#{TimeUtils.timezone_abbr(timezone, consent_event.event_timestamp)}\n"
+                },
+                # An attestation, not a fact: the wording says whose claim it
+                # is. Both answers print, because "did not open it" is
+                # evidence too — silence would read as "not recorded". Drawn in
+                # logical order like every other label in this block ("Email
+                # verification", "Session ID"); the appendix at the end of the
+                # trail is the part that is bidi-reordered.
+                consent_event && {
+                  text: "#{I18n.t(consent_pdf_line_key(consent_event))}\n"
                 },
                 completed_event.data['ip'] && { text: "IP: #{completed_event.data['ip']}\n" },
                 completed_event.data['sid'] && { text: "#{I18n.t('session_id')}: #{completed_event.data['sid']}\n" },
@@ -450,9 +495,7 @@ module Submissions
         [s.id, s.submitter_versions.to_a.sort_by(&:created_at)]
       end
 
-      events_data = submission.submission_events.sort_by(&:event_timestamp).filter_map do |event|
-        next if event.event_type.in?(%w[bounce_email complaint_email])
-
+      events_data = visible_events.sort_by(&:event_timestamp).filter_map do |event|
         submitter = submission.submitters.find { |e| e.id == event.submitter_id }
         versions = submitter_versions_index[submitter.id] || []
         active_version = versions.find { |v| v.created_at > event.event_timestamp }
@@ -485,8 +528,12 @@ module Submissions
             from = event.data['old_email'].presence ||
                    versions.rfind { |v| v.created_at <= event.event_timestamp }&.then { |v| v.name || v.phone }
             I18n.t('submission_event_names.delegate_form_by_html', from:, to: event.data['email'])
+          elsif event.event_type == 'esign_consent'
+            I18n.t('submission_event_names.esign_consent_by_html', version: event.data['version'], submitter_name:)
           elsif event.event_type.include?('send_')
             I18n.t("submission_event_names.#{event.event_type}_to_html", submitter_name:)
+          elsif event.event_type.in?(%w[bounce_email complaint_email])
+            I18n.t("submission_event_names.#{event.event_type}_html", submitter_name:)
           else
             I18n.t("submission_event_names.#{event.event_type}_by_html", submitter_name:)
           end
@@ -514,7 +561,171 @@ module Submissions
 
       composer.table(events_data, cell_style: { padding: [0, 0, 12, 0], border: { width: 0 } }) if events_data.present?
 
+      add_consent_appendix(composer, submission, divider, submitter_versions_index)
+
       composer.document
+    end
+
+    # Three answers, not two. Every line says only what the browser reported:
+    # a middle-click or "open in new tab" never reaches the page, so the
+    # negative cannot claim the person did not open it. A consent recorded
+    # before this product asked the question carries no `pdf_opened` key at
+    # all — printing the negative there would invent a fact in a signed PDF.
+    # An absent answer gets its own line and says so.
+    def consent_pdf_line_key(consent_event)
+      return 'esign_consent_pdf_not_recorded' unless consent_event.data.key?('pdf_opened')
+
+      consent_event.data['pdf_opened'] ? 'esign_consent_pdf_opened' : 'esign_consent_pdf_not_opened'
+    end
+
+    # The ESIGN disclosure each signer agreed to, reproduced word for word at
+    # the end of the trail. The audit trail is the evidence a court or a
+    # counterparty reads years later, and "they consented to v2" means nothing
+    # on its own — so the text itself travels with the proof, in the language
+    # the signer read it in, with the sender's details as they were shown.
+    def add_consent_appendix(composer, submission, divider, versions_index)
+      consent_events = submission.submission_events.select(&:esign_consent?).sort_by(&:event_timestamp)
+
+      return if consent_events.blank?
+
+      composer.draw_box(divider)
+
+      # The section title is written in the trail's own language.
+      add_consent_text(composer, I18n.t('consented_to_electronic_signatures'),
+                       rtl: rtl_locale?(I18n.locale), font_size: 12, padding: [10, 0, 15, 0])
+
+      consent_events.each do |event|
+        text = EsignConsent.disclosure_text(version: event.data['version'], locale: event.data['locale'],
+                                            self_signing: event.data['self_signing'].present?)
+
+        if text.blank? || !consent_wording_recorded?(event, text)
+          add_consent_wording_not_on_file(composer, submission, event, versions_index)
+        else
+          add_consent_disclosure(composer, submission, event, text, versions_index)
+        end
+      end
+    end
+
+    # The words below a version header are evidence only if they are the words
+    # that were fingerprinted when the box was ticked. The event carries that
+    # fingerprint (`disclosure_sha256`), so the trail hashes the text it is
+    # about to print and compares — with EsignConsent's own digest function,
+    # never a second copy of the algorithm, so the two ends cannot drift.
+    #
+    # Anything but an exact match means this file can no longer produce the
+    # words that consent was given to: the live text was edited without the
+    # VERSION being bumped and the old wording archived (docs/esign-consent.md
+    # §6), an archived body was touched, or the event's own digest is missing
+    # or damaged. Printing today's wording under the recorded version header
+    # would put words in the signer's mouth in a signed PDF, so it falls
+    # through to the "wording no longer on file" line instead, which names the
+    # version, the language and the digest that WAS recorded — exactly what
+    # somebody needs to go and find the real text.
+    def consent_wording_recorded?(event, text)
+      recorded = event.data['disclosure_sha256'].to_s
+
+      recorded.present? && recorded == EsignConsent.text_sha256(text)
+    end
+
+    # The disclosure this consent names cannot be produced any more: a version
+    # whose text was never archived, or a language that has since been
+    # dropped. Saying nothing would be the worst answer — the appendix would
+    # simply skip that signer and read as though they had agreed to whatever
+    # the signer above them did. So the heading still goes in, and under it a
+    # line naming the version, the language and the fingerprint that was
+    # recorded, which is exactly what somebody would need to go and find the
+    # words in the archive (config/locales/esign_disclosures, docs/legal.md).
+    def add_consent_wording_not_on_file(composer, submission, event, versions_index)
+      rtl = rtl_locale?(I18n.locale)
+
+      add_consent_text(composer, consent_appendix_heading(submission, event, versions_index, rtl:),
+                       rtl:, font: [FONT_NAME, { variant: :bold }])
+
+      add_consent_text(composer,
+                       I18n.t('esign_consent_wording_not_on_file',
+                              version: event.data['version'].presence || '—',
+                              language: event.data['locale'].presence || '—',
+                              digest: event.data['disclosure_sha256'].presence || '—'),
+                       rtl:, line_spacing: 1.3)
+    end
+
+    def add_consent_disclosure(composer, submission, event, text, versions_index)
+      # The heading is written in the trail's language; the disclosure below it
+      # is in the language THAT SIGNER read, which can be a different one.
+      heading_rtl = rtl_locale?(I18n.locale)
+      body_rtl = rtl_locale?(event.data['locale'])
+
+      add_consent_text(composer, consent_appendix_heading(submission, event, versions_index, rtl: heading_rtl),
+                       rtl: heading_rtl, font: [FONT_NAME, { variant: :bold }])
+
+      sender_name = event.data['sender_name']
+      sender_email = event.data['sender_email']
+
+      # An event written before the disclosure named the sender has nothing to
+      # fill the placeholders with. A signed PDF must never show a raw
+      # `%{sender_name}`, so plain-English stand-ins go in — the generic word
+      # for the sender and the address that reaches them today — above a note
+      # saying those two details were not recorded with that consent.
+      if sender_name.blank? || sender_email.blank?
+        submitter = submission.submitters.find { |e| e.id == event.submitter_id }
+
+        sender_name = sender_name.presence || I18n.t('esign_consent_the_sender')
+        sender_email = sender_email.presence ||
+                       (submitter && EsignConsent.sender_email(submitter)) || Docuseal::SUPPORT_EMAIL
+
+        add_consent_text(composer, I18n.t('esign_consent_sender_not_recorded'), rtl: heading_rtl)
+      end
+
+      paragraphs = EsignConsent.disclosure_paragraphs(text, sender_name: bidi_fragment(sender_name, rtl: body_rtl),
+                                                            sender_email:)
+
+      paragraphs.each { |paragraph| add_consent_text(composer, paragraph, rtl: body_rtl, line_spacing: 1.3) }
+    end
+
+    # HexaPDF draws glyphs in logical order and does no bidi of its own, so
+    # right-to-left text has to be reordered on the way in. What decides that
+    # is the language the text is WRITTEN in, never "does this string contain a
+    # right-to-left character": an English disclosure that names an Arabic
+    # company is still an English sentence, and mirroring it would make the
+    # evidence unreadable.
+    #
+    # So: a Hebrew or Arabic text is reordered whole (TwitterCldr's bidi
+    # handles the Latin runs inside it) and set flush right; an English text is
+    # left exactly as it is, and only the names interpolated into it are
+    # reordered — which is what the signer blocks and the field values above
+    # have always done with a name.
+    def add_consent_text(composer, text, rtl:, **style)
+      composer.text(rtl ? TextUtils.maybe_rtl_reverse(text) : text,
+                    padding: [0, 0, 6, 0], text_align: rtl ? :right : :left, **style)
+    end
+
+    # A name dropped into a line of the opposite direction: reordered on its
+    # own when the line around it will not be reordered for it.
+    def bidi_fragment(value, rtl:)
+      rtl ? value : TextUtils.maybe_rtl_reverse(value.to_s)
+    end
+
+    def rtl_locale?(locale)
+      locale.to_s.split('-').first.in?(RTL_LOCALES)
+    end
+
+    # An orphaned consent event — its submitter row gone from the submission —
+    # must not take the whole evidence job down with it: the disclosure it
+    # points at is still worth printing, just without a name on it.
+    def consent_appendix_heading(submission, event, versions_index, rtl:)
+      submitter = submission.submitters.find { |e| e.id == event.submitter_id } || event.submitter
+      versions = (submitter && versions_index[submitter.id]) || []
+      active_version = versions.find { |v| v.created_at > event.event_timestamp }
+      submitter_name = active_version&.name || active_version&.email || active_version&.phone ||
+                       submitter&.name || submitter&.email || submitter&.phone
+
+      heading = "#{I18n.t('esign_consent_disclosure_title')} — " \
+                "#{I18n.t('esign_consent_version_label', version: event.data['version'])} " \
+                "(#{event.data['locale']})"
+
+      return heading if submitter_name.blank?
+
+      "#{heading}, #{I18n.t('esign_consent_shown_to', submitter_name: bidi_fragment(submitter_name, rtl:))}"
     end
 
     def sign_reason

@@ -5,12 +5,35 @@ module Submissions
     HASH_ALGORITHM = 'SHA256'
     TIMEOUT = 10
 
-    TimestampError = Class.new(StandardError)
+    # A timestamp authority that cannot be reached is a failed signature, never
+    # a silently degraded one: every configured URL is tried in turn, then the
+    # signing job raises, Sidekiq retries it and the job's own error report
+    # (Submissions::EnsureResultGenerated) reaches Sentry — this handler does
+    # not report on its own, so one failure is one report from the app.
+    # Before Session 4 this handler embedded a locally generated time instead,
+    # which looked like a trusted timestamp but was not.
+    class TimestampError < StandardError
+      attr_reader :urls, :original_error
 
-    attr_reader :tsa_url, :tsa_fallback_url
+      def initialize(urls, original_error = nil)
+        @urls = Array(urls)
+        @original_error = original_error
+
+        super("Timestamp authority request failed (#{@urls.join(', ')})" \
+              "#{": #{original_error.class}: #{original_error.message}" if original_error}")
+      end
+    end
+
+    # Every comma-separated URL, in order; each is a fallback for the ones
+    # before it.
+    attr_reader :urls
 
     def initialize(tsa_url:)
-      @tsa_url, @tsa_fallback_url = tsa_url.split(',')
+      @urls = tsa_url.to_s.split(',').map(&:strip).compact_blank
+    end
+
+    def tsa_url
+      urls.first
     end
 
     def finalize_objects(_signature_field, signature)
@@ -21,45 +44,19 @@ module Submissions
       signature[:SubFilter] = :'ETSI.RFC3161'
     end
 
-    # rubocop:disable Metrics
     def sign(io, byte_range)
-      digest = OpenSSL::Digest.new(HASH_ALGORITHM)
+      digest = message_digest(io, byte_range)
+      last_error = nil
 
-      io.pos = byte_range[0]
-      digest << io.read(byte_range[1])
-      io.pos = byte_range[2]
-      digest << io.read(byte_range[3])
-
-      uri = Addressable::URI.parse(tsa_url)
-
-      conn = Faraday.new(uri.origin) do |c|
-        c.options.read_timeout = TIMEOUT
-        c.options.open_timeout = TIMEOUT
-        c.request :authorization, :basic, uri.user, uri.password if uri.password.present?
+      urls.each do |url|
+        return request_token(url, digest)
+      rescue StandardError => e
+        last_error = e
+        Rails.logger.error(e)
       end
 
-      response = conn.post(uri.request_uri, build_payload(digest.digest),
-                           'content-type' => 'application/timestamp-query')
-
-      if response.status != 200 || response.body.blank?
-        raise TimestampError if tsa_fallback_url.blank?
-
-        Rollbar.error('TimestampError: use fallback URL') if defined?(Rollbar)
-
-        response = Faraday.post(tsa_fallback_url, build_payload(digest.digest),
-                                'content-type' => 'application/timestamp-query')
-
-        raise TimestampError if response.status != 200 || response.body.blank?
-      end
-
-      OpenSSL::Timestamp::Response.new(response.body).token.to_der
-    rescue StandardError => e
-      Rollbar.error(e) if defined?(Rollbar)
-      Rails.logger.error(e)
-
-      OpenSSL::ASN1::GeneralizedTime.new(Time.now.utc).to_der
+      raise_timestamp_error!(last_error)
     end
-    # rubocop:enable Metrics
 
     def build_payload(digest)
       req = OpenSSL::Timestamp::Request.new
@@ -67,6 +64,45 @@ module Submissions
       req.message_imprint = digest
 
       req.to_der
+    end
+
+    private
+
+    def message_digest(io, byte_range)
+      digest = OpenSSL::Digest.new(HASH_ALGORITHM)
+
+      io.pos = byte_range[0]
+      digest << io.read(byte_range[1])
+      io.pos = byte_range[2]
+      digest << io.read(byte_range[3])
+
+      digest.digest
+    end
+
+    def request_token(url, digest)
+      uri = Addressable::URI.parse(url)
+
+      conn = Faraday.new(uri.origin) do |c|
+        c.options.read_timeout = TIMEOUT
+        c.options.open_timeout = TIMEOUT
+        c.request :authorization, :basic, uri.user, uri.password if uri.password.present?
+      end
+
+      response = conn.post(uri.request_uri, build_payload(digest), 'content-type' => 'application/timestamp-query')
+
+      raise TimestampError, [url] if response.status != 200 || response.body.blank?
+
+      OpenSSL::Timestamp::Response.new(response.body).token.to_der
+    end
+
+    # Raised once per signing attempt, however many URLs were tried. Not
+    # reported here: the signing job's rescue reports it exactly once.
+    def raise_timestamp_error!(last_error)
+      error = TimestampError.new(urls, last_error)
+
+      Rails.logger.error(error)
+
+      raise error
     end
   end
 end

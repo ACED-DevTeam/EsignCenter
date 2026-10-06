@@ -25,6 +25,9 @@ gem 'jwt', require: false
 gem 'lograge'
 gem 'numo-narray-alt', require: false
 gem 'oj'
+gem 'omniauth-apple'
+gem 'omniauth-google-oauth2'
+gem 'omniauth-rails_csrf_protection'
 gem 'onnxruntime', require: false
 gem 'pagy'
 gem 'pg', require: false
@@ -33,19 +36,29 @@ gem 'puma', require: false
 gem 'rack'
 gem 'rails'
 gem 'rails-i18n'
+gem 'redis', '~> 5.0'
 gem 'rotp'
 gem 'rouge', require: false
 gem 'rqrcode', require: false
 gem 'ruby-vips'
 gem 'rubyXL', require: false
+# The account export zip (Session 8 phase D). Already here transitively
+# through rubyXL; named explicitly because application code requires it.
+gem 'rubyzip', '~> 3.2', require: false
+gem 'sentry-rails'
+gem 'sentry-ruby'
+gem 'sentry-sidekiq'
 gem 'shakapacker'
 gem 'sidekiq'
+gem 'sidekiq-cron'
 gem 'sqlite3', require: false
 gem 'strip_attributes'
+gem 'stripe'
 gem 'trilogy', require: false
 gem 'turbo-rails'
 gem 'twitter_cldr', require: false
 gem 'tzinfo-data'
+gem 'valid_email2'
 
 group :development, :test do
   gem 'better_html'

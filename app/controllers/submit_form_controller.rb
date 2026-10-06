@@ -1,9 +1,13 @@
 # frozen_string_literal: true
 
 class SubmitFormController < ApplicationController
+  include CompletedFormMarker
+
   layout 'form'
 
-  around_action :with_browser_locale, only: %i[show completed success delegated]
+  # `update` included: a consent recorded without a page-sent locale falls
+  # back to the same browser locale `show` rendered the disclosure under.
+  around_action :with_browser_locale, only: %i[show update completed success delegated]
   skip_before_action :authenticate_user!
   skip_authorization_check
   skip_before_action :verify_authenticity_token, only: :update
@@ -16,6 +20,43 @@ class SubmitFormController < ApplicationController
 
   CONFIG_KEYS = [].freeze
 
+  # The Vue form maps this error key to the required message at the consent
+  # checkbox (see app/javascript/submission_form/form.vue).
+  rescue_from EsignConsent::ConsentRequiredError do
+    render json: { error: 'esign_consent_required' }, status: :unprocessable_content
+  end
+
+  # The page showed an older disclosure than the one now in force: the form
+  # asks the signer to reload and agree again.
+  rescue_from EsignConsent::StaleVersionError do
+    render json: { error: 'esign_consent_version_stale' }, status: :unprocessable_content
+  end
+
+  # The consent named no language, or one this server never signed for this
+  # signer. Nothing was updated, so the signer is not told it was — its own
+  # error and its own message (EsignConsent::LocaleInvalidError).
+  rescue_from EsignConsent::LocaleInvalidError do
+    render json: { error: 'esign_consent_locale_invalid' }, status: :unprocessable_content
+  end
+
+  # A completion can invite the next party through a field value
+  # (`invite_via_field_uuid`), and two signers racing to invite the same party
+  # both pass the "is this uuid already here?" check. The unique index on
+  # `submitters (submission_id, uuid)` refuses the loser, which rolls the whole
+  # completion back — so this door answers the same refusal the invite form's
+  # door answers rather than a 500 on the signing page. Nothing was written;
+  # pressing Complete again succeeds, because by then the party is on record.
+  #
+  # ONE constraint, named (review 2, N7). A class-wide rescue would tell a
+  # signer somebody had invited a party whatever unique index a future bug
+  # tripped, and would file that bug as a warning nobody reads; anything else
+  # is re-raised and is a 500, which is what an unexplained conflict is.
+  rescue_from ActiveRecord::RecordNotUnique do |e|
+    raise e unless e.message.include?(Submitter::ROLE_INDEX)
+
+    render json: { error: 'party_already_invited' }, status: :unprocessable_content
+  end
+
   def show
     submission = @submitter.submission
 
@@ -24,9 +65,9 @@ class SubmitFormController < ApplicationController
 
     @form_configs = Submitters::FormConfigs.call(@submitter, CONFIG_KEYS)
 
-    return render :awaiting if (@form_configs[:enforce_signing_order] ||
-                                submission.template&.preferences&.dig('submitters_order') == 'preserved') &&
-                               !Submitters.current_submitter_order?(@submitter)
+    # Shared with the "View this document as a PDF" door beside the consent
+    # checkbox, so the two refuse on identical terms (Submitters::FormOpen).
+    return render :awaiting if Submitters::FormOpen.awaiting_turn?(@submitter, form_configs: @form_configs)
 
     Submissions.preload_with_pages(submission)
 
@@ -60,7 +101,7 @@ class SubmitFormController < ApplicationController
       return render json: { error: I18n.t('form_has_been_completed_already') }, status: :unprocessable_content
     end
 
-    if @submitter.submission.template&.archived_at? || @submitter.submission.archived_at?
+    if locked_for_writing?
       return render json: { error: I18n.t('form_has_been_archived') }, status: :unprocessable_content
     end
 
@@ -75,17 +116,23 @@ class SubmitFormController < ApplicationController
 
     Submitters::SubmitValues.call(@submitter, params, request)
 
+    # This request IS the completion, so this browser is the one that made it:
+    # it gets the marker that lets the share link's completed page name the
+    # document to them later, and nobody has to guess an identity from an IP
+    # address to hand it out (CompletedFormMarker).
+    remember_completed_form(@submitter)
+
     if params[:completed] == 'true' && @submitter.submission.source_embed?
       return render json: embed_completion_response(@submitter.reload)
     end
 
     head :ok
   rescue Submitters::SubmitValues::RequiredFieldError => e
-    Rollbar.warning("Required field #{@submitter.id}: #{e.message}") if defined?(Rollbar)
+    ErrorReport.warning("Required field #{@submitter.id}: #{e.message}")
 
     render json: { field_uuid: e.message }, status: :unprocessable_content
   rescue Submitters::SubmitValues::ValidationError => e
-    Rollbar.warning("Validation error #{@submitter.id}: #{e.message}") if defined?(Rollbar)
+    ErrorReport.warning("Validation error #{@submitter.id}: #{e.message}")
 
     render json: { error: e.message }, status: :unprocessable_content
   end
@@ -93,9 +140,18 @@ class SubmitFormController < ApplicationController
   def completed
     raise ActionController::RoutingError, I18n.t('not_found') if @submitter.account.archived_at?
 
-    return if Submitters::AuthorizedForForm.call(@submitter, current_user, request)
+    unless Submitters::AuthorizedForForm.call(@submitter, current_user, request)
+      return redirect_to submit_form_path(params[:submit_form_slug])
+    end
 
-    redirect_to submit_form_path(params[:submit_form_slug])
+    # The page a signer lands on the instant they finish, and the one they come
+    # back to whenever they open their own signing link again. Reaching it
+    # means holding that document's own signing slug and passing whatever 2FA
+    # it carries — far more than the share link's completed page ever tells
+    # anyone — so the marker is re-stamped here as well as at the completion
+    # itself, and a signer who finished on a slow day still gets their own page
+    # back (CompletedFormMarker).
+    remember_completed_form(@submitter)
   end
 
   def success; end
@@ -108,16 +164,28 @@ class SubmitFormController < ApplicationController
 
   private
 
+  # Archived means the account (or the document, or its template) is GONE, so
+  # its signer writes stop too — the locked page `show` already renders says
+  # exactly that, and until Session 7 the write behind it did not check
+  # (Session 2 handoff). SUSPENDED is deliberately not here: a suspended
+  # account cannot start anything new, but a signer already part-way through
+  # a document always gets to finish it.
+  def locked_for_writing?
+    @submitter.submission.template&.archived_at? || @submitter.submission.archived_at? ||
+      @submitter.account.archived_at?
+  end
+
   def maybe_require_link_2fa
     return if Submitters::AuthorizedForForm.pass_link_2fa?(@submitter, current_user, request)
 
     redirect_to start_form_path(@submitter.submission.template.slug)
   end
 
+  # Each state gets its own page here, so this asks state by state; the
+  # document door asks Submitters::FormOpen.call, which is the same three
+  # predicates combined. Neither can grow a state the other does not know.
   def maybe_render_locked_page
-    return render :archived if @submitter.submission.template&.archived_at? ||
-                               @submitter.submission.archived_at? ||
-                               @submitter.account.archived_at?
+    return render :archived if Submitters::FormOpen.archived?(@submitter)
     return render :expired if @submitter.submission.expired?
 
     render :declined if @submitter.declined_at?
@@ -141,7 +209,7 @@ class SubmitFormController < ApplicationController
     return unless @submitter&.submission&.source_embed?
 
     prefs = @submitter.submission.preferences || {}
-    origins = (Array(prefs['embed_origins']).presence || Array(prefs['embed_origin'])).reject(&:blank?)
+    origins = (Array(prefs['embed_origins']).presence || Array(prefs['embed_origin'])).compact_blank
 
     return if origins.blank?
 

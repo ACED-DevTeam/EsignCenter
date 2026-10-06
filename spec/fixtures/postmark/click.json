@@ -1,0 +1,35 @@
+{
+  "MessageID": "883953f4-6105-42a2-a16a-77a8eac79483",
+  "MessageStream": "outbound",
+  "Tag": "submitter_invitation",
+  "Metadata": {
+    "message-uuid": "cf132906-39c6-424d-bba8-2f7ddbe82bbf"
+  },
+  "Recipient": "signer@example.com",
+  "ReceivedAt": "2026-09-04T16:33:54.9070259Z",
+  "UserAgent": "Mozilla/5.0 test browser",
+  "Geo": {
+    "CountryISOCode": "US",
+    "Country": "United States",
+    "RegionISOCode": "TX",
+    "Region": "Texas",
+    "City": "Austin",
+    "Zip": "78701",
+    "Coords": "30.27,-97.74",
+    "IP": "192.0.2.5"
+  },
+  "Client": {
+    "Name": "Test browser",
+    "Company": "Example",
+    "Family": "Test"
+  },
+  "OS": {
+    "Name": "Test OS",
+    "Company": "Example",
+    "Family": "Test"
+  },
+  "Platform": "Desktop",
+  "RecordType": "Click",
+  "ClickLocation": "HTML",
+  "OriginalLink": "https://example.com/sign"
+}

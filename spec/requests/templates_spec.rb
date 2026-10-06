@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 describe 'Templates API' do
-  let(:account) { create(:account, :with_testing_account) }
+  let(:account) { create(:account, :internal, :with_testing_account) }
   let(:testing_account) { account.testing_accounts.first }
   let(:author) { create(:user, account:) }
   let(:testing_author) { create(:user, account: testing_account) }
@@ -181,7 +181,10 @@ describe 'Templates API' do
 
   describe 'POST /api/templates' do
     let(:pdf_base64) { Base64.encode64(Rails.root.join('spec/fixtures/sample-document.pdf').read) }
-    let(:unsupported_format_message) { 'Unsupported document format. Only PDF and image files are supported.' }
+    let(:unsupported_format_message) do
+      'Unsupported document format. Only PDF and image files are supported. ' \
+        'Convert Word documents to PDF before uploading, or upload them from the dashboard.'
+    end
 
     it 'creates a template from a base64-encoded PDF' do
       expect do

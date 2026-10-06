@@ -1,27 +1,28 @@
 # frozen_string_literal: true
 
 module Docuseal
-  # Upstream project URL — used for the AGPL-required DocuSeal attribution
-  # (see LICENSE_ADDITIONAL_TERMS).
-  DOCUSEAL_URL = 'https://www.docuseal.com'
-  PRODUCT_URL = 'https://github.com/AmishHillBilly/EsignCenter'
-  PRODUCT_EMAIL_URL = ENV.fetch('PRODUCT_EMAIL_URL', PRODUCT_URL)
+  # Upstream source repository — the target of the AGPL-required DocuSeal
+  # attribution (see LICENSE_ADDITIONAL_TERMS). The attribution owes the reader
+  # the upstream project's source, never its commercial site or signup funnel,
+  # so this is the repo URL; the upstream domain appears nowhere in app code
+  # and `rake gates:branding` refuses it (BANNED_LITERALS, no allowlist entry).
+  DOCUSEAL_SOURCE_URL = 'https://github.com/docusealco/docuseal'
+  PRODUCT_URL = 'https://github.com/ACED-DevTeam/EsignCenter'
   PRODUCT_NAME = 'EsignCenter'
   DEFAULT_APP_URL = ENV.fetch('APP_URL', 'http://localhost:3000')
-  GITHUB_URL = 'https://github.com/AmishHillBilly/EsignCenter'
-  SUPPORT_EMAIL = 'support@vaclaimnet.com'
-  HOST = ENV.fetch('HOST', 'localhost')
-  AATL_CERT_NAME = 'docuseal_aatl'
+  # Where the "Sent using EsignCenter" line in a signer's mail points. That
+  # line is free-plan product branding (D45), not the AGPL attribution, and a
+  # signer who follows it wants the product, not our source tree — so it is the
+  # app's own address, overridable per deployment.
+  PRODUCT_EMAIL_URL = ENV.fetch('PRODUCT_EMAIL_URL', DEFAULT_APP_URL)
+  GITHUB_URL = 'https://github.com/ACED-DevTeam/EsignCenter'
+  SUPPORT_EMAIL = 'support@aceddev.com'
 
-  CERTS = JSON.parse(ENV.fetch('CERTS', '{}'))
+  # There is no environment escape hatch for signing certificates: every
+  # account signs with the platform certificate or its own row (Session 4).
   TIMESERVER_URL = ENV.fetch('TIMESERVER_URL', nil)
   VERSION_FILE_PATH = Rails.root.join('.version')
   VERSION_FILE2_PATH = Rails.public_path.join('version')
-
-  DEFAULT_URL_OPTIONS = {
-    host: HOST,
-    protocol: ENV['FORCE_SSL'].present? ? 'https' : 'http'
-  }.freeze
 
   module_function
 
@@ -34,12 +35,25 @@ module Docuseal
       end
   end
 
+  # Never flipped in EsignCenter (decision-locked); kept only as the guard the
+  # remaining infra-keep branches read. See docs/feature-gating.md section 2.
   def multitenant?
     ENV['MULTITENANT'] == 'true'
   end
 
+  def registration_enabled?
+    ENV['REGISTRATION_ENABLED'] == 'true'
+  end
+
+  def billing_enabled?
+    ENV['BILLING_ENABLED'] == 'true'
+  end
+
+  # Word (.docx/.doc) uploads are offered whenever the converter can run:
+  # LibreOffice on PATH and the WORD_CONVERSION_ENABLED kill switch not set to
+  # 'false'. See docs/word-uploads.md.
   def advanced_formats?
-    multitenant?
+    WordConverter.enabled?
   end
 
   def demo?
@@ -50,21 +64,24 @@ module Docuseal
     ENV['ACTIVE_STORAGE_PUBLIC'] == 'true'
   end
 
-  def default_pkcs
-    return if Docuseal::CERTS['enabled'] == false
-
-    @default_pkcs ||= GenerateCertificate.load_pkcs(Docuseal::CERTS)
+  # Local environments may deliberately build HTTP links. Production's boot
+  # guard requires the literal value "true", so production links and Rails'
+  # unconditional HTTPS handling cannot disagree.
+  def force_ssl?
+    ENV['FORCE_SSL'].present? && ENV['FORCE_SSL'] != 'false'
   end
 
+  # Instance-global toggle, memoized per process; the operator surface that
+  # flips it calls refresh_fulltext_search! afterwards.
   def fulltext_search?
     return @fulltext_search unless @fulltext_search.nil?
 
     @fulltext_search =
-      if SearchEntry.table_exists?
-        Docuseal.multitenant? || AccountConfig.exists?(key: :fulltext_search, value: true)
-      else
-        false
-      end
+      SearchEntry.table_exists? && (Docuseal.multitenant? || OperatorConfigs.enabled?(:fulltext_search))
+  end
+
+  def refresh_fulltext_search!
+    @fulltext_search = nil
   end
 
   def enable_pwa?
@@ -82,15 +99,19 @@ module Docuseal
       end
   end
 
+  # The environment is the only source of the application URL: APP_URL wins,
+  # then HOST (+ FORCE_SSL for https; a HOST that carries its own port such as
+  # `localhost:3015` is used as-is), then the local default.
   def default_url_options
-    return DEFAULT_URL_OPTIONS if multitenant?
-
-    @default_url_options ||= begin
-      value = EncryptedConfig.find_by(key: EncryptedConfig::APP_URL_KEY)&.value if ENV['APP_URL'].blank?
-      value ||= DEFAULT_APP_URL
-      url = Addressable::URI.parse(value)
-      { host: url.host, port: url.port, protocol: url.scheme }
-    end
+    @default_url_options ||=
+      if ENV['APP_URL'].present?
+        url = Addressable::URI.parse(ENV['APP_URL'])
+        { host: url.host, port: url.port, protocol: url.scheme }
+      elsif ENV['HOST'].present?
+        { host: ENV.fetch('HOST'), protocol: force_ssl? ? 'https' : 'http' }
+      else
+        { host: 'localhost', port: 3000, protocol: 'http' }
+      end
   end
 
   def product_name

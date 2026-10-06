@@ -4,6 +4,11 @@ class WebhookSettingsController < ApplicationController
   load_and_authorize_resource :webhook_url, parent: false, only: %i[index show new create update destroy]
   load_and_authorize_resource :webhook_url, only: %i[resend], id_param: :webhook_id
 
+  # Webhooks are paid-only: saving, editing and test-sending a URL are refused
+  # for a free account. Existing rows are never deleted on a downgrade — they
+  # simply stop receiving (WebhookUrls.for_account_id returns none).
+  before_action -> { Entitlements.require!(current_account, :webhooks) }, only: %i[create update resend]
+
   def index
     @webhook_urls = @webhook_urls.order(id: :desc)
     @webhook_url = @webhook_urls.first_or_initialize
@@ -33,19 +38,25 @@ class WebhookSettingsController < ApplicationController
 
   def create
     if @webhook_url.url.present?
-      @webhook_url.save!
-
-      redirect_to settings_webhooks_path, notice: I18n.t('webhook_url_has_been_saved')
+      if @webhook_url.save
+        redirect_to settings_webhooks_path, notice: I18n.t('webhook_url_has_been_saved')
+      else
+        redirect_back fallback_location: settings_webhooks_path,
+                      alert: @webhook_url.errors.full_messages.to_sentence
+      end
     else
       redirect_back fallback_location: settings_webhooks_path
     end
   end
 
   def update
-    @webhook_url.update!(update_params)
-
-    redirect_back(fallback_location: settings_webhook_path(@webhook_url),
-                  notice: I18n.t('webhook_url_has_been_updated'))
+    if @webhook_url.update(update_params)
+      redirect_back(fallback_location: settings_webhook_path(@webhook_url),
+                    notice: I18n.t('webhook_url_has_been_updated'))
+    else
+      redirect_back fallback_location: settings_webhook_path(@webhook_url),
+                    alert: @webhook_url.errors.full_messages.to_sentence
+    end
   end
 
   def destroy

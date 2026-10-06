@@ -1,0 +1,113 @@
+<div class="flex-wrap space-y-4 md:flex md:flex-nowrap md:space-y-0 md:space-x-10">
+  <%= render 'shared/settings_nav' %>
+  <div class="md:flex-grow">
+    <div class="max-w-2xl">
+      <h1 class="text-4xl font-bold mb-2">
+        <%= t('usage') %>
+      </h1>
+      <p class="text-base-content/70 mb-5" dir="auto"><%= t('usage_page_intro') %></p>
+      <div class="flex flex-wrap items-center gap-2 mb-5" data-usage-plan="<%= @plan %>">
+        <% case @plan %>
+        <% when Plans::PAID, Plans::BUSINESS %>
+          <span class="badge badge-neutral badge-lg"><%= t("usage_plan_#{Plans.key_for(current_account)}") %></span>
+          <span class="badge badge-outline badge-lg"><%= t('seats_label', count: @limits.seats) %></span>
+        <% when Plans::INTERNAL %>
+          <span class="badge badge-neutral badge-lg"><%= t('usage_plan_internal') %></span>
+        <% else %>
+          <span class="badge badge-neutral badge-lg"><%= t('usage_plan_free') %></span>
+        <% end %>
+      </div>
+      <% if @paused %>
+        <div class="alert items-start bg-base-100 border border-red-400 text-red-400 mb-5" data-sending-paused-banner>
+          <%= svg_icon('alert_circle', class: 'stroke-current shrink-0 h-6 w-6 mt-0.5') %>
+          <div dir="auto" class="text-sm space-y-1">
+            <% if SendingPause::REASONS.include?(@pause_reason) %>
+              <p class="font-semibold" data-sending-pause-reason="<%= @pause_reason %>"><%= t("sending_pause_reason_#{@pause_reason}") %></p>
+            <% end %>
+            <p><%= t('sending_paused_banner', email: @support_email) %></p>
+          </div>
+        </div>
+      <% end %>
+      <% if @plan == Plans::INTERNAL %>
+        <div class="card bg-base-200 border border-base-300">
+          <div class="card-body p-5 gap-3">
+            <p class="font-semibold" dir="auto"><%= t('no_limits_apply') %></p>
+            <dl class="grid grid-cols-1 sm:grid-cols-[auto_1fr] gap-x-6 gap-y-1 text-sm tabular-nums">
+              <dt class="text-base-content/70"><%= t('documents_completed_this_month') %></dt>
+              <dd><%= @completions %></dd>
+              <dt class="text-base-content/70"><%= t('documents_sent_this_month') %></dt>
+              <dd><%= @sends %></dd>
+              <dt class="text-base-content/70"><%= t('documents_awaiting_signatures') %></dt>
+              <dd><%= @in_flight %></dd>
+              <dt class="text-base-content/70"><%= t('storage_used') %></dt>
+              <dd><%= number_to_human_size(@storage_used) %></dd>
+              <dt class="text-base-content/70"><%= t('seats_used') %></dt>
+              <dd><%= @seats_used %></dd>
+            </dl>
+          </div>
+        </div>
+      <% else %>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <%# Fair-use note (paid only) plus the D73 lineage sentence every plan needs: a corrected resend of a signed document is never counted twice. %>
+          <% completions_hint = [(@fair_use ? t('fair_use_per_seat', count: @fair_use_per_seat) : nil), t('usage_resend_note')].compact.join(' ') %>
+          <%= render 'usage_settings/meter',
+                     key: 'completions',
+                     icon: 'circle_check',
+                     title: t('documents_completed_this_month'),
+                     used: @completions,
+                     used_text: @completions,
+                     limit: @limits.completions_per_month,
+                     limit_text: @limits.completions_per_month,
+                     hint: completions_hint %>
+          <%= render 'usage_settings/meter',
+                     key: 'sends',
+                     icon: 'send',
+                     title: t('documents_sent_this_month'),
+                     used: @sends,
+                     used_text: @sends,
+                     limit: @limits.sends_per_month,
+                     limit_text: @limits.sends_per_month %>
+          <%= render 'usage_settings/meter',
+                     key: 'in_flight',
+                     icon: 'clock',
+                     title: t('documents_awaiting_signatures'),
+                     used: @in_flight,
+                     used_text: @in_flight,
+                     limit: @limits.in_flight,
+                     limit_text: @limits.in_flight %>
+          <%# Storage is sold as "we store your documents": the card shows what the account keeps and how close it is to the fair-use cap, never the cap's size. %>
+          <%= render 'usage_settings/meter',
+                     key: 'storage',
+                     icon: 'files',
+                     title: t('storage_used'),
+                     used: @storage_used,
+                     used_text: number_to_human_size(@storage_used),
+                     limit: @limits.storage_bytes,
+                     limit_text: nil,
+                     hint: t('usage_storage_hint') %>
+          <%# Seats: every seat taken is the normal state (a free account on day one), so full is neutral and only MORE than the seats is a limit problem. %>
+          <%= render 'usage_settings/meter',
+                     key: 'seats',
+                     icon: 'users',
+                     title: t('seats_used'),
+                     used: @seats_used,
+                     used_text: @seats_used,
+                     limit: @limits.seats,
+                     limit_text: @limits.seats,
+                     full_is_neutral: true %>
+        </div>
+        <% local_reset = @resets_at.in_time_zone(current_account.timezone.presence || 'UTC') %>
+        <div class="mt-5 text-sm text-base-content/70 space-y-1" dir="auto" data-usage-reset>
+          <p><%= t('limits_reset_on_utc', date: l(@resets_at.to_date, format: :long)) %></p>
+          <p><%= t('limits_reset_in_your_timezone', time: l(local_reset, format: :long), zone: local_reset.zone) %></p>
+        </div>
+        <% if @plan == Plans::FREE %>
+          <%# The one upgrade card the app has (Session 6 wires its [data-upgrade-cta] to the billing page), with this page's own sentence. %>
+          <div class="mt-6" data-usage-upgrade>
+            <%= render 'shared/upgrade_cta', feature: t('usage_plan_paid'), title: t('usage_upgrade_title'), body: t('usage_upgrade_hint', price: StripeBilling::PRICE_PER_SEAT_USD, trial_days: StripeBilling::TRIAL_PERIOD_DAYS) %>
+          </div>
+        <% end %>
+      <% end %>
+    </div>
+  </div>
+</div>

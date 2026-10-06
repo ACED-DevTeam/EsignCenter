@@ -8,6 +8,7 @@ import ScrollButtons from './elements/scroll_buttons'
 import PageContainer from './elements/page_container'
 import SubmitForm from './elements/submit_form'
 import ModalButton from './elements/modal_button'
+import VerifyDropzone from './elements/verify_dropzone'
 
 const safeRegisterElement = (name, element, options = {}) => !window.customElements.get(name) && window.customElements.define(name, element, options)
 
@@ -18,6 +19,7 @@ safeRegisterElement('scroll-buttons', ScrollButtons)
 safeRegisterElement('page-container', PageContainer)
 safeRegisterElement('submit-form', SubmitForm)
 safeRegisterElement('modal-button', ModalButton)
+safeRegisterElement('verify-dropzone', VerifyDropzone)
 safeRegisterElement('submission-form', class extends HTMLElement {
   connectedCallback () {
     this.appElem = document.createElement('div')
@@ -51,7 +53,6 @@ safeRegisterElement('submission-form', class extends HTMLElement {
       previousSignatureValue: this.dataset.previousSignatureValue,
       goToLast: this.dataset.goToLast === 'true',
       isDemo: this.dataset.isDemo === 'true',
-      attribution: this.dataset.attribution !== 'false',
       scrollPadding: this.dataset.scrollPadding || '-80px',
       orderAsOnPage: this.dataset.orderAsOnPage !== 'false',
       signatureText: this.dataset.signatureText,
@@ -62,7 +63,10 @@ safeRegisterElement('submission-form', class extends HTMLElement {
       requireSigningReason: this.dataset.requireSigningReason === 'true',
       withConfetti: this.dataset.withConfetti === 'true',
       withFieldLabels: this.dataset.withFieldLabels !== 'false',
-      withDisclosure: this.dataset.withDisclosure === 'true',
+      // ESIGN consent contract from the Rails partial (strings included, so
+      // i18n.yml stays the single source). A mount without the attribute never
+      // blocks; every real mount carries it (asserted by the system spec).
+      esignConsent: JSON.parse(this.dataset.esignConsent || '{"consented": true}'),
       reuseSignature: this.dataset.reuseSignature !== 'false',
       withTypedSignature: this.dataset.withTypedSignature !== 'false',
       authenticityToken: document.querySelector('meta[name="csrf-token"]')?.content,

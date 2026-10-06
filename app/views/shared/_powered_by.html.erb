@@ -1,16 +1,10 @@
 <div class="text-center px-2">
-  <% if local_assigns[:with_counter] %>
-    <% count = CompletedSubmitter.distinct.count(:submission_id) %>
-    <% if count > 1 %>
-      <%= t('count_documents_signed_with_html', count:) %>
-    <% else %>
-      <%= t('powered_by') %>
-    <% end %>
-  <% else %>
+  <%# Only the "Powered by" wording is a branding surface (paid: Accounts.branding_removed?); the DocuSeal attribution below never goes away. %>
+  <% unless Accounts.branding_removed?(local_assigns[:account]) %>
     <%= t('powered_by') %>
   <% end %>
   <%# AGPL LICENSE_ADDITIONAL_TERMS: the DocuSeal attribution below must be retained %>
-  <a href="<%= Docuseal::DOCUSEAL_URL %><%= local_assigns[:link_path] %>" class="underline">DocuSeal</a> - <%= t('open_source_documents_software') %>
+  <a href="<%= Docuseal::DOCUSEAL_SOURCE_URL %>" target="_blank" rel="noopener" class="underline">DocuSeal</a> - <%= t('open_source_documents_software') %>
   <span class="px-1">&middot;</span>
   <a href="<%= Docuseal::GITHUB_URL %>" target="_blank" class="underline">Source</a>
 </div>

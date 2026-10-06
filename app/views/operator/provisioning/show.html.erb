@@ -1,0 +1,155 @@
+<div class="flex-wrap space-y-4 md:flex md:flex-nowrap md:space-y-0 md:space-x-10">
+  <%= render 'operator/shared/nav' %>
+  <div class="md:flex-grow min-w-0 space-y-6">
+    <div>
+      <h1 class="text-4xl font-bold"><%= t('operator_tab_provisioning') %></h1>
+      <p class="text-base-content/70 mt-2 max-w-3xl"><%= t('operator_provisioning_intro') %></p>
+    </div>
+
+    <div class="card bg-base-100 border border-base-300" data-operator-provisioning-events>
+      <div class="card-body p-5 gap-3">
+        <h2 class="text-xl font-bold"><%= t('operator_provisioning_events') %></h2>
+        <%= form_with url: operator_provisioning_path, method: :get, data: { turbo: false }, class: 'flex flex-col md:flex-row gap-2 md:items-end' do %>
+          <label class="form-control flex-grow">
+            <span class="label-text mb-1"><%= t('operator_provisioning_search') %></span>
+            <input type="search" name="q" value="<%= @query %>" class="input input-bordered input-sm w-full" autocomplete="off" placeholder="<%= t('operator_provisioning_search_placeholder') %>">
+          </label>
+          <button type="submit" class="btn btn-sm btn-primary"><%= t('operator_filter_apply') %></button>
+          <%= link_to t('operator_filter_clear'), operator_provisioning_path, class: 'btn btn-sm btn-ghost' %>
+        <% end %>
+        <% if @provisioning_events.empty? %>
+          <p class="text-sm text-base-content/70" data-no-provisioning-events><%= t('operator_provisioning_none_platform') %></p>
+        <% else %>
+          <div class="overflow-x-auto">
+            <table class="table w-full">
+              <thead class="bg-base-200">
+                <tr class="text-neutral uppercase">
+                  <th><%= t('operator_provisioning_email') %></th>
+                  <th><%= t('operator_event_account') %></th>
+                  <th><%= t('operator_provisioning_idempotency_key') %></th>
+                  <th><%= t('operator_provisioning_webhook') %></th>
+                  <th><%= t('operator_column_created') %></th>
+                </tr>
+              </thead>
+              <tbody>
+                <% @provisioning_events.each do |event| %>
+                  <tr data-provisioning-event-row="<%= event.id %>">
+                    <td dir="auto" class="break-all text-sm"><%= event.email %></td>
+                    <td class="whitespace-nowrap"><%= link_to "##{event.account_id}", operator_account_path(event.account_id), class: 'link' %></td>
+                    <td class="text-xs font-mono break-all"><%= event.idempotency_key.presence || '—' %></td>
+                    <td class="text-sm"><%= event.webhook_url_id || '—' %></td>
+                    <td class="text-sm whitespace-nowrap"><%= l(event.created_at.utc, format: :short) %></td>
+                  </tr>
+                <% end %>
+              </tbody>
+            </table>
+          </div>
+        <% end %>
+        <%= render 'shared/pagination', pagy: @pagy, items_name: 'provisioning_events' %>
+      </div>
+    </div>
+
+    <div class="card bg-base-100 border border-base-300" data-operator-moves>
+      <div class="card-body p-5 gap-3">
+        <h2 class="text-xl font-bold"><%= t('operator_provisioning_moves') %></h2>
+        <% if @moves.empty? %>
+          <p class="text-sm text-base-content/70" data-no-moves><%= t('operator_provisioning_no_moves_platform') %></p>
+        <% else %>
+          <div class="overflow-x-auto">
+            <table class="table w-full">
+              <thead class="bg-base-200">
+                <tr class="text-neutral uppercase">
+                  <th><%= t('operator_provisioning_person') %></th>
+                  <th><%= t('operator_provisioning_from') %></th>
+                  <th><%= t('operator_provisioning_to') %></th>
+                  <th><%= t('operator_column_created') %></th>
+                </tr>
+              </thead>
+              <tbody>
+                <% @moves.each do |move| %>
+                  <tr data-move-row="<%= move.id %>">
+                    <td dir="auto" class="break-all text-sm"><%= move.user&.email || '—' %></td>
+                    <td class="whitespace-nowrap"><%= link_to "##{move.from_account_id}", operator_account_path(move.from_account_id), class: 'link' %></td>
+                    <td class="whitespace-nowrap"><%= link_to "##{move.to_account_id}", operator_account_path(move.to_account_id), class: 'link' %></td>
+                    <td class="text-sm whitespace-nowrap"><%= l(move.created_at.utc, format: :short) %></td>
+                  </tr>
+                <% end %>
+              </tbody>
+            </table>
+          </div>
+        <% end %>
+      </div>
+    </div>
+
+    <div class="card bg-base-100 border border-base-300" data-operator-invites>
+      <div class="card-body p-5 gap-3">
+        <h2 class="text-xl font-bold"><%= t('operator_invites_platform_title') %></h2>
+        <div class="flex flex-wrap gap-2">
+          <% Operator::ProvisioningController::INVITE_STATES.each do |state| %>
+            <%= link_to operator_provisioning_path(invite_state: state, q: @query.presence),
+                        class: "btn btn-xs #{@invite_state == state ? 'btn-primary' : 'btn-outline'}",
+                        data: { invite_state: state } do %>
+              <%= t("operator_invite_state_#{state}") %> (<%= @invite_counts.fetch(state, 0) %>)
+            <% end %>
+          <% end %>
+        </div>
+        <% if @invite_state == 'payment_pending' %>
+          <p class="text-sm text-base-content/70 max-w-3xl"><%= t('operator_invites_parked_hint') %></p>
+        <% end %>
+        <% if @invites.empty? %>
+          <p class="text-sm text-base-content/70" data-no-platform-invites><%= t('operator_invites_none_platform') %></p>
+        <% else %>
+          <div class="overflow-x-auto">
+            <table class="table w-full">
+              <thead class="bg-base-200">
+                <tr class="text-neutral uppercase">
+                  <th><%= t('operator_provisioning_email') %></th>
+                  <th><%= t('operator_event_account') %></th>
+                  <th><%= t('operator_invites_invited_by') %></th>
+                  <th><%= t('operator_column_created') %></th>
+                </tr>
+              </thead>
+              <tbody>
+                <% @invites.each do |invite| %>
+                  <tr data-platform-invite-row="<%= invite.id %>" class="<%= 'bg-warning/10' if invite.payment_pending_until.present? %>">
+                    <td dir="auto" class="break-all text-sm">
+                      <%= invite.email %>
+                      <% if invite.payment_pending_until.present? %>
+                        <span class="badge badge-sm badge-warning badge-outline whitespace-nowrap ml-1" data-parked-purchase><%= t('operator_invite_state_payment_pending') %></span>
+                      <% end %>
+                    </td>
+                    <td class="whitespace-nowrap"><%= link_to "##{invite.account_id}", operator_account_path(invite.account_id), class: 'link' %></td>
+                    <td dir="auto" class="break-all text-sm"><%= invite.invited_by&.email || '—' %></td>
+                    <td class="text-sm whitespace-nowrap"><%= l(invite.created_at.utc, format: :short) %></td>
+                  </tr>
+                <% end %>
+              </tbody>
+            </table>
+          </div>
+        <% end %>
+      </div>
+    </div>
+
+    <div class="card bg-base-100 border border-base-300" data-operator-seat-drift>
+      <div class="card-body p-5 gap-3">
+        <h2 class="text-xl font-bold"><%= t('operator_seat_drift_title') %></h2>
+        <p class="text-sm text-base-content/70 max-w-3xl"><%= t('operator_seat_drift_hint') %></p>
+        <% if @seat_scan_truncated %>
+          <p class="text-sm text-red-400" data-seat-scan-truncated><%= t('operator_seat_drift_truncated', count: Operator::ProvisioningController::SEAT_SCAN_LIMIT) %></p>
+        <% end %>
+        <% if @seat_drift.empty? %>
+          <p class="text-sm text-base-content/70" data-no-seat-drift><%= t('operator_seat_drift_none') %></p>
+        <% else %>
+          <ul class="text-sm space-y-1">
+            <% @seat_drift.each do |entry| %>
+              <li data-seat-drift-row="<%= entry[:row].account_id %>">
+                <%= link_to "#{entry[:row].account.name} (##{entry[:row].account_id})", operator_account_path(entry[:row].account), class: 'link' %>
+                — <%= t('operator_seat_drift_row', billed: entry[:row].quantity, occupied: entry[:occupied]) %>
+              </li>
+            <% end %>
+          </ul>
+        <% end %>
+      </div>
+    </div>
+  </div>
+</div>

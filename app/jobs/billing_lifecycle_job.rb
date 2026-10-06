@@ -1,0 +1,33 @@
+# frozen_string_literal: true
+
+# The billing clock's tick, hourly. Two sweeps, both idempotent, so a missed
+# hour or a double run changes nothing:
+#
+#   * dunning — reminder emails through the 14-day grace period, and the
+#     suspension at the end of it. Hourly rather than daily because "day 14"
+#     decides whether an account can still send: on a daily job a customer
+#     would keep sending for up to a day past it, and a customer who paid at
+#     09:00 would still be suspended at 09:00 the next morning.
+#
+#   * invitations — a seat held for somebody who never arrived is handed back
+#     when the invitation lapses, so the next invoice bills one fewer
+#     (Session 7 Phase B). Parked seat purchases — a card step the customer
+#     never finished — are dropped here too, and cost nothing to drop: Stripe
+#     never applied them, so there is no quantity to take back.
+#
+#   * seats — the backstop under that: any subscription still billing for
+#     more seats than the account occupies is brought back down, whatever put
+#     it there (a card step the customer finished in Stripe's own portal, a
+#     hand-back that failed while Stripe was unreachable).
+class BillingLifecycleJob < ApplicationJob
+  queue_as :billing
+
+  def perform
+    SchedulerStamps.record!('billing_lifecycle') do
+      BillingLifecycle.run_dunning!
+      BillingLifecycle.expire_invites!
+      BillingLifecycle.discard_parked_invites!
+      BillingLifecycle.reconcile_seats!
+    end
+  end
+end

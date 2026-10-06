@@ -1,0 +1,23 @@
+<%# The shape of a /verify result: a green check, the one sentence the page answers with, and nothing that could name a person. Drawn, not screenshotted, so it never goes stale. %>
+<div class="w-full max-w-sm bg-white rounded-2xl border border-base-content/10 shadow-xl p-6">
+  <div class="flex items-center gap-3">
+    <span class="inline-flex w-12 h-12 rounded-full bg-emerald-100 text-emerald-700 items-center justify-center flex-none" role="img" aria-label="Green check mark">
+      <%= svg_icon('circle_check', class: 'w-7 h-7 stroke-2') %>
+    </span>
+    <div>
+      <p class="font-semibold text-lg">Verified</p>
+      <p class="text-sm text-base-content/70">Completed through EsignCenter</p>
+    </div>
+  </div>
+  <dl class="mt-5 grid grid-cols-2 gap-3 text-sm">
+    <div class="rounded-xl bg-base-200/70 p-3">
+      <dt class="text-base-content/70">Signed on</dt>
+      <dd class="mt-1 h-3 w-24 rounded bg-base-content/20" aria-hidden="true"></dd>
+    </div>
+    <div class="rounded-xl bg-base-200/70 p-3">
+      <dt class="text-base-content/70">Signers</dt>
+      <dd class="mt-1 h-3 w-8 rounded bg-base-content/20" aria-hidden="true"></dd>
+    </div>
+  </dl>
+  <p class="mt-4 text-xs text-base-content/70">Who signed is never shown. Only that it was signed, when, and by how many.</p>
+</div>

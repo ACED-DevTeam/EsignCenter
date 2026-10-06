@@ -1,0 +1,19 @@
+<%# The one-time upgrade nudge after a free account's first signed document
+    (D50). Armed by Quotas.arm_first_completion_prompt, shown to that
+    account's administrators until one of them dismisses it.
+
+    It IS the product's upgrade card — shared/_upgrade_cta, with its own words
+    and a dismiss × — rather than a second copy of it, so the next restyle of
+    that card reaches the dashboard too. The button uses the shared
+    upgrade_cta_path helper, so it lands on billing where billing exists and on
+    the usage page otherwise: never on a refusal, never on a dead link. %>
+<% if FirstCompletionPrompt.for(account: current_account, user: current_user) %>
+  <div data-first-completion-prompt>
+    <%= render 'shared/upgrade_cta',
+               title: t('first_completion_prompt_title'),
+               body: t('first_completion_prompt_body', limit: Quotas::Limits::FREE_COMPLETIONS_PER_MONTH),
+               class: 'mb-6',
+               dismiss_path: first_completion_prompt_path,
+               dismiss_data: { first_completion_dismiss: true } %>
+  </div>
+<% end %>

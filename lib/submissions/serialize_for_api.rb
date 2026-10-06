@@ -29,9 +29,7 @@ module Submissions
       json['variables'] = (submission.variables || {}).as_json
       json['created_by_user'] ||= nil
 
-      if with_events
-        json['submission_events'] = Submitters::SerializeForApi.serialize_events(submission.submission_events)
-      end
+      json['submission_events'] = Submitters::SerializeForApi.serialize_events(submission) if with_events
 
       if params[:include].to_s.include?('fields')
         json['fields'] = submission.template_fields || submission.template&.fields

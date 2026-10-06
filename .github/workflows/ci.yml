@@ -3,6 +3,16 @@ name: CI
 on: [push]
 
 jobs:
+  public-artifacts:
+    name: Public artifacts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: 4.0.5
+      - run: ruby bin/check-public-artifacts
+
   rubocop:
     name: Rubocop
     runs-on: ubuntu-latest

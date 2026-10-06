@@ -1,0 +1,4 @@
+#!/bin/sh
+# Stands in for soffice in specs: fails at once, with a recognisable log line.
+echo "fake soffice: cannot open document" >&2
+exit 1

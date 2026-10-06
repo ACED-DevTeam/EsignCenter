@@ -1,7 +1,9 @@
 # frozen_string_literal: true
 
 RSpec.describe 'Team Settings' do
-  let(:account) { create(:account) }
+  # Seats to invite into: free accounts have one (spec/golden/quota_spec.rb
+  # proves the refusal); these examples are about the invitation UI itself.
+  let(:account) { create(:account, :paid, seats: 5) }
   let(:second_account) { create(:account) }
   let(:current_user) { create(:user, account:) }
 
@@ -33,84 +35,90 @@ RSpec.describe 'Team Settings' do
       end
     end
 
-    it 'creates a new user' do
+    # Session 7 Phase B: on a customer account the modal writes an INVITATION
+    # that holds the seat, and the person chooses their own name and password
+    # when they accept it (docs/billing.md §11). Internal and operator
+    # accounts still create the user outright.
+    it 'invites a new person and holds a seat for them' do
       click_link 'New User'
 
       within '#modal' do
-        fill_in 'First name', with: 'Joseph'
-        fill_in 'Last name', with: 'Smith'
         fill_in 'Email', with: 'joseph.smith@example.com'
-        fill_in 'Password', with: 'password'
 
-        expect do
-          click_button 'Submit'
-        end.to change(User, :count).by(1)
-
-        user = User.last
-
-        expect(user.first_name).to eq('Joseph')
-        expect(user.last_name).to eq('Smith')
-        expect(user.email).to eq('joseph.smith@example.com')
-        expect(user.account).to eq(account)
+        click_button 'Send invitation'
       end
+
+      expect(page).to have_content('User has been invited')
+
+      invite = AccountInvite.last
+
+      expect(invite.email).to eq('joseph.smith@example.com')
+      expect(invite.account).to eq(account)
+      expect(invite).to be_pending
+      expect(User.find_by(email: 'joseph.smith@example.com')).to be_nil
     end
 
-    it "doesn't create a new user if a user already exists" do
+    it "doesn't invite somebody who is already in the account" do
       click_link 'New User'
 
       within '#modal' do
-        fill_in 'First name', with: 'Michael'
-        fill_in 'Last name', with: 'Jordan'
         fill_in 'Email', with: users.first.email
-        fill_in 'Password', with: 'password'
 
         expect do
-          click_button 'Submit'
-        end.not_to change(User, :count)
+          click_button 'Send invitation'
+        end.not_to change(AccountInvite, :count)
       end
 
       expect(page).to have_content('Email already exists')
     end
 
-    it "doesn't create a new user if a user belongs to another account" do
+    # D50: this used to be "Email has already been taken", which left the
+    # invitee with nothing to click. It is now an invitation that offers to
+    # move them and their documents into this team
+    # (spec/golden/seats_spec.rb).
+    it 'offers to move somebody who already has an account of their own' do
       user = create(:user, account: second_account)
       visit settings_users_path
 
       click_link 'New User'
 
       within '#modal' do
-        fill_in 'First name', with: 'Michael'
-        fill_in 'Last name', with: 'Jordan'
         fill_in 'Email', with: user.email
-        fill_in 'Password', with: 'password'
 
-        expect do
-          click_button 'Submit'
-        end.not_to change(User, :count)
-
-        expect(page).to have_content('Email has already been taken')
+        click_button 'Send invitation'
       end
+
+      expect(page).to have_content('User has been invited')
+      expect(page).to have_no_content('already been taken')
+
+      invite = AccountInvite.find_by!(email: user.email)
+
+      expect(invite.collision_user).to eq(user)
+      expect(user.reload.account).to eq(second_account)
     end
 
-    it 'does not allow to create a new user with an invalid email' do
+    it 'does not allow an invitation to an invalid email' do
       click_link 'New User'
 
       within '#modal' do
-        fill_in 'First name', with: 'Joseph'
-        fill_in 'Last name', with: 'Smith'
         fill_in 'Email', with: 'joseph.smith@gmail'
-        fill_in 'Password', with: 'password'
 
         expect do
-          click_button 'Submit'
-        end.not_to change(User, :count)
+          click_button 'Send invitation'
+        end.not_to change(AccountInvite, :count)
 
         expect(page).to have_content('Email is invalid')
       end
     end
 
-    it 'updates a user' do
-      first(:link, 'Edit').click
+    # An administrator can REQUEST a member's new address, never complete
+    # it: it takes effect once the member opens the link mailed to it (launch
+    # security review; spec/requests/email_change_reconfirmation_spec.rb).
+    it 'updates a user, holding the new email until the member confirms it' do
+      edited = users.last
+      original_email = edited.email
+
+      first(:link, 'Edit', href: edit_user_path(edited)).click
 
       fill_in 'First name', with: 'Adam'
       fill_in 'Last name', with: 'Meier'
@@ -120,11 +128,14 @@ RSpec.describe 'Team Settings' do
         click_button 'Submit'
       end.not_to change(User, :count)
 
-      user = User.find_by(email: 'adam.meier@example.com')
+      expect(page).to have_content(I18n.t('a_confirmation_email_has_been_sent_to_the_new_email_address'))
 
-      expect(user.first_name).to eq('Adam')
-      expect(user.last_name).to eq('Meier')
-      expect(user.email).to eq('adam.meier@example.com')
+      edited.reload
+
+      expect(edited.first_name).to eq('Adam')
+      expect(edited.last_name).to eq('Meier')
+      expect(edited.email).to eq(original_email)
+      expect(edited.unconfirmed_email).to eq('adam.meier@example.com')
     end
 
     it 'removes a user' do

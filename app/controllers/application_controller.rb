@@ -5,6 +5,9 @@ class ApplicationController < ActionController::Base
 
   include ActiveStorage::SetCurrent
   include Pagy::Method
+  include OperatorAccess
+  include AccountActivityStamp
+  include SupportImpersonationGuard
 
   check_authorization unless: :devise_controller?
 
@@ -12,6 +15,11 @@ class ApplicationController < ActionController::Base
   before_action :sign_in_for_demo, if: -> { Docuseal.demo? }
   before_action :maybe_redirect_to_setup, unless: :signed_in?
   before_action :authenticate_user!, unless: :devise_controller?
+  # Support impersonation (Session 8 phase C). Declared for EVERY controller,
+  # including the ones that skip authentication: the doors a support session
+  # must not open include the signer's own public slug URLs, and a rule that
+  # only ran on authenticated controllers would leave them open.
+  before_action :enforce_support_impersonation!
 
   before_action :set_csp, if: -> { request.get? && !request.headers['HTTP_X_TURBO'] }
 
@@ -20,7 +28,10 @@ class ApplicationController < ActionController::Base
                 :true_ability,
                 :form_link_host,
                 :svg_icon,
-                :account_logo_url
+                :account_logo_url,
+                :test_mode_available?,
+                :billing_available?,
+                :upgrade_cta_path
 
   impersonates :user, with: ->(uuid) { User.find_by(uuid:) }
 
@@ -28,22 +39,74 @@ class ApplicationController < ActionController::Base
     redirect_to request.path
   end
 
+  # A paid-only feature reached from an account whose plan lacks it. JSON
+  # callers (the builder saves with a JSON body; fetch/XHR) get the API shape;
+  # a browser form goes back where it came from with an alert. The decision is
+  # always about the acting user's account, never the request's own claims.
+  rescue_from Entitlements::UpgradeRequired do |e|
+    if request.format.json? || request.xhr? || request.content_mime_type&.json?
+      render json: { error: Entitlements.refusal_message(e.feature) }, status: :forbidden
+    else
+      redirect_back fallback_location: root_path, alert: Entitlements.refusal_alert(e.feature)
+    end
+  end
+
   rescue_from RateLimit::LimitApproached do |e|
-    Rollbar.error(e) if defined?(Rollbar)
+    ErrorReport.error(e)
 
     redirect_to request.referer, alert: 'Too many requests', status: :too_many_requests
   end
 
+  # A refused action. CanCan's own message ("You are not authorized to access
+  # this page.") is developer wording and is not translated anywhere in this
+  # app, so a person parked read-only by a downgrade, or anyone on a suspended
+  # account, met an English sentence about pages when the truth is about
+  # permission. The exception still carries the detail into the error report;
+  # the reader gets one plain sentence in their own language.
   if Rails.env.production? || Rails.env.test?
     rescue_from CanCan::AccessDenied do |e|
-      Rollbar.warning(e) if defined?(Rollbar)
+      ErrorReport.warning(e)
 
-      redirect_to root_path, alert: e.message
+      # A support session that meets the ability layer instead of the request
+      # rule is still a support session meeting a locked door, and the
+      # customer's audit log has to say so (review batch 2).
+      record_support_impersonation_refusal!(support_impersonation, 'refused_by' => 'ability')
+
+      if current_user&.role == 'integration'
+        ErrorReport.warning('Legacy integration access refused', user_id: current_user.id,
+                                                                 account_id: current_user.account_id,
+                                                                 door: "#{controller_path}##{action_name}")
+        redirect_to root_path,
+                    alert: "Legacy API integrations cannot access #{controller_name.humanize.downcase} " \
+                           'for this action. ' \
+                           'Ask a human account administrator to do this.'
+      else
+        redirect_to root_path, alert: I18n.t('access_denied_alert')
+      end
     end
   end
 
   def default_url_options
     Docuseal.default_url_options
+  end
+
+  # Ordinary authenticated use is what keeps an account out of the dormant
+  # purge (AccountActivityStamp, which explains why the stamp rides on this
+  # callback rather than on one of its own). `super` throws `:warden` when
+  # the request is NOT authenticated, so nothing below it can run for an
+  # anonymous visitor.
+  def authenticate_user!(...)
+    super
+
+    record_account_activity!
+  end
+
+  # CanCan's own `current_ability`, plus the one fact it cannot see for
+  # itself: whether the person acting is really an operator inside somebody
+  # else's account, and in which mode. Read-only means the same layer a frozen
+  # account gets; both modes lose the forbidden families outright.
+  def current_ability
+    @current_ability ||= Ability.new(current_user, support_impersonation: support_impersonation_mode)
   end
 
   def impersonate_user(user)
@@ -74,6 +137,13 @@ class ApplicationController < ActionController::Base
     I18n.with_locale(locale, &)
   end
 
+  # The public marketing and legal pages are English-only by decision: a
+  # visitor is never shown a French-labelled English page, and the legal
+  # texts are the bytes the acceptance rows are hashed against.
+  def with_english(&)
+    I18n.with_locale(:en, &)
+  end
+
   def with_browser_locale(&)
     return yield if I18n.locale != :'en-US' && I18n.locale != :en
 
@@ -98,6 +168,43 @@ class ApplicationController < ActionController::Base
 
   def current_account
     current_user&.account
+  end
+
+  # Whether this person can open billing to buy or manage an existing customer:
+  # they administer the account, and the account they are billed through is a
+  # customer AND is their own — a child account's admin cannot act on the
+  # parent's billing page, so the call-to-action sends them to usage instead.
+  def billing_available?
+    return false unless current_account
+    return false unless can?(:billing, current_account)
+
+    billing = Plans.billing_account(current_account)
+
+    billing.customer? && billing == current_account &&
+      (Docuseal.billing_enabled? || billing.account_subscription&.stripe_customer_id.present?)
+  end
+
+  # Where an upgrade call-to-action goes. The billing page when there is one
+  # to go to, the usage page otherwise — never a dead link, and never a link
+  # that lands the visitor on a refusal.
+  def upgrade_cta_path
+    billing_available? ? settings_billing_path : Quotas::USAGE_PATH
+  end
+
+  def test_mode_available?
+    !true_user.account.customer?
+  end
+
+  def refuse_customer_test_mode
+    return false if test_mode_available?
+
+    if request.format.html?
+      redirect_back fallback_location: root_path, alert: I18n.t('test_mode_is_not_available_on_this_account')
+    else
+      head :forbidden
+    end
+
+    true
   end
 
   # Signed, non-expiring proxy URL for an account's custom logo, or nil when none is set.
@@ -127,12 +234,6 @@ class ApplicationController < ActionController::Base
 
   def form_link_host
     Docuseal.default_url_options[:host]
-  end
-
-  def maybe_redirect_com
-    return if request.domain != 'docuseal.co'
-
-    redirect_to request.url.gsub('.co/', '.com/'), allow_other_host: true, status: :moved_permanently
   end
 
   def set_csp

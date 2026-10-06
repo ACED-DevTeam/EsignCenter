@@ -1,0 +1,80 @@
+<%# Every webhook Stripe has sent us, in whatever state it is in. The default
+    view is the two states worth looking at — failed and processing — because
+    the thousands that worked are not what anybody opens this page for. %>
+<div class="card bg-base-100 border border-base-300" data-operator-stripe-inbox>
+  <div class="card-body p-5 gap-4">
+    <h2 class="text-xl font-bold"><%= t('operator_inbox_title') %></h2>
+
+    <%= form_with url: operator_billing_path, method: :get, data: { turbo: false }, class: 'flex flex-col md:flex-row md:items-end gap-3' do %>
+      <div class="flex flex-wrap gap-3">
+        <% Operator::BillingController::INBOX_STATUSES.each do |status| %>
+          <label class="label cursor-pointer justify-start gap-2">
+            <%= check_box_tag 'status[]', status, @inbox_statuses.include?(status), id: "inbox_status_#{status}", class: 'checkbox checkbox-sm', data: { inbox_status: status } %>
+            <span class="label-text whitespace-nowrap"><%= t("operator_inbox_status_#{status}") %> (<%= @inbox_counts.fetch(status, 0) %>)</span>
+          </label>
+        <% end %>
+      </div>
+      <button type="submit" class="btn btn-sm btn-primary"><%= t('operator_filter_apply') %></button>
+    <% end %>
+
+    <% if @events.empty? %>
+      <p class="text-sm text-base-content/70" data-no-inbox-events><%= t('operator_inbox_empty') %></p>
+    <% else %>
+      <div class="overflow-x-auto">
+        <table class="table w-full">
+          <thead class="bg-base-200">
+            <tr class="text-neutral uppercase">
+              <th><%= t('operator_inbox_event') %></th>
+              <th><%= t('operator_inbox_type') %></th>
+              <th><%= t('operator_column_created') %></th>
+              <th class="text-right"><%= t('operator_inbox_attempts') %></th>
+              <th><%= t('operator_event_account') %></th>
+              <th><%= t('operator_inbox_last_error') %></th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <% @events.each do |event| %>
+              <tr data-operator-inbox-row="<%= event.id %>">
+                <td class="text-xs font-mono break-all">
+                  <%= event.stripe_event_id %>
+                  <div class="mt-1"><span class="badge badge-sm badge-outline whitespace-nowrap" data-inbox-row-status="<%= event.status %>"><%= t("operator_inbox_status_#{event.status}") %></span></div>
+                </td>
+                <td class="text-sm whitespace-nowrap"><%= event.event_type %></td>
+                <td class="text-sm whitespace-nowrap"><%= l((event.stripe_created_at || event.created_at).utc, format: :short) %></td>
+                <td class="text-right tabular-nums"><%= event.attempts %></td>
+                <td class="whitespace-nowrap">
+                  <% if event.account_id %>
+                    <%= link_to "##{event.account_id}", operator_account_path(event.account_id), class: 'link' %>
+                  <% else %>
+                    <span class="text-base-content/70">—</span>
+                  <% end %>
+                </td>
+                <td class="text-xs max-w-sm">
+                  <% if event.last_error.present? %>
+                    <details>
+                      <summary class="cursor-pointer break-words"><%= truncate(event.last_error, length: 90) %></summary>
+                      <pre class="whitespace-pre-wrap break-words bg-base-200 rounded p-2 mt-1"><%= event.last_error %></pre>
+                    </details>
+                  <% else %>
+                    <span class="text-base-content/70">—</span>
+                  <% end %>
+                </td>
+                <td>
+                  <% if @retryable_ids.include?(event.id) %>
+                    <%= render 'operator/shared/reason_action',
+                               key: "retry_#{event.id}",
+                               url: operator_retry_stripe_event_path(event),
+                               label: t('operator_inbox_retry'),
+                               hint: t('operator_inbox_retry_hint') %>
+                  <% end %>
+                </td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+    <% end %>
+    <%= render 'shared/pagination', pagy: @pagy, items_name: 'stripe_events' %>
+  </div>
+</div>

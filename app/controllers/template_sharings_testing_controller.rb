@@ -8,6 +8,8 @@ class TemplateSharingsTestingController < ApplicationController
   end
 
   def create
+    return if refuse_customer_test_mode
+
     testing_account = Accounts.find_or_create_testing_user(true_user.account).account
 
     if params[:value] == '1'

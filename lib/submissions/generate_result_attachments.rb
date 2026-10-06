@@ -36,6 +36,11 @@ module Submissions
 
     SIGN_REASON = 'Signed with EsignCenter'
 
+    # Field types whose value is the uuid of an attachment this submitter
+    # uploaded, rather than text. Every one of them looks that attachment up
+    # to draw it (see fill_submitter_fields).
+    ATTACHMENT_FIELD_TYPES = %w[image signature initials stamp kba].freeze
+
     RTL_REGEXP = TextUtils::RTL_REGEXP
 
     TEXT_LEFT_MARGIN = 1
@@ -92,6 +97,11 @@ module Submissions
       image_pdfs = []
       original_documents = submission.schema_documents.preload(:blob)
 
+      # What each signed PDF would say on /verify, collected while the bytes
+      # are in hand and filed only once the attachments below are saved —
+      # see the note at the head of VerifiedDocuments (review 2, H2).
+      verifications = []
+
       result_attachments =
         submission.template_schema.filter_map do |item|
           pdf = pdfs_index[item['attachment_uuid']]
@@ -104,33 +114,87 @@ module Submissions
             image_pdfs << pdf
           end
 
-          build_pdf_attachment(pdf:, submitter:, pkcs:, tsa_url:,
+          build_pdf_attachment(pdf:, submitter:, pkcs:, tsa_url:, verifications:,
                                uuid: item['attachment_uuid'],
                                name: item['name'])
         end
 
-      return ApplicationRecord.no_touching { result_attachments.map { |e| e.tap(&:save!) } } if image_pdfs.size < 2
+      attachments =
+        if image_pdfs.size < 2
+          result_attachments
+        else
+          images_pdf =
+            image_pdfs.each_with_object(HexaPDF::Document.new) do |pdf, doc|
+              pdf.pages.each { |page| doc.pages << doc.import(page) }
+            end
 
-      images_pdf =
-        image_pdfs.each_with_object(HexaPDF::Document.new) do |pdf, doc|
-          pdf.pages.each { |page| doc.pages << doc.import(page) }
+          result_attachments + [
+            build_pdf_attachment(
+              pdf: normalize_image_pdf(images_pdf),
+              submitter:,
+              tsa_url:,
+              pkcs:,
+              verifications:,
+              uuid: images_pdf_uuid(original_documents.select(&:image?)),
+              name: submission.name || submission.template.name
+            )
+          ]
         end
 
-      images_pdf = normalize_image_pdf(images_pdf)
+      saved = ApplicationRecord.no_touching { attachments.map { |e| e.tap(&:save!) } }
 
-      images_pdf_attachment =
-        build_pdf_attachment(
-          pdf: images_pdf,
-          submitter:,
-          tsa_url:,
-          pkcs:,
-          uuid: images_pdf_uuid(original_documents.select(&:image?)),
-          name: submission.name || submission.template.name
-        )
+      # The record of what was signed and the retirement of what it replaces
+      # are ONE decision (review 10, B-F1). A signing job that failed after
+      # the PDF was stored is retried, this run signs the document afresh, and
+      # `verified_documents` — keyed per output — hands the output's row to
+      # the new bytes. The attachment the first attempt saved used to stay
+      # exactly where it was: the signer's completion mail carried both PDFs,
+      # `/s/:slug/download` served both, and the first one answered "not on
+      # record" at /verify because its fingerprint no longer had a row.
+      #
+      # So the superseded copy goes in the same transaction that takes its
+      # row away. If the file cannot be deleted the whole thing rolls back —
+      # the old row still describes the copy that is still on file, which is
+      # the honest state — and the job retries.
+      ApplicationRecord.transaction do
+        verifications.each { |verification| VerifiedDocuments.record_digest!(**verification) }
 
-      ApplicationRecord.no_touching do
-        (result_attachments + [images_pdf_attachment]).map { |e| e.tap(&:save!) }
+        retire_superseded_documents!(submitter, saved)
       end
+
+      saved
+    end
+
+    # The documents this run has just replaced: an earlier attempt's copy of
+    # the same schema document (they share `original_uuid`), never a document
+    # this run did not produce.
+    #
+    # Storage-first, through the same helper an expiring export uses: the
+    # object goes, it is verified gone, and only then the rows that name it —
+    # `ActiveStorage::Blob#purge` is the other way round and would leave the
+    # signer's PDF in the bucket with nothing left anywhere able to find it.
+    # Each blob here was created by `build_pdf_attachment` for this attachment
+    # alone, so nothing else can be holding it.
+    def retire_superseded_documents!(submitter, saved)
+      saved_ids = saved.map(&:id)
+      replaced = saved.map { |attachment| document_key(attachment) }
+
+      superseded = submitter.documents.reload.reject { |a| saved_ids.include?(a.id) }
+                            .select { |a| replaced.include?(document_key(a)) }
+
+      VerifiedDocuments.retire_attachments!(superseded, account_id: submitter.account_id,
+                                                        subject: 'Could not delete a superseded signed document')
+
+      submitter.documents.reset
+
+      superseded
+    end
+
+    # What a signed attachment is a copy OF — the schema document's uuid,
+    # which is also how `Submitters.select_attachments_for_download` reads
+    # these rows.
+    def document_key(attachment)
+      attachment.metadata['original_uuid'] || attachment.uuid
     end
 
     def generate_pdfs(submitter)
@@ -204,6 +268,13 @@ module Submissions
                                                                       with_timestamp_seconds:,
                                                                       with_signature_id_reason:,
                                                                       file_links_expire_at:)
+    end
+
+    # The attachment an attachment-backed field's value points at, or nil when
+    # the value names nothing this submitter uploaded. One lookup for every
+    # caller, so the nil case is answered in one place (fill_submitter_fields).
+    def field_attachment(submitter, value)
+      submitter.attachments.find { |a| a.uuid == value }
     end
 
     def fill_submitter_fields(submitter, account, pdfs_index, with_signature_id:, is_flatten:, with_headings: nil,
@@ -284,11 +355,33 @@ module Submissions
 
           next if Array.wrap(value).compact_blank.blank?
 
+          # The value names an attachment that is not this submitter's — a
+          # signature field carrying a string that was never an upload (the
+          # API takes any value a caller sends), or a uuid left behind by an
+          # attachment that no longer exists. Every branch below went straight
+          # to `attachment.uuid` / `.image?` on the result of a `find` that
+          # can return nil, so the whole job died with
+          # `undefined method 'uuid' for nil` — and because
+          # Submissions::EnsureResultGenerated replays the same data on every
+          # attempt, it died again every time: a permanent 500 on the signed
+          # PDF, with no way for the customer to get their document out.
+          #
+          # The area is skipped and reported instead. The document generates,
+          # the empty space where the signature would be is visible in it, and
+          # the report names the submitter and the field so the bad value can
+          # be found — which is a better answer than a document nobody can
+          # ever download.
+          if ATTACHMENT_FIELD_TYPES.include?(field['type']) && field_attachment(submitter, value).nil?
+            ErrorReport.warning("Missing attachment for field #{submitter.id}: #{field['uuid']}")
+
+            next
+          end
+
           if is_flatten
             begin
               page.flatten_annotations
             rescue StandardError => e
-              Rollbar.error(e) if defined?(Rollbar)
+              ErrorReport.error(e)
             end
           end
 
@@ -297,7 +390,7 @@ module Submissions
 
           field_type = field['type']
           field_type = 'file' if field_type == 'image' &&
-                                 !submitter.attachments.find { |a| a.uuid == value }.image?
+                                 !field_attachment(submitter, value).image?
 
           if field_type == 'signature' && field.dig('preferences', 'with_signature_id').in?([true, false])
             with_signature_id = field['preferences']['with_signature_id']
@@ -312,7 +405,7 @@ module Submissions
 
           case field_type
           when ->(type) { type == 'signature' && (with_signature_id || field.dig('preferences', 'reason_field_uuid')) }
-            attachment = submitter.attachments.find { |a| a.uuid == value }
+            attachment = field_attachment(submitter, value)
 
             image =
               begin
@@ -455,7 +548,7 @@ module Submissions
               )
             end
           when 'image', 'signature', 'initials', 'stamp', 'kba'
-            attachment = submitter.attachments.find { |a| a.uuid == value }
+            attachment = field_attachment(submitter, value)
 
             image =
               begin
@@ -559,7 +652,7 @@ module Submissions
 
                   Array.wrap(value).include?(option_name)
                 else
-                  Rollbar.error("Invalid option: #{field['uuid']}") if defined?(Rollbar)
+                  ErrorReport.error("Invalid option: #{field['uuid']}")
 
                   false
                 end
@@ -743,7 +836,7 @@ module Submissions
       pdfs_index
     end
 
-    def build_pdf_attachment(pdf:, submitter:, pkcs:, tsa_url:, uuid:, name:)
+    def build_pdf_attachment(pdf:, submitter:, pkcs:, tsa_url:, uuid:, name:, verifications: [])
       io = StringIO.new
 
       pdf.trailer.info[:Creator] = info_creator
@@ -766,7 +859,7 @@ module Submissions
         begin
           pdf.sign(io, write_options: { validate: false }, **sign_params)
         rescue HexaPDF::Error, NoMethodError, TypeError => e
-          Rollbar.error(e) if defined?(Rollbar)
+          ErrorReport.error(e)
 
           pdf.instance_variable_get(:@listeners)[:complete_objects].delete(pdfa_listener) if pdfa_listener
 
@@ -779,11 +872,22 @@ module Submissions
         end
 
         maybe_enable_ltv(io, sign_params)
+
+        # The bytes below are exactly what the blob stores and what a signer
+        # downloads: the public /verify page matches uploads against them.
+        # Keyed on this submitter's copy of THIS document: a retry re-signs
+        # with a new timestamp and replaces its own row instead of adding one
+        # — but only after the replacement has actually been stored, so the
+        # row for a copy already in a signer's hands is never traded for
+        # bytes that failed to upload (VerifiedDocuments).
+        verifications << { digest: VerifiedDocuments.sha256(io.string),
+                           submission: submitter.submission, kind: 'document',
+                           output_key: "document:#{submitter.id}:#{uuid}" }
       else
         begin
           pdf.write(io, incremental: true, validate: false)
         rescue HexaPDF::Error, NoMethodError => e
-          Rollbar.error(e) if defined?(Rollbar)
+          ErrorReport.error(e)
 
           begin
             pdf.write(io, incremental: false, validate: false)
@@ -868,7 +972,7 @@ module Submissions
     rescue HexaPDF::MissingGlyphError
       nil
     rescue StandardError => e
-      Rollbar.error(e) if defined?(Rollbar)
+      ErrorReport.error(e)
     end
 
     def maybe_rotate_pdf(pdf, incremental: false)
@@ -890,7 +994,7 @@ module Submissions
 
       HexaPDF::Document.new(io:)
     rescue StandardError => e
-      Rollbar.error(e) if defined?(Rollbar)
+      ErrorReport.error(e)
 
       pdf
     end
@@ -932,7 +1036,7 @@ module Submissions
 
       pdf
     rescue StandardError => e
-      Rollbar.error(e) if defined?(Rollbar)
+      ErrorReport.error(e)
 
       io.rewind
 
@@ -940,7 +1044,7 @@ module Submissions
     end
 
     def on_missing_glyph(character, font_wrapper)
-      Rails.logger.info("Missing glyph: #{character}") if character.present? && defined?(Rollbar)
+      Rails.logger.info("Missing glyph: #{character}") if character.present?
 
       replace_with =
         if font_wrapper.font_type == :Type1
@@ -1003,16 +1107,12 @@ module Submissions
     def fetch_sign_reason(submitter)
       reason_name = submitter.email || submitter.name || submitter.phone
 
-      config =
-        if Docuseal.multitenant?
-          AccountConfig.where(account: submitter.account, key: AccountConfig::ESIGNING_PREFERENCE_KEY)
-                       .first_or_initialize(value: 'single')
-        else
-          AccountConfig.where(key: AccountConfig::ESIGNING_PREFERENCE_KEY)
-                       .first_or_initialize(value: 'single')
-        end
+      # Always resolved through the submitter's own account (with the testing
+      # account's parent fallback) — an unscoped lookup would let any tenant's
+      # row decide every other tenant's signed-PDF reason text.
+      config = AccountConfigs.find_for_account(submitter.account, AccountConfig::ESIGNING_PREFERENCE_KEY)
 
-      return sign_reason(reason_name) if config.value == 'multiple'
+      return sign_reason(reason_name) if (config&.value || 'single') == 'multiple'
 
       if !submitter.submission.submitters.exists?(completed_at: nil) &&
          submitter.completed_at == submitter.submission.submitters.maximum(:completed_at)

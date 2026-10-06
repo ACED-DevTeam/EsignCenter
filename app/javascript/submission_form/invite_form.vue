@@ -11,6 +11,42 @@
       name="authenticity_token"
       :value="authenticityToken"
     >
+    <input
+      v-if="esignConsent"
+      type="hidden"
+      name="esign_consent"
+      value="true"
+    >
+    <input
+      v-if="esignConsent"
+      type="hidden"
+      name="esign_consent_version"
+      :value="esignConsentVersion"
+    >
+    <input
+      v-if="esignConsent"
+      type="hidden"
+      name="esign_consent_locale"
+      :value="esignConsentLocale"
+    >
+    <input
+      v-if="esignConsent"
+      type="hidden"
+      name="esign_consent_locale_token"
+      :value="esignConsentLocaleToken"
+    >
+    <input
+      v-if="esignConsent && esignConsentPdfUrl"
+      type="hidden"
+      name="esign_consent_pdf_opened"
+      :value="esignConsentPdfOpened"
+    >
+    <input
+      v-if="esignConsent"
+      type="hidden"
+      name="esign_consent_sender_digest"
+      :value="esignConsentSenderDigest"
+    >
     <div
       v-for="(submitter, index) in [...submitters, ...optionalSubmitters]"
       :key="submitter.uuid"
@@ -99,9 +135,57 @@ export default {
     submitterSlug: {
       type: String,
       required: true
+    },
+    // The signer ticked the ESIGN consent box during this signing: the invite
+    // request (the last one of an invite-then-complete flow) carries it too.
+    esignConsent: {
+      type: Boolean,
+      required: false,
+      default: false
+    },
+    // The disclosure version the signer agreed to (sent with the consent).
+    esignConsentVersion: {
+      type: String,
+      required: false,
+      default: ''
+    },
+    // The locale the disclosure was shown in (sent with the consent).
+    esignConsentLocale: {
+      type: String,
+      required: false,
+      default: ''
+    },
+    // The server's signature over that locale: it is what binds the recorded
+    // language to the page that rendered it (sent with the consent).
+    esignConsentLocaleToken: {
+      type: String,
+      required: false,
+      default: ''
+    },
+    // Whether the signer opened the document as a PDF before agreeing (sent
+    // with the consent; the browser's own claim, stored as such).
+    esignConsentPdfOpened: {
+      type: Boolean,
+      required: false,
+      default: false
+    },
+    // The "View this document as a PDF" link the signing page offered, if any.
+    // With no link there is no question to answer, so the claim above is not
+    // sent at all and the record says it was never taken.
+    esignConsentPdfUrl: {
+      type: String,
+      required: false,
+      default: ''
+    },
+    // Fingerprint of the sender name and address the disclosure showed; the
+    // server refuses the consent if they have changed since (sent with it).
+    esignConsentSenderDigest: {
+      type: String,
+      required: false,
+      default: ''
     }
   },
-  emits: ['success'],
+  emits: ['success', 'consentRefused'],
   data () {
     return {
       isSubmitting: false
@@ -115,13 +199,50 @@ export default {
         method: 'POST',
         body: new FormData(this.$refs.form),
         ...this.fetchOptions
-      }).then((response) => {
+      }).then(async (response) => {
         if (response.status === 200) {
           this.$emit('success')
+
+          return
+        }
+
+        // This request is the last one of an invite-then-complete signing, so
+        // it carries the ESIGN consent and the server refuses it in exactly
+        // the three ways the form step is refused. It used to swallow all of
+        // them: the button simply stopped spinning and the signer was left on
+        // a form that looked fine and would never complete. The refusals are
+        // handed to the parent, which is where the checkbox and its message
+        // live (form.vue, refuseInviteWithoutEsignConsent).
+        //
+        // Every other named refusal is looked up the way form.vue looks its
+        // own up. "Value is invalid" describes none of the cases it used to
+        // fire on — a document archived or expired while the signer had it
+        // open, or a party somebody else invited first — so those now say what
+        // actually happened, and the generic message is left for a refusal
+        // that really is about a value (an invitee with no address).
+        const error = response.status === 422 ? await this.readError(response) : null
+
+        if (error && error.startsWith('esign_consent')) {
+          this.$emit('consentRefused', error)
+        } else if (error) {
+          const i18nKey = error.replace(/\s+/g, '_').toLowerCase()
+
+          alert(this.t(i18nKey) !== i18nKey ? this.t(i18nKey) : error)
+        } else {
+          alert(this.t('value_is_invalid'))
         }
       }).finally(() => {
         this.isSubmitting = false
       })
+    },
+    // The refusals that carry a reason answer with JSON; the plain ones
+    // (`head :unprocessable_content`) have no body at all.
+    async readError (response) {
+      try {
+        return (await response.json()).error
+      } catch {
+        return null
+      }
     }
   }
 }

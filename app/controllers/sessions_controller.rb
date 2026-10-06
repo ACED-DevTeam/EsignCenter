@@ -8,16 +8,24 @@ class SessionsController < Devise::SessionsController
   def create
     email = sign_in_params[:email].to_s.downcase
 
-    if Docuseal.multitenant? && !User.exists?(email:)
-      Rollbar.warning('Sign in new user') if defined?(Rollbar)
-
-      return redirect_to new_registration_path(sign_up: true, user: sign_in_params.slice(:email)),
-                         notice: I18n.t('create_a_new_account')
-    end
-
+    # An unknown email falls through to Devise's generic "invalid email or
+    # password" answer, so sign-in never reveals which addresses exist.
     if User.exists?(email:, otp_required_for_login: true) && sign_in_params[:otp_attempt].blank?
       return render :otp, locals: { resource: User.new(sign_in_params) }, status: :unprocessable_content
     end
+
+    super
+  end
+
+  # Signing out ends a support session too, and ends it PROPERLY: the audit row
+  # that says how long an operator was inside a customer's account is written
+  # here, before Warden clears the session, because afterwards there is nothing
+  # left to write it from. Belt and braces with the sign-out itself — Warden
+  # resets the session, so the impersonation cookie cannot survive either way.
+  def destroy
+    state = support_impersonation
+
+    end_support_impersonation!(state, ended_by: 'sign_out') if state.present? && true_user.present?
 
     super
   end

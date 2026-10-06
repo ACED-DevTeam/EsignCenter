@@ -12,6 +12,9 @@ class NotificationsSettingsController < ApplicationController
   def index; end
 
   def create
+    # Reminders and BCC are paid-only rows; clearing either is always allowed.
+    Entitlements.require_for_account_config!(current_account, @account_config.key, @account_config.value)
+
     if @account_config.value.present? ? @account_config.save : @account_config.delete
       redirect_back fallback_location: settings_notifications_path, notice: I18n.t('changes_have_been_saved')
     else

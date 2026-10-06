@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 RSpec.describe SendFormViewedWebhookRequestJob do
-  let(:account) { create(:account) }
+  let(:account) { create(:account, :paid) }
   let(:user) { create(:user, account:) }
   let(:template) { create(:template, account:, author: user) }
   let(:submission) { create(:submission, template:, created_by_user: user) }
@@ -11,8 +11,7 @@ RSpec.describe SendFormViewedWebhookRequestJob do
   let(:webhook_url) { create(:webhook_url, account:, events: ['form.viewed']) }
 
   before do
-    create(:encrypted_config, key: EncryptedConfig::ESIGN_CERTS_KEY,
-                              value: GenerateCertificate.call.transform_values(&:to_pem))
+    platform_certificate!
   end
 
   describe '#perform' do

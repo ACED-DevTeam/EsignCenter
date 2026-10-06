@@ -7,6 +7,10 @@ module Api
     CREATE_RATE_LIMIT = 300
     CREATE_RATE_TTL = 1.minute
 
+    # Embedded signing sessions are their own matrix row, refused whether the
+    # caller arrived by token or by session (the generic token refusal in
+    # ApiBaseController is not what this door relies on).
+    before_action -> { Entitlements.require!(current_account, :signing_sessions) }
     before_action :load_signing_session, only: :show
 
     def show
@@ -14,6 +18,7 @@ module Api
     end
 
     def create
+      Params::PhoneTwoFactorRejector.call(params)
       Params::SigningSessionCreateValidator.call(params)
 
       authorize!(:create, Template.new(account_id: current_account.id, author: current_user))
@@ -25,18 +30,25 @@ module Api
       submission = SigningSessions::Create.call(user: current_user, ability: current_ability,
                                                 attrs: signing_session_params)
 
+      # Mirror Api::SubmissionsController#create: a submitter created with
+      # `completed: true` is sender-attested, so its completion is recorded as
+      # an API completion (never an ESIGN consent event — docs/esign-consent.md).
+      submission.submitters.each do |submitter|
+        SubmissionEvents.create_with_tracking_data(submitter, 'api_complete_form', request) if submitter.completed_at?
+      end
+
       render json: SigningSessions::SerializeForApi.call(submission)
     rescue Templates::CreateAttachments::PdfEncrypted
       render json: { error: 'The PDF is password-protected. Upload an unencrypted PDF.' },
              status: :unprocessable_content
     rescue Templates::CreateAttachments::InvalidFileType
-      render json: { error: 'Unsupported document format. Only PDF and image files are supported.' },
+      render json: { error: Templates::CreateAttachments::UNSUPPORTED_FORMAT_API_MESSAGE },
              status: :unprocessable_content
     rescue ActiveRecord::RecordNotFound
       render json: { error: 'Template not found' }, status: :unprocessable_content
     rescue Submitters::NormalizeValues::BaseError, Submissions::CreateFromSubmitters::BaseError,
-           DownloadUtils::UnableToDownload => e
-      Rollbar.warning(e) if defined?(Rollbar)
+           DownloadUtils::UnableToDownload, Templates::DocumentsNotReady => e
+      ErrorReport.warning(e)
 
       render json: { error: e.message }, status: :unprocessable_content
     end
@@ -62,7 +74,7 @@ module Api
           documents: [%i[name file]],
           submitters: [[:send_email, :send_sms, :completed_redirect_url, :uuid, :name, :email, :role,
                         :completed, :phone, :application_key, :external_id, :reply_to, :go_to_last,
-                        :require_phone_2fa, :require_email_2fa, :order, :index, :invite_by,
+                        :require_email_2fa, :order, :index, :invite_by,
                         { metadata: {}, values: {}, roles: [], readonly_fields: [], message: %i[subject body],
                           fields: [:name, :uuid, :default_value, :value, :title, :description,
                                    :readonly, :required, :validation_pattern, :invalid_message,

@@ -1,0 +1,10 @@
+<%# The reminder-email row of the template preferences dialog, in the same accordion as the signature request, documents copy and completed rows. It carries its own collapse because show.html.erb renders this partial rather than a bare form. %>
+<div class="collapse collapse-arrow join-item border border-base-300">
+  <input type="checkbox" name="accordion">
+  <div class="collapse-title text-xl font-medium">
+    <%= t('signature_request_reminder_email') %>
+  </div>
+  <div class="collapse-content">
+    <%= render 'templates_preferences/submitter_invitation_reminder_email_form' %>
+  </div>
+</div>

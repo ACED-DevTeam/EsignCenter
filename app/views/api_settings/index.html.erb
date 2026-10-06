@@ -5,6 +5,10 @@
       <h1 class="text-4xl font-bold">API</h1>
       <%= render 'shared/test_mode_toggle' %>
     </div>
+    <%= render 'shared/api_usage' %>
+    <% if cannot?(:use, :api) %>
+      <%= render 'shared/upgrade_cta', feature: 'REST API' %>
+    <% else %>
     <div class="card bg-base-200">
       <div class="card-body p-6">
         <label for="api_key" class="text-sm font-semibold">X-Auth-Token</label>
@@ -12,7 +16,16 @@
           <div class="flex w-full space-x-4">
             <% token = current_user.access_token.token %>
             <% obscured_token = current_user.access_token.token.sub(token[5..], '*' * token[5..].size) %>
-            <% if current_account.testing? %>
+            <%# A support session may see that an integration EXISTS and never
+                what its key is: no reveal link, no copy button, no data-token
+                for the masking element to hand back. The reveal door itself is
+                closed server-side (SupportImpersonation::SECRET_CONTROLLERS);
+                this is the page not offering it in the first place. %>
+            <% if support_impersonation? %>
+              <%# Not even the first five characters: this is the credential whose
+                  four sibling pages the support session closes outright. %>
+              <input id="api_key" type="text" value="<%= '•' * 24 %>" class="input font-mono input-bordered w-full" autocomplete="off" readonly data-support-impersonation-masked-token>
+            <% elsif current_account.testing? %>
               <masked-input class="block w-full" data-token="<%= token %>">
                 <input id="api_key" type="text" value="<%= obscured_token %>" class="input font-mono input-bordered w-full" autocomplete="off" readonly>
               </masked-input>
@@ -27,7 +40,9 @@
               </a>
             <% end %>
           </div>
-          <%= button_to button_title(title: t('rotate'), disabled_with: t('rotate'), icon: svg_icon('reload', class: 'w-6 h-6')), settings_api_index_path, class: 'white-button w-full', data: { turbo_confirm: t('remove_existing_api_token_and_generated_a_new_one_are_you_sure_') } %>
+          <% unless support_impersonation? %>
+            <%= button_to button_title(title: t('rotate'), disabled_with: t('rotate'), icon: svg_icon('reload', class: 'w-6 h-6')), settings_api_index_path, class: 'white-button w-full', data: { turbo_confirm: t('remove_existing_api_token_and_generated_a_new_one_are_you_sure_') } %>
+          <% end %>
         </div>
       </div>
     </div>
@@ -117,8 +132,10 @@
         </div>
       </div>
     </div>
+    <% end %>
     <div class="text-center">
-      <%= link_to t('open_full_api_reference'), "#{Docuseal::PRODUCT_URL}/docs/api", class: 'btn btn-warning text-base mt-4 px-8', target: '_blank', rel: 'noopener' %>
+      <%# The reference this instance actually serves (/docs/api), in the same tab: it is our page, it describes THIS instance's base URL, and it is always in step with the code. The prose guides in the GitHub tree are linked from it. %>
+      <%= link_to t('open_full_api_reference'), api_reference_path, class: 'btn btn-outline text-base mt-4 px-8', data: { turbo: false } %>
     </div>
   </div>
 </div>

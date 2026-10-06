@@ -3,21 +3,33 @@
 Rails.application.routes.draw do
   mount LetterOpenerWeb::Engine, at: '/letter_opener' if Rails.env.development?
 
-  if !Docuseal.multitenant? && defined?(Sidekiq::Web)
-    authenticated :user, ->(u) { u.sidekiq? } do
+  # Operator-only: outside the constraint the route does not exist, so
+  # non-operators and anonymous visitors get a 404 rather than a redirect.
+  if defined?(Sidekiq::Web)
+    authenticated :user, ->(u) { u.operator_access? } do
       mount Sidekiq::Web => '/jobs'
     end
   end
 
   root 'dashboard#index'
 
-  get 'up' => 'rails/health#show'
+  get 'up' => 'health#show'
   get 'manifest' => 'pwa#manifest'
 
-  devise_for :users, path: '/', only: %i[sessions passwords],
-                     controllers: { sessions: 'sessions', passwords: 'passwords' }
+  # :registrations is deliberately NOT in `only:` — Devise would add edit /
+  # update / destroy / cancel, and the profile page owns those. Sign-up is
+  # exactly new + create (+ the check-your-email page), drawn below inside the
+  # Devise scope; the route names give the navbar and Devise's shared links
+  # their `registration_path` / `new_registration_path`.
+  devise_for :users, path: '/', only: %i[sessions passwords confirmations omniauth_callbacks],
+                     controllers: { sessions: 'sessions', passwords: 'passwords', confirmations: 'confirmations',
+                                    omniauth_callbacks: 'omniauth_callbacks' }
 
   devise_scope :user do
+    get 'sign_up' => 'registrations#new', as: :new_registration
+    post 'sign_up' => 'registrations#create', as: :registration
+    get 'sign_up/confirm' => 'registrations#confirm', as: :confirm_registration
+
     resource :invitation, only: %i[update] do
       get '' => :edit
     end
@@ -33,6 +45,7 @@ Rails.application.routes.draw do
     resources :submitter_form_views, only: %i[create]
     resources :submitters, only: %i[index show update]
     resources :template_builder_sessions, only: %i[create show]
+    resources :template_preview_sessions, only: %i[create]
     resources :signing_sessions, only: %i[create show]
     resources :submissions, only: %i[index show create destroy] do
       resources :documents, only: %i[index], controller: 'submission_documents'
@@ -55,18 +68,55 @@ Rails.application.routes.draw do
     end
   end
 
-  resources :verify_pdf_signature, only: %i[create]
+  # Public marketing + legal pages (Session 9). Rendered in the marketing
+  # layout for anyone; the signed-out root also renders the landing page.
+  get 'pricing' => 'marketing#pricing', as: :pricing
+  get 'trust' => 'marketing#trust', as: :trust
+  get 'trust/subprocessors' => 'marketing#subprocessors', as: :subprocessors
+  get 'terms' => 'legal#terms', as: :terms
+  get 'privacy' => 'legal#privacy', as: :privacy
+
+  # The help centre, the support form and the API reference (Session 10 Phase
+  # B). Public, anonymous and English-only, like the pages above them.
+  get 'help' => 'help#index', as: :help
+  get 'help/:slug' => 'help#show', as: :help_article
+  get 'support' => 'support_requests#new', as: :support
+  post 'support' => 'support_requests#create'
+  get 'docs/api' => 'api_reference#show', as: :api_reference
+  # `format: false` so the `.json` stays part of the path rather than being
+  # read as a format segment: the URL a machine is given is a file name.
+  get 'docs/openapi.json' => 'api_reference#spec', as: :openapi_document, format: false
+
+  get 'verify' => 'verify#show', as: :verify
+  post 'verify' => 'verify#create'
   resource :mfa_setup, only: %i[show new edit create destroy], controller: 'mfa_setup'
   resources :account_configs, only: %i[create destroy]
   resources :account_custom_fields, only: %i[create]
   resources :user_configs, only: %i[create]
+  # Putting away the one-time "your first document is signed" banner (D50).
+  resource :first_completion_prompt, only: %i[destroy]
   resources :encrypted_user_configs, only: %i[destroy]
-  resources :timestamp_server, only: %i[create] unless Docuseal.multitenant?
+  resources :timestamp_server, only: %i[create]
   resources :dashboard, only: %i[index]
   resources :setup, only: %i[index create]
   resources :users, only: %i[new create edit update destroy] do
     resource :send_reset_password, only: %i[update], controller: 'users_send_reset_password'
+    # Who keeps a seat when the plan has fewer than the account has people
+    # (Session 7 Phase B): create = make read-only, destroy = give full access.
+    resource :read_only, only: %i[create destroy], controller: 'users_read_only'
   end
+
+  # Seats bought and seats handed back. `create` is the CONFIRM half of adding
+  # a seat on a paid account — the preview screen showed the prorated charge,
+  # this is the click that agrees to it.
+  resources :account_invites, only: %i[create destroy] do
+    post :resend, on: :member
+  end
+
+  # The invitation link itself: no login (a fresh invitee has no account yet),
+  # and the token is in the path because that is what an email can carry.
+  get '/invites/:token' => 'invites#show', as: :invite
+  post '/invites/:token' => 'invites#create'
   resource :user_signature, only: %i[edit update destroy]
   resource :user_initials, only: %i[edit update destroy]
   resources :submissions_archived, only: %i[index], path: 'submissions/archived'
@@ -98,15 +148,19 @@ Rails.application.routes.draw do
   resources :templates, only: %i[new create edit update show destroy] do
     resources :clone, only: %i[new create], controller: 'templates_clone'
     resource :debug, only: %i[show], controller: 'templates_debug' if Rails.env.development?
-    resources :documents, only: %i[index create], controller: 'template_documents'
+    resources :documents, only: %i[index create], controller: 'template_documents' do
+      get :status, on: :member
+    end
     resources :clone_and_replace, only: %i[create], controller: 'templates_clone_and_replace'
-    resources :detect_fields, only: %i[create], controller: 'templates_detect_fields' unless Docuseal.multitenant?
+    resources :detect_fields, only: %i[create], controller: 'templates_detect_fields'
     resources :restore, only: %i[create], controller: 'templates_restore'
     resources :archived, only: %i[index], controller: 'templates_archived_submissions'
     resources :submissions, only: %i[new create]
     resource :folder, only: %i[edit update], controller: 'templates_folders'
     resource :preview, only: %i[show], controller: 'templates_preview'
     resource :form, only: %i[show], controller: 'templates_form_preview'
+    # The same PDF the signer's consent link opens, for the form preview.
+    resource :form_document, only: %i[show], controller: 'templates_form_preview_document'
     resource :code_modal, only: %i[show], controller: 'templates_code_modal'
     resource :preferences, only: %i[show create destroy], controller: 'templates_preferences'
     resources :versions, only: %i[index show create], controller: 'templates_versions'
@@ -122,18 +176,6 @@ Rails.application.routes.draw do
   resource :blobs_proxy, only: %i[show], path: '/blobs_proxy/:signed_uuid/*filename',
                          controller: 'api/active_storage_blobs_proxy'
 
-  if Docuseal.multitenant?
-    resource :blobs_proxy_legacy, only: %i[show],
-                                  path: '/blobs/proxy/:signed_id/*filename',
-                                  controller: 'api/active_storage_blobs_proxy_legacy',
-                                  as: :rails_blob
-    get '/disk/:encoded_key/*filename' => 'active_storage/disk#show', as: :rails_disk_service
-    put '/disk/:encoded_token' => 'active_storage/disk#update', as: :update_rails_disk_service
-    post '/direct_uploads' => 'active_storage/direct_uploads#create', as: :rails_direct_uploads
-
-    ActiveSupport.run_load_hooks(:multitenant_routes, self)
-  end
-
   resources :start_form, only: %i[show update], path: 'd', param: 'slug' do
     get :completed
   end
@@ -141,6 +183,10 @@ Rails.application.routes.draw do
   resource :resubmit_form, controller: 'start_form', only: :update
   resource :submit_form_email_2fa, only: %i[create update]
   resources :start_form_email_2fa_send, only: :create
+
+  # Anonymous "Report this document" from the signing pages (ReportsController).
+  get 'report/:slug' => 'reports#new', as: :report
+  post 'report/:slug' => 'reports#create'
 
   resources :submit_form, only: %i[], path: '' do
     get :success, on: :collection
@@ -154,6 +200,9 @@ Rails.application.routes.draw do
     resources :delegate, only: %i[create], controller: 'submit_form_delegate'
     resources :invite, only: %i[create], controller: 'submit_form_invite'
     resources :metadata, only: %i[index], controller: 'submit_form_metadata'
+    # The unsigned original, for the "View this document as a PDF" link the
+    # ESIGN consent disclosure gates the checkbox behind.
+    resource :document, only: %i[show], controller: 'submit_form_document'
     resources :debug, only: %i[index], controller: 'submissions_debug' if Rails.env.development?
     get :completed
     get :delegated
@@ -175,18 +224,12 @@ Rails.application.routes.draw do
   end
 
   scope '/settings', as: :settings do
-    unless Docuseal.multitenant?
-      resources :storage, only: %i[index create], controller: 'storage_settings'
-      resources :search_entries_reindex, only: %i[create]
-      resources :sms, only: %i[index], controller: 'sms_settings'
-      resources :mcp, only: %i[index new create destroy], controller: 'mcp_settings'
-    end
-    if Docuseal.demo? || !Docuseal.multitenant?
-      resources :api, only: %i[index create], controller: 'api_settings'
-      resource :reveal_access_token, only: %i[show create], controller: 'reveal_access_token'
-    end
-    resources :email, only: %i[index create], controller: 'email_smtp_settings'
-    resources :sso, only: %i[index], controller: 'sso_settings'
+    # SMS and SAML SSO have no routes: hidden for everyone in v1 (404).
+    resources :search_entries_reindex, only: %i[create]
+    resources :mcp, only: %i[index new create destroy], controller: 'mcp_settings'
+    resources :api, only: %i[index create], controller: 'api_settings'
+    resource :reveal_access_token, only: %i[show create], controller: 'reveal_access_token'
+    resources :email, only: %i[index create destroy], controller: 'email_smtp_settings'
     resources :notifications, only: %i[index create], controller: 'notifications_settings'
     resource :esign, only: %i[show create new update destroy], controller: 'esign_settings'
     resources :users, only: %i[index]
@@ -195,6 +238,13 @@ Rails.application.routes.draw do
     resources :integration_users, only: %i[index], path: 'users/:status', controller: 'users',
                                   defaults: { status: :integration }
     resource :personalization, only: %i[show create], controller: 'personalization_settings'
+    resource :usage, only: %i[show], controller: 'usage_settings'
+    resource :billing, only: %i[show], controller: 'billing_settings'
+    post '/billing/checkout', to: 'billing_settings#checkout', as: :billing_checkout
+    post '/billing/plan', to: 'billing_settings#plan', as: :billing_plan
+    post '/billing/api_packs', to: 'billing_settings#api_packs', as: :billing_api_packs
+    post '/billing/portal', to: 'billing_settings#portal', as: :billing_portal
+    get '/billing/return', to: 'billing_settings#return', as: :billing_return
     resource :personalization_logo, only: %i[create destroy], controller: 'personalization_logo'
     resources :webhooks, only: %i[index show new create update destroy], controller: 'webhook_settings' do
       post :resend
@@ -204,23 +254,100 @@ Rails.application.routes.draw do
         post :refresh, on: :member
       end
     end
-    resource :account, only: %i[show update destroy]
+    # Taking everything with you (Session 8 phase D). Offered before the
+    # deletion door below, and deliberately still open while the account is
+    # suspended or pending deletion.
+    resource :account_export, only: %i[show create], path: 'export', controller: 'account_exports'
+    get '/export/download/:id', to: 'account_exports#download', as: :account_export_download
+
+    # Deleting the account is a 90-day decision, so it has a second door:
+    # the one that changes your mind again (lib/accounts/deletion.rb).
+    resource :account, only: %i[show update destroy] do
+      post :cancel_deletion
+      # "Email me a confirmation code" — the second way to prove it is you,
+      # for an administrator who signs in with Google (review batch 2, K9).
+      post :deletion_code
+    end
     resources :profile, only: %i[index] do
       collection do
         patch :update_contact
         patch :update_password
-        patch :update_app_url
       end
     end
   end
 
+  # The platform operator's console (Session 8). There is deliberately NO
+  # routing constraint here, unlike /jobs: the 404 comes from
+  # Operator::BaseController's prepended gate, so a route added under this
+  # namespace is closed the moment it exists rather than the moment somebody
+  # remembers to guard it.
+  namespace :operator, path: 'operator' do
+    resources :accounts, only: %i[index show] do
+      member do
+        # Read-only proof that a purge left nothing behind; writes nothing.
+        get :orphans
+
+        post :suspend
+        post :lift_suspension
+        post :resume_sending
+        post :cancel_deletion
+        post :purge
+        post :release_purge_claim
+        post :comp_grant
+        post :comp_revoke
+        patch :limits
+      end
+    end
+
+    # Support impersonation (phase C). The start door is a modal on the account
+    # page; the end door is a path of its own so the banner on every
+    # impersonated page can post to it from wherever the operator has got to.
+    resources :impersonations, only: %i[create]
+    delete 'impersonations/current', to: 'impersonations#destroy', as: :current_impersonation
+
+    resources :events, only: %i[index]
+
+    # The abuse queue: every flag the platform has raised, across accounts.
+    get 'abuse', to: 'abuse_flags#index', as: :abuse
+    post 'abuse/:id/resolve', to: 'abuse_flags#resolve', as: :resolve_abuse_flag
+    post 'abuse/:id/resume_sending', to: 'abuse_flags#resume_sending', as: :resume_sending_abuse_flag
+
+    # Revenue, the Stripe event inbox and last night's reconciliation report.
+    get 'billing', to: 'billing#show', as: :billing
+    post 'billing/events/:id/retry', to: 'billing#retry_event', as: :retry_stripe_event
+    post 'billing/adopt', to: 'billing#adopt', as: :adopt_stripe_subscription
+
+    # How accounts were provisioned, who moved where, and every invitation.
+    get 'provisioning', to: 'provisioning#show', as: :provisioning
+
+    # The recurring-job clock and its evidence.
+    get 'scheduler', to: 'scheduler#show', as: :scheduler
+    post 'scheduler/run', to: 'scheduler#run_now', as: :run_scheduler_job
+
+    # Platform-wide settings, and the read-only picture of how this
+    # deployment is configured.
+    get 'settings', to: 'settings#show', as: :settings
+    patch 'settings', to: 'settings#update'
+  end
+
+  # Stripe's own door. Deliberately outside the BILLING_ENABLED gate: the
+  # switch decides whether customers can reach the billing pages, not whether
+  # Stripe may tell us a subscription changed (see StripeWebhooksController).
+  post '/stripe/webhooks', to: 'stripe_webhooks#create', as: :stripe_webhooks
+  post '/webhooks/postmark', to: 'postmark_webhooks#create', as: :postmark_webhooks, defaults: { format: :json }
+
   match '/mcp', to: 'mcp#call', via: %i[get post]
 
   get '/js/:filename', to: 'embed_scripts#show', as: :embed_script
+  get '/embed/template_preview/:token/document', to: 'embed_template_preview#document',
+                                                 as: :embed_template_preview_document
+  get '/embed/template_preview/:token', to: 'embed_template_preview#show', as: :embed_template_preview
   get '/embed/template_builder/:token', to: 'embed_template_builder#show', as: :embed_template_builder
   put '/embed/template_builder/:token/templates/:template_id', to: 'embed_template_builder#update_template'
   get '/embed/template_builder/:token/templates/:template_id/documents', to: 'embed_template_builder#documents'
   post '/embed/template_builder/:token/templates/:template_id/documents', to: 'embed_template_builder#create_documents'
+  get '/embed/template_builder/:token/templates/:template_id/documents/:id/status',
+      to: 'embed_template_builder#document_status'
   post '/embed/template_builder/:token/templates/:template_id/detect_fields', to: 'embed_template_builder#detect_fields'
 
   ActiveSupport.run_load_hooks(:routes, self)

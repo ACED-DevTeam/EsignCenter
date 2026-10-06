@@ -1,0 +1,29 @@
+<%# The buttons for one teammate. Rendered twice — once in the phone card and
+    once in the desktop table row — so the two can never offer different
+    things to the same person. %>
+<% if params[:status].blank? && can?(:update, user) && user.archived_at.blank? %>
+  <%= link_to edit_user_path(user), class: 'btn btn-outline btn-xs', title: t('edit'), data: { turbo_frame: 'modal' } do %>
+    <%= t('edit') %>
+  <% end %>
+<% end %>
+<% if params[:status] != 'archived' && can?(:destroy, user) && user != current_user %>
+  <%= button_to user_path(user), method: :delete, class: 'btn btn-outline btn-error btn-xs', title: t('remove'), data: { turbo_confirm: t('are_you_sure_') } do %>
+    <%= t('remove') %>
+  <% end %>
+<% end %>
+<% if params[:status].blank? && can?(:update, user) && user.archived_at.blank? %>
+  <% if user.read_only? %>
+    <%= button_to user_read_only_path(user), method: :delete, class: 'btn btn-outline btn-xs', title: t('give_full_access') do %>
+      <%= t('give_full_access') %>
+    <% end %>
+  <% elsif user != current_user %>
+    <%= button_to user_read_only_path(user), method: :post, class: 'btn btn-outline btn-xs', title: t('make_read_only'), data: { turbo_confirm: t('are_you_sure_') } do %>
+      <%= t('make_read_only') %>
+    <% end %>
+  <% end %>
+<% end %>
+<% if params[:status] == 'archived' && can?(:create, user) && user != current_user && user.archived_at? %>
+  <%= button_to user_path(user), method: :put, params: { user: { archived_at: nil } }, class: 'btn btn-outline btn-xs', title: t('unarchive'), data: { turbo_confirm: t('are_you_sure_') } do %>
+    <%= t('unarchive') %>
+  <% end %>
+<% end %>

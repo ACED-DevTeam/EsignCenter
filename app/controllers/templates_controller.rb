@@ -51,7 +51,14 @@ class TemplatesController < ApplicationController
   end
 
   def update
+    Templates::AssertEntitledFields.call(current_account, template_params[:fields],
+                                         schema: template_params[:schema], baseline: @template)
+
     @template.assign_attributes(template_params)
+
+    # The converting/failed flags come from the attachments, never from the
+    # client (see Templates.refresh_conversion_flags).
+    Templates.refresh_conversion_flags(@template) if template_params.key?(:schema)
 
     is_name_changed = @template.name_changed?
 
@@ -86,7 +93,7 @@ class TemplatesController < ApplicationController
   def template_params
     params.require(:template).permit(
       :name,
-      { schema: [[:attachment_uuid, :google_drive_file_id, :name, :dynamic,
+      { schema: [[:attachment_uuid, :google_drive_file_id, :name, :dynamic, :pending_fields,
                   { conditions: [%i[field_uuid value action operation]] }]],
         submitters: [%i[name uuid is_requester linked_to_uuid invite_via_field_uuid
                         invite_by_uuid optional_invite_by_uuid email order]],

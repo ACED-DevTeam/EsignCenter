@@ -6,14 +6,19 @@ class SubmittersSendEmailController < ApplicationController
   def create
     authorize!(:update, @submitter)
 
-    if Docuseal.multitenant? && SubmissionEvent.exists?(submitter: @submitter,
-                                                        event_type: 'send_email',
-                                                        created_at: 10.hours.ago..Time.current)
-      Rollbar.warning("Already sent: #{@submitter.id}") if defined?(Rollbar)
+    # Anti-abuse: one invitation email per recipient per 10 hours.
+    if SubmissionEvent.exists?(submitter: @submitter,
+                               event_type: 'send_email',
+                               created_at: 10.hours.ago..Time.current)
+      ErrorReport.warning("Already sent: #{@submitter.id}")
 
       return redirect_back(fallback_location: submission_path(@submitter.submission),
                            alert: I18n.t('email_has_been_sent_already'))
     end
+
+    # Paused sending, the per-signer day and the free daily cap
+    # (Submitters::ResendGuard).
+    Submitters::ResendGuard.claim!(@submitter)
 
     SendSubmitterInvitationEmailJob.perform_async('submitter_id' => @submitter.id)
 
@@ -21,5 +26,7 @@ class SubmittersSendEmailController < ApplicationController
     @submitter.save!
 
     redirect_back(fallback_location: submission_path(@submitter.submission), notice: I18n.t('email_has_been_sent'))
+  rescue Quotas::LimitReached => e
+    redirect_back(fallback_location: submission_path(@submitter.submission), alert: e.localized_message)
   end
 end

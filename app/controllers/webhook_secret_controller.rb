@@ -3,6 +3,9 @@
 class WebhookSecretController < ApplicationController
   load_and_authorize_resource :webhook_url, parent: false
 
+  # Webhooks are paid-only: saving a secret header is a write (viewing stays open).
+  before_action -> { Entitlements.require!(current_account, :webhooks) }, only: :update
+
   def show; end
 
   def update

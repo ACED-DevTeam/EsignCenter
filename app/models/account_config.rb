@@ -60,6 +60,22 @@ class AccountConfig < ApplicationRecord
   TEMPLATE_CUSTOM_FIELDS_KEY = 'template_custom_fields'
   POLICY_LINKS_KEY = 'policy_links'
   ENABLE_MCP_KEY = 'enable_mcp'
+  # Boolean: hide the "Powered by" / "Sent using" wording. Honored only while
+  # the account is entitled to branding removal (Accounts.branding_removed?).
+  REMOVE_BRANDING_KEY = 'remove_branding'
+  # Written once, by StarterTemplates, the first time an account is seeded
+  # (D50). It is the "we have already done this" marker, and it outlives the
+  # templates themselves: an account that deleted all four never gets them
+  # back.
+  STARTER_TEMPLATES_SEEDED_KEY = 'starter_templates_seeded'
+  # Written once, by Quotas, when a free account's first ever document is
+  # signed (D50): `{ 'shown_at' => ..., 'dismissed_at' => ... }`. Its presence
+  # is what puts the one-time upgrade banner on the dashboards, and
+  # `dismissed_at` is what takes it away for good.
+  FIRST_COMPLETION_UPGRADE_PROMPT_KEY = 'first_completion_upgrade_prompt'
+
+  # Last safe SMTP failure and the durable, rolling 24-hour notice claim.
+  SMTP_FAILURE_KEY = 'smtp_failure'
 
   EMAIL_VARIABLES = {
     SUBMITTER_INVITATION_EMAIL_KEY => %w[template.name submitter.link account.name].freeze,

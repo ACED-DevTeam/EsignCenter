@@ -10,10 +10,26 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_06_121640) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_23_130000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gin"
   enable_extension "pg_catalog.plpgsql"
+
+  create_table "abuse_flags", force: :cascade do |t|
+    t.bigint "account_id", null: false
+    t.datetime "created_at", null: false
+    t.jsonb "details", default: {}, null: false
+    t.string "kind", null: false
+    t.string "period", default: "", null: false
+    t.datetime "resolved_at"
+    t.bigint "subject_id"
+    t.string "subject_type"
+    t.datetime "updated_at", null: false
+    t.index ["account_id", "kind", "period"], name: "index_abuse_flags_on_account_id_and_kind_and_period", unique: true, where: "((period)::text <> ''::text)"
+    t.index ["account_id"], name: "index_abuse_flags_on_account_id"
+    t.index ["resolved_at", "created_at"], name: "index_abuse_flags_on_resolved_at_and_created_at"
+    t.index ["subject_type", "subject_id"], name: "index_abuse_flags_on_subject_type_and_subject_id"
+  end
 
   create_table "access_tokens", force: :cascade do |t|
     t.datetime "created_at", null: false
@@ -43,6 +59,74 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_06_121640) do
     t.index ["account_id"], name: "index_account_configs_on_account_id"
   end
 
+  create_table "account_counters", force: :cascade do |t|
+    t.bigint "account_id", null: false
+    t.datetime "created_at", null: false
+    t.string "key", null: false
+    t.string "period", default: "", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "value", default: 0, null: false
+    t.index ["account_id", "key", "period"], name: "index_account_counters_on_account_id_and_key_and_period", unique: true
+    t.index ["account_id"], name: "index_account_counters_on_account_id"
+  end
+
+  create_table "account_exports", force: :cascade do |t|
+    t.bigint "account_id", null: false
+    t.datetime "created_at", null: false
+    t.text "error"
+    t.datetime "expires_at"
+    t.datetime "finished_at"
+    t.bigint "requested_by_id"
+    t.datetime "started_at"
+    t.string "status", default: "pending", null: false
+    t.jsonb "summary", default: {}, null: false
+    t.datetime "updated_at", null: false
+    t.index ["account_id", "created_at"], name: "index_account_exports_on_account_id_and_created_at"
+    t.index ["account_id"], name: "index_account_exports_on_account_id"
+    t.index ["requested_by_id"], name: "index_account_exports_on_requested_by_id"
+  end
+
+  create_table "account_invites", force: :cascade do |t|
+    t.datetime "accepted_at"
+    t.bigint "account_id", null: false
+    t.bigint "collision_user_id"
+    t.datetime "created_at", null: false
+    t.string "email", null: false
+    t.datetime "expires_at", null: false
+    t.bigint "invited_by_id"
+    t.datetime "payment_pending_until"
+    t.integer "pending_quantity"
+    t.datetime "released_at"
+    t.datetime "revoked_at"
+    t.string "role", null: false
+    t.string "token_digest", null: false
+    t.datetime "updated_at", null: false
+    t.index ["account_id"], name: "index_account_invites_on_account_id"
+    t.index ["collision_user_id"], name: "index_account_invites_on_collision_user_id"
+    t.index ["email"], name: "index_account_invites_on_email"
+    t.index ["expires_at"], name: "index_account_invites_on_expires_at"
+    t.index ["invited_by_id"], name: "index_account_invites_on_invited_by_id"
+    t.index ["payment_pending_until"], name: "index_account_invites_on_payment_pending_until", where: "(payment_pending_until IS NOT NULL)"
+    t.index ["token_digest"], name: "index_account_invites_on_token_digest", unique: true
+  end
+
+  create_table "account_limit_overrides", force: :cascade do |t|
+    t.bigint "account_id", null: false
+    t.integer "api_completions_per_month"
+    t.integer "completions_per_month"
+    t.datetime "created_at", null: false
+    t.integer "fair_use_per_seat"
+    t.integer "in_flight"
+    t.integer "in_flight_per_seat"
+    t.string "note"
+    t.integer "seats"
+    t.integer "sends_per_day_per_seat"
+    t.integer "sends_per_month"
+    t.bigint "storage_bytes"
+    t.datetime "updated_at", null: false
+    t.index ["account_id"], name: "index_account_limit_overrides_on_account_id", unique: true
+  end
+
   create_table "account_linked_accounts", force: :cascade do |t|
     t.bigint "account_id", null: false
     t.text "account_type", null: false
@@ -54,14 +138,83 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_06_121640) do
     t.index ["linked_account_id"], name: "index_account_linked_accounts_on_linked_account_id"
   end
 
+  create_table "account_moves", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.bigint "from_account_id", null: false
+    t.bigint "to_account_id", null: false
+    t.bigint "user_id", null: false
+    t.index ["from_account_id"], name: "index_account_moves_on_from_account_id"
+    t.index ["to_account_id"], name: "index_account_moves_on_to_account_id"
+    t.index ["user_id"], name: "index_account_moves_on_user_id"
+  end
+
+  create_table "account_subscriptions", force: :cascade do |t|
+    t.string "access_state", null: false
+    t.bigint "account_id", null: false
+    t.integer "api_pack_quantity", default: 0, null: false
+    t.datetime "cancel_at"
+    t.boolean "cancel_at_period_end", default: false, null: false
+    t.datetime "comp_expires_at"
+    t.datetime "created_at", null: false
+    t.datetime "current_period_end"
+    t.datetime "current_period_start"
+    t.datetime "ended_at"
+    t.datetime "last_stripe_event_at"
+    t.datetime "past_due_since"
+    t.string "plan", default: "paid", null: false
+    t.integer "quantity", default: 1, null: false
+    t.string "refund_owed_subscription_id"
+    t.integer "retained_api_pack_quantity", default: 0, null: false
+    t.datetime "retained_api_pack_until"
+    t.datetime "retained_business_until"
+    t.string "status"
+    t.string "stripe_customer_id"
+    t.string "stripe_item_id"
+    t.string "stripe_price_id"
+    t.string "stripe_product_id"
+    t.string "stripe_status"
+    t.string "stripe_subscription_id"
+    t.datetime "synced_at"
+    t.datetime "trial_end"
+    t.datetime "trial_used_at"
+    t.datetime "updated_at", null: false
+    t.index ["account_id"], name: "index_account_subscriptions_on_account_id", unique: true
+    t.index ["comp_expires_at"], name: "index_account_subscriptions_on_comp_expires_at", where: "(comp_expires_at IS NOT NULL)"
+    t.index ["stripe_customer_id"], name: "index_account_subscriptions_on_stripe_customer_id", unique: true, where: "(stripe_customer_id IS NOT NULL)"
+    t.index ["stripe_subscription_id"], name: "index_account_subscriptions_on_stripe_subscription_id", unique: true, where: "(stripe_subscription_id IS NOT NULL)"
+  end
+
   create_table "accounts", force: :cascade do |t|
+    t.string "account_kind", default: "customer", null: false
     t.datetime "archived_at"
     t.datetime "created_at", null: false
+    t.integer "deletion_code_attempts", default: 0, null: false
+    t.string "deletion_code_digest"
+    t.datetime "deletion_code_expires_at"
+    t.bigint "deletion_code_user_id"
+    t.datetime "deletion_code_window_started_at"
+    t.datetime "deletion_requested_at"
+    t.bigint "deletion_requested_by_id"
+    t.datetime "dormant_warning_for"
+    t.datetime "dormant_warning_sent_at"
+    t.datetime "last_active_at"
     t.string "locale", null: false
     t.string "name", null: false
+    t.datetime "purge_scheduled_for"
+    t.datetime "purge_started_at"
+    t.datetime "purged_at"
+    t.string "sending_pause_reason"
+    t.datetime "sending_paused_at"
+    t.datetime "sending_resumed_at"
+    t.datetime "suspended_at"
+    t.string "suspension_reason"
     t.string "timezone", null: false
     t.datetime "updated_at", null: false
     t.string "uuid", null: false
+    t.index ["account_kind"], name: "index_accounts_on_account_kind"
+    t.index ["deletion_requested_by_id"], name: "index_accounts_on_deletion_requested_by_id"
+    t.index ["purge_scheduled_for"], name: "index_accounts_on_pending_purge", where: "((purge_scheduled_for IS NOT NULL) AND (purged_at IS NULL))"
+    t.index ["suspended_at"], name: "index_accounts_on_suspended_at", where: "(suspended_at IS NOT NULL)"
     t.index ["uuid"], name: "index_accounts_on_uuid", unique: true
   end
 
@@ -98,6 +251,35 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_06_121640) do
     t.index ["blob_id", "variation_digest"], name: "index_active_storage_variant_records_uniqueness", unique: true
   end
 
+  create_table "api_metering_activations", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "key", null: false
+    t.datetime "starts_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["key"], name: "index_api_metering_activations_on_key", unique: true
+  end
+
+  create_table "api_pack_purchases", force: :cascade do |t|
+    t.bigint "account_subscription_id", null: false
+    t.integer "added_quantity", null: false
+    t.datetime "applied_at"
+    t.datetime "closed_at"
+    t.datetime "created_at", null: false
+    t.datetime "expires_at", null: false
+    t.string "operation_key", null: false
+    t.datetime "paid_at"
+    t.integer "previous_quantity", null: false
+    t.integer "quantity", null: false
+    t.string "stripe_customer_id", null: false
+    t.string "stripe_invoice_id"
+    t.string "stripe_subscription_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["account_subscription_id"], name: "index_api_pack_purchases_on_account_subscription_id"
+    t.index ["account_subscription_id"], name: "index_one_open_api_pack_purchase", unique: true, where: "((applied_at IS NULL) AND (closed_at IS NULL))"
+    t.index ["operation_key"], name: "index_api_pack_purchases_on_operation_key", unique: true
+    t.index ["stripe_invoice_id"], name: "index_api_pack_purchases_on_stripe_invoice_id", unique: true
+  end
+
   create_table "completed_documents", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.string "sha256", null: false
@@ -114,6 +296,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_06_121640) do
     t.boolean "is_first"
     t.integer "sms_count", null: false
     t.string "source", null: false
+    t.datetime "submission_created_at"
     t.bigint "submission_id", null: false
     t.bigint "submitter_id", null: false
     t.bigint "template_id"
@@ -206,12 +389,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_06_121640) do
     t.datetime "event_datetime", null: false
     t.string "event_type", null: false
     t.string "message_id", null: false
+    t.string "provider_event_key"
     t.string "tag", null: false
     t.index ["account_id", "event_datetime"], name: "index_email_events_on_account_id_and_event_datetime"
     t.index ["email"], name: "index_email_events_on_email"
     t.index ["email"], name: "index_email_events_on_email_event_types", where: "((event_type)::text = ANY (ARRAY[('bounce'::character varying)::text, ('soft_bounce'::character varying)::text, ('permanent_bounce'::character varying)::text, ('complaint'::character varying)::text, ('soft_complaint'::character varying)::text]))"
     t.index ["emailable_type", "emailable_id"], name: "index_email_events_on_emailable"
     t.index ["message_id"], name: "index_email_events_on_message_id"
+    t.index ["provider_event_key"], name: "index_email_events_on_provider_event_key", unique: true, where: "(provider_event_key IS NOT NULL)"
   end
 
   create_table "email_messages", force: :cascade do |t|
@@ -246,6 +431,23 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_06_121640) do
     t.text "value", null: false
     t.index ["user_id", "key"], name: "index_encrypted_user_configs_on_user_id_and_key", unique: true
     t.index ["user_id"], name: "index_encrypted_user_configs_on_user_id"
+  end
+
+  create_table "legal_acceptances", force: :cascade do |t|
+    t.datetime "accepted_at", null: false
+    t.bigint "account_id", null: false
+    t.datetime "created_at", null: false
+    t.string "document", null: false
+    t.string "ip"
+    t.string "sha256", null: false
+    t.string "source", null: false
+    t.datetime "updated_at", null: false
+    t.string "user_agent"
+    t.bigint "user_id", null: false
+    t.string "version", null: false
+    t.index ["account_id"], name: "index_legal_acceptances_on_account_id"
+    t.index ["user_id", "document"], name: "index_legal_acceptances_on_user_id_and_document"
+    t.index ["user_id"], name: "index_legal_acceptances_on_user_id"
   end
 
   create_table "lock_events", force: :cascade do |t|
@@ -313,6 +515,50 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_06_121640) do
     t.index ["uid"], name: "index_oauth_applications_on_uid", unique: true
   end
 
+  create_table "operator_events", force: :cascade do |t|
+    t.bigint "account_id"
+    t.string "action", null: false
+    t.datetime "created_at", null: false
+    t.jsonb "details", default: {}, null: false
+    t.string "ip"
+    t.bigint "operator_user_id"
+    t.text "reason"
+    t.bigint "subject_id"
+    t.string "subject_type"
+    t.index ["account_id", "created_at"], name: "index_operator_events_on_account_id_and_created_at"
+    t.index ["account_id"], name: "index_operator_events_on_account_id"
+    t.index ["action"], name: "index_operator_events_on_action"
+    t.index ["operator_user_id", "created_at"], name: "index_operator_events_on_operator_user_id_and_created_at"
+    t.index ["operator_user_id"], name: "index_operator_events_on_operator_user_id"
+    t.index ["subject_type", "subject_id"], name: "index_operator_events_on_subject_type_and_subject_id"
+  end
+
+  create_table "pending_email_events", force: :cascade do |t|
+    t.integer "attempts", default: 0, null: false
+    t.string "attribution_error"
+    t.datetime "created_at", null: false
+    t.datetime "last_attempted_at"
+    t.string "provider_event_key", null: false
+    t.string "provider_message_id", null: false
+    t.jsonb "record", default: {}, null: false
+    t.datetime "updated_at", null: false
+    t.index ["attribution_error"], name: "index_pending_email_events_on_failed_replays", where: "(attribution_error IS NOT NULL)"
+    t.index ["created_at"], name: "index_pending_email_events_on_created_at"
+    t.index ["provider_event_key"], name: "index_pending_email_events_on_provider_event_key", unique: true
+    t.index ["provider_message_id"], name: "index_pending_email_events_on_provider_message_id"
+  end
+
+  create_table "provisioning_events", force: :cascade do |t|
+    t.bigint "account_id", null: false
+    t.datetime "created_at", null: false
+    t.string "email", null: false
+    t.string "idempotency_key"
+    t.datetime "updated_at", null: false
+    t.bigint "webhook_url_id"
+    t.index ["account_id"], name: "index_provisioning_events_on_account_id"
+    t.index ["idempotency_key"], name: "index_provisioning_events_on_idempotency_key", unique: true, where: "(idempotency_key IS NOT NULL)"
+  end
+
   create_table "search_entries", force: :cascade do |t|
     t.bigint "account_id", null: false
     t.datetime "created_at", null: false
@@ -328,6 +574,25 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_06_121640) do
     t.index ["account_id", "tsvector"], name: "index_search_entries_on_account_id_tsvector_submitter", where: "((record_type)::text = 'Submitter'::text)", using: :gin
     t.index ["account_id", "tsvector"], name: "index_search_entries_on_account_id_tsvector_template", where: "((record_type)::text = 'Template'::text)", using: :gin
     t.index ["record_id", "record_type"], name: "index_search_entries_on_record_id_and_record_type", unique: true
+  end
+
+  create_table "stripe_event_inboxes", force: :cascade do |t|
+    t.bigint "account_id"
+    t.string "api_version"
+    t.integer "attempts", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.string "event_type", null: false
+    t.text "last_error"
+    t.text "payload", null: false
+    t.datetime "processed_at"
+    t.string "status", default: "pending", null: false
+    t.datetime "stripe_created_at"
+    t.string "stripe_event_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["account_id"], name: "index_stripe_event_inboxes_on_account_id"
+    t.index ["event_type", "stripe_created_at"], name: "index_stripe_event_inboxes_on_event_type_and_stripe_created_at"
+    t.index ["status"], name: "index_stripe_event_inboxes_on_status"
+    t.index ["stripe_event_id"], name: "index_stripe_event_inboxes_on_stripe_event_id", unique: true
   end
 
   create_table "submission_events", force: :cascade do |t|
@@ -352,8 +617,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_06_121640) do
     t.datetime "created_at", null: false
     t.bigint "created_by_user_id"
     t.datetime "expire_at"
+    t.bigint "lineage_root_id"
     t.text "name"
     t.text "preferences", null: false
+    t.bigint "resubmitted_from_id"
     t.string "slug", null: false
     t.string "source", null: false
     t.string "submitters_order", null: false
@@ -368,6 +635,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_06_121640) do
     t.index ["account_id", "template_id", "id"], name: "index_submissions_on_account_id_and_template_id_and_id", where: "(archived_at IS NULL)"
     t.index ["account_id", "template_id", "id"], name: "index_submissions_on_account_id_and_template_id_and_id_archived", where: "(archived_at IS NOT NULL)"
     t.index ["created_by_user_id"], name: "index_submissions_on_created_by_user_id"
+    t.index ["lineage_root_id"], name: "index_submissions_on_lineage_root_id", where: "(lineage_root_id IS NOT NULL)"
+    t.index ["resubmitted_from_id"], name: "index_submissions_on_resubmitted_from_id", where: "(resubmitted_from_id IS NOT NULL)"
     t.index ["slug"], name: "index_submissions_on_slug", unique: true
     t.index ["template_id"], name: "index_submissions_on_template_id"
   end
@@ -410,6 +679,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_06_121640) do
     t.index ["email"], name: "index_submitters_on_email"
     t.index ["external_id"], name: "index_submitters_on_external_id"
     t.index ["slug"], name: "index_submitters_on_slug", unique: true
+    t.index ["submission_id", "uuid"], name: "index_submitters_on_submission_id_and_uuid", unique: true
     t.index ["submission_id"], name: "index_submitters_on_submission_id"
   end
 
@@ -513,10 +783,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_06_121640) do
     t.datetime "locked_at"
     t.boolean "otp_required_for_login", default: false, null: false
     t.string "otp_secret"
+    t.boolean "platform_operator", default: false, null: false
+    t.datetime "read_only_at"
     t.datetime "remember_created_at"
     t.datetime "reset_password_sent_at"
     t.string "reset_password_token"
     t.string "role", null: false
+    t.integer "session_version", default: 0, null: false
     t.integer "sign_in_count", default: 0, null: false
     t.string "unconfirmed_email"
     t.string "unlock_token"
@@ -524,9 +797,24 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_06_121640) do
     t.string "uuid", null: false
     t.index ["account_id"], name: "index_users_on_account_id"
     t.index ["email"], name: "index_users_on_email", unique: true
+    t.index ["read_only_at"], name: "index_users_on_read_only_at", where: "(read_only_at IS NOT NULL)"
     t.index ["reset_password_token"], name: "index_users_on_reset_password_token", unique: true
     t.index ["unlock_token"], name: "index_users_on_unlock_token", unique: true
     t.index ["uuid"], name: "index_users_on_uuid", unique: true
+  end
+
+  create_table "verified_documents", force: :cascade do |t|
+    t.bigint "account_id"
+    t.datetime "created_at", null: false
+    t.string "kind", null: false
+    t.string "output_key"
+    t.string "sha256", null: false
+    t.datetime "signed_at", null: false
+    t.integer "signers_count", null: false
+    t.bigint "submission_id"
+    t.datetime "updated_at", null: false
+    t.index ["output_key"], name: "index_verified_documents_on_output_key", unique: true
+    t.index ["sha256"], name: "index_verified_documents_on_sha256", unique: true
   end
 
   create_table "webhook_attempts", force: :cascade do |t|
@@ -567,13 +855,27 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_06_121640) do
     t.index ["sha1"], name: "index_webhook_urls_on_sha1"
   end
 
+  add_foreign_key "abuse_flags", "accounts"
   add_foreign_key "access_tokens", "users"
   add_foreign_key "account_accesses", "accounts"
   add_foreign_key "account_configs", "accounts"
+  add_foreign_key "account_counters", "accounts"
+  add_foreign_key "account_exports", "accounts"
+  add_foreign_key "account_exports", "users", column: "requested_by_id", on_delete: :nullify
+  add_foreign_key "account_invites", "accounts"
+  add_foreign_key "account_invites", "users", column: "collision_user_id", on_delete: :nullify
+  add_foreign_key "account_invites", "users", column: "invited_by_id", on_delete: :nullify
+  add_foreign_key "account_limit_overrides", "accounts"
   add_foreign_key "account_linked_accounts", "accounts"
   add_foreign_key "account_linked_accounts", "accounts", column: "linked_account_id"
+  add_foreign_key "account_moves", "accounts", column: "from_account_id"
+  add_foreign_key "account_moves", "accounts", column: "to_account_id"
+  add_foreign_key "account_moves", "users"
+  add_foreign_key "account_subscriptions", "accounts"
+  add_foreign_key "accounts", "users", column: "deletion_requested_by_id", on_delete: :nullify
   add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
+  add_foreign_key "api_pack_purchases", "account_subscriptions"
   add_foreign_key "document_generation_events", "submitters"
   add_foreign_key "document_metadata", "accounts"
   add_foreign_key "dynamic_document_versions", "dynamic_documents"
@@ -583,14 +885,20 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_06_121640) do
   add_foreign_key "email_messages", "users", column: "author_id"
   add_foreign_key "encrypted_configs", "accounts"
   add_foreign_key "encrypted_user_configs", "users"
+  add_foreign_key "legal_acceptances", "accounts"
+  add_foreign_key "legal_acceptances", "users"
   add_foreign_key "mcp_tokens", "users"
   add_foreign_key "oauth_access_grants", "oauth_applications", column: "application_id"
   add_foreign_key "oauth_access_grants", "users", column: "resource_owner_id"
   add_foreign_key "oauth_access_tokens", "oauth_applications", column: "application_id"
   add_foreign_key "oauth_access_tokens", "users", column: "resource_owner_id"
+  add_foreign_key "operator_events", "accounts"
+  add_foreign_key "operator_events", "users", column: "operator_user_id", on_delete: :nullify
+  add_foreign_key "provisioning_events", "accounts"
   add_foreign_key "submission_events", "accounts"
   add_foreign_key "submission_events", "submissions"
   add_foreign_key "submission_events", "submitters"
+  add_foreign_key "submissions", "submissions", column: "resubmitted_from_id", on_delete: :nullify
   add_foreign_key "submissions", "templates"
   add_foreign_key "submissions", "users", column: "created_by_user_id"
   add_foreign_key "submitter_versions", "submitters"
@@ -608,5 +916,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_06_121640) do
   add_foreign_key "templates", "users", column: "author_id"
   add_foreign_key "user_configs", "users"
   add_foreign_key "users", "accounts"
+  add_foreign_key "webhook_attempts", "webhook_events", on_delete: :cascade
   add_foreign_key "webhook_urls", "accounts"
 end

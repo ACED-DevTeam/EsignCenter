@@ -19,11 +19,21 @@ class PersonalizationLogoController < ApplicationController
 
     return redirect_with_alert('Logo must be smaller than 2MB.') if file.size > MAX_LOGO_SIZE
 
+    # The logo is an account-user upload: it counts against storage like a
+    # document does, and is refused the same way when the account is full.
+    # A replacement frees the old logo, so only the growth counts: a full
+    # account can still swap its logo for one of the same size.
+    Quotas::Storage.assert_available!(current_account, [file.size - current_account.logo.blob&.byte_size.to_i, 0].max)
+
     file.tempfile.rewind
 
     current_account.logo.attach(io: file.tempfile, filename: file.original_filename, content_type:)
 
+    Quotas::Storage.after_upload(current_account)
+
     redirect_back(fallback_location: settings_personalization_path, notice: I18n.t('settings_have_been_saved'))
+  rescue Quotas::StorageLimitReached => e
+    redirect_with_alert(e.localized_message)
   end
 
   def destroy
@@ -34,9 +44,11 @@ class PersonalizationLogoController < ApplicationController
 
   private
 
-  # Branding is an account-level admin setting.
+  # Branding is an account-level admin setting, and uploading or purging a
+  # logo CHANGES the account: `:update`, so a frozen account is refused it
+  # like every other write (lib/ability.rb).
   def authorize_personalization!
-    authorize!(:manage, current_account)
+    authorize!(:update, current_account)
   end
 
   def redirect_with_alert(message)

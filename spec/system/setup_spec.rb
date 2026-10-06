@@ -7,8 +7,7 @@ RSpec.describe 'App Setup' do
       last_name: 'Doe',
       email: 'john.doe@example.com',
       company_name: 'Example Company',
-      password: 'password',
-      app_url: 'https://example.com'
+      password: 'password'
     }
   end
 
@@ -19,9 +18,12 @@ RSpec.describe 'App Setup' do
   it 'shows the setup page' do
     expect(page).to have_content('Initial Setup')
 
-    ['First name', 'Last name', 'Email', 'Company name', 'Password', 'App URL'].each do |field|
+    ['First name', 'Last name', 'Email', 'Company name', 'Password'].each do |field|
       expect(page).to have_field(field)
     end
+
+    # The application URL comes from the environment only.
+    expect(page).to have_no_field('App URL')
   end
 
   context 'when valid information' do
@@ -31,11 +33,9 @@ RSpec.describe 'App Setup' do
       expect do
         click_button 'Submit'
         page.driver.wait_for_network_idle
-      end.to change(Account, :count).by(1).and change(User, :count).by(1).and change(EncryptedConfig, :count).by(2)
+      end.to change(Account, :count).by(1).and change(User, :count).by(1).and change(EncryptedConfig, :count).by(1)
 
       user = User.last
-      encrypted_config_app_url = EncryptedConfig.find_by(account: user.account,
-                                                         key: EncryptedConfig::APP_URL_KEY)
       encrypted_config_esign_certs = EncryptedConfig.find_by(account: user.account,
                                                              key: EncryptedConfig::ESIGN_CERTS_KEY)
 
@@ -45,7 +45,6 @@ RSpec.describe 'App Setup' do
       expect(user.account.timezone).to eq('UTC')
       expect(user.account.locale).to eq('en-US')
       expect(user.account.name).to eq(form_data[:company_name])
-      expect(encrypted_config_app_url.value).to eq(form_data[:app_url])
       expect(encrypted_config_esign_certs.value).to be_present
     end
   end
@@ -91,6 +90,5 @@ RSpec.describe 'App Setup' do
     fill_in 'Email', with: form_data[:email]
     fill_in 'Company name', with: form_data[:company_name]
     fill_in 'Password', with: form_data[:password]
-    fill_in 'App URL', with: form_data[:app_url]
   end
 end

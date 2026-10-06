@@ -7,15 +7,32 @@ class TemplatesPreferencesController < ApplicationController
     AccountConfig::SUBMITTER_INVITATION_EMAIL_KEY => %w[request_email_subject request_email_body submitters],
     AccountConfig::SUBMITTER_INVITATION_REMINDER_EMAIL_KEY => %w[invitation_reminder_email_subject
                                                                  invitation_reminder_email_body],
-    AccountConfig::SUBMITTER_DOCUMENTS_COPY_EMAIL_KEY => %w[documents_copy_email_subject documents_copy_email_body],
+    # The reply-to belongs to this form and resets with it. Left out, "reset to
+    # default" cleared the subject and body a customer could see and quietly
+    # left the reply-to steering their mail — and, through
+    # Submitters::ReplyTo, the address the ESIGN disclosure names.
+    AccountConfig::SUBMITTER_DOCUMENTS_COPY_EMAIL_KEY => %w[documents_copy_email_subject documents_copy_email_body
+                                                            documents_copy_email_reply_to],
     AccountConfig::SUBMITTER_COMPLETED_EMAIL_KEY => %w[completed_notification_email_subject
                                                        completed_notification_email_body]
   }.freeze
+
+  # Per-template email copy is the custom-email-templates row; a BCC address
+  # is the BCC row. Both are refused only when a non-blank value comes in —
+  # clearing (and #destroy, the reset) is always allowed.
+  EMAIL_TEMPLATE_PREFERENCE_KEYS = %w[request_email_subject request_email_body
+                                      invitation_reminder_email_subject invitation_reminder_email_body
+                                      documents_copy_email_subject documents_copy_email_body
+                                      documents_copy_email_reply_to
+                                      completed_notification_email_subject completed_notification_email_body
+                                      submitters].freeze
 
   def show; end
 
   def create
     authorize!(:update, @template)
+
+    require_preference_entitlements!(template_params[:preferences])
 
     @template.preferences = @template.preferences.merge(template_params[:preferences])
     @template.preferences = @template.preferences.reject { |_, v| (v.is_a?(String) || v.is_a?(Hash)) && v.blank? }
@@ -45,6 +62,14 @@ class TemplatesPreferencesController < ApplicationController
 
   private
 
+  def require_preference_entitlements!(preferences)
+    Entitlements.require!(current_account, :bcc) if preferences[:bcc_completed].present?
+
+    return unless EMAIL_TEMPLATE_PREFERENCE_KEYS.any? { |key| preferences[key].present? }
+
+    Entitlements.require!(current_account, :custom_email_templates)
+  end
+
   def template_params
     params.require(:template).permit(
       preferences: %i[bcc_completed request_email_subject request_email_body
@@ -54,7 +79,7 @@ class TemplatesPreferencesController < ApplicationController
                       documents_copy_email_attach_documents documents_copy_email_reply_to
                       completed_notification_email_attach_documents
                       completed_redirect_url validate_unique_submitters
-                      require_all_submitters submitters_order require_phone_2fa require_email_2fa
+                      require_all_submitters submitters_order require_email_2fa
                       default_expire_at_duration shared_link_2fa default_expire_at request_email_enabled
                       completed_notification_email_subject completed_notification_email_body
                       completed_notification_email_enabled completed_notification_email_attach_audit] +
