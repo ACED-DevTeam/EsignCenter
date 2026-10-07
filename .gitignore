@@ -104,3 +104,4 @@ dump.rdb
 *.rej
 *.bak
 *.bak-*
+/docs/prerelease-*.md
