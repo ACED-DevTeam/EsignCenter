@@ -1,0 +1,24 @@
+<%= content_for(:html_title, "#{t('name_prompt_title')} — #{Docuseal.product_name}") %>
+<div class="max-w-lg mx-auto px-2" data-name-prompt>
+  <h1 class="text-4xl font-bold text-center mt-8" dir="auto"><%= t('name_prompt_title') %></h1>
+  <p class="text-center text-base-content/70 mt-3" dir="auto"><%= t('name_prompt_subtitle') %></p>
+  <%# What a signer reads, so the question explains itself: the account name is the sender in the default invitation (submitter_mailer/invitation_email). %>
+  <div class="mt-6 rounded-xl border border-base-300 bg-base-200/50 px-4 py-3 text-sm text-base-content/80" dir="auto" data-name-prompt-example>
+    <%= t('name_prompt_example_html') %>
+  </div>
+  <%= form_for '', url: name_prompt_path, data: { turbo_frame: :_top }, html: { class: 'space-y-6 mt-6', autocomplete: 'on' } do |f| %>
+    <div class="form-control">
+      <%= label_tag 'name', t('full_name'), class: 'label' %>
+      <%= text_field_tag 'name', @name, required: true, autofocus: true, autocomplete: 'name', maxlength: 255, dir: 'auto', class: "base-input#{' input-error' if @error_message}", aria: { invalid: @error_message.present?, describedby: ('name_error' if @error_message) } %>
+      <% if @error_message %>
+        <span id="name_error" class="text-error text-sm mt-2" dir="auto"><%= @error_message %></span>
+      <% end %>
+    </div>
+    <div class="form-control">
+      <%= f.button button_title(title: t('save'), disabled_with: t('saving')), class: 'base-button' %>
+    </div>
+  <% end %>
+  <p class="text-center text-sm text-base-content/60 mt-6" dir="auto">
+    <%= t('name_prompt_company_hint_html', url: settings_account_path) %>
+  </p>
+</div>

@@ -599,6 +599,12 @@ en: &en
   create_free_account: Create free account
   create_your_free_account: "Create your free account"
   full_name: "Full name"
+  name_prompt_title: "What's your name?"
+  name_prompt_subtitle: "Signers see it on every email you send."
+  name_prompt_example_html: '<strong>Jane Smith</strong> sent you “Lease” to sign.'
+  name_prompt_company_hint_html: 'Sending for a business? You can change the name signers see anytime in <a href="%{url}" class="link">Settings → Account</a>.'
+  name_prompt_name_required: "Enter your name, not an email address."
+  name_prompt_saved: "Thanks. Signers will now see your name."
   free_tier_summary: "Free: 5 completed documents a month, 1 user."
   continue_with_google: "Continue with Google"
   continue_with_apple: "Continue with Apple"
@@ -2500,6 +2506,12 @@ es: &es
   create_free_account: Crear cuenta gratuita
   create_your_free_account: "Crea tu cuenta gratuita"
   full_name: "Nombre completo"
+  name_prompt_title: "¿Cómo te llamas?"
+  name_prompt_subtitle: "Los firmantes lo verán en cada correo que envíes."
+  name_prompt_example_html: '<strong>Laura García</strong> te envió “Contrato de arrendamiento” para firmar.'
+  name_prompt_company_hint_html: '¿Envías en nombre de una empresa? Puedes cambiar el nombre que ven los firmantes cuando quieras en <a href="%{url}" class="link">Configuración → Cuenta</a>.'
+  name_prompt_name_required: "Escribe tu nombre, no una dirección de correo."
+  name_prompt_saved: "Gracias. Ahora los firmantes verán tu nombre."
   free_tier_summary: "Gratis: 5 documentos completados al mes, 1 usuario."
   continue_with_google: "Continuar con Google"
   continue_with_apple: "Continuar con Apple"
@@ -3903,6 +3915,12 @@ it: &it
   create_free_account: Crea un account gratuito
   create_your_free_account: "Crea il tuo account gratuito"
   full_name: "Nome completo"
+  name_prompt_title: "Come ti chiami?"
+  name_prompt_subtitle: "I firmatari lo vedranno in ogni email che invii."
+  name_prompt_example_html: '<strong>Giulia Rossi</strong> ti ha inviato “Contratto di locazione” da firmare.'
+  name_prompt_company_hint_html: 'Invii per conto di un’azienda? Puoi cambiare il nome che vedono i firmatari in qualsiasi momento in <a href="%{url}" class="link">Impostazioni → Account</a>.'
+  name_prompt_name_required: "Inserisci il tuo nome, non un indirizzo email."
+  name_prompt_saved: "Grazie. Ora i firmatari vedranno il tuo nome."
   free_tier_summary: "Gratis: 5 documenti completati al mese, 1 utente."
   continue_with_google: "Continua con Google"
   continue_with_apple: "Continua con Apple"
@@ -5306,6 +5324,12 @@ fr: &fr
   create_free_account: Créer un compte gratuit
   create_your_free_account: "Créez votre compte gratuit"
   full_name: "Nom complet"
+  name_prompt_title: "Comment vous appelez-vous ?"
+  name_prompt_subtitle: "Les signataires le verront dans chaque e-mail que vous envoyez."
+  name_prompt_example_html: '<strong>Claire Martin</strong> vous a envoyé « Bail » à signer.'
+  name_prompt_company_hint_html: 'Vous envoyez pour une entreprise ? Vous pouvez changer à tout moment le nom que voient les signataires dans <a href="%{url}" class="link">Paramètres → Compte</a>.'
+  name_prompt_name_required: "Saisissez votre nom, pas une adresse e-mail."
+  name_prompt_saved: "Merci. Les signataires verront désormais votre nom."
   free_tier_summary: "Gratuit : 5 documents complétés par mois, 1 utilisateur."
   continue_with_google: "Continuer avec Google"
   continue_with_apple: "Continuer avec Apple"
@@ -6709,6 +6733,12 @@ pt: &pt
   create_free_account: Criar conta gratuita
   create_your_free_account: "Crie a sua conta gratuita"
   full_name: "Nome completo"
+  name_prompt_title: "Qual é o seu nome?"
+  name_prompt_subtitle: "Os signatários o verão em todos os e-mails que você enviar."
+  name_prompt_example_html: '<strong>Ana Souza</strong> enviou “Contrato de locação” para você assinar.'
+  name_prompt_company_hint_html: 'Envia em nome de uma empresa? Você pode alterar o nome que os signatários veem a qualquer momento em <a href="%{url}" class="link">Configurações → Conta</a>.'
+  name_prompt_name_required: "Digite seu nome, não um endereço de e-mail."
+  name_prompt_saved: "Obrigado. Agora os signatários verão seu nome."
   free_tier_summary: "Grátis: 5 documentos concluídos por mês, 1 utilizador."
   continue_with_google: "Continuar com o Google"
   continue_with_apple: "Continuar com a Apple"
@@ -8112,6 +8142,12 @@ de: &de
   create_free_account: Kostenloses Konto erstellen
   create_your_free_account: "Kostenloses Konto erstellen"
   full_name: "Vollständiger Name"
+  name_prompt_title: "Wie heißen Sie?"
+  name_prompt_subtitle: "Unterzeichner sehen ihn in jeder E-Mail, die Sie senden."
+  name_prompt_example_html: '<strong>Anna Schmidt</strong> hat Ihnen „Mietvertrag“ zur Unterschrift gesendet.'
+  name_prompt_company_hint_html: 'Senden Sie für ein Unternehmen? Den Namen, den Unterzeichner sehen, können Sie jederzeit unter <a href="%{url}" class="link">Einstellungen → Konto</a> ändern.'
+  name_prompt_name_required: "Geben Sie Ihren Namen ein, keine E-Mail-Adresse."
+  name_prompt_saved: "Danke. Unterzeichner sehen jetzt Ihren Namen."
   free_tier_summary: "Kostenlos: 5 abgeschlossene Dokumente pro Monat, 1 Benutzer."
   continue_with_google: "Mit Google fortfahren"
   continue_with_apple: "Mit Apple fortfahren"
@@ -9426,6 +9462,12 @@ pl:
   create_free_account: Utwórz darmowe konto
   create_your_free_account: "Utwórz bezpłatne konto"
   full_name: "Imię i nazwisko"
+  name_prompt_title: "Jak się nazywasz?"
+  name_prompt_subtitle: "Sygnatariusze zobaczą je w każdym e-mailu, który wyślesz."
+  name_prompt_example_html: '<strong>Anna Kowalska</strong> wysłała Ci „Umowa najmu” do podpisania.'
+  name_prompt_company_hint_html: 'Wysyłasz w imieniu firmy? Nazwę widoczną dla sygnatariuszy możesz w każdej chwili zmienić w <a href="%{url}" class="link">Ustawienia → Konto</a>.'
+  name_prompt_name_required: "Wpisz swoje imię i nazwisko, a nie adres e-mail."
+  name_prompt_saved: "Dziękujemy. Sygnatariusze będą teraz widzieć Twoje imię i nazwisko."
   free_tier_summary: "Bezpłatnie: 5 ukończonych dokumentów miesięcznie, 1 użytkownik."
   continue_with_google: "Kontynuuj przez Google"
   continue_with_apple: "Kontynuuj przez Apple"
@@ -9905,6 +9947,12 @@ uk:
   create_free_account: Створити безкоштовний акаунт
   create_your_free_account: "Створіть безкоштовний акаунт"
   full_name: "Повне ім'я"
+  name_prompt_title: "Як вас звати?"
+  name_prompt_subtitle: "Підписанти бачитимуть його в кожному листі, який ви надсилаєте."
+  name_prompt_example_html: '<strong>Олена Коваленко</strong> надіслала вам «Договір оренди» на підпис.'
+  name_prompt_company_hint_html: 'Надсилаєте від імені компанії? Назву, яку бачать підписанти, можна будь-коли змінити в <a href="%{url}" class="link">Налаштування → Обліковий запис</a>.'
+  name_prompt_name_required: "Введіть своє ім'я, а не адресу електронної пошти."
+  name_prompt_saved: "Дякуємо. Тепер підписанти бачитимуть ваше ім'я."
   free_tier_summary: "Безкоштовно: 5 завершених документів на місяць, 1 користувач."
   continue_with_google: "Продовжити через Google"
   continue_with_apple: "Продовжити через Apple"
@@ -10384,6 +10432,12 @@ cs:
   create_free_account: Vytvořit bezplatný účet
   create_your_free_account: "Vytvořte si bezplatný účet"
   full_name: "Celé jméno"
+  name_prompt_title: "Jak se jmenujete?"
+  name_prompt_subtitle: "Podepisující ho uvidí v každém e-mailu, který pošlete."
+  name_prompt_example_html: '<strong>Jana Nováková</strong> vám poslala „Nájemní smlouva“ k podpisu.'
+  name_prompt_company_hint_html: 'Posíláte za firmu? Název, který podepisující vidí, můžete kdykoli změnit v <a href="%{url}" class="link">Nastavení → Účet</a>.'
+  name_prompt_name_required: "Zadejte své jméno, ne e-mailovou adresu."
+  name_prompt_saved: "Děkujeme. Podepisující teď uvidí vaše jméno."
   free_tier_summary: "Zdarma: 5 dokončených dokumentů měsíčně, 1 uživatel."
   continue_with_google: "Pokračovat přes Google"
   continue_with_apple: "Pokračovat přes Apple"
@@ -10861,6 +10915,12 @@ he:
   create_free_account: צור חשבון חינם
   create_your_free_account: "צרו חשבון חינמי"
   full_name: "שם מלא"
+  name_prompt_title: "מה השם שלך?"
+  name_prompt_subtitle: 'החותמים יראו אותו בכל הודעת דוא"ל שתשלחו.'
+  name_prompt_example_html: '<strong>נועה כהן</strong> שלחה לך את "חוזה שכירות" לחתימה.'
+  name_prompt_company_hint_html: 'שולחים בשם עסק? אפשר לשנות בכל עת את השם שהחותמים רואים ב<a href="%{url}" class="link">הגדרות ← חשבון</a>.'
+  name_prompt_name_required: 'יש להזין שם, לא כתובת דוא"ל.'
+  name_prompt_saved: "תודה. מעכשיו החותמים יראו את השם שלך."
   free_tier_summary: "חינם: 5 מסמכים שהושלמו בחודש, משתמש אחד."
   continue_with_google: "המשך עם Google"
   continue_with_apple: "המשך עם Apple"
@@ -11430,6 +11490,12 @@ nl: &nl
   create_free_account: Gratis account aanmaken
   create_your_free_account: "Maak je gratis account aan"
   full_name: "Volledige naam"
+  name_prompt_title: "Hoe heet je?"
+  name_prompt_subtitle: "Ondertekenaars zien die in elke e-mail die je verstuurt."
+  name_prompt_example_html: '<strong>Sanne de Vries</strong> heeft je „Huurovereenkomst” gestuurd om te ondertekenen.'
+  name_prompt_company_hint_html: 'Verstuur je namens een bedrijf? De naam die ondertekenaars zien, kun je altijd wijzigen in <a href="%{url}" class="link">Instellingen → Account</a>.'
+  name_prompt_name_required: "Vul je naam in, geen e-mailadres."
+  name_prompt_saved: "Bedankt. Ondertekenaars zien nu je naam."
   free_tier_summary: "Gratis: 5 voltooide documenten per maand, 1 gebruiker."
   continue_with_google: "Doorgaan met Google"
   continue_with_apple: "Doorgaan met Apple"
@@ -12750,6 +12816,12 @@ ar:
   create_free_account: إنشاء حساب مجاني
   create_your_free_account: "أنشئ حسابك المجاني"
   full_name: "الاسم الكامل"
+  name_prompt_title: "ما اسمك؟"
+  name_prompt_subtitle: "سيراه الموقّعون في كل رسالة بريد إلكتروني ترسلها."
+  name_prompt_example_html: 'أرسلت لك <strong>سارة أحمد</strong> "عقد إيجار" لتوقيعه.'
+  name_prompt_company_hint_html: 'هل ترسل نيابةً عن شركة؟ يمكنك تغيير الاسم الذي يراه الموقّعون في أي وقت من <a href="%{url}" class="link">الإعدادات ← الحساب</a>.'
+  name_prompt_name_required: "أدخل اسمك، وليس عنوان بريد إلكتروني."
+  name_prompt_saved: "شكرًا. سيرى الموقّعون اسمك من الآن."
   free_tier_summary: "مجانًا: 5 مستندات مكتملة شهريًا، مستخدم واحد."
   continue_with_google: "المتابعة باستخدام Google"
   continue_with_apple: "المتابعة باستخدام Apple"
@@ -13225,6 +13297,12 @@ ko:
   create_free_account: 무료 계정 생성
   create_your_free_account: "무료 계정 만들기"
   full_name: "이름"
+  name_prompt_title: "이름이 무엇인가요?"
+  name_prompt_subtitle: "보내는 모든 이메일에서 서명자가 이 이름을 보게 됩니다."
+  name_prompt_example_html: '<strong>김지은</strong>님이 "임대차 계약서" 서명을 요청했습니다.'
+  name_prompt_company_hint_html: '회사 이름으로 보내시나요? 서명자에게 보이는 이름은 언제든지 <a href="%{url}" class="link">설정 → 계정</a>에서 바꿀 수 있습니다.'
+  name_prompt_name_required: "이메일 주소가 아닌 이름을 입력하세요."
+  name_prompt_saved: "감사합니다. 이제 서명자에게 이름이 표시됩니다."
   free_tier_summary: "무료: 월 5건의 완료 문서, 사용자 1명."
   continue_with_google: "Google로 계속하기"
   continue_with_apple: "Apple로 계속하기"
@@ -13700,6 +13778,12 @@ ja:
   create_free_account: 無料アカウントを作成
   create_your_free_account: "無料アカウントを作成"
   full_name: "氏名"
+  name_prompt_title: "お名前を教えてください"
+  name_prompt_subtitle: "送信するすべてのメールで、署名者にこの名前が表示されます。"
+  name_prompt_example_html: '<strong>佐藤 花子</strong>さんから「賃貸借契約書」の署名依頼が届いています。'
+  name_prompt_company_hint_html: '会社として送信しますか？署名者に表示される名前は、<a href="%{url}" class="link">設定 → アカウント</a>でいつでも変更できます。'
+  name_prompt_name_required: "メールアドレスではなく、お名前を入力してください。"
+  name_prompt_saved: "ありがとうございます。今後、署名者にはお名前が表示されます。"
   free_tier_summary: "無料プラン：月5件の完了ドキュメント、ユーザー1名。"
   continue_with_google: "Googleで続行"
   continue_with_apple: "Appleで続行"

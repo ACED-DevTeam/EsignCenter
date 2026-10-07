@@ -493,6 +493,7 @@ RSpec.describe 'Account suspension', type: :request do # rubocop:disable RSpec/M
         email_smtp_settings#create email_smtp_settings#destroy
         first_completion_prompts#destroy
         mcp_settings#create mcp_settings#destroy
+        name_prompts#create
         notifications_settings#create
         personalization_settings#create personalization_logo#create personalization_logo#destroy
         submissions#create submissions#destroy submissions_resend_email#create submissions_unarchive#create
@@ -570,6 +571,9 @@ RSpec.describe 'Account suspension', type: :request do # rubocop:disable RSpec/M
           account_config: { key: AccountConfig::ALLOW_TO_DECLINE_KEY, value: 'true' }
         },
         [:post, '/account_custom_fields'] => { name: 'While suspended' },
+        # The one-time name prompt writes the account name, so the frozen layer
+        # closes it like the account settings form.
+        [:post, '/welcome/name'] => { name: 'Renamed while suspended' },
         [:post, '/settings/api'] => {},
         # Session 10: putting away the first-completion upgrade banner is an
         # ordinary write on an AccountConfig, and the frozen layer closes it

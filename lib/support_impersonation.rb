@@ -183,6 +183,7 @@ module SupportImpersonation
     'passwords' => :forbidden,     # reset flows
     'profile' => :forbidden,       # name, email address and password
     'mfa_setup' => :forbidden,     # enrolling or removing 2FA
+    'name_prompts' => :forbidden,  # the customer's own name and account name
     'api_settings' => :forbidden,  # rotating the API token (page masked)
     'reveal_access_token' => :secret,   # printing the API token
     'mcp_settings' => :secret,          # printing MCP tokens

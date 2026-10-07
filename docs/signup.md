@@ -101,6 +101,19 @@ deliverable mailbox and is stored and used exactly like any other — nothing
 in the product treats it differently. It is worth knowing only because a
 customer may be puzzled by the address on their own profile page.
 
+**No name, no sender.** A new account is named after the person, and that
+name is the sender on every email their signers get (*"Jane Smith sent you
+"Lease" to sign"*). When no name comes back — Apple, with the name switched
+off — the account is named after the email address instead, which for a
+private relay reads as spam. So the first time that person opens their
+dashboard they are asked **What's your name?** on a page of its own, with
+one field. Saving fills in their own first and last name and the account
+name together, and the question never comes back. It is asked only of the
+admin whose address the account is named after, on a customer account, and
+never during a support session; a blank answer or another email address is
+refused. A business can still change the sender to its company name at any
+time in **Settings → Account**.
+
 **3. Apple answers with a form submission, not a redirect.** Google sends the
 browser back to us with an ordinary link; Apple sends it back with a hidden
 form that posts from Apple's own website. Two consequences, both handled:

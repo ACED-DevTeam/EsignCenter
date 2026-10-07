@@ -5,6 +5,7 @@ class DashboardController < ApplicationController
 
   before_action :maybe_render_landing
   before_action :maybe_redirect_mfa_setup
+  before_action :maybe_redirect_name_prompt
 
   skip_authorization_check
 
@@ -27,6 +28,19 @@ class DashboardController < ApplicationController
                                                                              key: AccountConfig::FORCE_MFA)
 
     redirect_to mfa_setup_path, notice: I18n.t('setup_2fa_to_continue')
+  end
+
+  # An account still named after its owner's email address asks them for a
+  # name, once (NamePromptsController). Never during a support session — the
+  # name is the customer's to give — and never for an account that could not
+  # save it anyway (frozen or suspended), which would only loop.
+  def maybe_redirect_name_prompt
+    return unless signed_in?
+    return if support_impersonation?
+    return unless Registrations.name_missing?(current_user)
+    return unless can?(:update, current_account)
+
+    redirect_to name_prompt_path
   end
 
   def maybe_render_landing
