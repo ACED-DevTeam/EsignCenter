@@ -278,6 +278,7 @@ module Gates
     app/views/embed_template_builder/upgrade_required.html.erb
     app/views/layouts/application.html.erb
     app/views/layouts/marketing.html.erb
+    app/views/layouts/plain.html.erb
     app/views/send_submission_email/success.html.erb
     app/views/shared/_attribution.html.erb
     app/views/start_form/completed.html.erb
@@ -299,7 +300,6 @@ module Gates
     app/views/submit_form/expired.html.erb
     app/views/submit_form/show.html.erb
     app/views/submit_form/success.html.erb
-    app/views/templates/edit.html.erb
     app/views/verify/show.html.erb
   ].freeze
   # The QR page carries its own branding partial, so it names its own call.

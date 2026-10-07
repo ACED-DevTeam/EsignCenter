@@ -11,6 +11,15 @@
     <%= render 'shared/support_impersonation_banner' %>
     <% if flash.present? %><%= render 'shared/flash' %><% end %>
     <%= yield %>
+    <%# AGPL LICENSE_ADDITIONAL_TERMS: the DocuSeal attribution and the source
+        link (AGPL section 13) must reach every user. The embedded builder
+        draws its own footer, so the layout only adds one when the page has
+        not. %>
+    <% unless content_for?(:attribution_rendered) %>
+      <footer class="py-3 text-xs text-base-content/70">
+        <%= render 'shared/attribution', account: current_account || @submission&.account || @template&.account %>
+      </footer>
+    <% end %>
     <turbo-frame id="modal"></turbo-frame>
   </body>
 </html>

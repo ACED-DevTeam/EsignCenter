@@ -1,23 +1,21 @@
 # frozen_string_literal: true
 
 # AGPL LICENSE_ADDITIONAL_TERMS and section 13 reach the people who run an
-# account too, not only their signers: the signed-in app, the template builder
-# and the signed-out sign-in page each carry the DocuSeal credit (pointing at
-# its source repository) and the link to this fork's own source. The credit
-# stays even for a paid account that switched its branding off; only the
-# "Powered by" wording follows that flag, as it does on the signing pages.
+# account too, not only their signers: the signed-in app (both of its
+# layouts) and the signed-out sign-in page each carry the DocuSeal credit
+# (pointing at its source repository) and the link to this fork's own source.
+# The credit stays even for a paid account that switched its branding off;
+# only the "Powered by" wording follows that flag, as on the signing pages.
 describe 'Attribution in the app' do
   let(:account) { create(:account, :paid) }
   let(:admin) { create(:user, :admin, account:) }
 
   def attribution_links(body)
-    footer = Nokogiri::HTML(body).css('footer, .text-center').to_a
+    page = Nokogiri::HTML(body)
 
     {
-      docuseal: footer.flat_map { |node| node.css("a[href='#{Docuseal::DOCUSEAL_SOURCE_URL}']") }
-                      .select { |a| a.text.strip == 'DocuSeal' },
-      source: footer.flat_map { |node| node.css("a[href='#{Docuseal::GITHUB_URL}']") }
-                    .select { |a| a.text.strip == 'Source' }
+      docuseal: page.css("a[href='#{Docuseal::DOCUSEAL_SOURCE_URL}']").select { |a| a.text.strip == 'DocuSeal' },
+      source: page.css("a[href='#{Docuseal::GITHUB_URL}']").select { |a| a.text.strip == 'Source' }
     }
   end
 
@@ -45,14 +43,21 @@ describe 'Attribution in the app' do
     end
   end
 
-  it 'shows the attribution in the template builder' do
+  # These screens render with the plain layout rather than the main one.
+  it 'shows the attribution once on the signed-in plain-layout screens' do
     template = create(:template, account:, author: admin)
+    submission = create(:submission, :with_submitters, template:, created_by_user: admin)
     sign_in(admin)
 
-    get "/templates/#{template.id}/edit"
+    paths = ["/templates/#{template.id}/edit", "/templates/#{template.id}/preview", "/submissions/#{submission.id}"]
 
-    expect(response).to have_http_status(:ok)
-    expect_attribution(response.body)
+    paths.each do |path|
+      get path
+
+      expect(response).to have_http_status(:ok), "#{path} answered #{response.status}"
+      expect_attribution(response.body)
+      expect(attribution_links(response.body)[:docuseal].size).to eq(1), "#{path} drew the attribution more than once"
+    end
   end
 
   it 'shows the attribution on the signed-out sign-in page' do
