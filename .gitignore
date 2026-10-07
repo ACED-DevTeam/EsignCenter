@@ -79,3 +79,29 @@ dump.rdb
 /docs/release-readiness-*.md
 /docs/launch-review-*.md
 /docs/api-usage-tiers-verification.md
+
+# Local agent instructions and tool state (never public)
+/CLAUDE.local.md
+/AGENTS.md
+/AGENTS.override.md
+/.codex/
+/.cursor/
+/.claude/*
+!/.claude/launch.json
+/.vscode/
+/.idea/
+
+# Keys, certificates, local databases and merge leftovers anywhere in the tree
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.sqlite3
+*.dump
+*.orig
+*.rej
+*.bak
+*.bak-*
+/docs/prerelease-*.md

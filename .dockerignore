@@ -56,3 +56,12 @@
 /docs/release-readiness-*.md
 /docs/launch-review-*.md
 /docs/api-usage-tiers-verification.md
+/CLAUDE.local.md
+/AGENTS.md
+/AGENTS.override.md
+/.cursor
+*.pem
+*.key
+*.p12
+*.pfx
+/docs/prerelease-*.md
