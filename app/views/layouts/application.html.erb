@@ -30,6 +30,11 @@
     <div class="max-w-6xl mx-auto px-4 md:px-2 mb-8">
       <%= yield %>
     </div>
+    <%# AGPL LICENSE_ADDITIONAL_TERMS: the DocuSeal attribution and the source
+        link (AGPL section 13) must reach every user, signed in or not. %>
+    <footer class="max-w-6xl mx-auto px-4 md:px-2 pb-6 text-xs text-base-content/60">
+      <%= render 'shared/attribution', account: current_account %>
+    </footer>
     <%= render 'shared/body_scripts' %>
   </body>
 </html>
