@@ -276,6 +276,7 @@ module Gates
   ATTRIBUTION_RENDER_SITES = %w[
     app/views/embed_template_builder/show.html.erb
     app/views/embed_template_builder/upgrade_required.html.erb
+    app/views/layouts/application.html.erb
     app/views/layouts/marketing.html.erb
     app/views/send_submission_email/success.html.erb
     app/views/shared/_attribution.html.erb
@@ -298,6 +299,7 @@ module Gates
     app/views/submit_form/expired.html.erb
     app/views/submit_form/show.html.erb
     app/views/submit_form/success.html.erb
+    app/views/templates/edit.html.erb
     app/views/verify/show.html.erb
   ].freeze
   # The QR page carries its own branding partial, so it names its own call.
