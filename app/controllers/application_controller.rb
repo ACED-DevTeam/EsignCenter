@@ -216,10 +216,15 @@ class ApplicationController < ActionController::Base
   end
 
   # The account whose branding setting a layout's attribution footer follows:
-  # the signed-in one, else the one that owns the page (a signer's, a
-  # submission's or a template's). Nil keeps the full wording.
+  # the one that owns the page (a signer's, a submission's, a template's, or
+  # the team an invitation joins), else the signed-in one. The owner comes
+  # first because a public page belongs to its account, not to whoever
+  # happens to be signed in while reading it. Nil keeps the full wording.
   def attribution_account
-    current_account || @submitter&.account || @submission&.account || @template&.account
+    owner = @submitter&.account || @submission&.account || @template&.account
+    owner ||= @account if @account.is_a?(Account)
+
+    owner || current_account
   end
 
   def true_ability

@@ -78,6 +78,28 @@ describe 'Attribution in the app' do
     end
   end
 
+  # A public page follows the branding of the account it belongs to, not of
+  # whoever happens to be signed in (or nobody) while reading it.
+  it "follows the page-owning account's branding on an invitation and a document report" do
+    create(:account_config, account:, key: AccountConfig::REMOVE_BRANDING_KEY, value: true)
+    invite = create(:account_invite, account:)
+    template = create(:template, account:, author: admin)
+    submission = create(:submission, :with_submitters, template:, created_by_user: admin)
+
+    get "/invites/#{invite.raw_token}"
+
+    expect(response).to have_http_status(:ok)
+    expect_attribution(response.body, powered_by: false)
+
+    reader_account = create(:account)
+    sign_in(create(:user, :admin, account: reader_account))
+
+    get "/report/#{submission.submitters.first.slug}"
+
+    expect(response).to have_http_status(:ok)
+    expect_attribution(response.body, powered_by: false)
+  end
+
   it 'shows the attribution on the signed-out sign-in page' do
     create(:user)
 
