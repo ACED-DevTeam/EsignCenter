@@ -78,6 +78,20 @@ describe 'Attribution in the app' do
     end
   end
 
+  # The phone signature pad (the "sign on your phone" QR code) has no layout.
+  it 'shows the attribution once on the phone signature pad' do
+    template = create(:template, account:, author: admin)
+    submission = create(:submission, :with_submitters, template:, created_by_user: admin)
+    submitter = submission.submitters.first
+    signature = template.fields.find { |f| f['type'] == 'signature' && f['submitter_uuid'] == submitter.uuid }
+
+    get "/p/#{submitter.slug}", params: { f: signature['uuid'].first(8) }
+
+    expect(response).to have_http_status(:ok)
+    expect_attribution(response.body)
+    expect(attribution_links(response.body)[:docuseal].size).to eq(1)
+  end
+
   # A public page follows the branding of the account it belongs to, not of
   # whoever happens to be signed in (or nobody) while reading it.
   it "follows the page-owning account's branding on an invitation and a document report" do

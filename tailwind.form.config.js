@@ -8,6 +8,8 @@ module.exports = {
     './app/views/start_form/**/*.erb',
     './app/views/verify/**/*.erb',
     './app/views/invites/**/*.erb',
+    './app/views/layouts/form.html.erb',
+    './app/views/submit_form_draw_signature/**/*.erb',
     './app/views/shared/_html_modal.html.erb',
     './app/views/shared/_button_title.html.erb',
     './app/views/shared/_attribution.html.erb',

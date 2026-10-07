@@ -301,6 +301,7 @@ module Gates
     app/views/submit_form/expired.html.erb
     app/views/submit_form/show.html.erb
     app/views/submit_form/success.html.erb
+    app/views/submit_form_draw_signature/show.html.erb
     app/views/verify/show.html.erb
   ].freeze
   # The QR page carries its own branding partial, so it names its own call.
