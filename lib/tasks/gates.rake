@@ -277,6 +277,7 @@ module Gates
     app/views/embed_template_builder/show.html.erb
     app/views/embed_template_builder/upgrade_required.html.erb
     app/views/layouts/application.html.erb
+    app/views/layouts/form.html.erb
     app/views/layouts/marketing.html.erb
     app/views/layouts/plain.html.erb
     app/views/send_submission_email/success.html.erb

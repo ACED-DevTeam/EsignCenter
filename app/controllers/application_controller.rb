@@ -29,6 +29,7 @@ class ApplicationController < ActionController::Base
                 :form_link_host,
                 :svg_icon,
                 :account_logo_url,
+                :attribution_account,
                 :test_mode_available?,
                 :billing_available?,
                 :upgrade_cta_path
@@ -212,6 +213,13 @@ class ApplicationController < ActionController::Base
     return unless account&.logo&.attached?
 
     ActiveStorage::Blob.proxy_url(account.logo.blob)
+  end
+
+  # The account whose branding setting a layout's attribution footer follows:
+  # the signed-in one, else the one that owns the page (a signer's, a
+  # submission's or a template's). Nil keeps the full wording.
+  def attribution_account
+    current_account || @submitter&.account || @submission&.account || @template&.account
   end
 
   def true_ability

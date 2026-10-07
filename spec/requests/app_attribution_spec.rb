@@ -1,11 +1,12 @@
 # frozen_string_literal: true
 
 # AGPL LICENSE_ADDITIONAL_TERMS and section 13 reach the people who run an
-# account too, not only their signers: the signed-in app (both of its
-# layouts) and the signed-out sign-in page each carry the DocuSeal credit
-# (pointing at its source repository) and the link to this fork's own source.
-# The credit stays even for a paid account that switched its branding off;
-# only the "Powered by" wording follows that flag, as on the signing pages.
+# account too, not only their signers: every layout of the signed-in app, the
+# form-layout pages without a footer of their own and the signed-out sign-in
+# page each carry the DocuSeal credit (pointing at its source repository) and
+# the link to this fork's own source, exactly once. The credit stays even for
+# a paid account that switched its branding off; only the "Powered by" wording
+# follows that flag, as on the signing pages.
 describe 'Attribution in the app' do
   let(:account) { create(:account, :paid) }
   let(:admin) { create(:user, :admin, account:) }
@@ -55,6 +56,23 @@ describe 'Attribution in the app' do
       get path
 
       expect(response).to have_http_status(:ok), "#{path} answered #{response.status}"
+      expect_attribution(response.body)
+      expect(attribution_links(response.body)[:docuseal].size).to eq(1), "#{path} drew the attribution more than once"
+    end
+  end
+
+  # The form layout carries the signing pages, which draw their own footer, and
+  # a few pages that do not: an invitation and a signer's document report.
+  it 'shows the attribution once on form-layout pages that have no footer of their own' do
+    template = create(:template, account:, author: admin)
+    submission = create(:submission, :with_submitters, template:, created_by_user: admin)
+
+    { '/invites/not-a-real-token' => :gone,
+      "/report/#{submission.submitters.first.slug}" => :ok,
+      "/s/#{submission.submitters.first.slug}" => :ok }.each do |path, status|
+      get path
+
+      expect(response).to have_http_status(status), "#{path} answered #{response.status}"
       expect_attribution(response.body)
       expect(attribution_links(response.body)[:docuseal].size).to eq(1), "#{path} drew the attribution more than once"
     end
