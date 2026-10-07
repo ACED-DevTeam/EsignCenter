@@ -192,6 +192,39 @@ module Registrations
     account.users.new(email:, password:, first_name:, last_name:, role: User::ADMIN_ROLE)
   end
 
+  # An account still named after its owner's email address: the sign-up
+  # above fell back to the address because no name came with it, which in
+  # practice is an Apple sign-in where the person kept their name back. The
+  # account name is the sender every signer reads ("… sent you "Lease" to
+  # sign"), and a private-relay address there reads as spam, so the dashboard
+  # asks for a name once (NamePromptsController). Only the admin whose address
+  # it is, and only on a customer account: an operator, internal or testing
+  # account is not named by sign-up at all.
+  def name_missing?(user)
+    account = user.account
+
+    user.admin? && account.customer? && account.name.to_s.strip.casecmp?(user.email.to_s)
+  end
+
+  # What the prompt saves: the person's own first and last name, split the
+  # way sign-up splits them, and the same words as the account name. Blank,
+  # or another email address, is refused — either would leave the account
+  # exactly where it started and ask again on the next visit.
+  def complete_name!(user, name)
+    name = name.to_s.squish
+
+    return false if name.blank? || name.match?(URI::MailTo::EMAIL_REGEXP)
+
+    first_name, last_name = name.split(/\s+/, 2)
+
+    User.transaction do
+      user.update!(first_name:, last_name:)
+      user.account.update!(name:)
+    end
+
+    true
+  end
+
   # Account locales are the region-tagged set the account settings page
   # offers; the browser locale is matched by language and falls back to
   # US English.

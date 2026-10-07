@@ -90,6 +90,7 @@ Rails.application.routes.draw do
   get 'verify' => 'verify#show', as: :verify
   post 'verify' => 'verify#create'
   resource :mfa_setup, only: %i[show new edit create destroy], controller: 'mfa_setup'
+  resource :name_prompt, only: %i[show create], path: 'welcome/name'
   resources :account_configs, only: %i[create destroy]
   resources :account_custom_fields, only: %i[create]
   resources :user_configs, only: %i[create]
