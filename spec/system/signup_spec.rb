@@ -43,7 +43,7 @@ RSpec.describe 'Sign Up' do
     expect(page).to have_no_link(href: registration_path)
   end
 
-  it 'renders the sign-up form with both provider buttons and no upstream attribution' do
+  it 'renders the sign-up form with both provider buttons and the DocuSeal attribution footer' do
     expect(page).to have_content('Create your free account')
     expect(page).to have_content('Free: 5 completed documents a month, 1 user.')
 
@@ -63,8 +63,14 @@ RSpec.describe 'Sign Up' do
     # (OmniAuth keeps only the authorize request's query for the callback).
     expect(page).to have_css('form#google_sign_in_form[action*="timezone="]')
     expect(page).to have_css('form#apple_sign_in_form[action*="timezone="]')
-    expect(page).to have_no_content('DocuSeal')
-    expect(page).to have_no_content('Powered by')
+    # AGPL LICENSE_ADDITIONAL_TERMS and section 13: the signed-out pages carry
+    # the DocuSeal credit (pointing at its source, never its signup funnel)
+    # and the link to this fork's own source, like every other page.
+    within('footer') do
+      expect(page).to have_content('Powered by')
+      expect(page).to have_link('DocuSeal', href: Docuseal::DOCUSEAL_SOURCE_URL)
+      expect(page).to have_link('Source', href: Docuseal::GITHUB_URL)
+    end
   end
 
   # The sign-up page carries its own security policy (the Turnstile host);

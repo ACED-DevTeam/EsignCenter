@@ -41,5 +41,12 @@
         </div>
       </div>
     </draw-signature>
+    <%# AGPL LICENSE_ADDITIONAL_TERMS: this page has no layout, so it carries the
+        DocuSeal attribution and the source link itself. It sits in the page
+        flow below the pad rather than pinned over it, so it can never cover
+        the canvas on a short (landscape) phone screen. %>
+    <footer class="pb-3 text-xs text-base-content/70">
+      <%= render 'shared/attribution', account: @submitter.account %>
+    </footer>
   </body>
 </html>

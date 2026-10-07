@@ -12,5 +12,14 @@
         so the support-session bar belongs here as well. %>
     <%= render 'shared/support_impersonation_banner' %>
     <%= yield %>
+    <%# AGPL LICENSE_ADDITIONAL_TERMS: the DocuSeal attribution and the source
+        link (AGPL section 13) must reach every user. Signing pages draw their
+        own footer and mark it, and the layout then skips this one; the rest
+        (an invitation, a document report) get it here. %>
+    <% unless content_for?(:attribution_rendered) %>
+      <footer class="py-3 text-xs text-base-content/70">
+        <%= render 'shared/attribution', account: attribution_account %>
+      </footer>
+    <% end %>
   </body>
 </html>

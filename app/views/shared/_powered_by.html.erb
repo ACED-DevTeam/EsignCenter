@@ -1,3 +1,5 @@
+<%# Lets a layout skip its own footer when the page already drew this one. %>
+<% content_for(:attribution_rendered, '1') %>
 <div class="text-center px-2">
   <%# Only the "Powered by" wording is a branding surface (paid: Accounts.branding_removed?); the DocuSeal attribution below never goes away. %>
   <% unless Accounts.branding_removed?(local_assigns[:account]) %>
