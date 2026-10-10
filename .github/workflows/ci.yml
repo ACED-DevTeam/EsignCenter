@@ -159,7 +159,7 @@ jobs:
       - name: Install Chrome
         uses: browser-actions/setup-chrome@latest
         with:
-          chrome-version: 125
+          chrome-version: stable
       - name: Cache node_modules
         uses: actions/cache@v4
         with:
