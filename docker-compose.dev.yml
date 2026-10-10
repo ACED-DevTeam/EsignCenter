@@ -17,6 +17,7 @@
 
 services:
   app:
+    init: true
     build:
       context: .
       dockerfile: Dockerfile.dev
