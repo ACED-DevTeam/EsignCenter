@@ -27,6 +27,7 @@ ENV.delete('EMAIL_DELIVERY_MODE')
 
 require_relative '../config/environment'
 raise 'The Rails environment is running in production mode!' if Rails.env.production?
+
 require 'rspec/rails'
 require 'capybara/cuprite'
 require 'capybara/rspec'
