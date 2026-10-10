@@ -37,7 +37,7 @@ WORKDIR /app
 # redis (embedded background-job queue), node/yarn (JS build). The build tools
 # are kept in place (unlike production) so gems and JS packages can be rebuilt
 # inside the container if you add dependencies later.
-RUN apk add --no-cache libpq vips redis onnxruntime nodejs yarn git build-base libpq-dev yaml-dev postgresql-client && \
+RUN apk add --no-cache libpq vips redis onnxruntime tini nodejs yarn git build-base libpq-dev yaml-dev postgresql-client && \
     rm -f /usr/bin/onnx_test_runner /usr/bin/onnxruntime_test
 
 # Enable OpenSSL legacy algorithms (matches the production image).
@@ -99,4 +99,5 @@ EXPOSE 3000
 
 # Sensible default if run standalone; docker-compose.dev.yml overrides this with
 # database setup + the dev server.
+ENTRYPOINT ["/sbin/tini", "-s", "-g", "--"]
 CMD ["bundle", "exec", "rails", "server", "-b", "0.0.0.0", "-p", "3000"]

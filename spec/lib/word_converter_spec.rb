@@ -104,7 +104,8 @@ RSpec.describe WordConverter do
           error = e
         end
 
-        names = error.message.scan(/^([A-Z_][A-Z0-9_]*)=/).flatten
+        environment = error.message.sub(/\Asoffice exited with \d+: /, '')
+        names = environment.scan(/^([A-Z_][A-Z0-9_]*)=/).flatten
 
         expect(names).to include('HOME', 'PATH', 'SAL_USE_VCLPLUGIN')
         expect(names - %w[HOME PATH TMPDIR LANG LC_ALL SAL_USE_VCLPLUGIN PWD SHLVL _]).to eq([])

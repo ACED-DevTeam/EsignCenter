@@ -5,6 +5,7 @@ name: esigncenter-local-production
 
 services:
   app:
+    init: true
     build:
       context: .
       dockerfile: Dockerfile.local-production

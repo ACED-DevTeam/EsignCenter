@@ -48,7 +48,7 @@ ENV OPENSSL_CONF=/etc/openssl_legacy.cnf
 
 WORKDIR /app
 
-RUN apk add --no-cache libpq vips redis onnxruntime && \
+RUN apk add --no-cache libpq vips redis onnxruntime tini && \
     rm -f /usr/bin/onnx_test_runner /usr/bin/onnxruntime_test
 
 # LibreOffice Writer (headless) converts Word uploads (.docx/.doc) to PDF in a
@@ -116,4 +116,7 @@ ENV VIPS_MAX_COORD=17000
 ENV VIPS_BLOCK_UNTRUSTED=1
 
 EXPOSE 3000
+# Reap orphaned children outside Compose too; -s also works under Compose's init.
+# Forward shutdown signals to the process group, including shell-wrapped commands.
+ENTRYPOINT ["/sbin/tini", "-s", "-g", "--"]
 CMD ["/app/bin/bundle", "exec", "puma", "-C", "/app/config/puma.rb", "--dir", "/app"]

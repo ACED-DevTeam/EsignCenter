@@ -2,6 +2,8 @@
 # The public deployment continues to build everything with ./Dockerfile.
 FROM esigncenter-app:latest
 
+RUN apk add --no-cache tini
+
 ENV RAILS_ENV=production
 ENV NODE_ENV=production
 ENV BUNDLE_WITHOUT="development:test"
@@ -25,4 +27,5 @@ RUN mkdir -p log tmp/cache public/fonts /data/docuseal && \
     ln -sf /fonts/DancingScript-Regular.otf public/fonts/DancingScript-Regular.otf && \
     chown -R 2000:2000 tmp log
 
+ENTRYPOINT ["/sbin/tini", "-s", "-g", "--"]
 CMD ["bundle", "exec", "puma", "-C", "config/puma.rb"]
