@@ -26,7 +26,7 @@ end
 ENV.delete('EMAIL_DELIVERY_MODE')
 
 require_relative '../config/environment'
-abort('The Rails environment is running in production mode!') if Rails.env.production? # rubocop:disable Rails/Exit
+raise 'The Rails environment is running in production mode!' if Rails.env.production?
 require 'rspec/rails'
 require 'capybara/cuprite'
 require 'capybara/rspec'
@@ -71,7 +71,7 @@ Rails.root.glob('spec/support/**/*.rb').each { |f| require f }
 begin
   ActiveRecord::Migration.maintain_test_schema!
 rescue ActiveRecord::PendingMigrationError => e
-  abort e.to_s.strip # rubocop:disable Rails/Exit
+  raise e.class, e.to_s.strip
 end
 
 RSpec.configure do |config|
