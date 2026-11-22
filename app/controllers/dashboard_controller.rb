@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 class DashboardController < ApplicationController
+  include MarketingPageViews
+
   skip_before_action :authenticate_user!, only: %i[index]
 
   before_action :maybe_render_landing
@@ -49,5 +51,9 @@ class DashboardController < ApplicationController
     # The public landing page (Session 9), in the marketing layout the
     # pricing, trust and legal pages share, and in English like them.
     with_english { render 'marketing/landing', layout: 'marketing' }
+
+    # Rendering here halts the callback chain, so no after_action would run:
+    # the landing page's view is counted by hand (MarketingPageViews).
+    count_marketing_page_view
   end
 end

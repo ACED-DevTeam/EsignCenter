@@ -26,6 +26,8 @@
       <% email_taken = resource.errors.delete(:email, :taken).present? %>
       <set-timezone data-input-id="signup_timezone"></set-timezone>
       <%= hidden_field_tag 'user[timezone]', nil, id: 'signup_timezone' %>
+      <%# Which campaign link brought this visitor (a label like "youtube:yt-how-to-sign"), so a finished sign-up can be counted against it without a cookie. Counted in aggregate only and never stored on the account (MarketingAdmin::Traffic). %>
+      <%= hidden_field_tag 'signup_origin', @signup_origin, id: nil %>
       <%# The versions of the Terms and the Privacy Policy this page is showing.
           Sent back with the form so the agreement that is recorded is the text
           the person actually had in front of them: a page opened before a

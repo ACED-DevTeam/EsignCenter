@@ -22,6 +22,10 @@ class ApiReferenceController < ApplicationController
 
   around_action :with_english
 
+  include MarketingPageViews
+
+  count_marketing_page_views only: %i[show]
+
   def show; end
 
   def spec

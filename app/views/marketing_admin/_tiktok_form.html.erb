@@ -1,0 +1,18 @@
+<%# TikTok's weekly entry: there is no API we may use, so the numbers are typed in from TikTok Studio. Only followers is required. Saving again on the same day replaces that day's numbers. Locals: latest (the newest snapshot, or nil). %>
+<details class="mt-auto pt-4 text-sm" data-tiktok-form>
+  <summary class="cursor-pointer font-medium text-indigo-700 hover:underline w-fit"><%= latest ? 'Update TikTok’s numbers' : 'Type in TikTok’s numbers' %></summary>
+  <%= form_with url: marketing_admin_tiktok_path, method: :post, data: { turbo: false }, class: 'mt-3 space-y-3' do %>
+    <div class="grid grid-cols-2 gap-3">
+      <% [['followers', 'Followers', true, latest&.followers], ['post_count', 'Videos', false, latest&.post_count], ['total_views', 'Total views', false, latest&.total_views], ['total_likes', 'Total likes', false, latest&.total_likes]].each do |name, label, required, value| %>
+        <label class="block">
+          <span class="block mb-1 text-base-content/70"><%= label %><%= ' (optional)' unless required %></span>
+          <%= text_field_tag name, value, id: "tiktok_#{name}", required:, inputmode: 'numeric', autocomplete: 'off', pattern: '[0-9 ,]*', class: 'base-input w-full h-10 min-h-0 text-base' %>
+        </label>
+      <% end %>
+    </div>
+    <div class="flex items-center justify-between gap-3">
+      <p class="text-xs text-base-content/70">From TikTok Studio, once a week.</p>
+      <button type="submit" class="btn btn-sm btn-neutral text-white">Save numbers</button>
+    </div>
+  <% end %>
+</details>

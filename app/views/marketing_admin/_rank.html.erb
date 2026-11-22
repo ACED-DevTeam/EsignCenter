@@ -1,0 +1,17 @@
+<%# A ranked list with a thin bar showing each row's share of the total. Locals: title, rows ([{ label:, value:, share: }]). %>
+<div class="min-w-0" data-rank="<%= title.parameterize %>">
+  <h4 class="font-semibold"><%= title %></h4>
+  <ol class="mt-3 space-y-3">
+    <% rows.each do |row| %>
+      <li>
+        <div class="flex items-baseline justify-between gap-3 text-sm">
+          <span class="truncate" title="<%= row[:label] %>"><%= row[:label] %></span>
+          <span class="flex-none font-semibold"><%= mka_number(row[:value]) %> <span class="font-normal text-base-content/70"><%= number_to_percentage(row[:share] * 100, precision: 0) %></span></span>
+        </div>
+        <div class="mt-1 h-1.5 rounded-full bg-base-content/10 overflow-hidden" aria-hidden="true">
+          <div class="h-full rounded-full bg-indigo-600/80" style="width: <%= [(row[:share] * 100).round(1), 1].max %>%"></div>
+        </div>
+      </li>
+    <% end %>
+  </ol>
+</div>

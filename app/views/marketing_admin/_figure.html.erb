@@ -1,0 +1,8 @@
+<%# One headline number: the figure, what it is, and one quiet line under it. Locals: value, label; optional note, direction (:up, :down, :flat). %>
+<div class="py-4 sm:py-0 sm:px-6 first:pt-0 last:pb-0 sm:first:pl-0 sm:last:pr-0" data-figure="<%= label.parameterize %>">
+  <dt class="text-sm font-medium text-base-content/70"><%= label %></dt>
+  <dd class="mt-1 text-4xl font-bold tracking-tight"><%= value %></dd>
+  <% if local_assigns[:note].present? %>
+    <dd class="mt-1 text-sm <%= { up: 'text-emerald-700', down: 'text-red-700' }.fetch(local_assigns[:direction], 'text-base-content/70') %>"><%= note %></dd>
+  <% end %>
+</div>

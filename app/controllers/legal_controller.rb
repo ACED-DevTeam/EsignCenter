@@ -21,6 +21,10 @@ class LegalController < ApplicationController
   # English-only, like the marketing pages (ApplicationController#with_english).
   around_action :with_english
 
+  include MarketingPageViews
+
+  count_marketing_page_views
+
   def terms; end
 
   def privacy; end

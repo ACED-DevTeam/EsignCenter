@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_23_130000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_21_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "btree_gin"
   enable_extension "pg_catalog.plpgsql"
@@ -457,6 +457,54 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_23_130000) do
     t.datetime "updated_at", null: false
     t.index ["event_name", "key"], name: "index_lock_events_on_event_name_and_key", unique: true, where: "((event_name)::text = ANY (ARRAY[('start'::character varying)::text, ('complete'::character varying)::text]))"
     t.index ["key"], name: "index_lock_events_on_key"
+  end
+
+  create_table "marketing_outreach_counts", force: :cascade do |t|
+    t.integer "count", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.date "day", null: false
+    t.string "kind", null: false
+    t.datetime "updated_at", null: false
+    t.index ["day", "kind"], name: "index_marketing_outreach_counts_on_day_and_kind", unique: true
+  end
+
+  create_table "marketing_page_counts", force: :cascade do |t|
+    t.string "campaign", default: "", null: false
+    t.integer "count", default: 0, null: false
+    t.date "day", null: false
+    t.string "device", null: false
+    t.string "event", null: false
+    t.string "path", null: false
+    t.string "source", null: false
+    t.index ["day", "event", "path", "source", "campaign", "device"], name: "index_marketing_page_counts_unique", unique: true
+  end
+
+  create_table "marketing_social_snapshots", force: :cascade do |t|
+    t.string "account_name"
+    t.string "collected_by", null: false
+    t.datetime "created_at", null: false
+    t.date "day", null: false
+    t.datetime "fetched_at", null: false
+    t.bigint "followers"
+    t.string "platform", null: false
+    t.integer "post_count"
+    t.text "posts"
+    t.bigint "total_likes"
+    t.bigint "total_views"
+    t.datetime "updated_at", null: false
+    t.index ["platform", "day"], name: "index_marketing_social_snapshots_on_platform_and_day", unique: true
+  end
+
+  create_table "marketing_social_statuses", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "error"
+    t.datetime "last_attempt_at"
+    t.datetime "last_success_at"
+    t.string "platform", null: false
+    t.string "state", null: false
+    t.string "triggered_by"
+    t.datetime "updated_at", null: false
+    t.index ["platform"], name: "index_marketing_social_statuses_on_platform", unique: true
   end
 
   create_table "mcp_tokens", force: :cascade do |t|

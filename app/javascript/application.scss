@@ -466,3 +466,42 @@ summary:focus-visible,
     }
   }
 }
+
+/* The private marketing page (/admin, app/views/marketing_admin). The `mka-`
+   prefix keeps these away from everything else. Only what utilities cannot
+   say lives here: the column charts, whose bars are plain elements sized by
+   an inline height, and figures that must line up digit under digit. */
+.mka-figures {
+  font-variant-numeric: tabular-nums;
+}
+
+.mka-columns {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.mka-column {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+}
+
+.mka-column > span {
+  display: block;
+  width: 100%;
+  min-height: 1px;
+  border-radius: 2px 2px 0 0;
+}
+
+@media (min-width: 640px) {
+  .mka-columns {
+    gap: 3px;
+  }
+
+  .mka-column > span {
+    border-radius: 3px 3px 0 0;
+  }
+}

@@ -57,16 +57,17 @@ module LegalDocuments
       }.freeze
     }.freeze,
     privacy: {
-      version: '2026-10-06',
-      effective_on: Date.new(2026, 10, 6),
-      sha256: '03ef1952d6b5c0597ca87380c3f33fcd5e9f1da136d0eb438fd345af4da143a9',
+      version: '2026-11-21',
+      effective_on: Date.new(2026, 11, 21),
+      sha256: '28aad367b1c8bc4abe9eb06a539d7ce29bbd4c21b2a2e2e0788618b3fe46cdce',
       archived: {
         '2026-09-05' => '1be7833ba2a2ff38d2b7a5018e45146510a304ddd59f5d3f826488086d52243e',
         '2026-09-06' => 'c8ea3037ba549f7e97b495e3290253ab799ceead6648606faa374ffad7d2c42c',
         '2026-09-23' => '4e1eed5cb3fc050655d489a94b0d40a9ac13b4a916032ab4630bac9f658050f2',
         '2026-09-25' => '11340517403fd1760dcfb0290ae9be41332682da4cd62230bfced2a5396e9e1d',
         '2026-09-26' => '9182dbb72ea37b01cb3425ae1f570feb859ee8f1fc5c8f7f1738ea6c20f199be',
-        '2026-10-03' => '2f8d97c08bed253faf32378db2c96d96df2278a35a812d176a92cd16296788f7'
+        '2026-10-03' => '2f8d97c08bed253faf32378db2c96d96df2278a35a812d176a92cd16296788f7',
+        '2026-10-06' => '03ef1952d6b5c0597ca87380c3f33fcd5e9f1da136d0eb438fd345af4da143a9'
       }.freeze
     }.freeze
   }.freeze
