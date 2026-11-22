@@ -482,6 +482,19 @@ RSpec.describe 'Account suspension', type: :request do # rubocop:disable RSpec/M
       }
     end
 
+    # The private marketing page's two buttons (docs/marketing-admin.md). They
+    # are behind that page's own email list, which answers every other
+    # signed-in user with a 404, and neither writes to anybody's account: one
+    # asks the social apps for fresh numbers and the other stores TikTok's
+    # follower count. So the suspension layer is not what stands in the way
+    # here either — spec/requests/marketing_admin_spec.rb drives the gate.
+    let(:marketing_list_only) do
+      {
+        'marketing_admin#refresh' => 'require_marketing_admin_access!',
+        'marketing_admin#tiktok' => 'require_marketing_admin_access!'
+      }
+    end
+
     # Everything else: a write on the account, refused while it is frozen.
     let(:refused_while_suspended) do
       %w[
@@ -523,7 +536,7 @@ RSpec.describe 'Account suspension', type: :request do # rubocop:disable RSpec/M
          submit_form_invite submit_form_email_2fas send_submission_email verify reports
          sessions registrations passwords confirmations omniauth_callbacks invitations
          stripe_webhooks postmark_webhooks invites mcp setup embed_template_builder embed_template_preview
-         support_requests
+         support_requests marketing_outreach
          active_storage/direct_uploads active_storage/disk]
     end
 
@@ -542,8 +555,19 @@ RSpec.describe 'Account suspension', type: :request do # rubocop:disable RSpec/M
 
     it 'classifies every write route of the authenticated app, so a new one has to be decided about' do
       expect(write_actions).to match_array(
-        allowed_while_suspended.keys + operator_only.keys + refused_while_suspended
+        allowed_while_suspended.keys + operator_only.keys + marketing_list_only.keys + refused_while_suspended
       )
+    end
+
+    it 'answers the marketing page’s buttons with a 404 for a suspended account’s administrator' do
+      suspend!
+      sign_in(admin)
+
+      marketing_list_only.each_key do |target|
+        path = "/admin/#{target.split('#').last}"
+
+        expect { post path }.to raise_error(ActionController::RoutingError), path
+      end
     end
 
     # Driven for real: every account-level and seat-level door, which is where

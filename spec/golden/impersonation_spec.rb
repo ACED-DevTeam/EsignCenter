@@ -325,6 +325,9 @@ RSpec.describe 'Support impersonation', type: :request do
         'postmark_webhooks#create' =>
           'a provider endpoint on ActionController::API — no session, no cookie and no current_user for a ' \
           'support session to ride in on; it is guarded by basic auth and an IP allowlist instead.',
+        'marketing_outreach#create' =>
+          'where the Mac automations report outreach totals: ActionController::API with a bearer token, so ' \
+          'there is no session for a support session to ride in on. It answers 404 until a token is configured.',
         'template_folders#destroy' =>
           'a dead route: TemplateFoldersController has no destroy action, so Rails answers before any ' \
           'controller callback runs. Nothing to guard, and nothing that could ever succeed.'

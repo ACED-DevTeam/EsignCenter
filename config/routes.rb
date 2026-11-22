@@ -87,6 +87,15 @@ Rails.application.routes.draw do
   # read as a format segment: the URL a machine is given is a file name.
   get 'docs/openapi.json' => 'api_reference#spec', as: :openapi_document, format: false
 
+  # The private marketing page (docs/marketing-admin.md). The controller
+  # answers everybody who is not on its email list with a 404, signed in or
+  # not, so for them these routes do not exist.
+  get 'admin' => 'marketing_admin#show', as: :marketing_admin
+  post 'admin/refresh' => 'marketing_admin#refresh', as: :marketing_admin_refresh
+  post 'admin/tiktok' => 'marketing_admin#tiktok', as: :marketing_admin_tiktok
+  # Where the Mac automations report outreach totals: a bearer token, no session.
+  post 'api/marketing/outreach' => 'marketing_outreach#create', as: :marketing_outreach, defaults: { format: :json }
+
   get 'verify' => 'verify#show', as: :verify
   post 'verify' => 'verify#create'
   resource :mfa_setup, only: %i[show new edit create destroy], controller: 'mfa_setup'

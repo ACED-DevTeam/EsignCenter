@@ -27,14 +27,33 @@ class RegistrationsController < Devise::RegistrationsController
 
   around_action :with_browser_locale
 
+  # For the marketing page at /admin: opening this page is counted as "opened
+  # the sign-up page" (what a click on "Start free" leads to), and a sign-up
+  # that goes through is counted against the campaign tag of the link the
+  # person arrived by. Counters only — the tag rides in a hidden field, not a
+  # cookie, and is never stored on the account (MarketingAdmin::Traffic). The
+  # page the click came from is kept only when it is one of the public pages:
+  # an invitation link's address is never stored.
+  include MarketingPageViews
+
+  after_action :count_marketing_signup_open, only: %i[new]
+
   def new
     build_signup
+
+    @signup_origin = MarketingAdmin::Traffic.signup_token_for(request)
 
     render :new
   end
 
   def create
     build_signup(sign_up_params)
+
+    # Read with the same rules as an address, so the form re-rendered after a
+    # refusal carries a clean value forward, never what was posted. Neither
+    # this nor the tally below can raise or wait: nobody's sign-up depends on
+    # a marketing counter (MarketingAdmin::Traffic).
+    @signup_origin = MarketingAdmin::Traffic.clean_signup_token(params[:signup_origin])
 
     return refuse(:too_many_requests) unless ip_attempt_allowed?
     return refuse(:unprocessable_content) unless turnstile_verified?
@@ -47,6 +66,7 @@ class RegistrationsController < Devise::RegistrationsController
     if Registrations.save_signup(@user, request:, source: LegalAcceptance::SIGNUP_EMAIL,
                                         versions: legal_versions)
       session[:signup_email] = @user.email
+      MarketingAdmin::Traffic.record_signup(@signup_origin, request.user_agent)
 
       redirect_to after_inactive_sign_up_path_for(@user), status: :see_other
     else

@@ -1,0 +1,72 @@
+<%# One social app. `card[:state]` decides which of four cards this is: not connected yet, connected and waiting for its first numbers, a check that failed with nothing to fall back on, or numbers (with a note when the latest check failed). %>
+<% latest = card[:latest] %>
+<% badge = { not_connected: ['Not connected', 'bg-base-200 text-base-content/70'], waiting: ['Waiting', 'bg-amber-100 text-amber-800'], error: ['Problem', 'bg-red-100 text-red-800'] }[card[:state]] %>
+<% badge = ['Last check failed', 'bg-red-100 text-red-800'] if card[:state] == :ok && card[:problem] %>
+<% badge = ['Typed in', 'bg-base-200 text-base-content/70'] if card[:state] == :ok && card[:manual] %>
+<article class="bg-white rounded-2xl border <%= card[:state] == :error || card[:problem] ? 'border-red-200' : 'border-base-content/10' %> p-5 sm:p-6 flex flex-col" aria-labelledby="channel-<%= card[:platform] %>" data-channel="<%= card[:platform] %>" data-state="<%= card[:state] %>">
+  <div class="flex items-center justify-between gap-3">
+    <h3 id="channel-<%= card[:platform] %>" class="font-semibold"><%= card[:name] %></h3>
+    <% if badge %><span class="text-xs font-medium rounded-full px-2.5 py-1 whitespace-nowrap <%= badge.last %>"><%= badge.first %></span><% end %>
+  </div>
+  <% case card[:state] %>
+  <% when :not_connected %>
+    <p class="mt-4 text-xl font-semibold">Not connected yet</p>
+    <p class="mt-1 text-sm text-base-content/70"><%= card[:needs] %></p>
+  <% when :waiting %>
+    <p class="mt-4 text-xl font-semibold">Connected</p>
+    <p class="mt-1 text-sm text-base-content/70">The first numbers arrive with the next morning check. Press Refresh now to check sooner.</p>
+  <% when :error %>
+    <p class="mt-4 text-xl font-semibold">Couldn’t check</p>
+    <p class="mt-1 text-sm text-base-content/70">The last check didn’t work: <span class="break-words"><%= card[:problem] %></span></p>
+    <p class="mt-2 text-sm text-base-content/70">The other apps are not affected. It will be tried again tomorrow morning.</p>
+  <% else %>
+    <p class="mt-4 text-4xl font-bold tracking-tight" data-followers><%= mka_number(latest.followers) %></p>
+    <p class="text-sm text-base-content/70">
+      <%= latest.followers.nil? ? "#{card[:unit].pluralize} hidden by #{card[:name]}" : (latest.followers == 1 ? card[:unit] : card[:unit].pluralize) %><% if latest.account_name.present? %> on <%= latest.account_name %><% end %>
+    </p>
+    <% if (change = card[:change]) %>
+      <p class="mt-3 text-sm" data-change>
+        <span class="font-semibold <%= { up: 'text-emerald-700', down: 'text-red-700', flat: 'text-base-content/70' }.fetch(mka_direction(change[:value])) %>"><%= mka_signed(change[:value]) %></span>
+        <span class="text-base-content/70"><%= change[:exact] ? 'in 7 days' : "since #{mka_day(change[:since])}" %></span>
+      </p>
+    <% else %>
+      <p class="mt-3 text-sm text-base-content/70" data-history-starts>History starts <%= mka_day(card[:history_starts]) %></p>
+    <% end %>
+    <% if card[:series].size >= 2 %>
+      <% points = mka_spark_points(card[:series]) %>
+      <svg class="mt-2 w-full h-11 text-indigo-600" viewBox="0 0 <%= MarketingAdminHelper::MKA_SPARK_WIDTH %> <%= MarketingAdminHelper::MKA_SPARK_HEIGHT %>" preserveAspectRatio="none" role="img" aria-label="<%= card[:name] %> <%= card[:unit].pluralize %> from <%= mka_day(card[:series].first.day) %> to <%= mka_day(card[:series].last.day) %>: <%= mka_number(card[:series].first.followers) %> to <%= mka_number(card[:series].last.followers) %>">
+        <path d="M<%= points.first.first %>,<%= MarketingAdminHelper::MKA_SPARK_HEIGHT %> L<%= points.map { |x, y| "#{x},#{y}" }.join(' L') %> L<%= points.last.first %>,<%= MarketingAdminHelper::MKA_SPARK_HEIGHT %> Z" fill="currentColor" fill-opacity="0.08"></path>
+        <polyline points="<%= points.map { |x, y| "#{x},#{y}" }.join(' ') %>" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"></polyline>
+      </svg>
+    <% else %>
+      <p class="mt-2 h-11 flex items-center text-sm text-base-content/70 border-t border-dashed border-base-content/20">The trend line starts after a second day.</p>
+    <% end %>
+    <dl class="mt-4 pt-4 border-t border-base-content/10 grid grid-cols-2 gap-4 text-sm">
+      <div>
+        <dt class="text-base-content/70"><%= latest.total_views.nil? && latest.total_likes ? 'Likes' : card[:views] %></dt>
+        <dd class="text-lg font-semibold"><%= mka_number(latest.total_views.nil? && latest.total_likes ? latest.total_likes : latest.total_views) %></dd>
+        <% if (views_change = card[:views_change]) && !views_change[:value].zero? %>
+          <dd class="text-xs text-base-content/70" data-views-change><%= mka_signed(views_change[:value]) %> <%= views_change[:exact] ? 'in 7 days' : "since #{mka_day(views_change[:since])}" %></dd>
+        <% end %>
+        <% if card[:views_note] && latest.total_views %>
+          <dd class="mt-0.5 text-xs text-base-content/70" data-views-note><%= card[:views_note] %></dd>
+        <% end %>
+      </div>
+      <div>
+        <dt class="text-base-content/70"><%= card[:posts] %></dt>
+        <dd class="text-lg font-semibold"><%= mka_number(latest.post_count) %></dd>
+      </div>
+    </dl>
+    <% notes = [] %>
+    <% notes << "The last check didn’t work (#{card[:problem]}). Showing the numbers from #{mka_day(latest.day)}." if card[:problem] %>
+    <% notes << "Last updated #{mka_day(latest.day)}." if card[:stale] && !card[:problem] && !card[:manual] %>
+    <% notes << "Typed in #{latest.day == @today ? 'today' : mka_day(latest.day)}." if card[:manual] %>
+    <% notes << 'Time for this week’s numbers.' if card[:entry_due] %>
+    <% if notes.any? %>
+      <p class="mt-4 text-sm <%= card[:problem] || card[:entry_due] ? 'text-red-700' : 'text-base-content/70' %> break-words" data-channel-note><%= notes.join(' ') %></p>
+    <% end %>
+  <% end %>
+  <% if card[:manual] %>
+    <%= render 'tiktok_form', latest: %>
+  <% end %>
+</article>

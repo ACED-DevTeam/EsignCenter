@@ -14,6 +14,7 @@ require_relative '../lib/api_path_consider_json_middleware'
 require_relative '../lib/normalize_client_ip_middleware'
 require_relative '../lib/registration_gate_middleware'
 require_relative '../lib/apple_form_post_cookie_middleware'
+require_relative '../lib/marketing_page_views_middleware'
 
 Bundler.require(*Rails.groups)
 
@@ -58,6 +59,9 @@ module DocuSeal
     # Outside ActionDispatch::Cookies, because the Set-Cookie header it has to
     # re-mark is written there, on the way back out.
     config.middleware.insert_before ActionDispatch::Cookies, AppleFormPostCookieMiddleware
+    # Outside Rack::ConditionalGet, so a page view is counted only when a page
+    # was really sent: a conditional GET answered 304 is not one.
+    config.middleware.insert_before Rack::ConditionalGet, MarketingPageViewsMiddleware
 
     config.generators.system_tests = nil
 

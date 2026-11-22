@@ -14,7 +14,7 @@ class SessionsController < Devise::SessionsController
       return render :otp, locals: { resource: User.new(sign_in_params) }, status: :unprocessable_content
     end
 
-    super
+    super { |user| note_password_sign_in(user) }
   end
 
   # Signing out ends a support session too, and ends it PROPERLY: the audit row
@@ -31,6 +31,17 @@ class SessionsController < Devise::SessionsController
   end
 
   private
+
+  # For the private marketing page only (MarketingAdmin::MailboxProof): a
+  # session opened with the login's own password is one of the few that page
+  # accepts. Written for an address on its list and for nobody else, and only
+  # when it really was the password that signed them in — not the remember-me
+  # cookie, which Warden would also accept here.
+  def note_password_sign_in(user)
+    return unless warden.winning_strategy.is_a?(Devise::Strategies::DatabaseAuthenticatable)
+
+    MarketingAdmin::MailboxProof.record!(warden, user, MarketingAdmin::MailboxProof::PASSWORD)
+  end
 
   def after_sign_in_path_for(...)
     return params[:redir] if params[:redir].present?

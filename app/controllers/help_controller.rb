@@ -19,6 +19,10 @@ class HelpController < ApplicationController
 
   around_action :with_english
 
+  include MarketingPageViews
+
+  count_marketing_page_views
+
   # A slug nobody has written is a 404, not a 500 — the same answer
   # LegalController gives for an unknown document.
   rescue_from HelpCenter::UnknownArticle do

@@ -20,6 +20,11 @@
           <% if operator_access? %>
             <%= link_to t('operator_console'), operator_accounts_path, class: 'hidden md:inline-flex font-medium text-lg', id: 'operator_console_button' %>
           <% end %>
+          <%# The private marketing page. Hidden from everybody who is not on
+              its list, for the same reason: it answers them with a 404. %>
+          <% if marketing_admin_access? %>
+            <%= link_to 'Marketing', marketing_admin_path, class: 'hidden md:inline-flex font-medium text-lg', id: 'marketing_admin_button' %>
+          <% end %>
           <%= link_to t('settings'), settings_profile_index_path, class: 'hidden md:inline-flex font-medium text-lg', id: 'account_settings_button' %>
         </div>
       <% end %>

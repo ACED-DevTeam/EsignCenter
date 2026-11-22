@@ -1,0 +1,17 @@
+<%# One band of the page: the section's name and what it measures on the left, its numbers on the right (stacked on a phone). `loaded` is false when the section's numbers could not be read at all. %>
+<section id="<%= id %>" class="scroll-mt-4 pt-10 md:pt-14 grid gap-6 lg:grid-cols-12 lg:gap-10" aria-labelledby="<%= id %>-title" data-section="<%= id %>">
+  <div class="lg:col-span-3">
+    <h2 id="<%= id %>-title" class="text-2xl font-bold tracking-tight"><%= title %></h2>
+    <p class="mt-2 text-base-content/70 leading-relaxed"><%= lede %></p>
+  </div>
+  <div class="lg:col-span-9 min-w-0 space-y-6">
+    <% if loaded %>
+      <%= yield %>
+    <% else %>
+      <div class="bg-white rounded-2xl border border-red-200 p-6" role="alert" data-section-error>
+        <p class="font-semibold">These numbers couldn’t be loaded.</p>
+        <p class="mt-1 text-base-content/70">Reload the page to try again. The problem has been reported, and the other sections are not affected.</p>
+      </div>
+    <% end %>
+  </div>
+</section>

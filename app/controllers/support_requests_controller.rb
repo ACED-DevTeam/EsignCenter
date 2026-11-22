@@ -59,6 +59,10 @@ class SupportRequestsController < ApplicationController
   # (TurnstileProtected: GET only, after set_csp).
   protect_with_turnstile only: %i[new]
 
+  include MarketingPageViews
+
+  count_marketing_page_views only: %i[new]
+
   def new
     @support_request = SupportRequest.new(prefill)
   end

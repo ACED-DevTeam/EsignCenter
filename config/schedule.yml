@@ -60,3 +60,14 @@ housekeeping:
   class: 'HousekeepingJob'
   queue: default
   description: 'Closes support sessions whose hour ran out unattended and attributes or drops parked email webhooks'
+
+# The morning check of the social apps for the marketing page at /admin
+# (docs/marketing-admin.md): followers, views and posts on YouTube, Facebook
+# and Instagram, one snapshot per app per America/Chicago day. 11:00 UTC is
+# 5 am Central in winter and 6 am in summer. Apps with no credentials are
+# skipped, and one app failing never stops the others.
+marketing_social_snapshot:
+  cron: '0 11 * * *'
+  class: 'MarketingSocialSnapshotJob'
+  queue: default
+  description: 'Reads followers, views and posts from the connected social apps for the marketing page'

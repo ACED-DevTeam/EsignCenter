@@ -529,3 +529,18 @@ Current unpublished `2026-10-06` digests:
 
 - Terms: `1c2a45911eab0b4222686520be1c81c82097242964e9cfdecbbedb7e64f2af8b`
 - Privacy: `03ef1952d6b5c0597ca87380c3f33fcd5e9f1da136d0eb438fd345af4da143a9`
+
+### Counting visits to the public pages (November 21, 2026)
+
+| Document | Archived | Now | Effective | SHA-256 |
+| --- | --- | --- | --- | --- |
+| Privacy | `2026-10-06` | `2026-11-21` | November 21, 2026 | `28aad367b1c8bc4abe9eb06a539d7ce29bbd4c21b2a2e2e0788618b3fe46cdce` |
+
+Privacy §6 gains one paragraph, approved by the owner on November 21, 2026,
+for the marketing page at `/admin` (`docs/marketing-admin.md`): public pages
+are counted server-side as daily totals by page, kind of referrer, campaign
+tag and device, and finished sign-ups by campaign tag. No cookie, no IP
+address, nothing attached to an account. The archived `2026-10-06` text was
+rendered from the prior code and checked against its recorded digest before
+being written. No customer accounts existed yet (owner, November 21, 2026),
+so step 4 had no one to email.

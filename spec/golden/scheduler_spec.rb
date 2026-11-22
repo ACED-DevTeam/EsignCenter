@@ -19,7 +19,8 @@ RSpec.describe 'Scheduler', type: :lib do
 
   it 'declares the heartbeat every minute on the recurrent queue' do
     expect(schedule.keys).to contain_exactly('scheduler_heartbeat', 'stripe_reconciliation', 'billing_lifecycle',
-                                             'account_retention', 'comp_expiry', 'housekeeping')
+                                             'account_retention', 'comp_expiry', 'housekeeping',
+                                             'marketing_social_snapshot')
     expect(schedule['comp_expiry']).to include('cron' => '45 * * * *', 'class' => 'CompExpiryJob', 'queue' => 'billing')
     expect(schedule['scheduler_heartbeat']).to include(
       'cron' => '* * * * *', 'class' => 'SchedulerHeartbeatJob', 'queue' => 'recurrent'
@@ -264,6 +265,23 @@ RSpec.describe 'Scheduler', type: :lib do
     expect(Accounts::Retention).to have_received(:purge_due!).once
     expect(SchedulerStamps.all['account_retention'])
       .to include('outcome' => 'error', 'error' => a_string_including('schedule_dormant_warnings!'))
+  end
+
+  # The marketing page's morning check of the social apps (docs/marketing-admin.md).
+  it 'declares the social snapshot every morning on the default queue and registers it' do
+    expect(schedule['marketing_social_snapshot']).to include(
+      'cron' => '0 11 * * *', 'class' => 'MarketingSocialSnapshotJob', 'queue' => 'default'
+    )
+
+    Sidekiq::Cron::ScheduleLoader.new.load_schedule
+
+    job = Sidekiq::Cron::Job.find('marketing_social_snapshot')
+
+    expect(job).to be_present
+    expect(job.source).to eq('schedule')
+    expect(job.klass).to eq('MarketingSocialSnapshotJob')
+    expect(job.cron).to eq('0 11 * * *')
+    expect(job.queue_name_with_prefix).to eq('default')
   end
 
   # sidekiq-cron's own startup hook loads its default schedule file; the app

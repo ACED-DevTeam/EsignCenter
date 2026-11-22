@@ -1,0 +1,23 @@
+<%# A column chart drawn with plain elements: one bar per day, sized by an inline height. Locals: days ([{ day:, value:, counted: }]), noun ("page view"); optional tall, today. A day before counting began is drawn as a gap, not as a zero. %>
+<% heights = mka_column_heights(days.pluck(:value)) %>
+<% tones = { gap: 'bg-transparent', empty: 'bg-base-content/20', today: 'bg-indigo-600', day: 'bg-neutral/75' } %>
+<% peak = days.select { |d| d.fetch(:counted, true) }.max_by { |d| d[:value] } %>
+<% summary = peak && peak[:value].positive? ? "Most in a day: #{mka_count(peak[:value], noun)} on #{mka_day(peak[:day])}." : "No #{noun.pluralize} in these #{days.size} days." %>
+<div>
+  <div class="mka-columns <%= local_assigns[:tall] ? 'h-40 sm:h-48' : 'h-14' %>" role="img" aria-label="<%= noun.pluralize.capitalize %> per day for <%= days.size %> days. <%= summary %>">
+    <% days.each_with_index do |d, index| %>
+      <% counted = d.fetch(:counted, true) %>
+      <div class="mka-column" title="<%= mka_weekday(d[:day]) %>: <%= counted ? mka_count(d[:value], noun) : 'not counted yet' %>">
+        <span class="<%= tones.fetch(mka_column_kind(d, local_assigns[:today])) %>" style="height: <%= heights[index] %>%"></span>
+      </div>
+    <% end %>
+  </div>
+  <div class="mt-1.5 flex justify-between text-xs text-base-content/70" aria-hidden="true">
+    <span><%= mka_day(days.first[:day]) %></span>
+    <span><%= mka_day(days[days.size / 2][:day]) %></span>
+    <span><%= days.last[:day] == local_assigns[:today] ? 'Today' : mka_day(days.last[:day]) %></span>
+  </div>
+  <% if local_assigns[:tall] %>
+    <p class="mt-3 text-sm text-base-content/70"><%= summary %></p>
+  <% end %>
+</div>

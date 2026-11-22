@@ -1,0 +1,37 @@
+<% accounts = product[:accounts] %>
+<% paid = product[:paid] %>
+<% trend, direction = mka_trend(accounts[:last7], accounts[:previous7]) %>
+<% paid_note = [("#{mka_number(paid[:trialing])} in a free trial" if paid[:trialing].positive?), ("#{mka_number(paid[:complimentary])} more given free" if paid[:complimentary].positive?)].compact.to_sentence.presence %>
+<dl class="grid sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-base-content/10">
+  <%= render 'figure', label: 'New accounts, last 7 days', value: mka_number(accounts[:last7]), note: trend, direction: %>
+  <%= render 'figure', label: 'Paid plans now', value: mka_number(paid[:total]), note: paid_note || 'Paying or in a free trial' %>
+  <%= render 'figure', label: 'New paid plans, last 7 days', value: mka_number(paid[:new_this_week]), note: 'Subscriptions created in these 7 days, even if they have ended since' %>
+</dl>
+<div class="bg-white rounded-2xl border border-base-content/10 divide-y divide-base-content/10" data-card="product-daily">
+  <% [
+       ['New accounts', 'new account', :accounts, accounts, "#{mka_number(accounts[:all_time])} accounts in all"],
+       ['Documents sent', 'document sent', :sent, product[:sent], nil],
+       ['Documents completed', 'document completed', :completed, product[:completed], 'Counted once, on the day the last signer finishes']
+     ].each do |title, noun, key, totals, fine| %>
+    <div class="p-5 sm:p-6 grid gap-4 md:grid-cols-12 md:items-center" data-product-row="<%= key %>">
+      <div class="md:col-span-4">
+        <h3 class="font-semibold"><%= title %></h3>
+        <p class="mt-1 text-sm text-base-content/70">
+          <span class="font-semibold text-base-content"><%= mka_number(totals[:today]) %></span> today,
+          <span class="font-semibold text-base-content"><%= mka_number(totals[:last7]) %></span> in 7 days,
+          <span class="font-semibold text-base-content"><%= mka_number(totals[:last30]) %></span> in 30
+        </p>
+        <% if fine %><p class="mt-1 text-xs text-base-content/70"><%= fine %></p><% end %>
+      </div>
+      <div class="md:col-span-8 min-w-0">
+        <%= render 'columns', days: product[:daily].map { |d| { day: d[:day], value: d[key] } }, noun:, today: @today %>
+      </div>
+    </div>
+  <% end %>
+</div>
+<p class="text-sm text-base-content/70 max-w-2xl">
+  Customer accounts only: test-mode copies and the platform’s own accounts are left out. Sign-ups by campaign tag are in the <a href="#website-breakdown" class="link font-medium">campaign tags table</a> above.
+  <% if paid[:past_due].positive? || paid[:canceling].positive? %>
+    Of the paid plans, <%= [("#{mka_number(paid[:past_due])} #{paid[:past_due] == 1 ? 'has' : 'have'} a late payment" if paid[:past_due].positive?), ("#{mka_number(paid[:canceling])} will end at the close of the billing period" if paid[:canceling].positive?)].compact.to_sentence %>.
+  <% end %>
+</p>

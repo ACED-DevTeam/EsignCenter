@@ -23,9 +23,24 @@ class PasswordsController < Devise::PasswordsController
     super do |resource|
       Current.user = resource
     end
+
+    # After `super`, not inside its block: Devise yields before it signs the
+    # person in, and there is no session to note anything in until it has.
+    note_password_reset(resource)
   end
 
   private
+
+  # For the private marketing page only (MarketingAdmin::MailboxProof): a
+  # reset that went through was finished from a link mailed to the address
+  # minutes ago, which is the freshest proof of a mailbox there is. Only when
+  # the reset also signed the person in (it does not for a two-factor login),
+  # and only for an address on that page's list.
+  def note_password_reset(user)
+    return unless user&.errors&.empty? && warden.authenticated?(:user) && warden.user(:user) == user
+
+    MarketingAdmin::MailboxProof.record!(warden, user, MarketingAdmin::MailboxProof::PASSWORD_RESET)
+  end
 
   def after_resetting_password_path_for(_)
     new_session_path(resource_name)

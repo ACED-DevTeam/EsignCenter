@@ -268,7 +268,13 @@ module SupportImpersonation
     'api/tools' => :anonymous,  # stateless merge/verify
     'api/admin/accounts' => :anonymous, # provisioning, admin-token only
     'embed_template_preview' => :anonymous,
-    'embed_template_builder' => :anonymous # token-authenticated
+    'embed_template_builder' => :anonymous, # token-authenticated
+    # The private marketing page (docs/marketing-admin.md). Nothing on it
+    # belongs to the account being supported: it shows the whole product's
+    # numbers to the people on its own email list, and its own gate answers
+    # everybody else — the supporting operator included — with a 404.
+    'marketing_admin' => :anonymous,
+    'marketing_outreach' => :anonymous # token-authenticated, no session
   }.freeze
 
   # The kinds that mean "never, in either mode, for any verb". Checked BEFORE

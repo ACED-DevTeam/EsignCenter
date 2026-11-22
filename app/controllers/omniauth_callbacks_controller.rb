@@ -54,7 +54,8 @@ class OmniauthCallbacksController < Devise::OmniauthCallbacksController
 
     return refuse(I18n.t('google_email_not_verified')) if email.blank? || !google_email_verified?(auth)
 
-    complete(email:, name: auth.info.name, source: LegalAcceptance::SIGNUP_GOOGLE, provider: GOOGLE)
+    complete(email:, name: auth.info.name, source: LegalAcceptance::SIGNUP_GOOGLE, provider: GOOGLE,
+             authoritative: MarketingAdmin::MailboxProof.google_authoritative?(email, google_hosted_domain(auth)))
   end
 
   # Apple only ever sends the e-mail address (and the name) on the FIRST
@@ -78,7 +79,8 @@ class OmniauthCallbacksController < Devise::OmniauthCallbacksController
     return refuse(no_email_from_apple_message) if email.blank?
     return refuse(I18n.t('apple_email_not_verified')) unless auth.info.email_verified
 
-    complete(email:, name: auth.info.name, source: LegalAcceptance::SIGNUP_APPLE, provider: APPLE)
+    complete(email:, name: auth.info.name, source: LegalAcceptance::SIGNUP_APPLE, provider: APPLE,
+             authoritative: MarketingAdmin::MailboxProof.apple_authoritative?(email))
   end
 
   def failure
@@ -90,7 +92,12 @@ class OmniauthCallbacksController < Devise::OmniauthCallbacksController
   # Everything after "this provider has proved this address": one path, so the
   # Apple door and the Google door cannot answer the same situation
   # differently. `provider` only picks the wording of a refusal.
-  def complete(email:, name:, source:, provider:)
+  #
+  # `authoritative` changes nothing about who is signed in or how. It is only
+  # written down, for the private marketing page, when the provider is the
+  # authority for this address rather than somebody who once verified it
+  # (MarketingAdmin::MailboxProof).
+  def complete(email:, name:, source:, provider:, authoritative: false)
     user = User.find_by(email:) || register(email:, name:, source:, provider:)
 
     return if performed?
@@ -102,7 +109,14 @@ class OmniauthCallbacksController < Devise::OmniauthCallbacksController
     # Devise's own gate (a lockout above all): the reason in Devise's words.
     return refuse(inactive_message_for(user, provider)) unless user.active_for_authentication?
 
+    # A weaker sign-in must never inherit the proof of a stronger one left in
+    # this browser — not even for the same login, which Devise would treat as
+    # "already signed in" without running the Warden hook that clears it.
+    MarketingAdmin::MailboxProof.forget!(warden)
+
     sign_in_and_redirect user, event: :authentication
+
+    MarketingAdmin::MailboxProof.record!(warden, user, provider) if authoritative
   end
 
   def provided_email(auth)
@@ -115,6 +129,16 @@ class OmniauthCallbacksController < Devise::OmniauthCallbacksController
 
   def google_email_verified?(auth)
     auth.extra&.raw_info&.email_verified == true
+  end
+
+  # The Google Workspace domain the account belongs to, when it belongs to
+  # one: the `hd` claim, read from the ID token and, failing that, from the
+  # profile Google returned for the same sign-in. Absent for an ordinary
+  # Google account, whatever address it was made with.
+  def google_hosted_domain(auth)
+    extra = auth&.extra
+
+    (extra&.id_info && extra.id_info['hd']).presence || extra&.raw_info&.hd.presence
   end
 
   # Adopting an unconfirmed row: the password on it dies first, then the row
